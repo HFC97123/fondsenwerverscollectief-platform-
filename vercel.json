@@ -1,14 +1,7 @@
 {
-  "//": "De gepubliceerde site is index.html: het goedgekeurde ontwerp, zelfstandig en zonder build. De React-app in src/ wordt bewust niet gebouwd; dat gebeurt pas in deel 8. Zie HERBOUW.md.",
-  "buildCommand": "echo 'Geen build: index.html is zelfstandig.'",
-  "outputDirectory": ".",
-  "framework": null,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
   "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [
-    {
-      "source": "/((?!assets/|uploads/).*)",
-      "destination": "/index.html"
-    }
-  ]
+  "trailingSlash": false
 }
