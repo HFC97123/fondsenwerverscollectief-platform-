@@ -444,14 +444,10 @@ export function WebsiteProvider({ children }) {
         getMemberName(stRef.current.user),
     });
 
-    return data;
-  };
+   return data;
+};
 
-      return null;
-    }
-  };
-
-  useEffect(() => {
+useEffect(() => {
     let isMounted = true;
 
     // Zonder configuratie is er geen sessie. De website rendert dan volledig,
