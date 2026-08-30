@@ -247,7 +247,7 @@ export default function AdminPage() {
   if (!supabase) {
     return (
       <div style={css('max-width: 720px; margin: 0 auto; padding: 80px 24px;')}>
-        <div style={css("margin-bottom: 10px; font-family: 'Newsreader', serif; font-size: 28px; color: #2C4A5E;")}>
+        <div style={css("margin-bottom: 10px; font-family: 'Newsreader', serif; font-size: clamp(25px, 3.8vw, 34px); color: #2C4A5E;")}>
           Beheer is niet beschikbaar
         </div>
         <div style={css('font-size: 15px; line-height: 1.65; color: #4B5C58;')}>
@@ -323,7 +323,7 @@ export default function AdminPage() {
               style={css(`
                 margin: 0;
                 font-family: 'Newsreader', serif;
-                font-size: clamp(30px, 4vw, 46px);
+                font-size: clamp(30px, 5.5vw, 46px);
                 color: #2C4A5E;
               `)}
             >
@@ -401,7 +401,7 @@ export default function AdminPage() {
 
           {activeTab === 'deadlines' ? (
             <div style={panelStyle}>
-              <div style={css("margin-bottom: 8px; font-family: 'Newsreader', serif; font-size: clamp(24px, 3.2vw, 30px); color: #2C4A5E;")}>
+              <div style={css("margin-bottom: 8px; font-family: 'Newsreader', serif; font-size: clamp(23px, 3.2vw, 28px); color: #2C4A5E;")}>
                 Deadlines
               </div>
               <div style={css('margin-bottom: 26px; max-width: 700px; font-size: 15px; line-height: 1.65; color: #536460;')}>
@@ -1207,7 +1207,7 @@ function FieldInput({ field, value, onChange, notify, folder }) {
                   height: 46px;
                   width: 68px;
                   object-fit: cover;
-                  border-radius: 8px;
+                  border-radius: 9px;
                   border: 1px solid #E1EAE4;
                 `)}
               />
@@ -1389,7 +1389,7 @@ function MediaSection({ notify, clearMessages }) {
                 ) : (
                   <span
                     style={css(`
-                      color: #6E7F79;
+                      color: #687973;
                       font-size: 13px;
                       font-weight: 800;
                       text-transform: uppercase;
@@ -1830,7 +1830,7 @@ function DashboardCard({ number, label, helper, onClick }) {
         style={css(`
           margin-bottom: 8px;
           font-family: 'Newsreader', serif;
-          font-size: 40px;
+          font-size: clamp(28px, 4.6vw, 40px);
           font-weight: 600;
           color: #2C4A5E;
         `)}
@@ -2029,7 +2029,7 @@ const smallButtonStyle = css(`
 
 const smallDangerStyle = css(`
   padding: 7px 12px;
-  border: 1px solid #E4CAC5;
+  border: 1px solid #E1D3D0;
   border-radius: 999px;
   background: #FFFFFF;
   color: #A13B2F;

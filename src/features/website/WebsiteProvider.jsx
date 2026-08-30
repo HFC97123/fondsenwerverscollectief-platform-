@@ -7,7 +7,13 @@ import React, {
 } from 'react';
 
 import { supabase } from '../../data/client.js';
-import { PLAN_PERMISSIONS, haalProfiel, tierVan, wisProfielCache } from '../../data/services/profile.js';
+import {
+  PLAN_PERMISSIONS,
+  haalProfiel,
+  inloggen,
+  tierVan,
+  uitloggen,
+} from '../../data/services/profile.js';
 import { collections, siteTextBlocks } from '../../data/collections.js';
 
 import {
@@ -168,6 +174,10 @@ export function WebsiteProvider({ children }) {
     page: 'home',
     activeArticleId: null,
 
+    // Vensterbreedte en mobiel menu, gelijk aan het goedgekeurde ontwerp.
+    viewportW: typeof window !== 'undefined' ? window.innerWidth : 1200,
+    mobileMenuOpen: false,
+
     authView: 'buttons',
     authLoading: true,
     session: null,
@@ -189,6 +199,21 @@ export function WebsiteProvider({ children }) {
     contactSent: false,
 
     memberName: '',
+
+    // Ledenlijst, zichtbaarheid, bijeenkomsten en vraag & antwoord.
+    // Namen en gedrag overgenomen uit het goedgekeurde ontwerp.
+    memberVisible: true,
+    ledenQuery: '',
+    resetSent: false,
+    sessionDraftOpen: false,
+    sessionDraft: { title: '', day: '', month: '', time: '', mode: 'Online', note: '' },
+    sessionProposed: false,
+    memberSessions: [],
+    qDraftOpen: false,
+    qDraft: { title: '', body: '' },
+    qOpenId: null,
+    replyDrafts: {},
+    memberQuestions: [],
 
     vacForm: INITIAL_VACANCY_FORM,
     memberVacancies: [],
@@ -230,6 +255,24 @@ export function WebsiteProvider({ children }) {
   const stRef = useRef(st);
 
   stRef.current = st;
+
+  // Vensterbreedte volgen; boven 860px sluit het mobiele menu, net als in het
+  // goedgekeurde ontwerp.
+  useEffect(() => {
+    const onResize = () => {
+      const w = window.innerWidth;
+
+      set((prev) =>
+        prev.viewportW === w
+          ? prev
+          : { ...prev, viewportW: w, mobileMenuOpen: w >= 860 ? false : prev.mobileMenuOpen },
+      );
+    };
+
+    window.addEventListener('resize', onResize);
+
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const persistChat = (messages) => {
     try {
@@ -444,10 +487,14 @@ export function WebsiteProvider({ children }) {
         getMemberName(stRef.current.user),
     });
 
-   return data;
-};
+    return data;
+  };
 
-useEffect(() => {
+      return null;
+    }
+  };
+
+  useEffect(() => {
     let isMounted = true;
 
     // Zonder configuratie is er geen sessie. De website rendert dan volledig,
@@ -682,6 +729,151 @@ useEffect(() => {
   const siteSessions = fromDatabase('sessions', sessions);
   const siteBlogPosts = fromDatabase('blog', blogPosts);
   const siteVacancies = fromDatabase('vacancies', vacancies);
+
+  /* ---- Collectief: ledenlijst, bijeenkomsten, vraag & antwoord ----
+     Overgenomen uit het goedgekeurde ontwerp. Gepubliceerde inhoud uit
+     Supabase gaat voor; wat een lid zelf voorstelt of plaatst komt erbij. */
+
+  const LEDEN_DATA = [
+    {
+      naam: 'Sanne de Vries',
+      rol: 'Fondsenwerver · Stichting Buurtkracht',
+      bio: 'Werkt aan wijkinitiatieven en zoekt vooral bij vermogensfondsen en gemeenten.',
+      tags: ['Sociale cohesie', 'Utrecht'],
+    },
+    {
+      naam: 'Joost Verhoeven',
+      rol: 'Zelfstandig fondsenwerver',
+      bio: 'Begeleidt culturele organisaties bij meerjarige aanvragen en dekkingsplannen.',
+      tags: ['Cultuur', 'Meerjarig'],
+    },
+    {
+      naam: 'Fatima el Amrani',
+      rol: 'Coördinator · Jeugdwerk Oost',
+      bio: 'Zoekt financiering voor jongerenprogramma’s en talentontwikkeling.',
+      tags: ['Jeugd', 'Amsterdam'],
+    },
+    {
+      naam: 'Pieter Hoogland',
+      rol: 'Directeur · Zorgcoöperatie Noord',
+      bio: 'Combineert zorgsubsidies met particuliere fondsen voor ouderenprojecten.',
+      tags: ['Zorg en welzijn', 'Groningen'],
+    },
+    {
+      naam: 'Rianne Bakker',
+      rol: 'Fondsenwerver · Natuurpunt Gelderland',
+      bio: 'Ervaring met provinciale regelingen en Europese cofinanciering.',
+      tags: ['Natuur', 'Gelderland'],
+    },
+    {
+      naam: 'Ahmed Yildiz',
+      rol: 'Programmamanager · Stichting Meedoen',
+      bio: 'Werkt aan armoedebestrijding en schuldhulp, veel gemeentelijke trajecten.',
+      tags: ['Armoede en inclusie', 'Rotterdam'],
+    },
+  ];
+
+  const AVATAR_KLEUREN = ['#A8D5BA', '#A9C9DE', '#D9E7C9', '#CFE0EB', '#E4DDF0', '#F0E3C9'];
+
+  const initialenVan = (naam) =>
+    String(naam || '')
+      .trim()
+      .split(/\s+/)
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+
+  const ledenZoek = (st.ledenQuery || '').trim().toLowerCase();
+
+  const eigenLid = st.memberVisible
+    ? [
+        {
+          naam: st.memberName || 'Uw profiel',
+          rol: 'Lid van het Collectief',
+          bio: 'Fondsenwerver met hart voor maatschappelijke projecten.',
+          tags: ['Fondsenwerving'],
+          isSelf: true,
+        },
+      ]
+    : [];
+
+  const ledenGefilterd = eigenLid
+    .concat(LEDEN_DATA)
+    .filter(
+      (l) =>
+        !ledenZoek ||
+        `${l.naam} ${l.rol} ${l.bio} ${l.tags.join(' ')}`.toLowerCase().indexOf(ledenZoek) !== -1,
+    );
+
+  // Bijeenkomsten: gepubliceerd uit de database, plus eigen voorstellen.
+  const alleSessies = st.memberSessions.concat(
+    siteSessions.map((s) => ({ ...s, status: s.status || 'Geaccepteerd' })),
+  );
+
+  // Vragen: gepubliceerd uit de database, plus wat een lid deze sessie plaatste.
+  const zichtbareVragen = st.memberQuestions.concat(questions).map((q, i) => {
+    const id = q.id || `q${i}`;
+
+    return {
+      id,
+      title: q.title,
+      body: q.body || '',
+      hasBody: Boolean(q.body),
+      author: q.author || 'Een lid',
+      role: q.role || '',
+      answers: (q.replies || []).length,
+      isOpen: st.qOpenId === id,
+      toggle: () => update({ qOpenId: st.qOpenId === id ? null : id }),
+      replies: q.replies || [],
+      hasReplies: (q.replies || []).length > 0,
+      replyValue: st.replyDrafts[id] || '',
+      onReplyChange: (e) =>
+        update({ replyDrafts: { ...stRef.current.replyDrafts, [id]: e.target.value } }),
+      submitReply: () => submitReply(id),
+    };
+  });
+
+  const siteExperiences = fromDatabase('experiences', []);
+
+  // Alleen leden mogen plaatsen; anders naar het inlogscherm.
+  const vereistLid = (fn) => () => {
+    if (!stRef.current.user) {
+      update({ authView: 'login' });
+
+      return;
+    }
+
+    fn();
+  };
+
+  function submitReply(id) {
+    if (!stRef.current.user) {
+      update({ authView: 'login' });
+
+      return;
+    }
+
+    const tekst = (stRef.current.replyDrafts[id] || '').trim();
+
+    if (!tekst) return;
+
+    update({
+      memberQuestions: stRef.current.memberQuestions.map((q) =>
+        q.id === id
+          ? {
+              ...q,
+              replies: [
+                ...(q.replies || []),
+                { author: stRef.current.memberName || 'Lid van het Collectief', text: tekst },
+              ],
+            }
+          : q,
+      ),
+      replyDrafts: { ...stRef.current.replyDrafts, [id]: '' },
+    });
+  }
+
   const siteCourseModules = fromDatabase('courses', []);
   const siteMasterclasses = fromDatabase('masterclasses', []);
 
@@ -799,6 +991,22 @@ useEffect(() => {
     isNetwerk: st.page === 'netwerk',
     isVacatures: st.page === 'vacatures',
     isContact: st.page === 'contact',
+    isPrivacy: st.page === 'privacy',
+    isVoorwaarden: st.page === 'voorwaarden',
+
+    // De website is een eigen gebied; header, footer en chat horen erbij.
+    isCollectief: true,
+
+    // Breekpunt van de navigatie, gelijk aan het goedgekeurde ontwerp.
+    isWideNav: st.viewportW >= 860,
+    isNarrowNav: st.viewportW < 860,
+    mobileMenuOpen: st.mobileMenuOpen,
+    mobileMenuClosed: !st.mobileMenuOpen,
+    toggleMobileMenu: () => update({ mobileMenuOpen: !stRef.current.mobileMenuOpen }),
+
+    goVoorWie: () => {
+      update({ mobileMenuOpen: false });
+    },
     isAdminPage: st.page === 'admin',
     isAbonnementen: st.page === 'abonnementen',
 
@@ -820,6 +1028,15 @@ useEffect(() => {
     goNetwerk: () => goPage('netwerk'),
     goVacatures: () => goPage('vacatures'),
     goContact: () => goPage('contact'),
+    goPrivacy: () => goPage('privacy'),
+    goVoorwaarden: () => goPage('voorwaarden'),
+
+    // Naar de Subsidie Kompas-omgeving. Dat is een ander gebied, dus via de hash.
+    goKompas: (event) => {
+      if (event && event.preventDefault) event.preventDefault();
+
+      window.location.hash = '#/kompas';
+    },
 
     goAbonnementen: () => {
       update({ page: 'abonnementen' });
@@ -940,17 +1157,16 @@ useEffect(() => {
         loginError: '',
       });
 
-      if (!supabase) {
-        return { error: 'Inloggen is nu niet beschikbaar.' };
+      // Eén implementatie, in data/services/profile.js.
+      const { data, fout } = await inloggen(email, password);
+
+      if (fout) {
+        update({ loginLoading: false, loginError: fout });
+
+        return;
       }
 
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) throw error;
 
         update({
           session: data.session,
@@ -975,15 +1191,8 @@ useEffect(() => {
 
     logout: async () => {
       try {
-        wisProfielCache();
-
-        if (!supabase) {
-          throw new Error('geen client');
-        }
-
-        const { error } = await supabase.auth.signOut();
-
-        if (error) throw error;
+        // Eén implementatie, in data/services/profile.js.
+        await uitloggen();
 
         update({
           session: null,
@@ -1372,11 +1581,137 @@ useEffect(() => {
     },
 
     resources: siteResources,
-    sessions: siteSessions,
+    sessions: alleSessies.filter((s) => s.status !== 'Voorstel'),
+    hasSessions: alleSessies.some((s) => s.status !== 'Voorstel'),
     blogPosts: siteBlogPosts,
-    questions,
+    hasBlogPosts: siteBlogPosts.length > 0,
+    noBlogPosts: siteBlogPosts.length === 0,
+    questions: zichtbareVragen,
+    hasQuestions: zichtbareVragen.length > 0,
+    experiences: siteExperiences,
+    hasExperiences: siteExperiences.length > 0,
     members,
     vacancies: siteVacancies,
+
+    /* ---- Zichtbaarheid in de ledenlijst ---- */
+    toggleMemberVisible: () => update({ memberVisible: !stRef.current.memberVisible }),
+    visKey: (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        update({ memberVisible: !stRef.current.memberVisible });
+      }
+    },
+    visChecked: st.memberVisible ? 'true' : 'false',
+    visTrackBg: st.memberVisible ? '#4E9A6C' : '#D5E0D9',
+    visKnobLeft: st.memberVisible ? '26px' : '3px',
+    visLabel: st.memberVisible ? 'Wel zichtbaar' : 'Niet zichtbaar',
+    visLabelColor: st.memberVisible ? '#2F6D47' : '#7B8985',
+    visHint: st.memberVisible
+      ? 'Uw naam, functie en organisatie zijn zichtbaar voor andere leden van het Collectief. Uw contactgegevens deelt u zelf.'
+      : 'U staat niet in de ledenlijst. Andere leden kunnen u niet vinden of benaderen.',
+
+    /* ---- Ledenlijst ---- */
+    ledenQuery: st.ledenQuery,
+    onLedenQuery: (e) => update({ ledenQuery: e.target.value }),
+    ledenlijst: ledenGefilterd.map((l, i) => ({
+      naam: l.naam,
+      rol: l.rol,
+      bio: l.bio,
+      isSelf: Boolean(l.isSelf),
+      initials: initialenVan(l.naam),
+      avatarBg: AVATAR_KLEUREN[i % AVATAR_KLEUREN.length],
+      tags: l.tags.map((t) => ({ label: t })),
+    })),
+    ledenlijstEmpty: ledenGefilterd.length === 0,
+    ledenlijstCount: `${ledenGefilterd.length}${ledenGefilterd.length === 1 ? ' lid' : ' leden'} zichtbaar${
+      ledenZoek ? ' voor deze zoekopdracht' : '. Leden bepalen zelf of zij in deze lijst staan.'
+    }`,
+    ledenHidden: !st.memberVisible,
+
+    /* ---- Wachtwoord vergeten ---- */
+    resetSent: Boolean(st.resetSent),
+    forgotPassword: () => update({ resetSent: true }),
+
+    /* ---- Bijeenkomst voorstellen ---- */
+    sessionDraftOpen: st.sessionDraftOpen,
+    openSessionDraft: vereistLid(() =>
+      update({ sessionDraftOpen: !stRef.current.sessionDraftOpen, sessionProposed: false }),
+    ),
+    sessionProposed: st.sessionProposed,
+    sessionFields: [
+      { label: 'Titel', key: 'title', placeholder: 'Intervisie: lastige casussen bespreken', wide: true },
+      { label: 'Dag', key: 'day', placeholder: '18' },
+      { label: 'Maand', key: 'month', placeholder: 'sep' },
+      { label: 'Tijd', key: 'time', placeholder: '10:00' },
+    ].map((f) => ({
+      label: f.label,
+      placeholder: f.placeholder,
+      span: f.wide ? '1 / -1' : 'auto',
+      value: st.sessionDraft[f.key] || '',
+      onChange: (e) =>
+        update({ sessionDraft: { ...stRef.current.sessionDraft, [f.key]: e.target.value } }),
+    })),
+    sessionNote: st.sessionDraft.note,
+    setSessionNote: (e) =>
+      update({ sessionDraft: { ...stRef.current.sessionDraft, note: e.target.value } }),
+    proposeSession: vereistLid(() => {
+      const d = stRef.current.sessionDraft;
+
+      if (!(d.title || '').trim()) return;
+
+      update({
+        memberSessions: [
+          {
+            id: `s${Date.now()}`,
+            title: d.title.trim(),
+            day: d.day || '',
+            month: d.month || '',
+            time: d.time || '',
+            host: `voorgesteld door ${stRef.current.memberName || 'een lid'}`,
+            mode: d.mode || 'Online',
+            note: d.note || '',
+            status: 'Voorstel',
+          },
+          ...stRef.current.memberSessions,
+        ],
+        sessionDraft: { title: '', day: '', month: '', time: '', mode: 'Online', note: '' },
+        sessionDraftOpen: false,
+        sessionProposed: true,
+      });
+    }),
+
+    /* ---- Vraag & antwoord ---- */
+    qDraftOpen: st.qDraftOpen,
+    openQDraft: vereistLid(() => update({ qDraftOpen: !stRef.current.qDraftOpen })),
+    qDraftTitle: st.qDraft.title,
+    qDraftBody: st.qDraft.body,
+    setQDraftTitle: (e) => update({ qDraft: { ...stRef.current.qDraft, title: e.target.value } }),
+    setQDraftBody: (e) => update({ qDraft: { ...stRef.current.qDraft, body: e.target.value } }),
+    submitQuestion: vereistLid(() => {
+      const titel = (stRef.current.qDraft.title || '').trim();
+
+      if (!titel) return;
+
+      const id = `q${Date.now()}`;
+
+      update({
+        memberQuestions: [
+          {
+            id,
+            title: titel,
+            body: (stRef.current.qDraft.body || '').trim(),
+            author: stRef.current.memberName || 'Lid van het Collectief',
+            role: 'Lid',
+            replies: [],
+          },
+          ...stRef.current.memberQuestions,
+        ],
+        qDraft: { title: '', body: '' },
+        qDraftOpen: false,
+        qOpenId: id,
+      });
+    }),
+
     newsItems: siteNews.slice(0, 3),
 
     allNewsItems: siteNews.map(withOpen),

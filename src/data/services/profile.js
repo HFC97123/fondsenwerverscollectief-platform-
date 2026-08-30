@@ -110,3 +110,52 @@ export function tierVan(profiel) {
 
   return (ruw === 'pro' || ruw === 'premium') && actief ? ruw : 'free';
 }
+
+/* ---- Aanmelden en afmelden ----
+   Eén implementatie, gedeeld door AuthProvider en WebsiteProvider. Die twee
+   houden elk hun eigen toestand bij, maar de aanroep naar Supabase staat hier. */
+
+export async function inloggen(email, wachtwoord) {
+  if (!supabase) {
+    return { data: null, fout: 'Inloggen is nu niet beschikbaar.' };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: String(email || '')
+        .trim()
+        .toLowerCase(),
+      password: wachtwoord,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return { data, fout: null };
+  } catch (e) {
+    const melding = String((e && e.message) || '');
+
+    return {
+      data: null,
+      fout: melding.toLowerCase().includes('invalid login')
+        ? 'Dit e-mailadres of wachtwoord is niet juist.'
+        : 'Inloggen is niet gelukt. Probeer het opnieuw.',
+    };
+  }
+}
+
+export async function uitloggen() {
+  wisProfielCache();
+
+  if (!supabase) {
+    return;
+  }
+
+  try {
+    await supabase.auth.signOut();
+  } catch (e) {
+    // de sessie is lokaal alsnog leeg
+  }
+}
+

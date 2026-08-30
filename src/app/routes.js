@@ -24,8 +24,9 @@ export const routes = [
 
   // De paden volgen de links in het goedgekeurde ontwerp.
   { pad: '/hoe-het-werkt', area: AREA.marketing, titel: 'Hoe het werkt', toegang: 'publiek' },
+  { pad: '/kompas/faq', area: AREA.marketing, titel: 'Veelgestelde vragen', toegang: 'publiek' },
 
-  // De Kompas-pagina van het ontwerp: tool, abonnementen en FAQ op één pagina.
+  // De Kompas-pagina van het ontwerp: de tool met de drie panelen.
   { pad: '/subsidie-kompas', area: AREA.app, titel: 'Subsidie Kompas', toegang: 'publiek' },
   { pad: '/kompas', area: AREA.app, titel: 'Subsidie Kompas', toegang: 'publiek' },
   { pad: '/kompas/deadlines', area: AREA.app, titel: 'Deadlines', toegang: 'publiek' },

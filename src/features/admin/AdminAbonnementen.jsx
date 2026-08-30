@@ -108,7 +108,7 @@ export default function AdminAbonnementen({ notify }) {
 
   return (
     <section>
-      <div style={css("margin-bottom: 8px; font-family: 'Newsreader', serif; font-size: clamp(24px, 3.2vw, 30px); color: #2C4A5E;")}>
+      <div style={css("margin-bottom: 8px; font-family: 'Newsreader', serif; font-size: clamp(23px, 3.2vw, 28px); color: #2C4A5E;")}>
         Abonnementen
       </div>
       <div style={css('margin-bottom: 22px; font-size: 15px; line-height: 1.65; color: #4B5C58; max-width: 640px;')}>
@@ -119,7 +119,7 @@ export default function AdminAbonnementen({ notify }) {
       <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 14px; margin-bottom: 22px;')}>
         {aantallen.map(({ tier, aantal }) => (
           <div key={tier} style={css('padding: 18px 20px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF;')}>
-            <div style={css("font-family: 'Newsreader', serif; font-size: 28px; font-weight: 600; color: #2C4A5E;")}>
+            <div style={css("font-family: 'Newsreader', serif; font-size: clamp(25px, 3.8vw, 34px); font-weight: 600; color: #2C4A5E;")}>
               {aantal}
             </div>
             <div style={css('font-size: 13.5px; color: #687974;')}>{TIER_LABEL[tier]}</div>

@@ -19,7 +19,8 @@ export function useApp() {
     canUsePrivateDatabase: auth.magPrivedatabase,
     canUseOrganizationMemory: auth.magOrganisatiegeheugen,
 
-    goAbonnementen: () => naar('/kompas#sk-abonnementen'),
+    goAbonnementen: () => naar('/hoe-het-werkt'),
+    goHome: () => naar('/'),
     goKompas: () => naar('/kompas'),
     goDeadlines: () => naar('/kompas/deadlines'),
     goOrganisatie: () => naar('/kompas/organisatie'),

@@ -172,7 +172,7 @@ export default function HoeHetWerktPage() {
             <div style={css('font-size: 12.5px; font-weight: 800; color: #4E9A6C; letter-spacing: 0.09em; margin-bottom: 14px;')}>
               PREMIUM
             </div>
-            <div style={css("font-family: 'Newsreader', serif; font-size: clamp(25px, 3.4vw, 32px); font-weight: 600; color: #2C4A5E; line-height: 1.18;")}>
+            <div style={css("font-family: 'Newsreader', serif; font-size: clamp(24px, 3.2vw, 32px); font-weight: 600; color: #2C4A5E; line-height: 1.18;")}>
               Meer kennis. Betere matches. Sterkere aanvragen.
             </div>
           </div>

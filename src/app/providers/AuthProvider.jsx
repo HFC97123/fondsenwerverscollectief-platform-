@@ -3,7 +3,13 @@
 // losgemaakt van de rest zodat de rechten één bron hebben.
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../data/client.js';
-import { PLAN_PERMISSIONS, haalProfiel, tierVan, wisProfielCache } from '../../data/services/profile.js';
+import {
+  PLAN_PERMISSIONS,
+  haalProfiel,
+  inloggen,
+  tierVan,
+  uitloggen,
+} from '../../data/services/profile.js';
 
 
 const AuthContext = createContext(null);
@@ -234,28 +240,18 @@ export function AuthProvider({ children }) {
     magOrganisatiegeheugen: mag('organizationMemory'),
     magEigenHuisstijl: mag('customBranding'),
 
+    // Eén implementatie, in data/services/profile.js; hier alleen de toestand.
     login: async (email, wachtwoord) => {
-      if (!supabase) {
-        return { fout: 'Inloggen is nu niet beschikbaar.' };
+      const { data, fout } = await inloggen(email, wachtwoord);
+
+      if (fout) {
+        return { fout };
       }
 
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: String(email || '').trim().toLowerCase(),
-          password: wachtwoord,
-        });
+      update({ session: data.session, user: data.user, naam: naamVan(data.user) });
+      await laadProfiel(data.user.id);
 
-        if (error) {
-          throw error;
-        }
-
-        update({ session: data.session, user: data.user, naam: naamVan(data.user) });
-        await laadProfiel(data.user.id);
-
-        return { fout: null };
-      } catch (e) {
-        return { fout: authFoutTekst(e, 'login') };
-      }
+      return { fout: null };
     },
 
     registreer: async (form) => {
@@ -296,15 +292,7 @@ export function AuthProvider({ children }) {
     },
 
     logout: async () => {
-      wisProfielCache();
-
-      if (supabase) {
-        try {
-          await supabase.auth.signOut();
-        } catch (e) {
-          // sessie is lokaal alsnog leeg
-        }
-      }
+      await uitloggen();
 
       update({ session: null, user: null, profile: null, naam: '' });
     },

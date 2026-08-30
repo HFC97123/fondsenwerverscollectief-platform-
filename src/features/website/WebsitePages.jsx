@@ -16,7 +16,6 @@ import OrgPage from './OrgPage.jsx';
 import OrientPage from './OrientPage.jsx';
 import CursussenPage from './CursussenPage.jsx';
 import VacaturesPage from './VacaturesPage.jsx';
-import AbonnementenPage from './AbonnementenPage.jsx';
 import JuridischePaginas from './JuridischePaginas.jsx';
 
 export default function WebsitePages() {
@@ -42,7 +41,6 @@ export default function WebsitePages() {
         <OrientPage />
         <CursussenPage />
         <VacaturesPage />
-        <AbonnementenPage />
         <JuridischePaginas />
 
         <ContactForm />
