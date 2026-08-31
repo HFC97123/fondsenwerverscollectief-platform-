@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/((?!assets/|uploads/).*)",
-      "destination": "/app.html"
+      "destination": "/index.html"
     }
   ]
 }
