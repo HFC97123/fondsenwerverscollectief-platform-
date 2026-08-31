@@ -3,6 +3,7 @@ import React from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from '../kompas-app/useKompasApp.js';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
+import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { useStappen } from './useMarketingContent.js';
 
 const WAT_HET_DOET = [
@@ -12,6 +13,72 @@ const WAT_HET_DOET = [
   'Adviseert over kansrijkheid en fondsenwervende strategie',
   'Ondersteunt bij een sterke aanvraag: positionering, projectplan en begroting',
   'Leert van praktijkcases: toegekende en afgewezen aanvragen uit het Collectief',
+];
+
+// Abonnementen: prijzen, teksten en INBEGREPEN-lijsten letterlijk uit de
+// beschermde, goedgekeurde index.html (sectie "ABONNEMENTEN"). Geen nieuwe
+// inhoud of businessregels; Free/Pro/Premium blijven zoals elders in de app.
+const PLANNEN = [
+  {
+    tier: 'free',
+    naam: 'Free',
+    prijs: '€0',
+    proefperiode: 'Gratis, zonder proefperiode',
+    omschrijving: 'Ontdek welke subsidiemogelijkheden er zijn.',
+    features: [
+      'AI-chat met Subsidie Kompas',
+      'Actuele websearch naar fondsen en subsidieregelingen',
+      'Fondsenscans',
+      'Matchchecks',
+      'Projectplanadvies',
+      'Subsidiebeoordelingen',
+      'SMART-doelen opstellen',
+      'Begrotingen beoordelen',
+      'Feedback op subsidieaanvragen',
+      'Fondsenwervende strategieën in tekst',
+    ],
+  },
+  {
+    tier: 'pro',
+    naam: 'Pro',
+    prijs: '€12',
+    proefperiode: '7 dagen gratis proberen',
+    omschrijving: 'Professionele documenten in uw eigen huisstijl.',
+    ctaTekst: 'Start 7 dagen gratis',
+    features: [
+      'Alles uit Free',
+      'Gesprekken opslaan en hervatten',
+      'Word-documenten genereren',
+      'PDF-documenten genereren',
+      'Excel-export',
+      'Professionele subsidieadviezen',
+      'Projectplannen en fondsenscans',
+      'Bestanden uploaden',
+      'Eigen logo en organisatienaam',
+      'Eigen Word-, Excel- en PowerPoint-templates',
+      'Eigen kleuren en huisstijl',
+      'Persoonlijke schrijfvoorkeuren en eigen tone of voice',
+      'Eigen kennisbank',
+      'Organisatieprofiel en organisatiegeheugen',
+      'AI gebruikt eerdere aanvragen en documenten als context',
+      'Geavanceerde analyses en meerjarige fondsenstrategieën',
+    ],
+  },
+  {
+    tier: 'premium',
+    naam: 'Premium',
+    prijs: '€39',
+    proefperiode: '24 uur gratis proberen',
+    omschrijving: 'Alles uit Pro, plus de exclusieve fondsendatabase.',
+    ctaTekst: 'Probeer Premium 24 uur',
+    uitgelicht: true,
+    features: [
+      'Alles uit Pro',
+      'fondsendatabase',
+      'Adviezen op basis van internet én de exclusieve fondsendatabase',
+      'Geavanceerde fondsselecties en analyses uit de fondsendatabase',
+    ],
+  },
 ];
 
 export const STAPPEN_STANDAARD = [
@@ -50,10 +117,13 @@ export const STAPPEN_STANDAARD = [
 
 export default function HoeHetWerktPage() {
   const app = useApp();
+  const tier = app.subscriptionTier || 'free';
   const STAPPEN = useStappen() || STAPPEN_STANDAARD;
 
   return (
     <div style={css('min-height: 100vh; background: #F7F9F8;')}>
+      <KompasSubnav actief="werkt" />
+
       <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(40px, 6vw, 66px) clamp(16px, 4vw, 24px) clamp(26px, 3.4vw, 38px);')}>
         <h1 style={css("margin: 0 0 18px; font-family: 'Newsreader', serif; font-size: clamp(30px, 5vw, 46px); font-weight: 600; color: #2C4A5E; line-height: 1.15; max-width: 820px; text-wrap: balance;")}>
           Uw subsidieadviseur en fondsenwerver in één
@@ -211,6 +281,123 @@ export default function HoeHetWerktPage() {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* ABONNEMENTEN */}
+      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(44px, 6vw, 84px) clamp(16px, 4vw, 24px) 0; text-align: center;')}>
+        <div style={css("font-family: 'Newsreader', serif; font-size: clamp(30px, 4.6vw, 42px); font-weight: 600; color: #2C4A5E; line-height: 1.15; max-width: 620px; margin: 0 auto 18px;")}>
+          Kies het abonnement dat bij u past
+        </div>
+        <div style={css('font-size: 16.5px; line-height: 1.6; color: #4B5C58; max-width: 660px; margin: 0 auto;')}>
+          Start gratis, genereer met Pro professionele documenten of maak van Subsidie Kompas met Premium uw
+          persoonlijke AI-fondsenwerver.
+        </div>
+      </div>
+
+      <div
+        style={css(
+          'max-width: 1180px; margin: 0 auto; padding: clamp(30px, 4vw, 46px) clamp(16px, 4vw, 24px) clamp(48px, 7vw, 90px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 18px; align-items: stretch;',
+        )}
+      >
+        {PLANNEN.map((plan) => {
+          const huidig = tier === plan.tier;
+
+          return (
+            <div
+              key={plan.tier}
+              style={css(`
+                position: relative;
+                background: #FFFFFF;
+                border: ${plan.uitgelicht ? '1.5px solid #4E9A6C' : '1px solid #E4EBE7'};
+                border-radius: 20px;
+                padding: clamp(22px, 2.6vw, 28px);
+                display: flex;
+                flex-direction: column;
+              `)}
+            >
+              {plan.uitgelicht && (
+                <div
+                  style={css(
+                    'position: absolute; top: -14px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 999px; background: #4E9A6C; color: #FFFFFF; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; white-space: nowrap;',
+                  )}
+                >
+                  MEEST GEKOZEN
+                </div>
+              )}
+
+              <div style={css('align-self: flex-start; height: 27px; margin-bottom: 14px; margin-top: 6px;')} aria-hidden="true" />
+              <div style={css('font-size: 15px; font-weight: 800; color: #4E9A6C; margin-bottom: 10px;')}>{plan.naam}</div>
+              <div style={css('display: flex; align-items: baseline; gap: 8px; margin-bottom: 14px;')}>
+                <span style={css("font-family: 'Newsreader', serif; font-size: 46px; font-weight: 600; color: #2C4A5E; line-height: 1;")}>
+                  {plan.prijs}
+                </span>
+                <span style={css('font-size: 14px; color: #6B7B77;')}>per maand</span>
+              </div>
+              <div style={css('min-height: 22px; font-size: 14px; font-weight: 800; color: #4E9A6C; margin-bottom: 16px;')}>
+                {huidig ? '' : plan.proefperiode}
+              </div>
+              <div style={css('min-height: 48px; font-size: 15px; line-height: 1.6; color: #4B5C58; margin-bottom: 26px;')}>
+                {plan.omschrijving}
+              </div>
+
+              {huidig ? (
+                <div
+                  style={css(
+                    'box-sizing: border-box; min-height: 56px; margin-bottom: 26px; padding: 16px 20px; border-radius: 14px; background: #EEF3F6; color: #2C4A5E; font-size: 15px; font-weight: 800; text-align: center; display: flex; align-items: center; justify-content: center;',
+                  )}
+                >
+                  Huidig abonnement
+                </div>
+              ) : plan.ctaTekst ? (
+                <button
+                  type="button"
+                  onClick={app.goKompas}
+                  style={css(`
+                    cursor: pointer;
+                    box-sizing: border-box;
+                    min-height: 56px;
+                    margin-bottom: 26px;
+                    padding: 16px 20px;
+                    border: none;
+                    border-radius: 14px;
+                    background: ${plan.tier === 'premium' ? '#2C4A5E' : '#4E9A6C'};
+                    color: #FFFFFF;
+                    font-family: 'Mulish', sans-serif;
+                    font-size: 15px;
+                    font-weight: 800;
+                    text-align: center;
+                  `)}
+                >
+                  {plan.ctaTekst}
+                </button>
+              ) : (
+                <div style={css('box-sizing: border-box; min-height: 56px; margin-bottom: 26px;')} aria-hidden="true" />
+              )}
+
+              <div style={css('font-size: 12.5px; font-weight: 800; color: #2C4A5E; letter-spacing: 0.06em; margin-bottom: 16px;')}>
+                INBEGREPEN
+              </div>
+              <div style={css('display: flex; flex-direction: column; gap: 9px;')}>
+                {plan.features.map((f, i) => (
+                  <div key={i} style={css('display: flex; gap: 10px; align-items: flex-start;')}>
+                    <span style={css('flex-shrink: 0; width: 15px; color: #4E9A6C; font-size: 13px; font-weight: 700; line-height: 1.6;')}>
+                      ✓
+                    </span>
+                    <span style={css('font-size: 14px; line-height: 1.6; color: #3D4B48;')}>
+                      {f === 'fondsendatabase' ? (
+                        <>
+                          Uitgebreide exclusieve fondsendatabase met <FundingDatabaseCount /> fondsen en regelingen
+                        </>
+                      ) : (
+                        f
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div style={css('background: #2C4A5E; padding: clamp(36px, 5vw, 66px) 0;')}>

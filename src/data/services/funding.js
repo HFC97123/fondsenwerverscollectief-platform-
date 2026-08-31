@@ -1,44 +1,26 @@
 // Aantal fondsen en regelingen in de database.
-// Eén query per tabel, één keer per sessie, gedeeld door de hele site.
+// Eén RPC-aanroep, één keer per sessie, gedeeld door de hele site.
+//
+// funders/subsidieregelingen hebben bewust geen directe SELECT-rechten voor
+// anon/authenticated (RLS + ontbrekende grants; de content zelf loopt via
+// de aparte, tier-bewuste views/RPC's). Een telling per tabel rechtstreeks
+// bevragen (zoals hier eerder gebeurde) levert daardoor altijd een
+// 'permission denied'-fout op en de teller blijft voor iedereen op '…'
+// staan. publieke_fondsen_telling() is een SECURITY DEFINER-functie in de
+// database die uitsluitend de twee totalen teruggeeft (geen rijen, geen
+// premium-inhoud) en waarvoor anon/authenticated wel EXECUTE-rechten hebben.
 import { useEffect, useState } from 'react';
 import { query, supabase } from '../client.js';
 
-export const FUNDS_TABLES = ['funders', 'subsidieregelingen'];
-
-// Achtereenvolgens geprobeerd; bestaat de kolom niet, dan de volgende variant.
-const ACTIVE_FILTERS = [
-  (q) => q.eq('is_active', true),
-  (q) => q.eq('active', true),
-  (q) => q.eq('published', true),
-  (q) => q.in('status', ['Gepubliceerd', 'gepubliceerd', 'Actief', 'actief', 'Open', 'open']),
-  (q) => q,
-];
-
-async function countTable(table) {
-  for (const filter of ACTIVE_FILTERS) {
-    const res = await filter(supabase.from(table).select('id', { count: 'exact', head: true }));
-
-    if (!res.error) {
-      return res.count || 0;
-    }
-
-    const msg = String(res.error.message || '');
-
-    if (msg.indexOf('column') === -1 && msg.indexOf('does not exist') === -1) {
-      throw res.error;
-    }
-  }
-
-  return 0;
-}
-
 export async function fetchFundingCount() {
-  const res = await query(async () => {
-    let totaal = 0;
+  const res = await query(async (sb) => {
+    const { data, error } = await sb.rpc('publieke_fondsen_telling').single();
 
-    for (const table of FUNDS_TABLES) {
-      totaal += await countTable(table);
+    if (error) {
+      return { data: null, error };
     }
+
+    const totaal = Number(data?.funders_totaal || 0) + Number(data?.regelingen_totaal || 0);
 
     return { data: totaal };
   }, null);

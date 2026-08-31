@@ -1,6 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL;
+// VITE_SUPABASE_URL hoort de kale project-URL te zijn (bv.
+// https://xxxx.supabase.co), zonder /rest/v1: de Supabase-client voegt dat
+// pad zelf al toe. Staat de omgevingsvariabele (bijvoorbeeld in de
+// Vercel-projectinstellingen) per ongeluk mét een /rest/v1-suffix of een
+// trailing slash, dan komt de client op een dubbel pad
+// (/rest/v1/rest/v1/...) uit en mislukt elke aanvraag met 404. Deze
+// normalisatie maakt de client robuust tegen die configuratiefout.
+const ruweUrl = import.meta.env.VITE_SUPABASE_URL;
+const url = ruweUrl ? ruweUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '') : ruweUrl;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Zijn de variabelen niet gezet, dan blijft de client null en vallen alle
