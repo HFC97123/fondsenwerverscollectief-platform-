@@ -1,8 +1,11 @@
 // Abonnementen: per lid het pakket en de looptijd beheren.
-// Schrijft naar de bestaande kolommen op profiles; geen nieuwe tabel.
+// Lezen blijft rechtstreeks op profiles (bestaande, beheerder-only
+// SELECT-policy); schrijven loopt sinds Fase 2 via de SECURITY DEFINER RPC
+// admin_set_subscription, nooit meer via een rechtstreekse tabel-update.
 import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { supabase } from '../../data/client.js';
+import { setSubscription } from '../../data/services/adminGebruikers.js';
 
 const TIERS = ['free', 'pro', 'premium'];
 
@@ -79,14 +82,10 @@ export default function AdminAbonnementen({ notify }) {
     );
   }, [leden, zoek]);
 
-  const wijzig = async (lid, patch) => {
-    if (!supabase) {
-      return;
-    }
-
+  const wijzig = async (lid, tier, actief) => {
     setBezig(lid.id);
 
-    const { error } = await supabase.from('profiles').update(patch).eq('id', lid.id);
+    const { error } = await setSubscription(lid.id, tier, actief);
 
     setBezig(null);
 
@@ -96,7 +95,17 @@ export default function AdminAbonnementen({ notify }) {
       return;
     }
 
-    setLeden((cur) => cur.map((l) => (l.id === lid.id ? { ...l, ...patch } : l)));
+    setLeden((cur) =>
+      cur.map((l) =>
+        l.id === lid.id
+          ? {
+              ...l,
+              subscription_tier: tier,
+              subscription_active: actief,
+            }
+          : l,
+      ),
+    );
     notify('success', 'Abonnement bijgewerkt.');
   };
 
@@ -193,13 +202,7 @@ export default function AdminAbonnementen({ notify }) {
                       key={t}
                       type="button"
                       aria-pressed={tier === t}
-                      onClick={() =>
-                        wijzig(lid, {
-                          subscription_tier: t,
-                          subscription_active: t !== 'free',
-                          subscription_started_at: t === 'free' ? null : new Date().toISOString(),
-                        })
-                      }
+                      onClick={() => wijzig(lid, t, t !== 'free')}
                       style={knop(tier === t)}
                     >
                       {TIER_LABEL[t]}
@@ -214,7 +217,7 @@ export default function AdminAbonnementen({ notify }) {
                   {tier !== 'free' && (
                     <button
                       type="button"
-                      onClick={() => wijzig(lid, { subscription_active: !lid.subscription_active })}
+                      onClick={() => wijzig(lid, tier, !lid.subscription_active)}
                       style={knop(false)}
                     >
                       {lid.subscription_active ? 'Zet uit' : 'Zet aan'}

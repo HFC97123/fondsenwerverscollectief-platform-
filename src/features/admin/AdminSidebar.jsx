@@ -45,6 +45,7 @@ export default function AdminSidebar({
     {
       title: 'Platform',
       items: [
+        { key: 'funders', label: 'Funders', count: counts.funders },
         { key: 'vacancies', label: 'Vacatures', count: counts.vacancies },
         { key: 'deadlines', label: 'Deadlines', count: counts.deadlines },
         { key: 'subsidie-kompas', label: 'Subsidie Kompas' },

@@ -2,11 +2,33 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { supabase } from '../../data/client.js';
 import { useApp } from '../website/WebsiteProvider.jsx';
-import { useKompas } from '../kompas-app/KompasStore.jsx';
 import AdminSidebar from './AdminSidebar.jsx';
 import AdminDeadlines from './AdminDeadlines.jsx';
 import AdminAbonnementen from './AdminAbonnementen.jsx';
 import AdminAnalytics from './AdminAnalytics.jsx';
+import AdminFunders from './AdminFunders.jsx';
+import { fetchAdminDashboardCounts } from '../../data/services/adminDashboard.js';
+import { setRole, setStatus } from '../../data/services/adminGebruikers.js';
+import {
+  cardGridInner,
+  cardGridStyle,
+  dangerButtonStyle,
+  inputStyle,
+  panelCss,
+  panelStyle,
+  plainButtonStyle,
+  primaryButtonNoMarginCss,
+  primaryButtonNoMarginStyle,
+  primaryButtonStyle,
+  secondaryButtonStyle,
+  sectionIntroStyle,
+  sectionTitleStyle,
+  smallButtonStyle,
+  smallDangerStyle,
+  subsectionTitleStyle,
+  textareaStyle,
+  uploadButtonStyle,
+} from './shared/adminStyles.js';
 import {
   MEDIA_BUCKET,
   collections,
@@ -44,7 +66,6 @@ async function uploadToMedia(file, folder) {
 export default function AdminPage() {
 
   const { isAdminPage, isAdmin, goHome, user, reloadContent } = useApp();
-  const kompas = useKompas();
 
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -57,6 +78,10 @@ export default function AdminPage() {
   const [successMessage, setSuccessMessage] = useState('');
 
   const [counts, setCounts] = useState({});
+
+  // Bredere dashboardtellers (funders/regelingen per data tier, gebruikers
+  // per abonnement, beheerders) — via de admin-only RPC admin_dashboard_counts.
+  const [adminCounts, setAdminCounts] = useState(null);
 
   const notify = (type, text) => {
     if (type === 'error') {
@@ -127,8 +152,19 @@ export default function AdminPage() {
       setCounts(Object.fromEntries(results));
     };
 
+    const loadAdminCounts = async () => {
+      const res = await fetchAdminDashboardCounts();
+
+      if (!isMounted) return;
+
+      if (!res.error && res.data) {
+        setAdminCounts(res.data);
+      }
+    };
+
     loadProfiles();
     loadCounts();
+    loadAdminCounts();
 
     return () => {
       isMounted = false;
@@ -180,16 +216,11 @@ export default function AdminPage() {
     setProcessingId(application.id);
     clearMessages();
 
-    const patch = {
-      status: newStatus,
-      approved_at: newStatus === 'approved' ? new Date().toISOString() : null,
-      approved_by: user?.email || 'admin',
-    };
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(patch)
-      .eq('id', application.id);
+    // Schrijft sinds Fase 2 via de SECURITY DEFINER RPC admin_set_status,
+    // nooit meer via een rechtstreekse update op profiles. approved_at en
+    // approved_by worden server-side gezet (approved_by = e-mailadres van de
+    // handelende beheerder).
+    const { error } = await setStatus(application.id, newStatus);
 
     if (error) {
       console.error('Aanvraag kon niet worden beoordeeld:', error);
@@ -197,6 +228,12 @@ export default function AdminPage() {
       setProcessingId(null);
       return;
     }
+
+    const patch = {
+      status: newStatus,
+      approved_at: newStatus === 'approved' ? new Date().toISOString() : null,
+      approved_by: newStatus === 'approved' ? user?.email || 'admin' : application.approved_by,
+    };
 
     setProfiles((current) =>
       current.map((profile) =>
@@ -218,14 +255,25 @@ export default function AdminPage() {
     setProcessingId(member.id);
     clearMessages();
 
-    const { error } = await supabase
-      .from('profiles')
-      .update(patch)
-      .eq('id', member.id);
+    // Schrijft sinds Fase 2 via de SECURITY DEFINER RPC's admin_set_role en
+    // admin_set_status — nooit meer via een rechtstreekse update op profiles.
+    // admin_set_role weigert bovendien server-side dat een beheerder zijn
+    // eigen rol intrekt.
+    let error = null;
+
+    if ('role' in patch) {
+      ({ error } = await setRole(member.id, patch.role));
+    } else if ('status' in patch) {
+      ({ error } = await setStatus(member.id, patch.status));
+    }
 
     if (error) {
       console.error('Lid kon niet worden bijgewerkt:', error);
-      setErrorMessage('Het lid kon niet worden bijgewerkt.');
+      setErrorMessage(
+        error.message && error.message.includes('eigen beheerdersrol')
+          ? error.message
+          : 'Het lid kon niet worden bijgewerkt.',
+      );
       setProcessingId(null);
       return;
     }
@@ -300,7 +348,11 @@ export default function AdminPage() {
           }}
           applicationsCount={applications.length}
           membersCount={approvedMembers.length}
-          counts={{ ...counts, deadlines: kompas.deadlines.length }}
+          counts={{
+            ...counts,
+            deadlines: adminCounts ? adminCounts.regelingen_total : undefined,
+            funders: adminCounts ? adminCounts.funders_total : undefined,
+          }}
           goHome={goHome}
         />
 
@@ -367,6 +419,7 @@ export default function AdminPage() {
               members={approvedMembers.length}
               rejected={rejectedApplications.length}
               counts={counts}
+              adminCounts={adminCounts}
               setActiveTab={setActiveTab}
               goHome={goHome}
             />
@@ -408,7 +461,7 @@ export default function AdminPage() {
                 Beheer de subsidieregelingen en deadlines die op de Deadlines-pagina staan. Upload een CSV-bestand of
                 voeg regelingen los toe.
               </div>
-              <AdminDeadlines />
+              <AdminDeadlines notify={notify} />
             </div>
           ) : null}
 
@@ -428,6 +481,8 @@ export default function AdminPage() {
               }
             />
           ) : null}
+
+          {activeTab === 'funders' ? <AdminFunders notify={notify} /> : null}
 
           {activeTab === 'abonnementen' ? <AdminAbonnementen notify={notify} /> : null}
 
@@ -528,6 +583,7 @@ function DashboardSection({
   members,
   rejected,
   counts,
+  adminCounts,
   setActiveTab,
   goHome,
 }) {
@@ -583,6 +639,53 @@ function DashboardSection({
           label="Afgewezen aanvragen"
           helper="Historisch overzicht"
         />
+      </div>
+
+      <div style={css(`margin-top: 34px;`)}>
+        <h3 style={subsectionTitleStyle}>Funders, subsidieregelingen en gebruikers</h3>
+
+        {adminCounts ? (
+          <div style={css(`${cardGridInner} margin-top: 16px;`)}>
+            <DashboardCard
+              number={adminCounts.funders_total}
+              label="Funders totaal"
+              helper={`${adminCounts.funders_public} public · ${adminCounts.funders_premium} premium`}
+              onClick={() => setActiveTab('funders')}
+            />
+
+            <DashboardCard
+              number={adminCounts.funders_unreviewed}
+              label="Funders niet beoordeeld"
+              helper="classification_reviewed = false"
+              onClick={() => setActiveTab('funders')}
+            />
+
+            <DashboardCard
+              number={adminCounts.regelingen_total}
+              label="Subsidieregelingen totaal"
+              helper={`${adminCounts.regelingen_public} public · ${adminCounts.regelingen_premium} premium`}
+              onClick={() => setActiveTab('deadlines')}
+            />
+
+            <DashboardCard
+              number={adminCounts.regelingen_unreviewed}
+              label="Regelingen niet beoordeeld"
+              helper="classification_reviewed = false"
+              onClick={() => setActiveTab('deadlines')}
+            />
+
+            <DashboardCard number={adminCounts.users_free} label="Gebruikers · Free" onClick={() => setActiveTab('members')} />
+            <DashboardCard number={adminCounts.users_pro} label="Gebruikers · Pro" onClick={() => setActiveTab('members')} />
+            <DashboardCard
+              number={adminCounts.users_premium}
+              label="Gebruikers · Premium"
+              onClick={() => setActiveTab('members')}
+            />
+            <DashboardCard number={adminCounts.users_admin} label="Beheerders" onClick={() => setActiveTab('members')} />
+          </div>
+        ) : (
+          <div style={css('margin-top: 16px; color: #82918B; font-size: 13.5px;')}>Tellers laden…</div>
+        )}
       </div>
 
       <div style={css(`margin-top: 34px;`)}>
@@ -1882,170 +1985,8 @@ function formatMemberType(type) {
   return type || 'Niet ingevuld';
 }
 
-// ---------------------------------------------------------------------------
-// Stijlen
-// ---------------------------------------------------------------------------
-
-const panelCss = `
-  padding: clamp(18px, 2.5vw, 24px);
-  border: 1px solid #E1EAE4;
-  border-radius: 18px;
-  background: #FFFFFF;
-`;
-
-const panelStyle = css(panelCss);
-
-const cardGridInner = `
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 16px;
-`;
-
-const cardGridStyle = css(cardGridInner);
-
-const sectionTitleStyle = css(`
-  margin: 0 0 8px;
-  font-family: 'Newsreader', serif;
-  font-size: clamp(26px, 3.4vw, 34px);
-  color: #2C4A5E;
-`);
-
-const sectionIntroStyle = css(`
-  margin: 0;
-  color: #536460;
-  font-size: 16px;
-  line-height: 1.7;
-`);
-
-const inputStyle = css(`
-  width: 100%;
-  box-sizing: border-box;
-  padding: 13px 14px;
-  border: 1px solid #D5E0D9;
-  border-radius: 12px;
-  background: #FFFFFF;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 500;
-  color: #2E3A38;
-`);
-
-const textareaStyle = css(`
-  width: 100%;
-  box-sizing: border-box;
-  padding: 13px 14px;
-  border: 1px solid #D5E0D9;
-  border-radius: 12px;
-  background: #FFFFFF;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 500;
-  color: #2E3A38;
-  line-height: 1.6;
-  resize: vertical;
-`);
-
-const subsectionTitleStyle = css(`
-  margin: 0;
-  font-family: 'Newsreader', serif;
-  font-size: 24px;
-  color: #2C4A5E;
-`);
-
-const primaryButtonStyle = css(`
-  margin-top: 24px;
-  padding: 12px 20px;
-  border: none;
-  border-radius: 999px;
-  background: #4E9A6C;
-  color: #FFFFFF;
-  font-family: inherit;
-  font-weight: 700;
-  cursor: pointer;
-`);
-
-const primaryButtonNoMarginCss = `
-  padding: 12px 20px;
-  border: none;
-  border-radius: 999px;
-  background: #4E9A6C;
-  color: #FFFFFF;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-`;
-
-const primaryButtonNoMarginStyle = css(primaryButtonNoMarginCss);
-
-const secondaryButtonStyle = css(`
-  padding: 11px 18px;
-  border: 1px solid #BFD4C6;
-  border-radius: 999px;
-  background: #FFFFFF;
-  color: #2F6D47;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-`);
-
-const uploadButtonStyle = css(`
-  display: inline-block;
-  padding: 10px 16px;
-  border: 1px dashed #BFD4C6;
-  border-radius: 999px;
-  background: #F7FAF8;
-  color: #2F6D47;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-`);
-
-const dangerButtonStyle = css(`
-  padding: 11px 18px;
-  border: 1px solid #D7A49D;
-  border-radius: 999px;
-  background: #FFFFFF;
-  color: #A13B2F;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-`);
-
-const smallButtonStyle = css(`
-  padding: 7px 12px;
-  border: 1px solid #BFD4C6;
-  border-radius: 999px;
-  background: #FFFFFF;
-  color: #2F6D47;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-`);
-
-const smallDangerStyle = css(`
-  padding: 7px 12px;
-  border: 1px solid #E1D3D0;
-  border-radius: 999px;
-  background: #FFFFFF;
-  color: #A13B2F;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-`);
-
-const plainButtonStyle = css(`
-  padding: 11px 16px;
-  border: none;
-  background: transparent;
-  color: #536460;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-`);
+// De gedeelde paneel-/knop-/veldstijlen (panelStyle, primaryButtonNoMarginStyle,
+// secondaryButtonStyle, dangerButtonStyle, smallButtonStyle, inputStyle,
+// textareaStyle, enzovoort) staan sinds Fase 2 in ./shared/adminStyles.js —
+// dezelfde waarden, nu op één plek zodat AdminFunders/AdminDeadlines ze kunnen
+// hergebruiken zonder duplicatie.
