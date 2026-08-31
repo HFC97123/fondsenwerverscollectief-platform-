@@ -18,9 +18,9 @@ import CursussenPage from './CursussenPage.jsx';
 import VacaturesPage from './VacaturesPage.jsx';
 import JuridischePaginas from './JuridischePaginas.jsx';
 
-export default function WebsitePages() {
+export default function WebsitePages({ route, param }) {
   return (
-    <WebsiteProvider>
+    <WebsiteProvider route={route} param={param}>
       <div
         id="top"
         style={{

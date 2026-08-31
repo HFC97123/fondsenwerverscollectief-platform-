@@ -1,13 +1,13 @@
 {
-  "buildCommand": "echo 'Geen build: index.html is zelfstandig.'",
-  "outputDirectory": ".",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
     {
       "source": "/((?!assets/|uploads/).*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     }
   ]
 }

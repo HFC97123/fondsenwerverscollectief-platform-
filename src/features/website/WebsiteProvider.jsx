@@ -15,6 +15,7 @@ import {
   uitloggen,
 } from '../../data/services/profile.js';
 import { collections, siteTextBlocks } from '../../data/collections.js';
+import { naar } from '../../app/routes.js';
 
 import {
   allNewsItems,
@@ -169,10 +170,30 @@ function getAuthErrorMessage(error, action = 'login') {
   return 'Inloggen is niet gelukt. Controleer uw gegevens en probeer het opnieuw.';
 }
 
-export function WebsiteProvider({ children }) {
+// Koppelt een routepad (uit src/app/routes.js) aan de interne paginanaam
+// van dit gebied. Alleen paden met een eigen, eenduidige pagina staan hier;
+// /beheer hoort bij een ander gebied, en 'fellow'/'org' delen bewust het
+// pad /lidmaatschap met 'orient' (zie toelichting in het rapport).
+const PAD_TO_PAGE = {
+  '/': 'home',
+  '/actueel': 'actueel',
+  '/artikel': 'article',
+  '/vacatures': 'vacatures',
+  '/cursussen': 'cursussen',
+  '/netwerk': 'netwerk',
+  '/lidmaatschap': 'orient',
+  '/contact': 'contact',
+  '/privacy': 'privacy',
+  '/voorwaarden': 'voorwaarden',
+};
+
+export function WebsiteProvider({ children, route, param }) {
+  const initialPad = route && route.pad;
+  const initialPage = (initialPad && PAD_TO_PAGE[initialPad]) || 'home';
+
   const [st, set] = useState({
-    page: 'home',
-    activeArticleId: null,
+    page: initialPage,
+    activeArticleId: initialPage === 'article' ? param || null : null,
 
     // Vensterbreedte en mobiel menu, gelijk aan het goedgekeurde ontwerp.
     viewportW: typeof window !== 'undefined' ? window.innerWidth : 1200,
@@ -255,6 +276,25 @@ export function WebsiteProvider({ children }) {
   const stRef = useRef(st);
 
   stRef.current = st;
+
+  // De centrale route (App.jsx/useRoute.js) is de bron van waarheid voor
+  // welke pagina getoond wordt. Dit zorgt dat een directe link, een refresh
+  // en de terug/vooruit-knoppen van de browser de juiste pagina tonen; de
+  // bestaande interne kliknavigatie (goHome/goActueel/...) blijft daarnaast
+  // gewoon werken.
+  useEffect(() => {
+    const pad = route && route.pad;
+    const mapped = pad && PAD_TO_PAGE[pad];
+
+    if (!mapped) {
+      return;
+    }
+
+    update({
+      page: mapped,
+      ...(mapped === 'article' ? { activeArticleId: param || null } : {}),
+    });
+  }, [route && route.pad, param]);
 
   // Vensterbreedte volgen; boven 860px sluit het mobiele menu, net als in het
   // goedgekeurde ontwerp.
@@ -488,10 +528,6 @@ export function WebsiteProvider({ children }) {
     });
 
     return data;
-  };
-
-      return null;
-    }
   };
 
   useEffect(() => {
@@ -890,6 +926,7 @@ export function WebsiteProvider({ children }) {
     open: () => {
       update({ activeArticleId: item.id });
       goPage('article');
+      naar(`/artikel/${item.id}`);
     },
   });
 
@@ -1017,19 +1054,51 @@ export function WebsiteProvider({ children }) {
     openArticle: (id) => {
       update({ activeArticleId: id });
       goPage('article');
+      naar(`/artikel/${id}`);
     },
 
-    goHome: () => goPage('home'),
+    // Fellow/Org blijven bewust intern (geen eigen pad in routes.js; ze
+    // delen het pad /lidmaatschap met 'orient' hieronder). De overige
+    // paginas hebben wel een eigen, eenduidig pad en zetten dat nu ook in
+    // de hash, zodat delen/verversen/terug-vooruit werken.
+    goHome: () => {
+      goPage('home');
+      naar('/');
+    },
     goFellow: () => goPage('fellow'),
     goOrg: () => goPage('org'),
-    goOrient: () => goPage('orient'),
-    goCursussen: () => goPage('cursussen'),
-    goActueel: () => goPage('actueel'),
-    goNetwerk: () => goPage('netwerk'),
-    goVacatures: () => goPage('vacatures'),
-    goContact: () => goPage('contact'),
-    goPrivacy: () => goPage('privacy'),
-    goVoorwaarden: () => goPage('voorwaarden'),
+    goOrient: () => {
+      goPage('orient');
+      naar('/lidmaatschap');
+    },
+    goCursussen: () => {
+      goPage('cursussen');
+      naar('/cursussen');
+    },
+    goActueel: () => {
+      goPage('actueel');
+      naar('/actueel');
+    },
+    goNetwerk: () => {
+      goPage('netwerk');
+      naar('/netwerk');
+    },
+    goVacatures: () => {
+      goPage('vacatures');
+      naar('/vacatures');
+    },
+    goContact: () => {
+      goPage('contact');
+      naar('/contact');
+    },
+    goPrivacy: () => {
+      goPage('privacy');
+      naar('/privacy');
+    },
+    goVoorwaarden: () => {
+      goPage('voorwaarden');
+      naar('/voorwaarden');
+    },
 
     // Naar de Subsidie Kompas-omgeving. Dat is een ander gebied, dus via de hash.
     goKompas: (event) => {
