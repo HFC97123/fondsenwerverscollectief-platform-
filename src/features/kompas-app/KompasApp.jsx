@@ -24,7 +24,9 @@ export default function KompasApp({ route }) {
 
   return (
     <KompasProvider>
-      <Pagina />
+      <div style={{ fontFamily: "'Mulish', sans-serif" }}>
+        <Pagina />
+      </div>
     </KompasProvider>
   );
 }

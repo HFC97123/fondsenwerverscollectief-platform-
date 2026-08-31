@@ -90,6 +90,15 @@ export default function HoeHetWerktPage() {
       <div style={css('background: #2C4A5E; margin-top: clamp(28px, 4vw, 46px); padding: clamp(38px, 5.4vw, 74px) 0;')}>
         <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: clamp(28px, 4vw, 52px); align-items: center;')}>
           <div>
+            <div style={css('display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #FFFFFF; font-size: 13px; font-weight: 700; margin-bottom: 18px;')}>
+              <img
+                src="/uploads/kompas-logo.png"
+                alt="Subsidie Kompas"
+                style={css('width: 26px; height: 26px; border-radius: 50%; object-fit: contain; display: block;')}
+              />
+              Subsidie Kompas
+            </div>
+
             <div style={css("margin-bottom: 26px; font-family: 'Newsreader', serif; font-size: clamp(26px, 3.4vw, 34px); font-weight: 600; color: #FFFFFF; line-height: 1.2;")}>
               Wat Subsidie Kompas voor u doet
             </div>
@@ -112,6 +121,16 @@ export default function HoeHetWerktPage() {
           </div>
 
           <div style={css('background: #F7F9F8; border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 12px;')}>
+            <div style={css('display: flex; align-items: center; gap: 10px; padding: 0 4px;')}>
+              <img
+                src="/uploads/kompas-logo.png"
+                alt="Subsidie Kompas"
+                style={css('width: 32px; height: 32px; border-radius: 50%; object-fit: contain; flex-shrink: 0; display: block;')}
+              />
+              <div style={css('font-weight: 700; color: #2C4A5E; font-size: 14.5px;')}>Subsidie Kompas</div>
+              <div style={css('width: 7px; height: 7px; border-radius: 50%; background: #4E9A6C; margin-left: 2px;')} />
+              <div style={css('font-size: 12.5px; color: #4B5C58;')}>online</div>
+            </div>
             <div style={css('align-self: flex-end; max-width: 88%; background: #2C4A5E; color: #FFFFFF; padding: 12px 16px; border-radius: 16px 16px 4px 16px; font-size: 14.5px; line-height: 1.5;')}>
               Theaterprogramma over de Tweede Wereldoorlog, 12 tot 16 jaar, Gelderland. Budget €80.000.
             </div>

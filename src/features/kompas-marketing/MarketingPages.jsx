@@ -11,5 +11,9 @@ const PAGINAS = {
 export default function MarketingPages({ route }) {
   const Pagina = PAGINAS[route.pad] || HoeHetWerktPage;
 
-  return <Pagina />;
+  return (
+    <div style={{ fontFamily: "'Mulish', sans-serif" }}>
+      <Pagina />
+    </div>
+  );
 }
