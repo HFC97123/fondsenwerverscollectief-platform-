@@ -88,8 +88,6 @@ const DEADLINE_OPTIONS = [
   ['doorlopend', 'Doorlopend'],
 ];
 
-const FREE_VISIBLE = 5;
-
 
 function daysLeft(row) {
   if (row.dagen != null) {
@@ -150,11 +148,18 @@ function deadlinePredicate(value, statuses) {
       return row.status === 'Doorlopend';
     }
 
-    // 'alle': de standaard, chronologische hoofd-tijdlijn. Doorlopende
-    // regelingen, regelingen zonder concrete deadline en verlopen
-    // regelingen horen daar niet in thuis; ze blijven bereikbaar via hun
-    // eigen, bestaande statusfilter (bijv. de pil "Doorlopend").
-    if (row.status === 'Doorlopend' || d == null || d < 0) {
+    // 'alle': de standaard, chronologische hoofd-tijdlijn. Doorlopende,
+    // aangekondigde en binnenkort-regelingen, regelingen zonder concrete
+    // deadline en verlopen regelingen horen daar niet in thuis; ze blijven
+    // bereikbaar via hun eigen, bestaande filter (de pil "Doorlopend"/
+    // "Binnenkort", of het statusvinkje "Aangekondigd").
+    if (
+      row.status === 'Doorlopend' ||
+      row.status === 'Aangekondigd' ||
+      row.status === 'Binnenkort' ||
+      d == null ||
+      d < 0
+    ) {
       return statuses.indexOf(row.status) !== -1;
     }
 
@@ -306,7 +311,7 @@ export default function DeadlinesPage() {
   );
 
   const shown = sorted.slice(0, limit);
-  const lockedCount = premium ? 0 : Math.max(0, sorted.length - FREE_VISIBLE);
+  const lockedCount = sorted.filter((r) => !r.volledigZichtbaar).length;
   const detail = rows.find((r) => String(r.id) === String(detailId)) || null;
 
   const setFilter = (fn) => (value) => {
@@ -638,8 +643,10 @@ export default function DeadlinesPage() {
 
             {!loading && !error && shown.length > 0 && (
               <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-                {shown.map((r, i) => {
-                  const locked = !premium && i >= FREE_VISIBLE;
+                {(() => {
+                  const firstLockedIndex = shown.findIndex((row) => !row.volledigZichtbaar);
+                  return shown.map((r, i) => {
+                  const locked = !r.volledigZichtbaar;
                   const days = daysLeft(r);
                   const st = STATUS_STYLE[r.status] || STATUS_STYLE.Open;
                   const urgent = days != null && days >= 0 && days <= 14;
@@ -705,7 +712,7 @@ export default function DeadlinesPage() {
                             <div style={css('filter: blur(4.5px); user-select: none; font-size: 14.5px; font-weight: 700; color: #A9B5B1;')}>
                               •• d
                             </div>
-                            {i === FREE_VISIBLE && (
+                            {i === firstLockedIndex && (
                               <span style={css('display: inline-block; margin-top: 6px; font-size: 12.5px; font-weight: 800; color: #4E9A6C;')}>
                                 Ontgrendel met Premium
                               </span>
@@ -745,7 +752,8 @@ export default function DeadlinesPage() {
                       </div>
                     </div>
                   );
-                })}
+                  });
+                })()}
               </div>
             )}
 
