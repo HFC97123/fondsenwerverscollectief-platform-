@@ -122,9 +122,10 @@ function DoelgroepVormen() {
 }
 
 const KOMPAS_BULLETS = [
-  'Zoekt passende fondsen en subsidies',
-  'Adviseert over kansrijkheid en strategie',
-  'Ondersteunt bij uw aanvraag',
+  'Zoekt gericht naar passende fondsen en subsidies',
+  'Brengt financiering, voorwaarden en deadlines helder in beeld',
+  'Adviseert over kansrijkheid en fondsenwervende strategie',
+  'Ondersteunt bij een sterke aanvraag: positionering, projectplan en begroting',
 ];
 
 const VOORBEELD_REGELINGEN = [
