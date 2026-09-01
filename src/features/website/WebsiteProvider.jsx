@@ -11,6 +11,8 @@ import {
   PLAN_PERMISSIONS,
   haalProfiel,
   inloggen,
+  proefActiefVan,
+  startProefperiode as startProefperiodeService,
   tierVan,
   uitloggen,
 } from '../../data/services/profile.js';
@@ -981,6 +983,7 @@ export function WebsiteProvider({ children, route, param }) {
   const isPro = subscriptionTier === 'pro';
   const isPremium = subscriptionTier === 'premium';
 
+  const trialActive = proefActiefVan(st.profile);
   const trialStartedAt = st.profile?.trial_started_at || null;
   const trialEndsAt = st.profile?.trial_ends_at || null;
   const subscriptionStartedAt =
@@ -1144,6 +1147,7 @@ export function WebsiteProvider({ children, route, param }) {
     isPro,
     isPremium,
 
+    trialActive,
     trialStartedAt,
     trialEndsAt,
     subscriptionStartedAt,
@@ -1292,6 +1296,22 @@ export function WebsiteProvider({ children, route, param }) {
       }
     },
 
+    // Proefperiode starten (7 dagen Pro / 24 uur Premium). Duur en
+    // eenmaligheid zijn uitsluitend server-side afgedwongen (RPC
+    // start_trial, zie data/services/profile.js); hier alleen aanroepen en
+    // het profiel verversen zodat tier/rechten meteen overal kloppen.
+    startTrial: async (gewensteTier) => {
+      const { fout } = await startProefperiodeService(gewensteTier);
+
+      if (fout) {
+        return { fout };
+      }
+
+      await loadProfile(stRef.current.user && stRef.current.user.id);
+
+      return { fout: null };
+    },
+
     regForm: st.regForm,
     applicationSent: st.applicationSent,
     applicationOpen: !st.applicationSent,
@@ -1414,7 +1434,6 @@ export function WebsiteProvider({ children, route, param }) {
               full_name: `${firstName} ${lastName}`,
               member_type: memberType,
               motivation,
-              application_status: 'pending',
             },
           },
         });

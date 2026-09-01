@@ -7,6 +7,8 @@ import {
   PLAN_PERMISSIONS,
   haalProfiel,
   inloggen,
+  proefActiefVan,
+  startProefperiode as startProefperiodeService,
   tierVan,
   uitloggen,
 } from '../../data/services/profile.js';
@@ -92,6 +94,10 @@ export function AuthProvider({ children }) {
 
   const stRef = useRef(st);
   stRef.current = st;
+
+  // Zie de toelichting bij `devActief` verderop: alleen-lokale test-state,
+  // nooit een databaseveld en nooit aanwezig in een productiebuild.
+  const [devRolOverride, setDevRolOverride] = useState(null);
 
   const update = (patch) => set((prev) => ({ ...prev, ...patch }));
 
@@ -197,7 +203,25 @@ export function AuthProvider({ children }) {
 
   // Pro en Premium gelden alleen bij een actief abonnement. Eén regel, in
   // data/services/profile.js, gedeeld met de rest van de app.
-  const tier = tierVan(st.profile);
+  const werkelijkeTier = tierVan(st.profile);
+  const werkelijkBeheerder = profiel.role === 'admin';
+
+  // Alleen-lokale, alleen-ontwikkel test-functie: een Free/Pro/Premium/Admin
+  // rolwissel om schermen te bekijken zonder vier losse testaccounts nodig te
+  // hebben. Bestaat uitsluitend client-side (React state), schrijft nooit
+  // naar de database en de setter wordt hieronder alleen toegevoegd aan
+  // `waarden` wanneer import.meta.env.DEV waar is — in een productiebuild
+  // valt deze hele tak weg (Vite vervangt import.meta.env.DEV door `false`
+  // en elimineert de dode code), dus devRolOverride is in productie nooit
+  // aanwezig en nooit bereikbaar.
+  const devActief = Boolean(import.meta.env.DEV);
+  const tier = devActief && devRolOverride
+    ? (devRolOverride === 'admin' ? 'premium' : devRolOverride)
+    : werkelijkeTier;
+  const isBeheerderEffectief = devActief && devRolOverride
+    ? devRolOverride === 'admin'
+    : werkelijkBeheerder;
+
   const actief = profiel.subscription_active === true;
   const rechten = PLAN_PERMISSIONS[tier] || PLAN_PERMISSIONS.free;
   const mag = (sleutel) => isIngelogd && Boolean(rechten[sleutel]);
@@ -213,7 +237,7 @@ export function AuthProvider({ children }) {
     isIngelogd,
     naam: st.naam || naamVan(st.user) || 'Uw profiel',
 
-    isBeheerder: profiel.role === 'admin',
+    isBeheerder: isBeheerderEffectief,
     isGoedgekeurd: profiel.status === 'approved',
     isInBehandeling: profiel.status === 'pending',
     isAfgewezen: profiel.status === 'rejected',
@@ -225,6 +249,7 @@ export function AuthProvider({ children }) {
     isPro: tier === 'pro',
     isPremium: tier === 'premium',
 
+    proefActief: proefActiefVan(st.profile),
     proefStart: profiel.trial_started_at || null,
     proefEind: profiel.trial_ends_at || null,
     abonnementStart: profiel.subscription_started_at || null,
@@ -271,7 +296,6 @@ export function AuthProvider({ children }) {
               full_name: `${form.firstName} ${form.lastName}`.trim(),
               member_type: form.type,
               motivation: form.motivation,
-              application_status: 'pending',
             },
           },
         });
@@ -299,6 +323,32 @@ export function AuthProvider({ children }) {
 
     herlaadProfiel: () =>
       laadProfiel(stRef.current.user && stRef.current.user.id, { vers: true }),
+
+    // Proefperiode starten (7 dagen Pro / 24 uur Premium). De duur en de
+    // eenmaligheid worden uitsluitend server-side afgedwongen (RPC
+    // start_trial); hier alleen aanroepen en daarna het profiel verversen
+    // zodat tier/rechten meteen overal kloppen.
+    startProefperiode: async (gewensteTier) => {
+      const { fout } = await startProefperiodeService(gewensteTier);
+
+      if (fout) {
+        return { fout };
+      }
+
+      await laadProfiel(stRef.current.user && stRef.current.user.id, { vers: true });
+
+      return { fout: null };
+    },
+
+    // Alleen in ontwikkeling aanwezig (zie toelichting hierboven). In een
+    // productiebuild bestaan devRolOverride/setDevRolOverride niet op dit
+    // object, dus is er niets om aan te roepen.
+    ...(devActief
+      ? {
+          devRolOverride,
+          setDevRolOverride,
+        }
+      : {}),
   };
 
   return <AuthContext.Provider value={waarden}>{children}</AuthContext.Provider>;

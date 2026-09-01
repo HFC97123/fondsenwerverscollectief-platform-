@@ -495,7 +495,7 @@ export default function DeadlinesPage() {
 
   return (
     <div style={css('min-height: 100vh; background: #F7F9F8;')}>
-      <KompasSubnav actief="deadlines" maxWidth="1180px" />
+      <KompasSubnav actief="deadlines" maxWidth="1180px" toonPlan />
 
       <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(34px, 5vw, 56px) clamp(16px, 4vw, 24px) clamp(20px, 3vw, 30px);')}>
         <div style={css(`

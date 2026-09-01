@@ -19,7 +19,12 @@ const actiefStijl = css('font-size: 14.5px; font-weight: 700; color: #4E9A6C; wh
 export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth = '1120px', toonPlan = false }) {
   const app = useApp();
   const tier = app.subscriptionTier || 'free';
-  const planLabel = { free: 'Free', pro: 'Pro', premium: 'Premium' }[tier];
+  // Alleen ingelogde gebruikers hebben een status om te tonen; een anonieme
+  // bezoeker krijgt hier bewust geen badge (die heeft ook geen account om
+  // "ingelogd als" bij te horen).
+  const planLabel = app.isLoggedIn
+    ? (app.isAdmin ? 'Admin' : { free: 'Free', pro: 'Pro', premium: 'Premium' }[tier])
+    : null;
 
   const item = (key, label, href) =>
     actief === key ? (
@@ -51,8 +56,11 @@ export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth 
         </div>
 
         <div style={css('display: flex; align-items: center; gap: 12px;')}>
-          {toonPlan && (
-            <span style={css('padding: 5px 13px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 12px; font-weight: 800;')}>
+          {toonPlan && planLabel && (
+            <span
+              title={`Je bent ingelogd als: ${planLabel}`}
+              style={css('padding: 5px 13px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 12px; font-weight: 800;')}
+            >
               {planLabel}
             </span>
           )}

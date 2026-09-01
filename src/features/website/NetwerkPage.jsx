@@ -421,8 +421,8 @@ export default function NetwerkPage() {
                 Lidmaatschap aanvragen
               </div>
               <div style={css('font-size: 15px; line-height: 1.6; color: #4B5C58; margin-bottom: 18px;')}>
-                Het Collectief is een besloten omgeving voor en door fondsenwervers. Bij elke aanmelding kijken we of er
-                een goede match is. Na uw aanvraag hoort u binnen vijf werkdagen of we samen verder gaan.
+                Het Collectief is een besloten omgeving voor en door fondsenwervers. Maak een account aan en u heeft
+                direct toegang — geen wachttijd of aparte beoordeling.
               </div>
             </div>
 
@@ -500,10 +500,10 @@ export default function NetwerkPage() {
                 >
                   ✓
                 </div>
-                <div style={css("font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E;")}>Aanvraag ontvangen</div>
+                <div style={css("font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E;")}>Welkom bij Het Fondsenwervers Collectief</div>
                 <div style={css('font-size: 15px; line-height: 1.6; color: #4B5C58;')}>
-                  Dank voor uw aanmelding. Controleer ook uw inbox voor de bevestigingsmail. Na bevestiging beoordelen we
-                  uw aanvraag en ontvangt u binnen vijf werkdagen bericht.
+                  Uw account is aangemaakt en direct actief. Controleer ook uw inbox voor de bevestigingsmail — en
+                  voor een persoonlijk welkomstbericht met meer uitleg over het Collectief en Subsidie Kompas.
                 </div>
                 <div onClick={showLogin} style={css('cursor: pointer; margin-top: 6px; font-weight: 700; color: #2C4A5E; font-size: 14.5px;')}>
                   Al lid? Inloggen →

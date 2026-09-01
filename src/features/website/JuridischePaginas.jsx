@@ -52,7 +52,7 @@ const VOORWAARDEN = {
     {
       kop: 'Lidmaatschap',
       tekst:
-        'Een lidmaatschap is persoonlijk en bedoeld voor fondsenwervers en organisaties die zich met fondsenwerving en subsidies bezighouden. Aanmeldingen worden beoordeeld voordat u toegang krijgt tot de ledencontent.',
+        'Een lidmaatschap is persoonlijk en bedoeld voor fondsenwervers en organisaties die zich met fondsenwerving en subsidies bezighouden. Na het aanmaken van een account heeft u direct toegang tot de ledencontent.',
     },
     {
       kop: 'Abonnementen op Subsidie Kompas',

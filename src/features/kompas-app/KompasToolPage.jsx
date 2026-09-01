@@ -77,7 +77,9 @@ export default function KompasToolPage() {
   const isProPlan = tier === 'pro';
   const isPremiumPlan = tier === 'premium';
 
-  const planLabel = { free: 'Free', pro: 'Pro', premium: 'Premium' }[tier];
+  // Admin overschrijft de pakketnaam: een beheerder heeft volledige toegang,
+  // los van welk pakket er toevallig op het profiel staat.
+  const planLabel = app.isAdmin ? 'Admin' : { free: 'Free', pro: 'Pro', premium: 'Premium' }[tier];
 
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');

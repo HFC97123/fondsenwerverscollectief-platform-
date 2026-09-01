@@ -20,7 +20,15 @@ export const routes = [
   { pad: '/contact', area: AREA.website, titel: 'Contact', toegang: 'publiek' },
   { pad: '/privacy', area: AREA.website, titel: 'Privacyverklaring', toegang: 'publiek' },
   { pad: '/voorwaarden', area: AREA.website, titel: 'Algemene voorwaarden', toegang: 'publiek' },
-  { pad: '/netwerk', area: AREA.website, titel: 'Ledengedeelte', toegang: 'lid' },
+
+  // Bewust 'publiek', ondanks de titel: deze pagina bevat zelf de publieke
+  // hero, de 'Word lid'-CTA en het login/registratieformulier voor nieuwe
+  // bezoekers (zie NetwerkPage.jsx / WebsiteProvider.showAuthCta). Het
+  // werkelijke ledengedeelte daaronder is al zelf afgeschermd met
+  // isLoggedIn. Zou dit hier 'lid' zijn, dan blokkeert de Poort-route-gate
+  // de pagina al voordat iemand het registratieformulier ooit te zien
+  // krijgt — rechtstreeks in strijd met 'direct toegang, geen wachttijd'.
+  { pad: '/netwerk', area: AREA.website, titel: 'Ledengedeelte', toegang: 'publiek' },
 
   // De paden volgen de links in het goedgekeurde ontwerp.
   { pad: '/hoe-het-werkt', area: AREA.marketing, titel: 'Hoe het werkt', toegang: 'publiek' },

@@ -1,9 +1,10 @@
 // Hoe het werkt: wat Subsidie Kompas doet, de vijf stappen, en waarom Premium.
-import React from 'react';
+import React, { useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from '../kompas-app/useKompasApp.js';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
+import { Notice } from '../../shared/ui/index.js';
 import { useStappen } from './useMarketingContent.js';
 
 const WAT_HET_DOET = [
@@ -119,10 +120,30 @@ export default function HoeHetWerktPage() {
   const app = useApp();
   const tier = app.subscriptionTier || 'free';
   const STAPPEN = useStappen() || STAPPEN_STANDAARD;
+  const [proefBezig, setProefBezig] = useState('');
+  const [proefFout, setProefFout] = useState('');
+
+  // Start de proefperiode voor een gekozen betaald abonnement. Is de bezoeker
+  // nog niet ingelogd, dan opent requireAuth eerst de login/registratie-overlay
+  // en voert deze actie na een geslaagde login/registratie alsnog uit — de
+  // bezoeker blijft op deze pagina en hoeft niets opnieuw te doen.
+  const kiesPlan = (plan) => {
+    app.requireAuth(async () => {
+      setProefFout('');
+      setProefBezig(plan.tier);
+      const { fout } = await app.startProefperiode(plan.tier);
+      setProefBezig('');
+      if (fout) {
+        setProefFout(fout);
+        return;
+      }
+      app.goKompas();
+    }, `Log in of maak een account aan om ${plan.naam} te proberen.`);
+  };
 
   return (
     <div style={css('min-height: 100vh; background: #F7F9F8;')}>
-      <KompasSubnav actief="werkt" />
+      <KompasSubnav actief="werkt" toonPlan />
 
       <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(40px, 6vw, 66px) clamp(16px, 4vw, 24px) clamp(26px, 3.4vw, 38px);')}>
         <h1 style={css("margin: 0 0 18px; font-family: 'Newsreader', serif; font-size: clamp(30px, 5vw, 46px); font-weight: 600; color: #2C4A5E; line-height: 1.15; max-width: 820px; text-wrap: balance;")}>
@@ -351,7 +372,8 @@ export default function HoeHetWerktPage() {
               ) : plan.ctaTekst ? (
                 <button
                   type="button"
-                  onClick={app.goKompas}
+                  onClick={() => kiesPlan(plan)}
+                  disabled={Boolean(proefBezig)}
                   style={css(`
                     cursor: pointer;
                     box-sizing: border-box;
@@ -366,9 +388,10 @@ export default function HoeHetWerktPage() {
                     font-size: 15px;
                     font-weight: 800;
                     text-align: center;
+                    opacity: ${proefBezig && proefBezig !== plan.tier ? '0.6' : '1'};
                   `)}
                 >
-                  {plan.ctaTekst}
+                  {proefBezig === plan.tier ? 'Bezig…' : plan.ctaTekst}
                 </button>
               ) : (
                 <div style={css('box-sizing: border-box; min-height: 56px; margin-bottom: 26px;')} aria-hidden="true" />
@@ -399,6 +422,12 @@ export default function HoeHetWerktPage() {
           );
         })}
       </div>
+
+      {proefFout && (
+        <div style={css('max-width: 1180px; margin: -12px auto 0; padding: 0 clamp(16px, 4vw, 24px) 30px;')}>
+          <Notice tone="fout">{proefFout}</Notice>
+        </div>
+      )}
 
       <div style={css('background: #2C4A5E; padding: clamp(36px, 5vw, 66px) 0;')}>
         <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px); display: flex; align-items: center; justify-content: space-between; gap: 26px; flex-wrap: wrap;')}>

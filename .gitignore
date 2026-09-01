@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+**/_to_delete_*
+vite.config.*.timestamp-*.mjs

@@ -102,13 +102,37 @@ export function wisProfielCache(userId) {
   }
 }
 
-// Bepaalt het pakket uit het profiel. Pro en Premium gelden alleen bij een
-// actief abonnement — één regel, op één plek.
+// Bepaalt het pakket uit het profiel. Pro en Premium gelden bij een actief
+// (betaald) abonnement OF een nog lopende proefperiode — één regel, op één
+// plek, en exact dezelfde voorwaarde als current_user_has_pro_access() /
+// current_user_has_premium_access() in de database. Zonder deze
+// trial-check zou een gebruiker met een lopende proefperiode aan de
+// serverkant (RLS/views) al wel Pro/Premium-content krijgen, maar in de
+// front-end nog als Free worden getoond — precies het soort losse,
+// afwijkende check dat we willen voorkomen.
 export function tierVan(profiel) {
   const ruw = (profiel && profiel.subscription_tier) || 'free';
+
+  if (ruw !== 'pro' && ruw !== 'premium') {
+    return 'free';
+  }
+
   const actief = profiel && profiel.subscription_active === true;
 
-  return (ruw === 'pro' || ruw === 'premium') && actief ? ruw : 'free';
+  return actief || proefActiefVan(profiel) ? ruw : 'free';
+}
+
+// Is er een lopende (nog niet verstreken) proefperiode? Een actief betaald
+// abonnement telt hier niet als "proef" (dan is de proefperiode al
+// overgegaan in een echt abonnement, of nooit relevant geweest).
+export function proefActiefVan(profiel) {
+  if (!profiel || profiel.subscription_active === true) {
+    return false;
+  }
+
+  const eind = profiel.trial_ends_at;
+
+  return Boolean(eind) && new Date(eind).getTime() > Date.now();
 }
 
 /* ---- Aanmelden en afmelden ----
@@ -142,6 +166,30 @@ export async function inloggen(email, wachtwoord) {
         ? 'Dit e-mailadres of wachtwoord is niet juist.'
         : 'Inloggen is niet gelukt. Probeer het opnieuw.',
     };
+  }
+}
+
+// Proefperiode starten (7 dagen Pro / 24 uur Premium). De duur en de
+// eenmaligheid worden uitsluitend server-side afgedwongen (RPC
+// start_trial, SECURITY DEFINER) — de client levert alleen het gewenste
+// pakket aan, nooit een duur of geldigheid.
+export async function startProefperiode(tier) {
+  if (!supabase) {
+    return { fout: 'Nu niet beschikbaar.' };
+  }
+
+  try {
+    const { error } = await supabase.rpc('start_trial', { p_tier: tier });
+
+    if (error) {
+      throw error;
+    }
+
+    wisProfielCache();
+
+    return { fout: null };
+  } catch (e) {
+    return { fout: String((e && e.message) || 'De proefperiode kon niet worden gestart.') };
   }
 }
 

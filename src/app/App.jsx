@@ -2,7 +2,9 @@
 // Kent de binnenkant van geen enkel gebied.
 import React from 'react';
 import { AuthProvider, useAuth } from './providers/AuthProvider.jsx';
+import { AuthModalProvider, useAuthModal } from './providers/AuthModalProvider.jsx';
 import { ContentProvider } from './providers/ContentProvider.jsx';
+import DevRoleSwitcher from './dev/DevRoleSwitcher.jsx';
 import { areaComponent } from './areas.js';
 import { useRoute } from './useRoute.js';
 import { css } from '../shared/lib/css.js';
@@ -11,8 +13,17 @@ import { Button, Container, ErrorBoundary, Lead, PageTitle } from '../shared/ui/
 
 // Toegangspoort: een route voor leden of beheerders wordt niet gerenderd
 // zolang het profiel dat niet toestaat.
+//
+// Een bezoeker die niet is ingelogd, krijgt hier NOOIT een doodlopende
+// pagina: in plaats daarvan opent de centrale login/registratie-overlay
+// (AuthModalProvider). Zodra het inloggen lukt, flipt auth.isIngelogd en
+// rendert Poort vanzelf dezelfde route met zijn children — er wordt nergens
+// genavigeerd, dus de gebruiker keert terug naar precies de plek waar hij
+// was. Alleen "wel ingelogd, maar geen beheerder" blijft een echte,
+// blijvende weigering (daar helpt inloggen niet bij).
 function Poort({ route, children }) {
   const auth = useAuth();
+  const authModal = useAuthModal();
 
   if (auth.laden) {
     return (
@@ -31,21 +42,29 @@ function Poort({ route, children }) {
     );
   }
 
-  const magNiet =
-    (route.toegang === 'lid' && !auth.isIngelogd) ||
-    (route.toegang === 'beheerder' && !auth.isBeheerder);
+  const vereistInloggen = route.toegang === 'lid' || route.toegang === 'beheerder';
 
-  if (magNiet) {
+  if (vereistInloggen && !auth.isIngelogd) {
     return (
       <Container style={css('padding-top: 90px; padding-bottom: 110px;')}>
-        <PageTitle size={type.paginaKop}>
-          {route.toegang === 'beheerder' ? 'Alleen voor beheerders' : 'Alleen voor leden'}
-        </PageTitle>
+        <PageTitle size={type.paginaKop}>Log in om verder te gaan</PageTitle>
         <Lead>
-          {route.toegang === 'beheerder'
-            ? 'Dit onderdeel is beschikbaar voor beheerders van het platform.'
-            : 'Log in met uw lidmaatschap van Het Fondsenwervers Collectief om dit onderdeel te bekijken.'}
+          Dit onderdeel is onderdeel van uw account. Log in of maak een account aan — u komt daarna
+          direct terug op deze pagina.
         </Lead>
+        <div style={css('margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap;')}>
+          <Button onClick={() => authModal.openLogin()}>Inloggen</Button>
+          <Button variant="outline" onClick={() => authModal.openRegister()}>Account aanmaken</Button>
+        </div>
+      </Container>
+    );
+  }
+
+  if (route.toegang === 'beheerder' && !auth.isBeheerder) {
+    return (
+      <Container style={css('padding-top: 90px; padding-bottom: 110px;')}>
+        <PageTitle size={type.paginaKop}>Alleen voor beheerders</PageTitle>
+        <Lead>Dit onderdeel is beschikbaar voor beheerders van het platform.</Lead>
         <div style={css('margin-top: 26px;')}>
           <Button onClick={() => { window.location.hash = '#/'; }}>Naar de homepage</Button>
         </div>
@@ -79,9 +98,16 @@ function Routed() {
 export default function App() {
   return (
     <AuthProvider>
-      <ContentProvider>
-        <Routed />
-      </ContentProvider>
+      <AuthModalProvider>
+        <ContentProvider>
+          <Routed />
+        </ContentProvider>
+        {/* Alleen-ontwikkel test-functie (Free/Pro/Premium/Admin rolwissel).
+            import.meta.env.DEV is een build-time constante: Vite vervangt dit
+            in een productiebuild door `false` en elimineert de hele tak, dus
+            DevRoleSwitcher wordt in productie niet eens meegebouwd. */}
+        {import.meta.env.DEV && <DevRoleSwitcher />}
+      </AuthModalProvider>
     </AuthProvider>
   );
 }
