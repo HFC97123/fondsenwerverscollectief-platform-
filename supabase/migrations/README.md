@@ -14,7 +14,8 @@ overgenomen — niet uit het geheugen gereconstrueerd. Ze zijn dus een exacte,
 gecontroleerde afspiegeling van de live database op dat moment. Bestand 20 is
 geen historische reconstructie maar een nieuwe, idempotente correctie-migratie
 (zie "Reproduceerbaarheid" hieronder) die een schemahiaat dicht dat bij die
-controle aan het licht kwam.
+controle aan het licht kwam. Bestand 21 verscherpt de Pro-toegangsvoorwaarde
+in de deadline-view (bron + tier i.p.v. uitsluitend tier).
 
 | # | Bestand | Wat het doet |
 | --- | --- | --- |
@@ -38,6 +39,7 @@ controle aan het licht kwam.
 | 18 | `20260901171021_deadline_alle_eigen_pool_los_van_aangekondigd_binnenkort.sql` | Sluit Aangekondigd/Binnenkort uit van de "Alle"-telling, zodat die pool niet langer wordt gedeeld. |
 | 19 | `20260901173135_deadline_free_eerste_vijf_tier_onafhankelijk.sql` | Maakt de eerste-vijf-regel tier-onafhankelijk: `data_tier` bepaalt niet meer of één van de eerste 5 kaarten per categorie zichtbaar is voor Free. |
 | 20 | `20260901184701_backfill_missing_regeling_status_schema_elements.sql` | Correctie-migratie (nieuw, geen historische reconstructie): voegt het enum-type `regeling_status_type`, de kolommen `subsidieregelingen.status`/`.deadline_datum`/`.deadline_omschrijving`/`.status_laatst_gecheckt` (+ bijbehorende indexen) en `funders.prioriteit` idempotent toe — schema-elementen die live al bestonden maar door geen van migraties 1-19 werden aangemaakt. |
+| 21 | `20260901191453_pro_toegang_op_bron_niet_op_tier.sql` | Scherpt de Pro-voorwaarde in de deadline-view aan tot `data_tier = 'public' AND source_type = 'internet_scan'` (bron én tier), i.p.v. uitsluitend `data_tier = 'public'` — zodat Pro nooit premium-databasecontent cadeau krijgt, ook niet als die ooit via een ander source_type zou binnenkomen. Op de huidige live data geen gedragswijziging (geverifieerd). |
 
 Migraties 1-15 zijn achteraf (2026-09-01) toegevoegd om de repository in lijn
 te brengen met de live database; ze waren al vóór dit traject toegepast.
@@ -45,7 +47,9 @@ Migraties 16-19 zijn in dit traject zelf ontwikkeld en toegepast — zie
 `claude/voorstel-deadline-tijdlijn-sortering.md` in het Claude-project voor
 de volledige analyse per ronde. Migratie 20 is eveneens in dit traject
 ontwikkeld, maar dicht een ouder, tot dan toe ongetrackt schemahiaat (zie
-`claude/status-migraties-git-sync.md`).
+`claude/status-migraties-git-sync.md`). Migratie 21 verfijnt de Pro/Premium-
+scheiding: Pro's toegang hangt voortaan af van zowel de bron (source_type)
+als de toegangstier (data_tier) van een regeling, niet meer van tier alleen.
 
 ## Verhouding tot `supabase/voorstel-niet-uitgevoerd/`
 
@@ -55,12 +59,12 @@ zijn **nooit** de bron van het huidige schema geweest — ze zijn een los,
 nooit uitgevoerd voorstel dat toevallig in dezelfde map stond. Ze bleven in
 deze map staan zou de illusie wekken dat een nieuwe omgeving die alle
 bestanden hier afspeelt (`supabase db push` / `supabase migration up`) de
-live database reproduceert; dat is alleen waar voor de 20 bestanden
+live database reproduceert; dat is alleen waar voor de 21 bestanden
 hierboven. Zie de README in die map voor de status van het voorstel zelf.
 
 ## Reproduceerbaarheid
 
-Een nieuwe, lege Supabase-/Postgres-omgeving die uitsluitend de 20 bestanden
+Een nieuwe, lege Supabase-/Postgres-omgeving die uitsluitend de 21 bestanden
 in deze map in oplopende volgorde afspeelt, komt overeen met de live
 database-structuur van dit project op 2026-09-01 (voor zover de migraties
 zelf gaan — puur data-inhoud van tabellen valt hier vanzelfsprekend buiten,
