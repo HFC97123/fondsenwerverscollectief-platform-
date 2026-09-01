@@ -86,6 +86,7 @@ const DEADLINE_OPTIONS = [
   ['90', 'Binnen 90 dagen'],
   ['binnenkort', 'Binnenkort'],
   ['doorlopend', 'Doorlopend'],
+  ['heel_jaar', 'Heel jaar'],
 ];
 
 
@@ -148,6 +149,20 @@ function deadlinePredicate(value, statuses) {
       return row.status === 'Doorlopend';
     }
 
+    if (value === 'heel_jaar') {
+      // Premium-only jaaroverzicht: alle regelingen met een concrete
+      // deadline in het lopende kalenderjaar, toekomstig én al verstreken.
+      // Doorlopende regelingen hebben doorgaans geen deadline_datum en
+      // vallen hier vanzelf buiten, zonder de chronologische jaarweergave
+      // te verstoren. Voor Free/Pro is row.deadline hier altijd null (de
+      // view mast dit veld af zolang volledig_zichtbaar niet geldt), dus
+      // deze tak levert voor hen sowieso nooit extra regelingen op.
+      return (
+        row.deadline != null &&
+        new Date(`${row.deadline}T00:00:00`).getFullYear() === new Date().getFullYear()
+      );
+    }
+
     // 'alle': de standaard, chronologische hoofd-tijdlijn. Doorlopende,
     // aangekondigde en binnenkort-regelingen, regelingen zonder concrete
     // deadline en verlopen regelingen horen daar niet in thuis; ze blijven
@@ -207,7 +222,12 @@ export default function DeadlinesPage() {
 
       setError(false);
 
-      const { rows, error: fout, offline } = await fetchDeadlines({ archief });
+      // Het Premium-only jaaroverzicht ("Heel jaar") toont ook al verstreken
+      // en gesloten regelingen van het lopende kalenderjaar; daarvoor is
+      // dezelfde archief-fetch nodig als bij het handmatige "Toon archief"-
+      // vinkje, ongeacht of dat vinkje zelf aanstaat.
+      const jaaroverzicht = deadline === 'heel_jaar';
+      const { rows, error: fout, offline } = await fetchDeadlines({ archief: archief || jaaroverzicht });
 
       setSupaRows(rows);
       setLoading(false);
@@ -216,7 +236,7 @@ export default function DeadlinesPage() {
       // via Beheer is toegevoegd, of de lege staat.
       setError(Boolean(fout) && !offline);
     },
-    [archief],
+    [archief, deadline],
   );
 
   useEffect(() => {
@@ -242,7 +262,7 @@ export default function DeadlinesPage() {
 
   const matches = useCallback(
     (row, skip) => {
-      if (!archief && row.status === 'Gesloten') {
+      if (!(archief || deadline === 'heel_jaar') && row.status === 'Gesloten') {
         return false;
       }
 
@@ -380,20 +400,32 @@ export default function DeadlinesPage() {
       <div>
         <div style={groupTitle}>Deadline</div>
         <div style={css('display: flex; flex-direction: column; gap: 6px;')}>
-          {DEADLINE_OPTIONS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={deadline === value}
-              onClick={() => setFilter(setDeadline)(value)}
-              style={pillStyle(deadline === value)}
-            >
-              <span>{label}</span>
-              <span style={css('font-size: 12px; color: #7B8985;')}>
-                {countFor('deadline', deadlinePredicate(value, statuses))}
-              </span>
-            </button>
-          ))}
+          {DEADLINE_OPTIONS.map(([value, label]) => {
+            // "Heel jaar" is het Premium-only jaaroverzicht (incl. verstreken
+            // deadlines). Free/Pro zien de pil met een Premium-label i.p.v.
+            // een telling, en de klik gaat naar de upgradeflow, niet naar
+            // het filter zelf.
+            const jaarFilterVergrendeld = value === 'heel_jaar' && !premium;
+
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={deadline === value && !jaarFilterVergrendeld}
+                onClick={() => (jaarFilterVergrendeld ? app.goAbonnementen() : setFilter(setDeadline)(value))}
+                style={pillStyle(deadline === value && !jaarFilterVergrendeld)}
+              >
+                <span>{label}</span>
+                {jaarFilterVergrendeld ? (
+                  <span style={css('font-size: 11px; font-weight: 800; color: #4E9A6C;')}>Premium</span>
+                ) : (
+                  <span style={css('font-size: 12px; color: #7B8985;')}>
+                    {countFor('deadline', deadlinePredicate(value, statuses))}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -726,7 +758,7 @@ export default function DeadlinesPage() {
                               color: ${urgent ? '#9E3B2C' : '#2C4A5E'};
                             `)}
                             >
-                              {r.deadline ? (days != null && days >= 0 ? `${days}d` : 'Verstreken') : 'Doorlopend'}
+                              {r.deadline ? (days != null && days >= 0 ? `${days}d` : 'Afgelopen') : 'Doorlopend'}
                             </div>
                             <div style={css('margin-top: 2px; font-size: 12.5px; color: #7B8985;')}>
                               {r.deadline ? formatDate(r.deadline) : 'geen vaste sluitingsdatum'}
@@ -894,7 +926,9 @@ export default function DeadlinesPage() {
                 [
                   'DEADLINE',
                   detail.deadline
-                    ? `${daysLeft(detail)} dagen · ${formatDate(detail.deadline)}`
+                    ? (daysLeft(detail) != null && daysLeft(detail) < 0
+                        ? `Afgelopen · ${formatDate(detail.deadline)}`
+                        : `${daysLeft(detail)} dagen · ${formatDate(detail.deadline)}`)
                     : 'Doorlopend, geen vaste sluitingsdatum',
                 ],
               ].map(([label, value]) => (
