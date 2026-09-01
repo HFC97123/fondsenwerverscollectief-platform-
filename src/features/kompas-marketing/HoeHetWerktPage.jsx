@@ -420,7 +420,7 @@ export default function HoeHetWerktPage() {
               Bekijk de abonnementen
             </button>
             <a
-              href="#/deadlines"
+              href="#/kompas/deadlines"
               style={css('padding: 15px 28px; border: 1px solid rgba(255,255,255,0.4); color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px; white-space: nowrap;')}
             >
               Bekijk actuele deadlines
