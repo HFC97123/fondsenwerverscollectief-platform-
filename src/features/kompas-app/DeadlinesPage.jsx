@@ -130,7 +130,7 @@ function formatAmount(min, max) {
   return '–';
 }
 
-function deadlinePredicate(value) {
+function deadlinePredicate(value, statuses) {
   return (row) => {
     const d = daysLeft(row);
 
@@ -148,6 +148,14 @@ function deadlinePredicate(value) {
 
     if (value === 'doorlopend') {
       return row.status === 'Doorlopend';
+    }
+
+    // 'alle': de standaard, chronologische hoofd-tijdlijn. Doorlopende
+    // regelingen, regelingen zonder concrete deadline en verlopen
+    // regelingen horen daar niet in thuis; ze blijven bereikbaar via hun
+    // eigen, bestaande statusfilter (bijv. de pil "Doorlopend").
+    if (row.status === 'Doorlopend' || d == null || d < 0) {
+      return statuses.indexOf(row.status) !== -1;
     }
 
     return true;
@@ -241,7 +249,7 @@ export default function DeadlinesPage() {
         }
       }
 
-      if (skip !== 'deadline' && !deadlinePredicate(deadline)(row)) {
+      if (skip !== 'deadline' && !deadlinePredicate(deadline, statuses)(row)) {
         return false;
       }
 
@@ -271,13 +279,8 @@ export default function DeadlinesPage() {
       rows
         .filter((r) => matches(r))
         .sort((a, b) => {
-          const pa = STATUS_ORDER.indexOf(a.status);
-          const pb = STATUS_ORDER.indexOf(b.status);
-
-          if (pa !== pb) {
-            return pa - pb;
-          }
-
+          // Uitsluitend chronologisch: de eerstvolgende concrete deadline
+          // staat bovenaan. Status bepaalt niet langer de volgorde.
           const da = daysLeft(a);
           const db = daysLeft(b);
 
@@ -293,7 +296,11 @@ export default function DeadlinesPage() {
             return -1;
           }
 
-          return da - db;
+          if (da !== db) {
+            return da - db;
+          }
+
+          return a.naam.localeCompare(b.naam, 'nl');
         }),
     [rows, matches],
   );
@@ -378,7 +385,7 @@ export default function DeadlinesPage() {
             >
               <span>{label}</span>
               <span style={css('font-size: 12px; color: #7B8985;')}>
-                {countFor('deadline', deadlinePredicate(value))}
+                {countFor('deadline', deadlinePredicate(value, statuses))}
               </span>
             </button>
           ))}
