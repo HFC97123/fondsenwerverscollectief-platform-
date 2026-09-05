@@ -3,7 +3,14 @@
 // themas en regios. Volgt wijzigingen live via Supabase realtime.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
-import { fetchDeadlines, watchDeadlines } from '../../data/services/deadlines.js';
+import {
+  PAGE_SIZE,
+  buildDeadlineDisplayOrder,
+  fetchDeadlines,
+  getDeadlineAccess,
+  getDeadlineClickAction,
+  watchDeadlines,
+} from '../../data/services/deadlines.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
@@ -201,9 +208,10 @@ export default function DeadlinesPage() {
   const [type, setType] = useState('alle');
   const [regio, setRegio] = useState('alle');
   const [archief, setArchief] = useState(false);
-  const [limit, setLimit] = useState(12);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [detailId, setDetailId] = useState(null);
+  const [upgradeId, setUpgradeId] = useState(null);
   const [desktop, setDesktop] = useState(() => window.innerWidth >= 900);
 
   useEffect(() => {
@@ -330,13 +338,34 @@ export default function DeadlinesPage() {
     [rows, matches],
   );
 
-  const shown = sorted.slice(0, limit);
-  const lockedCount = sorted.filter((r) => !r.volledigZichtbaar).length;
+  // Centrale weergaveregel (zie data/services/deadlines.js): elke pagina
+  // van PAGE_SIZE regelingen begint met FREE_SLOTS_PER_PAGE volledig
+  // zichtbare regelingen. Voor Premium is dit een bypass — zij zien de
+  // oorspronkelijke ranking, zoals bedoeld.
+  const displayOrder = useMemo(
+    () => buildDeadlineDisplayOrder(sorted, { bypass: premium }),
+    [sorted, premium],
+  );
+  const shown = displayOrder.slice(0, limit);
+  const lockedCount = sorted.filter((r) => getDeadlineAccess(r) === 'premium').length;
   const detail = rows.find((r) => String(r.id) === String(detailId)) || null;
+  const upgradeRow = rows.find((r) => String(r.id) === String(upgradeId)) || null;
+
+  // Eén centrale klikregel: een volledig zichtbare regeling opent de
+  // bestaande detailkaart, een vergrendelde regeling opent de upgradekaart.
+  // Nooit dezelfde modal voor beide — de gebruiker moet meteen zien waarom
+  // de ervaring verschilt.
+  const handleCardClick = (row) => {
+    if (getDeadlineClickAction(row) === 'detail') {
+      setDetailId(row.id);
+    } else {
+      setUpgradeId(row.id);
+    }
+  };
 
   const setFilter = (fn) => (value) => {
     fn(value);
-    setLimit(12);
+    setLimit(PAGE_SIZE);
   };
 
   const clearFilters = () => {
@@ -347,7 +376,7 @@ export default function DeadlinesPage() {
     setType('alle');
     setRegio('alle');
     setArchief(false);
-    setLimit(12);
+    setLimit(PAGE_SIZE);
   };
 
   const countFor = (skip, pred) => rows.filter((r) => matches(r, skip) && pred(r)).length;
@@ -439,7 +468,7 @@ export default function DeadlinesPage() {
               aria-pressed={statuses.indexOf(st) !== -1}
               onClick={() => {
                 setStatuses((cur) => (cur.indexOf(st) === -1 ? cur.concat([st]) : cur.filter((x) => x !== st)));
-                setLimit(12);
+                setLimit(PAGE_SIZE);
               }}
               style={pillStyle(statuses.indexOf(st) !== -1)}
             >
@@ -676,9 +705,9 @@ export default function DeadlinesPage() {
             {!loading && !error && shown.length > 0 && (
               <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
                 {(() => {
-                  const firstLockedIndex = shown.findIndex((row) => !row.volledigZichtbaar);
+                  const firstLockedIndex = shown.findIndex((row) => getDeadlineAccess(row) === 'premium');
                   return shown.map((r, i) => {
-                  const locked = !r.volledigZichtbaar;
+                  const locked = getDeadlineAccess(r) === 'premium';
                   const days = daysLeft(r);
                   const st = STATUS_STYLE[r.status] || STATUS_STYLE.Open;
                   const urgent = days != null && days >= 0 && days <= 14;
@@ -688,15 +717,11 @@ export default function DeadlinesPage() {
                       key={r.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => (locked ? app.goAbonnementen() : setDetailId(r.id))}
+                      onClick={() => handleCardClick(r)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
-                          if (locked) {
-                            app.goAbonnementen();
-                          } else {
-                            setDetailId(r.id);
-                          }
+                          handleCardClick(r);
                         }
                       }}
                       style={css(`
@@ -792,7 +817,7 @@ export default function DeadlinesPage() {
             {shown.length < sorted.length && (
               <button
                 type="button"
-                onClick={() => setLimit((n) => n + 12)}
+                onClick={() => setLimit((n) => n + PAGE_SIZE)}
                 style={css(`
                   cursor: pointer;
                   box-sizing: border-box;
@@ -1097,6 +1122,166 @@ export default function DeadlinesPage() {
                 Naar de website van de verstrekker →
               </a>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Upgradekaart voor vergrendelde regelingen — bewust een volledig
+          andere kaart dan de detailkaart hierboven (geen gedeelde state,
+          geen gedeelde opmaak), zodat direct duidelijk is waarom de
+          ervaring verschilt. Toont uitsluitend wat al op de kaart zelf
+          zichtbaar was (naam, thema, regio, status) — geen bedrag, geen
+          deadline, geen voorwaarden, geen verstrekker: die velden heeft
+          de database voor deze regeling nooit meegestuurd. */}
+      {upgradeRow && (
+        <div style={css(`
+          position: fixed;
+          inset: 0;
+          z-index: 90;
+          background: rgba(44,74,94,0.34);
+          display: flex;
+          align-items: flex-end;
+          justify-content: flex-end;
+        `)}
+        >
+          <div style={css(`
+            width: min(480px, 100%);
+            max-height: 100vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            padding: clamp(22px, 3vw, 34px);
+            background: #FFFFFF;
+            border-radius: 24px 24px 0 0;
+            border-top: 4px solid #4E9A6C;
+          `)}
+          >
+            <div style={css('display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px;')}>
+              <div style={css('min-width: 0;')}>
+                <div style={css('display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 5px 12px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em;')}>
+                  PRO &amp; PREMIUM
+                </div>
+                <div style={css("font-family: 'Newsreader', serif; font-size: clamp(21px, 2.8vw, 25px); font-weight: 600; color: #2C4A5E; line-height: 1.25;")}>
+                  {upgradeRow.naam}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Sluiten"
+                onClick={() => setUpgradeId(null)}
+                style={css(`
+                  cursor: pointer;
+                  flex-shrink: 0;
+                  width: 44px;
+                  height: 44px;
+                  border: 1px solid #E1EAE4;
+                  border-radius: 14px;
+                  background: #FFFFFF;
+                  color: #2C4A5E;
+                  font-size: 18px;
+                  font-weight: 700;
+                `)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 22px;')}>
+              <span style={css(`
+                padding: 6px 14px;
+                border: 1px solid ${(STATUS_STYLE[upgradeRow.status] || STATUS_STYLE.Open).border};
+                border-radius: 999px;
+                background: ${(STATUS_STYLE[upgradeRow.status] || STATUS_STYLE.Open).bg};
+                color: ${(STATUS_STYLE[upgradeRow.status] || STATUS_STYLE.Open).color};
+                font-size: 12.5px;
+                font-weight: 800;
+              `)}
+              >
+                {upgradeRow.status}
+              </span>
+              <span style={css('font-size: 14px; color: #687974;')}>
+                {`${upgradeRow.thema || 'Thema onbekend'} · ${upgradeRow.regio}`}
+              </span>
+            </div>
+
+            <div style={css("margin-bottom: 8px; font-family: 'Newsreader', serif; font-size: 20px; font-weight: 600; color: #2C4A5E; line-height: 1.3;")}>
+              Geïnteresseerd in deze subsidieregeling?
+            </div>
+
+            <div style={css('margin-bottom: 18px; font-size: 15px; line-height: 1.7; color: #4B5C58;')}>
+              Met een Pro- of Premium-abonnement krijgt u toegang tot:
+            </div>
+
+            <div style={css('display: flex; flex-direction: column; gap: 10px; margin-bottom: 26px;')}>
+              {[
+                'Uitgebreide informatie over deze regeling',
+                'Alle subsidiedetails: bedrag, deadline en voorwaarden',
+                'Aanvullende, vergelijkbare subsidiemogelijkheden',
+                'AI-matching op uw organisatieprofiel',
+                'Extra functionaliteiten van Subsidie Kompas',
+              ].map((t) => (
+                <div key={t} style={css('display: flex; gap: 10px; align-items: flex-start;')}>
+                  <span style={css('flex-shrink: 0; width: 15px; color: #4E9A6C; font-size: 13px; font-weight: 700; line-height: 1.6;')}>
+                    ✓
+                  </span>
+                  <span style={css('font-size: 14.5px; line-height: 1.6; color: #3D4B48;')}>{t}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
+              <button
+                type="button"
+                onClick={() => { setUpgradeId(null); app.goAbonnementen(); }}
+                style={css(`
+                  cursor: pointer;
+                  box-sizing: border-box;
+                  min-height: 48px;
+                  border: none;
+                  border-radius: 999px;
+                  background: #2C4A5E;
+                  color: #FFFFFF;
+                  font-family: 'Mulish', sans-serif;
+                  font-size: 14.5px;
+                  font-weight: 800;
+                `)}
+              >
+                Bekijk Premium
+              </button>
+              <button
+                type="button"
+                onClick={() => { setUpgradeId(null); app.goAbonnementen(); }}
+                style={css(`
+                  cursor: pointer;
+                  box-sizing: border-box;
+                  min-height: 48px;
+                  border: 1.5px solid #A8D5BA;
+                  border-radius: 999px;
+                  background: #FFFFFF;
+                  color: #2C4A5E;
+                  font-family: 'Mulish', sans-serif;
+                  font-size: 14.5px;
+                  font-weight: 800;
+                `)}
+              >
+                Bekijk Pro
+              </button>
+              <button
+                type="button"
+                onClick={() => { setUpgradeId(null); app.goAbonnementen(); }}
+                style={css(`
+                  cursor: pointer;
+                  min-height: 40px;
+                  border: none;
+                  background: none;
+                  font-family: 'Mulish', sans-serif;
+                  font-size: 13.5px;
+                  font-weight: 700;
+                  color: #4E9A6C;
+                `)}
+              >
+                Vergelijk abonnementen
+              </button>
+            </div>
           </div>
         </div>
       )}

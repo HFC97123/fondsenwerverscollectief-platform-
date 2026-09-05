@@ -66,6 +66,114 @@ export async function fetchDeadlines({ archief = false, limit = 200 } = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Centrale weergave- en toegangsregels voor deadlinelijsten.
+//
+// Dit is de ENE plek die bepaalt: (a) of een regeling voor de huidige
+// gebruiker vrij of vergrendeld is, (b) wat een klik op een kaart doet, en
+// (c) in welke volgorde regelingen worden getoond zodat elke "pagina"
+// (elke PAGE_SIZE-batch, zowel de eerste als elke volgende via "Meer
+// laden") altijd met FREE_SLOTS_PER_PAGE volledig zichtbare regelingen
+// begint. Een deadlinepagina moet deze functies gebruiken in plaats van
+// zelf `row.volledigZichtbaar` te interpreteren of een eigen klikregel te
+// verzinnen — zo kan dit niet meer per component uit elkaar gaan lopen.
+//
+// De daadwerkelijke beveiliging (welke velden gevuld zijn) gebeurt al in de
+// database-view zelf (zie de module-toelichting hierboven); deze functies
+// bepalen alleen presentatie/volgorde/klikgedrag bovenop wat de view al
+// veilig heeft teruggegeven.
+
+// Aantal regelingen per "pagina": de eerste batch (limit-startwaarde) en
+// elke volgende batch die "Meer regelingen laden" toevoegt. Eén constante
+// voor beide, zodat de garantie hieronder nooit stilletjes uit de pas kan
+// gaan lopen met de paginagrootte die de pagina zelf gebruikt.
+export const PAGE_SIZE = 12;
+
+// Hoeveel van de eerste plekken van elke pagina gereserveerd zijn voor
+// volledig zichtbare (gratis) regelingen.
+export const FREE_SLOTS_PER_PAGE = 3;
+
+// 'free' als de huidige gebruiker deze regeling volledig mag zien (de view
+// heeft de velden al gevuld), anders 'premium'. Eén plek die dit onderscheid
+// maakt; niets anders leest `row.volledigZichtbaar` rechtstreeks.
+export function getDeadlineAccess(row) {
+  return row && row.volledigZichtbaar ? 'free' : 'premium';
+}
+
+// Wat een klik op een kaart moet doen: de bestaande detailkaart voor
+// volledig zichtbare regelingen, een upgradekaart voor vergrendelde.
+// Bewust twee verschillende acties (nooit dezelfde modal) zodat de
+// gebruiker meteen begrijpt waarom de ervaring verschilt.
+export function getDeadlineClickAction(row) {
+  return getDeadlineAccess(row) === 'free' ? 'detail' : 'upgrade';
+}
+
+// Bepaalt de weergavevolgorde voor de huidige toegang, bovenop de
+// bestaande inhoudelijke sortering (die blijft leidend). De regel: elke
+// pagina van PAGE_SIZE regelingen begint met FREE_SLOTS_PER_PAGE volledig
+// zichtbare regelingen. Een vergrendelde regeling die daardoor in zo'n
+// gereserveerde plek zou vallen, schuift alleen zo ver naar beneden als
+// nodig is (tot de eerstvolgende niet-gereserveerde plek) en komt daar
+// direct weer terug — verder blijft de volgorde ongewijzigd. Raakt de
+// voorraad vrije regelingen op, dan wordt niets kunstmatig vrijgegeven: de
+// gereserveerde plekken worden dan gewoon gevuld met wat er nog is.
+//
+// Voor Premium (bypass: true) is dit een no-op — Premium-gebruikers zien
+// de oorspronkelijke ranking. In de praktijk is dit toch al vanzelf het
+// geval (de view geeft Premium-gebruikers alles als volledig zichtbaar
+// terug, dus er valt niets te verschuiven), maar de expliciete bypass
+// maakt dat onafhankelijk van wat de database ooit teruggeeft, en
+// scheelt de doorloop hieronder.
+export function buildDeadlineDisplayOrder(sortedRows, { bypass = false, pageSize = PAGE_SIZE, freeSlotsPerPage = FREE_SLOTS_PER_PAGE } = {}) {
+  const rows = sortedRows || [];
+
+  if (bypass || rows.length === 0) {
+    return rows;
+  }
+
+  const output = [];
+  const holdback = []; // vergrendelde regelingen die uit een gereserveerde plek zijn geschoven
+  let i = 0;
+  const n = rows.length;
+
+  while (output.length < n) {
+    const windowPos = output.length % pageSize;
+    const isReservedFreeSlot = windowPos < freeSlotsPerPage;
+
+    if (isReservedFreeSlot) {
+      let geplaatst = false;
+
+      while (i < n) {
+        const row = rows[i];
+        i += 1;
+
+        if (getDeadlineAccess(row) === 'free') {
+          output.push(row);
+          geplaatst = true;
+          break;
+        }
+
+        holdback.push(row);
+      }
+
+      if (!geplaatst && holdback.length) {
+        // Geen vrije regelingen meer over: niets kunstmatig vrijgeven, gewoon
+        // de eerstvolgende (vergrendelde) regeling tonen.
+        output.push(holdback.shift());
+      }
+    } else if (holdback.length) {
+      // Zo hoog mogelijk terugplaatsen: de eerste kans na de gereserveerde
+      // plekken van deze pagina.
+      output.push(holdback.shift());
+    } else if (i < n) {
+      output.push(rows[i]);
+      i += 1;
+    }
+  }
+
+  return output;
+}
+
 // Volgt wijzigingen live. Geeft een opzegfunctie terug, of null als realtime
 // niet beschikbaar is. De view zelf is niet realtime-abonneerbaar, dus we
 // luisteren op de onderliggende tabel; de client haalt bij een wijziging
