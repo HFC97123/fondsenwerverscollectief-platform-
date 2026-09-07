@@ -16,6 +16,7 @@ import {
   verwijderOrganisatieprofiel,
   wisOrganisatieVeld,
 } from '../../data/services/organisatieprofiel.js';
+import { bewaarProject, haalProjectenOp, verwijderProject } from '../../data/services/projecten.js';
 
 export const PROJECT_EMPTY = {
   id: null,
@@ -26,6 +27,9 @@ export const PROJECT_EMPTY = {
   doelgroep: '',
   regio: '',
   omschrijving: '',
+  doelstellingen: '',
+  partners: '',
+  resultaten: '',
   begroting: '',
   gevraagd: '',
   eigenBijdrage: '',
@@ -97,6 +101,27 @@ export function KompasProvider({ children }) {
       orgBron.current = 'supabase';
       setOrgBronnen(res.bronnen || {});
       setSt((cur) => ({ ...cur, orgProfile: { ...cur.orgProfile, ...res.profiel } }));
+    });
+
+    return () => {
+      actief = false;
+    };
+  }, []);
+
+  // Projecten: ook al op de echte tabel (subsidie_kompas_programs), los van
+  // haalWerkomgevingOp() hierboven.
+  const projectenBron = useRef('lokaal');
+
+  useEffect(() => {
+    let actief = true;
+
+    haalProjectenOp().then((lijst) => {
+      if (!actief || lijst === null) {
+        return;
+      }
+
+      projectenBron.current = 'supabase';
+      setSt((cur) => ({ ...cur, projects: lijst }));
     });
 
     return () => {
@@ -194,23 +219,49 @@ export function KompasProvider({ children }) {
         }
       },
 
-      saveProject: (project) =>
+      // Een tijdelijk lokaal id (voor een nieuw project, vóórdat de database
+      // een echt id teruggeeft) zodat de rij meteen zichtbaar is; zodra
+      // bewaarProject() een echt id oplevert, wordt die er alsnog ingezet.
+      saveProject: (project) => {
+        const tijdelijkId = project.id || `tijdelijk-${Date.now()}`;
+        const teBewaren = { ...project, id: tijdelijkId };
+
         setSt((cur) => {
           const list = cur.projects.slice();
-          const i = list.findIndex((p) => p.id === project.id);
+          const i = list.findIndex((p) => p.id === tijdelijkId);
 
           if (i === -1) {
-            list.push(project);
+            list.push(teBewaren);
           } else {
-            list[i] = project;
+            list[i] = teBewaren;
           }
 
           return { ...cur, projects: list };
-        }),
+        });
 
-      deleteProject: (id) => setSt((cur) => ({ ...cur, projects: cur.projects.filter((p) => p.id !== id) })),
+        if (projectenBron.current === 'supabase') {
+          bewaarProject(project).then((res) => {
+            if (res.id && res.id !== tijdelijkId) {
+              setSt((cur) => ({
+                ...cur,
+                projects: cur.projects.map((p) => (p.id === tijdelijkId ? { ...p, id: res.id } : p)),
+              }));
+            }
+          });
+        }
+      },
 
-      addRegelingToProject: (regeling, projectId) =>
+      deleteProject: (id) => {
+        setSt((cur) => ({ ...cur, projects: cur.projects.filter((p) => p.id !== id) }));
+
+        if (projectenBron.current === 'supabase' && !String(id).startsWith('tijdelijk-')) {
+          verwijderProject(id);
+        }
+      },
+
+      addRegelingToProject: (regeling, projectId) => {
+        let bijgewerkt = null;
+
         setSt((cur) => {
           const list = cur.projects.slice();
           const i = list.findIndex((p) => p.id === projectId);
@@ -226,9 +277,15 @@ export function KompasProvider({ children }) {
           }
 
           list[i] = { ...list[i], regelingen: bestaand.concat([{ ...regeling, plan: 'Gepland', herinner: true }]) };
+          bijgewerkt = list[i];
 
           return { ...cur, projects: list };
-        }),
+        });
+
+        if (bijgewerkt && projectenBron.current === 'supabase') {
+          bewaarProject(bijgewerkt);
+        }
+      },
 
       setDocProject: (docId, projectId) =>
         setSt((cur) => ({
