@@ -75,8 +75,12 @@ export async function haalWerkomgevingOp() {
     }
   };
 
-  const [profiel, projecten, docs, gesprekken, voorkeuren] = await Promise.all([
-    veilig(() => supabase.from('organisatieprofielen').select('*').eq('profile_id', id).maybeSingle()),
+  // Let op: het organisatieprofiel loopt niet meer via dit bestand - zie
+  // data/services/organisatieprofiel.js (subsidie_kompas_organizations).
+  // Projecten/documentatie/gesprekken/voorkeuren wachten nog op een eigen
+  // fase; de tabellen hieronder bestaan nog niet, dus dit blijft voorlopig
+  // altijd stil terugvallen op localStorage.
+  const [projecten, docs, gesprekken, voorkeuren] = await Promise.all([
     veilig(() =>
       supabase
         .from('projecten')
@@ -100,15 +104,12 @@ export async function haalWerkomgevingOp() {
   ]);
 
   // Kon niets worden gelezen, dan bestaan de tabellen nog niet.
-  if (profiel === null && projecten === null && docs === null && gesprekken === null) {
+  if (projecten === null && docs === null && gesprekken === null) {
     return null;
   }
 
-  const { profile_id: _weg, updated_at: _ook, ...profielVelden } = profiel || {};
-
   return {
     ...LEEG,
-    orgProfile: profielVelden,
     projects: projecten || [],
     genDocs: docs || [],
     conversations: (gesprekken || []).map((g) => ({
@@ -121,20 +122,6 @@ export async function haalWerkomgevingOp() {
     reminderMail: voorkeuren ? voorkeuren.herinnering_mail : true,
     reminderDays: voorkeuren ? voorkeuren.herinnering_dagen : 14,
   };
-}
-
-export async function bewaarOrgProfiel(velden) {
-  const id = await profielId();
-
-  if (!id) {
-    return false;
-  }
-
-  const { error } = await supabase
-    .from('organisatieprofielen')
-    .upsert({ ...velden, profile_id: id, updated_at: new Date().toISOString() }, { onConflict: 'profile_id' });
-
-  return !error;
 }
 
 export async function bewaarVoorkeuren({ memberVisible, reminderMail, reminderDays }) {

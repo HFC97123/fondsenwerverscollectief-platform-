@@ -47,7 +47,7 @@ export const routes = [
   { pad: '/subsidie-kompas', area: AREA.app, titel: 'Subsidie Kompas', toegang: 'publiek' },
   { pad: '/kompas', area: AREA.app, titel: 'Subsidie Kompas', toegang: 'publiek' },
   { pad: '/kompas/deadlines', area: AREA.app, titel: 'Deadlines', toegang: 'publiek' },
-  { pad: '/kompas/organisatie', area: AREA.app, titel: 'Organisatieprofiel', toegang: 'lid' },
+  { pad: '/kompas/organisatie', area: AREA.app, titel: 'Organisatie', toegang: 'lid' },
   { pad: '/kompas/projecten', area: AREA.app, titel: 'Projecten', toegang: 'lid' },
   { pad: '/kompas/documentatie', area: AREA.app, titel: 'Documentatie', toegang: 'lid' },
   { pad: '/kompas/account', area: AREA.app, titel: 'Account', toegang: 'lid' },

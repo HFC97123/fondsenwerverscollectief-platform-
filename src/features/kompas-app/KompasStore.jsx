@@ -5,12 +5,17 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LEEG as EMPTY,
-  bewaarOrgProfiel,
   bewaarVoorkeuren,
   bewaarWerkomgeving,
   haalWerkomgevingOp,
   laadWerkomgeving,
 } from '../../data/services/workspace.js';
+import {
+  bewaarOrganisatieVelden,
+  haalOrganisatieprofielOp,
+  verwijderOrganisatieprofiel,
+  wisOrganisatieVeld,
+} from '../../data/services/organisatieprofiel.js';
 
 export const PROJECT_EMPTY = {
   id: null,
@@ -49,12 +54,15 @@ export function useKompas() {
 
 export function KompasProvider({ children }) {
   const [st, setSt] = useState(laadWerkomgeving);
+  const [orgBronnen, setOrgBronnen] = useState({});
 
   // Bron van de gegevens: 'lokaal' tot een sessie de database oplevert.
   const bron = useRef('lokaal');
 
-  // Bij een sessie de werkomgeving uit Supabase halen. Lukt dat niet, dan
-  // blijft wat lokaal staat gewoon werken.
+  // Projecten/documentatie/gesprekken/voorkeuren: nog het oude spoor
+  // (workspace.js), dat vooralsnog altijd stil terugvalt op localStorage
+  // omdat de tabellen die het verwacht niet bestaan. Blijft ongewijzigd tot
+  // een volgende fase dit ook op de echte tabellen aansluit.
   useEffect(() => {
     let actief = true;
 
@@ -64,7 +72,31 @@ export function KompasProvider({ children }) {
       }
 
       bron.current = 'supabase';
-      setSt((cur) => ({ ...uitDb, deadlines: cur.deadlines }));
+      setSt((cur) => ({ ...uitDb, orgProfile: cur.orgProfile, deadlines: cur.deadlines }));
+    });
+
+    return () => {
+      actief = false;
+    };
+  }, []);
+
+  // Organisatieprofiel: wel op de echte tabellen (subsidie_kompas_organizations
+  // + subsidie_kompas_organization_field_sources), onafhankelijk van
+  // haalWerkomgevingOp() hierboven - dat faalt voor de andere onderdelen nog
+  // steeds stil, maar het organisatieprofiel hoeft daar niet op te wachten.
+  const orgBron = useRef('lokaal');
+
+  useEffect(() => {
+    let actief = true;
+
+    haalOrganisatieprofielOp().then((res) => {
+      if (!actief || !res) {
+        return;
+      }
+
+      orgBron.current = 'supabase';
+      setOrgBronnen(res.bronnen || {});
+      setSt((cur) => ({ ...cur, orgProfile: { ...cur.orgProfile, ...res.profiel } }));
     });
 
     return () => {
@@ -78,8 +110,9 @@ export function KompasProvider({ children }) {
     bewaarWerkomgeving(st);
   }, [st]);
 
-  // Profiel en voorkeuren doorschrijven naar de database, ontdubbeld zodat
-  // typen geen reeks aanroepen oplevert.
+  // Voorkeuren doorschrijven naar de database, ontdubbeld zodat typen geen
+  // reeks aanroepen oplevert. Het organisatieprofiel loopt sinds kort apart
+  // via setOrgField/clearOrgField hieronder (per veld, met herkomst).
   const timer = useRef(null);
 
   useEffect(() => {
@@ -89,7 +122,6 @@ export function KompasProvider({ children }) {
 
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      bewaarOrgProfiel(st.orgProfile);
       bewaarVoorkeuren({
         memberVisible: st.memberVisible,
         reminderMail: st.reminderMail,
@@ -98,7 +130,31 @@ export function KompasProvider({ children }) {
     }, 900);
 
     return () => clearTimeout(timer.current);
-  }, [st.orgProfile, st.memberVisible, st.reminderMail, st.reminderDays]);
+  }, [st.memberVisible, st.reminderMail, st.reminderDays]);
+
+  // Organisatieprofielvelden: per veld gedebiend bewaren (900ms), zodat typen
+  // geen reeks aanroepen oplevert maar de herkomst per veld wel correct
+  // 'handmatig' blijft - een re-save van het hele profiel zou de herkomst van
+  // velden die later via website/document/gesprek zijn gevuld overschrijven.
+  const orgVeldTimers = useRef({});
+
+  const bewaarOrgVeldGedebiend = useCallback((veld, waarde) => {
+    if (orgBron.current !== 'supabase') {
+      return;
+    }
+
+    clearTimeout(orgVeldTimers.current[veld]);
+    orgVeldTimers.current[veld] = setTimeout(() => {
+      bewaarOrganisatieVelden({ [veld]: waarde }, 'handmatig').then((res) => {
+        if (res.organizationId) {
+          setOrgBronnen((cur) => ({
+            ...cur,
+            [veld]: { type: 'handmatig', ref: null, tijd: new Date().toISOString() },
+          }));
+        }
+      });
+    }, 900);
+  }, []);
 
   const patch = useCallback((next) => setSt((cur) => ({ ...cur, ...next })), []);
 
@@ -106,10 +162,37 @@ export function KompasProvider({ children }) {
     () => ({
       ...st,
       patch,
+      orgBronnen,
 
-      setOrgField: (key, val) => setSt((cur) => ({ ...cur, orgProfile: { ...cur.orgProfile, [key]: val } })),
+      setOrgField: (key, val) => {
+        setSt((cur) => ({ ...cur, orgProfile: { ...cur.orgProfile, [key]: val } }));
+        bewaarOrgVeldGedebiend(key, val);
+      },
 
-      clearOrgProfile: () => patch({ orgProfile: {} }),
+      // Wist een enkel veld (waarde + herkomst), in plaats van het hele profiel.
+      clearOrgField: (key) => {
+        setSt((cur) => ({ ...cur, orgProfile: { ...cur.orgProfile, [key]: Array.isArray(cur.orgProfile[key]) ? [] : '' } }));
+        setOrgBronnen((cur) => {
+          const volgende = { ...cur };
+
+          delete volgende[key];
+
+          return volgende;
+        });
+
+        if (orgBron.current === 'supabase') {
+          wisOrganisatieVeld(key);
+        }
+      },
+
+      clearOrgProfile: () => {
+        patch({ orgProfile: {} });
+        setOrgBronnen({});
+
+        if (orgBron.current === 'supabase') {
+          verwijderOrganisatieprofiel();
+        }
+      },
 
       saveProject: (project) =>
         setSt((cur) => {
@@ -197,7 +280,7 @@ export function KompasProvider({ children }) {
 
       clearRegelingen: () => patch({ deadlines: [] }),
     }),
-    [st, patch],
+    [st, patch, orgBronnen, bewaarOrgVeldGedebiend],
   );
 
   return <KompasContext.Provider value={value}>{children}</KompasContext.Provider>;

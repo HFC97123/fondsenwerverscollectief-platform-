@@ -31,7 +31,11 @@ export const PLAN_PERMISSIONS = {
     uploads: true,
     knowledgeBase: false,
     privateDatabase: false,
-    organizationMemory: false,
+    // Het organisatieprofiel/projecten/documenten-geheugen is voor Pro én
+    // Premium (zie OrganisatieprofielPage.jsx/ProjectenPage.jsx/DocumentatiePage.jsx,
+    // die allemaal al op 'pro of premium' toegang gaven); deze vlag stond
+    // hier nog op false en klopte dus niet met wat de schermen al deden.
+    organizationMemory: true,
     customBranding: true,
   },
   premium: {

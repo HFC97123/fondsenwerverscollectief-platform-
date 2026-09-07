@@ -1,22 +1,41 @@
-// Organisatieprofiel: optioneel, handmatig in te vullen of op te bouwen uit
-// de website. Subsidie Kompas gebruikt het bij fondsselecties en aanvragen.
+// Organisatie: het organisatieprofiel dat Subsidie Kompas gebruikt bij
+// fondsselecties, aanvragen en (in latere fases) alle andere AI-tools.
+// Vanaf nu echt bewaard in de database (subsidie_kompas_organizations),
+// per veld met herkomst (handmatig/website/document/gesprek) - zie
+// data/services/organisatieprofiel.js.
 import React, { useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
+import { bronLabel } from '../../data/services/organisatieprofiel.js';
 import { Button, Field, Notice, Panel, PanelHeader, SectionHeading, veldStijl } from '../../shared/ui/index.js';
 
 const VELDEN = [
   { s: 'Organisatieprofiel', n: 'name', l: 'Organisatienaam', t: 'text', p: 'Stichting Voorbeeld' },
   { s: 'Organisatieprofiel', n: 'website', l: 'Website', t: 'text', p: 'www.stichtingvoorbeeld.nl' },
-  { s: 'Organisatieprofiel', n: 'rechtsvorm', l: 'Rechtsvorm', t: 'text', p: 'Stichting met ANBI-status' },
-  { s: 'Organisatieprofiel', n: 'opgericht', l: 'Opgericht in', t: 'text', p: '2014' },
+  { s: 'Organisatieprofiel', n: 'rechtsvorm', l: 'Rechtsvorm', t: 'text', p: 'Stichting' },
+  { s: 'Organisatieprofiel', n: 'opgericht', l: 'Opgericht in', t: 'number', p: '2014' },
+  { s: 'Organisatieprofiel', n: 'kvk', l: 'KvK-nummer', t: 'text', p: '12345678' },
+  { s: 'Organisatieprofiel', n: 'anbi', l: 'ANBI-status', t: 'text', p: 'Ja, sinds 2015' },
   { s: 'Organisatieprofiel', n: 'mission', l: 'Missie', t: 'area', p: 'Waar staat uw organisatie voor?' },
+  { s: 'Organisatieprofiel', n: 'visie', l: 'Visie', t: 'area', p: 'Waar werkt uw organisatie naartoe?' },
   { s: 'Werkgebied', n: 'regio', l: 'Werkgebied', t: 'text', p: 'Utrecht en omgeving' },
+  { s: 'Werkgebied', n: 'gemeente', l: 'Gemeente', t: 'text', p: 'Utrecht' },
+  { s: 'Werkgebied', n: 'provincie', l: 'Provincie', t: 'text', p: 'Utrecht' },
   { s: 'Werkgebied', n: 'themas', l: 'Disciplines', t: 'chips' },
   { s: 'Werkgebied', n: 'doelgroepen', l: 'Doelgroepen', t: 'chips' },
-  { s: 'Financiering', n: 'omzet', l: 'Jaarlijkse omzet', t: 'text', p: '€ 240.000' },
-  { s: 'Financiering', n: 'financiering', l: 'Huidige financieringsmix', t: 'area', p: 'Waar komt uw financiering nu vandaan?' },
+  { s: 'Organisatiegegevens', n: 'omzet', l: 'Jaarlijkse omzet (€)', t: 'number', p: '240000' },
+  { s: 'Organisatiegegevens', n: 'medewerkers', l: 'Aantal medewerkers', t: 'number', p: '4' },
+  { s: 'Organisatiegegevens', n: 'vrijwilligers', l: 'Aantal vrijwilligers', t: 'number', p: '20' },
+  {
+    s: 'Organisatiegegevens',
+    n: 'financiering',
+    l: 'Huidige financieringsmix',
+    t: 'area',
+    p: 'Waar komt uw financiering nu vandaan?',
+  },
+  { s: 'Contact', n: 'contactpersonen', l: 'Contactpersonen', t: 'contacts' },
+  { s: 'Contact', n: 'socials', l: 'Social media', t: 'socials' },
   { s: 'Toon', n: 'toon', l: 'Toon van uw teksten', t: 'area', p: 'Hoe schrijft uw organisatie? Zakelijk, warm, direct?' },
 ];
 
@@ -116,7 +135,41 @@ const CHIP_OPTIES = {
   ],
 };
 
-const SECTIES = ['Organisatieprofiel', 'Werkgebied', 'Financiering', 'Toon'];
+const SECTIES = ['Organisatieprofiel', 'Werkgebied', 'Organisatiegegevens', 'Contact', 'Toon'];
+
+const LEEG_CONTACT = { naam: '', functie: '', email: '', telefoon: '' };
+const LEEG_SOCIAL = { platform: '', url: '' };
+
+// Kleine, discrete herkomstregel onder een veld - alleen zichtbaar als het
+// veld daadwerkelijk een waarde heeft. Transparantie-eis: waar komt dit
+// vandaan (handmatig/website/document/gesprek), en de mogelijkheid om het te
+// wissen (afzonderlijk van "hele profiel verwijderen" hieronder).
+function Herkomst({ bron, onWis }) {
+  if (!bron) {
+    return null;
+  }
+
+  const label = bronLabel(bron.type);
+
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <div style={css('display: flex; align-items: center; gap: 8px; margin-top: 4px;')}>
+      <span style={css('font-size: 11.5px; color: #9AA6A2;')}>{label}</span>
+      <button
+        type="button"
+        onClick={onWis}
+        style={css(
+          'cursor: pointer; padding: 0; border: none; background: none; font-size: 11.5px; font-weight: 700; color: #9AA6A2; text-decoration: underline;',
+        )}
+      >
+        wissen
+      </button>
+    </div>
+  );
+}
 
 export default function OrganisatieprofielPage() {
   const app = useApp();
@@ -129,7 +182,7 @@ export default function OrganisatieprofielPage() {
   if (!paid) {
     return (
       <Panel>
-        <PanelHeader title="Informatie over uw organisatie"
+        <PanelHeader title="Organisatie"
           intro="Met Pro en Premium legt u uw organisatieprofiel vast, of laat u het opbouwen uit uw website. Subsidie Kompas gebruikt het daarna bij fondsselecties en aanvragen."
         />
         <Button variant="dark" onClick={app.goAbonnementen}>
@@ -140,6 +193,7 @@ export default function OrganisatieprofielPage() {
   }
 
   const profiel = store.orgProfile || {};
+  const bronnen = store.orgBronnen || {};
 
   const isLeeg = !Object.keys(profiel).some((k) => {
     const v = profiel[k];
@@ -172,7 +226,7 @@ export default function OrganisatieprofielPage() {
 
   return (
     <Panel>
-      <PanelHeader title="Informatie over uw organisatie"
+      <PanelHeader title="Organisatie"
         intro="Dit profiel is optioneel. Hoe meer u invult, hoe gerichter Subsidie Kompas adviseert over passende fondsen en hoe beter aanvragen in uw eigen toon worden geschreven."
       />
 
@@ -224,24 +278,49 @@ export default function OrganisatieprofielPage() {
             <SectionHeading>{sectie}</SectionHeading>
             <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 18px;')}>
               {VELDEN.filter((f) => f.s === sectie).map((f) => (
-                <Field key={f.n} style={f.t === 'area' || f.t === 'chips' ? { gridColumn: 'span 2' } : undefined}>
+                <Field
+                  key={f.n}
+                  style={
+                    f.t === 'area' || f.t === 'chips' || f.t === 'contacts' || f.t === 'socials'
+                      ? { gridColumn: 'span 2' }
+                      : undefined
+                  }
+                >
                   {f.l}
                   {f.t === 'text' && (
-                    <input
-                      value={profiel[f.n] || ''}
-                      onChange={(e) => store.setOrgField(f.n, e.target.value)}
-                      placeholder={f.p}
-                      style={veldStijl}
-                    />
+                    <>
+                      <input
+                        value={profiel[f.n] || ''}
+                        onChange={(e) => store.setOrgField(f.n, e.target.value)}
+                        placeholder={f.p}
+                        style={veldStijl}
+                      />
+                      <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
+                    </>
+                  )}
+                  {f.t === 'number' && (
+                    <>
+                      <input
+                        type="number"
+                        value={profiel[f.n] || ''}
+                        onChange={(e) => store.setOrgField(f.n, e.target.value)}
+                        placeholder={f.p}
+                        style={veldStijl}
+                      />
+                      <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
+                    </>
                   )}
                   {f.t === 'area' && (
-                    <textarea
-                      value={profiel[f.n] || ''}
-                      onChange={(e) => store.setOrgField(f.n, e.target.value)}
-                      placeholder={f.p}
-                      rows={4}
-                      style={{ ...veldStijl, lineHeight: 1.6, resize: 'vertical' }}
-                    />
+                    <>
+                      <textarea
+                        value={profiel[f.n] || ''}
+                        onChange={(e) => store.setOrgField(f.n, e.target.value)}
+                        placeholder={f.p}
+                        rows={4}
+                        style={{ ...veldStijl, lineHeight: 1.6, resize: 'vertical' }}
+                      />
+                      <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
+                    </>
                   )}
                   {f.t === 'chips' && (
                     <span style={css('display: flex; flex-wrap: wrap; gap: 8px;')}>
@@ -272,6 +351,120 @@ export default function OrganisatieprofielPage() {
                         );
                       })}
                     </span>
+                  )}
+                  {f.t === 'contacts' && (
+                    <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
+                      {(profiel.contactpersonen || []).map((c, i) => (
+                        <div
+                          key={i}
+                          style={css(
+                            'display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)) auto; gap: 8px; align-items: center;',
+                          )}
+                        >
+                          {['naam', 'functie', 'email', 'telefoon'].map((veld) => (
+                            <input
+                              key={veld}
+                              value={c[veld] || ''}
+                              placeholder={veld === 'naam' ? 'Naam' : veld === 'functie' ? 'Functie' : veld === 'email' ? 'E-mailadres' : 'Telefoon'}
+                              onChange={(e) => {
+                                const lijst = (profiel.contactpersonen || []).slice();
+
+                                lijst[i] = { ...lijst[i], [veld]: e.target.value };
+                                store.setOrgField('contactpersonen', lijst);
+                              }}
+                              style={veldStijl}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const lijst = (profiel.contactpersonen || []).filter((_, j) => j !== i);
+
+                              store.setOrgField('contactpersonen', lijst);
+                            }}
+                            style={css(
+                              'cursor: pointer; padding: 8px 10px; border: 1px solid #E1EAE4; border-radius: 10px; background: #FFFFFF; color: #9E3B2C; font-weight: 700;',
+                            )}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            store.setOrgField('contactpersonen', (profiel.contactpersonen || []).concat([{ ...LEEG_CONTACT }]))
+                          }
+                          style={css(
+                            'cursor: pointer; padding: 9px 14px; border: 1px dashed #BFD4C6; border-radius: 999px; background: #FFFFFF; color: #2F6D47; font-weight: 700; font-size: 13px;',
+                          )}
+                        >
+                          + Contactpersoon toevoegen
+                        </button>
+                      </div>
+                      <Herkomst bron={bronnen.contactpersonen} onWis={() => store.clearOrgField('contactpersonen')} />
+                    </div>
+                  )}
+                  {f.t === 'socials' && (
+                    <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
+                      {(profiel.socials || []).map((s, i) => (
+                        <div
+                          key={i}
+                          style={css(
+                            'display: grid; grid-template-columns: minmax(120px, 160px) 1fr auto; gap: 8px; align-items: center;',
+                          )}
+                        >
+                          <input
+                            value={s.platform || ''}
+                            placeholder="Platform (bijv. Instagram)"
+                            onChange={(e) => {
+                              const lijst = (profiel.socials || []).slice();
+
+                              lijst[i] = { ...lijst[i], platform: e.target.value };
+                              store.setOrgField('socials', lijst);
+                            }}
+                            style={veldStijl}
+                          />
+                          <input
+                            value={s.url || ''}
+                            placeholder="https://…"
+                            onChange={(e) => {
+                              const lijst = (profiel.socials || []).slice();
+
+                              lijst[i] = { ...lijst[i], url: e.target.value };
+                              store.setOrgField('socials', lijst);
+                            }}
+                            style={veldStijl}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const lijst = (profiel.socials || []).filter((_, j) => j !== i);
+
+                              store.setOrgField('socials', lijst);
+                            }}
+                            style={css(
+                              'cursor: pointer; padding: 8px 10px; border: 1px solid #E1EAE4; border-radius: 10px; background: #FFFFFF; color: #9E3B2C; font-weight: 700;',
+                            )}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => store.setOrgField('socials', (profiel.socials || []).concat([{ ...LEEG_SOCIAL }]))}
+                          style={css(
+                            'cursor: pointer; padding: 9px 14px; border: 1px dashed #BFD4C6; border-radius: 999px; background: #FFFFFF; color: #2F6D47; font-weight: 700; font-size: 13px;',
+                          )}
+                        >
+                          + Social media-profiel toevoegen
+                        </button>
+                      </div>
+                      <Herkomst bron={bronnen.socials} onWis={() => store.clearOrgField('socials')} />
+                    </div>
                   )}
                 </Field>
               ))}
