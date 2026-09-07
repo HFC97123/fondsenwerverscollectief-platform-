@@ -1129,9 +1129,18 @@ export function WebsiteProvider({ children, route, param }) {
       window.scrollTo(0, 0);
     },
 
+    // goPage('admin') zette voorheen alleen de lokale paginastatus van dít
+    // WebsiteProvider-exemplaar (het website-gebied) — maar de beheerconsole
+    // rendert via een heel andere, aparte WebsiteProvider-instantie binnen
+    // AdminPortal.jsx, bereikt via de echte route /beheer. Zonder naar()
+    // veranderde de hash dus nooit en gebeurde er bij een klik op "Beheer"
+    // in de navigatie zichtbaar niets. naar('/beheer') laat de centrale
+    // router (App.jsx/useRoute.js) daadwerkelijk naar het admin-gebied
+    // navigeren, exact zoals goHome/goNetwerk/etc. hierboven al doen.
     goAdmin: () => {
       if (stRef.current.profile?.role === 'admin') {
         goPage('admin');
+        naar('/beheer');
       }
     },
 
