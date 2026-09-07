@@ -10,7 +10,7 @@
 import { query, supabase } from '../client.js';
 
 export const SELECT = [
-  'id, naam, thema, data_tier, source_type, status, status_ruw,',
+  'id, naam, thema, werkgebied, data_tier, source_type, status, status_ruw,',
   'volledig_zichtbaar, deadline_datum, dagen_resterend, deadline_periode,',
   'bedrag_min, bedrag_max, voorwaarden, funder_naam, funder_website, funder_type',
 ].join(' ');
@@ -31,7 +31,7 @@ export function normalize(row) {
     naam: row.naam || '—',
     funder: row.funder_naam || '—',
     funderType: row.funder_type || '',
-    regio: 'Nederland',
+    regio: row.werkgebied || 'Landelijk',
     thema: row.thema || '',
     status: row.status || 'Open',
     deadline: row.deadline_datum || null,

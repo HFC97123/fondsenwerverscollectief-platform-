@@ -53,7 +53,7 @@ export async function fetchSubsidieregelingen(params = {}) {
   return { rows, total, error: res.error };
 }
 
-// patch: { naam, thema, bedragMin, bedragMax, deadline, deadlineDatum,
+// patch: { naam, thema, werkgebied, bedragMin, bedragMax, deadline, deadlineDatum,
 //          deadlineOmschrijving, voorwaarden, status, funderId }
 export async function updateSubsidieregeling(regelingId, patch) {
   const res = await query((sb) =>
@@ -61,6 +61,7 @@ export async function updateSubsidieregeling(regelingId, patch) {
       p_regeling_id: regelingId,
       p_naam: patch.naam ?? null,
       p_thema: patch.thema ?? null,
+      p_werkgebied: patch.werkgebied ?? null,
       p_bedrag_min: patch.bedragMin ?? null,
       p_bedrag_max: patch.bedragMax ?? null,
       p_deadline: patch.deadline ?? null,
@@ -75,7 +76,7 @@ export async function updateSubsidieregeling(regelingId, patch) {
   return { error: res.error };
 }
 
-// rows: [{ funderId, naam, thema, bedragMin, bedragMax, deadline,
+// rows: [{ funderId, naam, thema, werkgebied, bedragMin, bedragMax, deadline,
 //          deadlineDatum, deadlineOmschrijving, voorwaarden, status,
 //          dataTier, sourceType }]
 // Eén RPC-aanroep voor de hele CSV-import, in plaats van een aanroep per rij.
@@ -84,6 +85,7 @@ export async function bulkCreateSubsidieregelingen(rows) {
     funder_id: r.funderId,
     naam: r.naam,
     thema: r.thema || null,
+    werkgebied: r.werkgebied || null,
     bedrag_min: r.bedragMin ?? null,
     bedrag_max: r.bedragMax ?? null,
     deadline: r.deadline || null,

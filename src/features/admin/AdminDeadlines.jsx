@@ -34,6 +34,7 @@ const PAGE_SIZE = 25;
 const LEEG_BEWERKING = {
   naam: '',
   thema: '',
+  werkgebied: '',
   bedragMin: '',
   bedragMax: '',
   deadline: '',
@@ -48,7 +49,8 @@ const LEEG_BEWERKING = {
 const KOLOMMEN = {
   naam: ['naam', 'regeling', 'regelingnaam'],
   funder: ['verstrekker', 'funder', 'fonds'],
-  thema: ['thema'],
+  thema: ['thema', 'discipline'],
+  werkgebied: ['werkgebied', 'regio'],
   status: ['status'],
   deadlineDatum: ['deadline', 'deadline_datum', 'sluitingsdatum'],
   deadlineOmschrijving: ['deadline_omschrijving', 'omschrijving deadline'],
@@ -147,6 +149,7 @@ export default function AdminDeadlines({ notify }) {
     setForm({
       naam: row.naam || '',
       thema: row.thema || '',
+      werkgebied: row.werkgebied || '',
       bedragMin: row.bedrag_min ?? '',
       bedragMax: row.bedrag_max ?? '',
       deadline: row.deadline || '',
@@ -163,6 +166,7 @@ export default function AdminDeadlines({ notify }) {
     const patch = {
       naam: form.naam.trim(),
       thema: form.thema || null,
+      werkgebied: form.werkgebied || null,
       bedragMin: form.bedragMin === '' ? null : Number(form.bedragMin),
       bedragMax: form.bedragMax === '' ? null : Number(form.bedragMax),
       deadline: form.deadline || null,
@@ -271,6 +275,7 @@ export default function AdminDeadlines({ notify }) {
           funderId: funder.id,
           naam: val('naam'),
           thema: val('thema') || null,
+          werkgebied: val('werkgebied') || null,
           bedragMin: val('bedragMin') ? Number(val('bedragMin').replace(/[^0-9.]/g, '')) : null,
           bedragMax: val('bedragMax') ? Number(val('bedragMax').replace(/[^0-9.]/g, '')) : null,
           deadlineDatum: /^\d{4}-\d{2}-\d{2}$/.test(val('deadlineDatum')) ? val('deadlineDatum') : null,
@@ -360,8 +365,9 @@ export default function AdminDeadlines({ notify }) {
           Regelingen importeren via CSV
         </div>
         <div style={css('margin-bottom: 14px; font-size: 13.5px; line-height: 1.6; color: #536460;')}>
-          Kolommen: naam, verstrekker, thema, status, deadline, bedrag_min, bedrag_max, voorwaarden. De verstrekker
-          moet al als funder in de database bestaan; onbekende verstrekkers worden overgeslagen en gemeld.
+          Kolommen: naam, verstrekker, discipline, werkgebied, status, deadline, bedrag_min, bedrag_max, voorwaarden.
+          De verstrekker moet al als funder in de database bestaan; onbekende verstrekkers worden overgeslagen en
+          gemeld.
         </div>
         <label style={uploadButtonStyle}>
           {importBezig ? 'Bezig…' : 'CSV-bestand kiezen'}
@@ -488,8 +494,13 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan })
         </label>
 
         <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Thema
+          Discipline
           <input style={inputStyle} value={form.thema} onChange={set('thema')} />
+        </label>
+
+        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
+          Werkgebied
+          <input style={inputStyle} value={form.werkgebied} onChange={set('werkgebied')} />
         </label>
 
         <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>

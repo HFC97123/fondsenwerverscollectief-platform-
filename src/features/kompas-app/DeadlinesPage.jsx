@@ -16,7 +16,7 @@ import { useKompas } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 
-// Regelgebaseerde inschatting: thema, regio en omvang tegenover het profiel.
+// Regelgebaseerde inschatting: discipline, werkgebied en omvang tegenover het profiel.
 // Geen score met valse precisie, alleen wat wel en niet aansluit.
 function kansrijkheid(regeling, orgProfile, projects) {
   const themas = [].concat(orgProfile.themes || [], orgProfile.themas || []).map((x) => String(x).toLowerCase());
@@ -25,18 +25,18 @@ function kansrijkheid(regeling, orgProfile, projects) {
   const minpunten = [];
 
   if (regeling.thema && themas.some((t) => t && (t.indexOf(regeling.thema.toLowerCase()) !== -1 || regeling.thema.toLowerCase().indexOf(t) !== -1))) {
-    punten.push(`het thema ${regeling.thema} staat in uw profiel`);
+    punten.push(`de discipline ${regeling.thema} staat in uw profiel`);
   } else if (regeling.thema && themas.length) {
-    minpunten.push(`het thema ${regeling.thema} staat niet in uw profiel`);
+    minpunten.push(`de discipline ${regeling.thema} staat niet in uw profiel`);
   }
 
   if (werkgebied && regeling.regio) {
     const r = regeling.regio.toLowerCase();
 
-    if (r === 'nederland' || werkgebied.indexOf(r) !== -1 || r.indexOf(werkgebied) !== -1) {
-      punten.push('de regio sluit aan');
+    if (r === 'nederland' || r === 'landelijk' || werkgebied.indexOf(r) !== -1 || r.indexOf(werkgebied) !== -1) {
+      punten.push('het werkgebied sluit aan');
     } else {
-      minpunten.push(`de regio ${regeling.regio} wijkt af van uw werkgebied`);
+      minpunten.push(`het werkgebied ${regeling.regio} wijkt af van uw werkgebied`);
     }
   }
 
@@ -68,7 +68,7 @@ function kansrijkheid(regeling, orgProfile, projects) {
   };
 
   const tekst = label === 'Vul uw organisatieprofiel'
-    ? 'Zodra uw thema en werkgebied in het profiel staan, kan Subsidie Kompas beoordelen of deze regeling bij u past.'
+    ? 'Zodra uw discipline en werkgebied in het profiel staan, kan Subsidie Kompas beoordelen of deze regeling bij u past.'
     : `${punten.length ? `Wat aansluit: ${punten.join(', ')}.` : ''}${minpunten.length ? `${punten.length ? ' ' : ''}Let op: ${minpunten.join(', ')}.` : ''}`;
 
   return { label, tekst, ...kleuren[label] };
@@ -480,9 +480,9 @@ export default function DeadlinesPage() {
       </div>
 
       {[
-        ['Thema', thema, setThema, 'Alle thema’s', unique('thema')],
+        ['Discipline', thema, setThema, 'Alle disciplines', unique('thema')],
         ['Type verstrekker', type, setType, 'Alle typen', unique('funderType')],
-        ['Regio', regio, setRegio, 'Alle regio’s', unique('regio')],
+        ['Werkgebied', regio, setRegio, 'Alle werkgebieden', unique('regio')],
       ].map(([title, value, setter, allLabel, values]) => (
         <div key={title}>
           <div style={groupTitle}>{title}</div>
@@ -741,7 +741,7 @@ export default function DeadlinesPage() {
                           {r.naam}
                         </div>
                         <div style={css('font-size: 13.5px; color: #687974;')}>
-                          {locked ? `${r.thema || 'Thema onbekend'} · ${r.regio}` : `${r.funder} · ${r.regio}`}
+                          {locked ? `${r.thema || 'Discipline onbekend'} · ${r.regio}` : `${r.funder} · ${r.regio}`}
                         </div>
                       </div>
 
@@ -1130,7 +1130,7 @@ export default function DeadlinesPage() {
           andere kaart dan de detailkaart hierboven (geen gedeelde state,
           geen gedeelde opmaak), zodat direct duidelijk is waarom de
           ervaring verschilt. Toont uitsluitend wat al op de kaart zelf
-          zichtbaar was (naam, thema, regio, status) — geen bedrag, geen
+          zichtbaar was (naam, discipline, werkgebied, status) — geen bedrag, geen
           deadline, geen voorwaarden, geen verstrekker: die velden heeft
           de database voor deze regeling nooit meegestuurd. */}
       {upgradeRow && (
@@ -1199,7 +1199,7 @@ export default function DeadlinesPage() {
                 {upgradeRow.status}
               </span>
               <span style={css('font-size: 14px; color: #687974;')}>
-                {`${upgradeRow.thema || 'Thema onbekend'} · ${upgradeRow.regio}`}
+                {`${upgradeRow.thema || 'Discipline onbekend'} · ${upgradeRow.regio}`}
               </span>
             </div>
 
