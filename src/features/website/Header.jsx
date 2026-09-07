@@ -25,25 +25,40 @@ const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
 const menuItemStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: #2C4A5E; cursor: pointer;');
 const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 700; color: #B4453B; cursor: pointer;');
 
-// Accountbadge in de navigatie: zelfde pilvorm/padding/hoogte/lettergrootte
-// als de vorige indicator. Bewust niet het groen van de "Probeer Subsidie
-// Kompas"-knop (#4E9A6C) — dat is de actieknop-kleur. In plaats daarvan de
-// andere, zachtere groene kleur die al op meerdere plekken op de website
-// staat (HomePage.jsx-CTA's, de Footer-knop, het cijferblok): pastelgroen
-// #A8D5BA, hier verdund tot een lichte vlaktint met #43855D (de bestaande
-// donkere groentint uit tokens.js) als tekstkleur — dezelfde
-// lichtgroen/donkergroen-opbouw, maar losstaand van het Kompas-actiegroen.
+// Accountbadge in de navigatie: zelfde badge-idee als daarvoor (pastelgroen
+// #A8D5BA-familie, los van het Kompas-actiegroen #4E9A6C), nu verfijnd naar
+// een rustiger, hoogwaardiger uitstraling:
+// - Typografie: font-family 'Newsreader' (serif) — exact dezelfde
+//   lettersoort als de "Het Fondsenwervers Collectief"-logotekst hierboven
+//   in deze header — in plaats van de vetgedrukte Mulish-stijl van een
+//   statuslabel als "Binnenkort". Newsreader is prima leesbaar op dit
+//   formaat, dus geen vervangend lettertype nodig.
+// - Gewicht/ruimte: minder vet (500 i.p.v. 700), iets meer horizontale
+//   witruimte, een zachtere vlaktint zonder harde rand.
+// - Hover: dezelfde zachte overgang die de rest van het platform al
+//   gebruikt voor toggles (transition: ... 0.2s ease, zie NetwerkPage.jsx/
+//   shared/ui/primitives.jsx), niet een abrupte kleurwissel.
 function accountBadgeStijl(compact, hover) {
-  return css(
-    `display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 7px 14px; border-radius: 999px; background: ${hover ? 'rgba(168,213,186,0.5)' : 'rgba(168,213,186,0.3)'}; border: 1px solid #A8D5BA; font-size: ${compact ? '12.5px' : '13.5px'}; font-weight: 700; color: #43855D; white-space: nowrap;`,
-  );
+  return css(`
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 8px 18px; border-radius: 999px;
+    background: ${hover ? 'rgba(168,213,186,0.32)' : 'rgba(168,213,186,0.18)'};
+    border: 1px solid ${hover ? 'rgba(168,213,186,0.7)' : 'rgba(168,213,186,0.4)'};
+    font-family: 'Newsreader', serif;
+    font-size: ${compact ? '13px' : '14px'};
+    font-weight: 500;
+    color: #43855D;
+    white-space: nowrap;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  `);
 }
 
 // Compacte accountbadge + menu, in dezelfde pilstijl als de bestaande
-// "Binnenkort"-badge. Ingelogd: "👤 Naam · Tier" met een menu (Mijn account
-// / Mijn abonnement / Uitloggen). Uitgelogd: "👤 Account" met een menu
-// (Inloggen / Gratis account maken) — geen verplichting, Subsidie Kompas en
-// het Collectief blijven zonder account te gebruiken.
+// "Binnenkort"-badge, zonder avatar/icoon — alleen tekst. Ingelogd:
+// "Naam · Tier" met een menu (Mijn account / Mijn abonnement / Uitloggen).
+// Uitgelogd: "Account" met een menu (Inloggen / Gratis account maken) —
+// geen verplichting, Subsidie Kompas en het Collectief blijven zonder
+// account te gebruiken.
 function AccountMenu({ compact }) {
   const app = useApp();
   const authModal = useAuthModal();
@@ -62,9 +77,8 @@ function AccountMenu({ compact }) {
         role="button"
         style={accountBadgeStijl(compact, hover)}
       >
-        <span>👤</span>
         <span>{badgeLabel}</span>
-        <span style={css('font-size: 9px; opacity: 0.7;')}>▼</span>
+        <span style={css('font-size: 8px; opacity: 0.55;')}>▼</span>
       </div>
 
       {open && (
