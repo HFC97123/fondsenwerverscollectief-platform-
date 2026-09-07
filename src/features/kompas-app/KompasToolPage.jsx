@@ -72,7 +72,11 @@ export default function KompasToolPage() {
   const store = useKompas();
 
   const tier = app.subscriptionTier || 'free';
-  const hasPlanTools = tier === 'pro' || tier === 'premium';
+  // Admin heeft hier altijd toegang, ongeacht subscription_tier - net als bij
+  // toonStatusBadge/toonPlanLabel hieronder en in KompasSubnav.jsx. Zo staat
+  // de Admin-uitzondering overal op dezelfde, ene voorwaarde in plaats van
+  // los per plek opnieuw te worden bedacht.
+  const hasPlanTools = app.isAdmin || tier === 'pro' || tier === 'premium';
   const isFreePlan = tier === 'free';
   const isProPlan = tier === 'pro';
   const isPremiumPlan = tier === 'premium';
