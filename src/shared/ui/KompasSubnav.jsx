@@ -21,12 +21,16 @@ const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
 export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth = '1120px', toonPlan = false }) {
   const app = useApp();
   const tier = app.subscriptionTier || 'free';
-  // Compacte statusindicator: bij een account naam + abonnement, zonder
-  // account een expliciete "Gastgebruiker"-aanduiding — zo weet iedereen op
-  // elk moment of hij is ingelogd en welk pakket actief is (of dat hij nog
-  // in de gratis, accountloze modus zit).
+  // Compacte statusindicator: naam + abonnement, uitsluitend zichtbaar
+  // zolang er echt iets Pro/Premium (of Admin) te tonen is - zie
+  // toonPlanLabel hieronder.
   const tierLabel = app.isAdmin ? 'Admin' : TIER_LABEL[tier] || 'Free';
-  const planLabel = app.isLoggedIn ? `${app.naam || 'Mijn account'} · ${tierLabel}` : `Gastgebruiker · ${TIER_LABEL.free}`;
+  // Zichtbaar zodra er echt iets te tonen is: Admin (bestaand gedrag), of een
+  // account met een actief Subsidie Kompas Pro/Premium-abonnement. Een
+  // FWC-account zonder actief abonnement gedraagt zich hier zichtbaar als
+  // Free, dus zonder badge - net als een anonieme bezoeker.
+  const toonPlanLabel = app.isAdmin || tier === 'pro' || tier === 'premium';
+  const planLabel = `${app.naam || 'Mijn account'} · ${tierLabel}`;
 
   const item = (key, label, href) =>
     actief === key ? (
@@ -58,9 +62,9 @@ export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth 
         </div>
 
         <div style={css('display: flex; align-items: center; gap: 12px;')}>
-          {toonPlan && (
+          {toonPlan && toonPlanLabel && (
             <span
-              title={app.isLoggedIn ? `Je bent ingelogd als: ${planLabel}` : 'Je gebruikt Subsidie Kompas zonder account (Free)'}
+              title={`Je bent ingelogd als: ${planLabel}`}
               style={css('padding: 5px 13px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 12px; font-weight: 800;')}
             >
               {planLabel}
