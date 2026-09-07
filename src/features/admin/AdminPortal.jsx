@@ -3,9 +3,9 @@ import React from 'react';
 import { WebsiteProvider } from '../website/WebsiteProvider.jsx';
 import AdminPage from './AdminPage.jsx';
 
-export default function AdminPortal() {
+export default function AdminPortal({ route, param }) {
   return (
-    <WebsiteProvider>
+    <WebsiteProvider route={route} param={param}>
       <div
         style={{
           fontFamily: "'Mulish', sans-serif",

@@ -188,6 +188,12 @@ const PAD_TO_PAGE = {
   '/contact': 'contact',
   '/privacy': 'privacy',
   '/voorwaarden': 'voorwaarden',
+  // AdminPortal.jsx hergebruikt deze provider voor zijn eigen sessie-/
+  // profielstatus (zie useApp() in AdminPage.jsx: isAdminPage/isAdmin).
+  // Zonder deze regel bleef st.page altijd op 'home' staan zodra
+  // AdminPortal route/param doorgaf, waardoor AdminPage.jsx zichzelf
+  // (isAdminPage === false) altijd verborg.
+  '/beheer': 'admin',
 };
 
 export function WebsiteProvider({ children, route, param }) {
