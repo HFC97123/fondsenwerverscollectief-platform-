@@ -11,6 +11,8 @@ import { useApp } from '../../features/kompas-app/useKompasApp.js';
 const linkStijl = css('font-size: 14.5px; font-weight: 700; color: #2C4A5E; white-space: nowrap;');
 const actiefStijl = css('font-size: 14.5px; font-weight: 700; color: #4E9A6C; white-space: nowrap;');
 
+const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
+
 // actief: 'werkt' | 'deadlines' | 'faq' — de huidige pagina komt als platte,
 // groene tekst te staan in plaats van als link, exact zoals in het ontwerp.
 // terugNaarKompas: op de marketingpagina's gaat de terugknop naar de
@@ -19,12 +21,12 @@ const actiefStijl = css('font-size: 14.5px; font-weight: 700; color: #4E9A6C; wh
 export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth = '1120px', toonPlan = false }) {
   const app = useApp();
   const tier = app.subscriptionTier || 'free';
-  // Alleen ingelogde gebruikers hebben een status om te tonen; een anonieme
-  // bezoeker krijgt hier bewust geen badge (die heeft ook geen account om
-  // "ingelogd als" bij te horen).
-  const planLabel = app.isLoggedIn
-    ? (app.isAdmin ? 'Admin' : { free: 'Free', pro: 'Pro', premium: 'Premium' }[tier])
-    : null;
+  // Compacte statusindicator: bij een account naam + abonnement, zonder
+  // account een expliciete "Gastgebruiker"-aanduiding — zo weet iedereen op
+  // elk moment of hij is ingelogd en welk pakket actief is (of dat hij nog
+  // in de gratis, accountloze modus zit).
+  const tierLabel = app.isAdmin ? 'Admin' : TIER_LABEL[tier] || 'Free';
+  const planLabel = app.isLoggedIn ? `${app.naam || 'Mijn account'} · ${tierLabel}` : `Gastgebruiker · ${TIER_LABEL.free}`;
 
   const item = (key, label, href) =>
     actief === key ? (
@@ -56,9 +58,9 @@ export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth 
         </div>
 
         <div style={css('display: flex; align-items: center; gap: 12px;')}>
-          {toonPlan && planLabel && (
+          {toonPlan && (
             <span
-              title={`Je bent ingelogd als: ${planLabel}`}
+              title={app.isLoggedIn ? `Je bent ingelogd als: ${planLabel}` : 'Je gebruikt Subsidie Kompas zonder account (Free)'}
               style={css('padding: 5px 13px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 12px; font-weight: 800;')}
             >
               {planLabel}

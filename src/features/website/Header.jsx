@@ -1,8 +1,16 @@
 // Navigatiebalk. Opmaak letterlijk uit het goedgekeurde ontwerp (NAV-blok in
 // Het Fondsenwervers Collectief.dc.html).
+//
+// Accountindicator (rechtsboven): Het Fondsenwervers Collectief en Subsidie
+// Kompas delen precies hetzelfde account (dezelfde profiles-rij, dezelfde
+// sessie) — dus "Inloggen" hier opent bewust dezelfde overlay
+// (useAuthModal) als binnen Kompas, in plaats van een eigen tweede
+// inlogscherm. Zie AccountMenu hieronder.
 import React from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './WebsiteProvider.jsx';
+import { useAuthModal } from '../../app/providers/AuthModalProvider.jsx';
+import { naar } from '../../app/routes.js';
 
 const navLink = css('font-size: clamp(13.5px, 1.2vw, 15px); font-weight: 600; color: #2C4A5E; white-space: nowrap;');
 
@@ -11,6 +19,97 @@ const navKnop = css(
 );
 
 const menuLink = css('padding: 13px 4px; font-size: 16px; font-weight: 600; color: #2C4A5E;');
+
+const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
+
+const menuItemStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: #2C4A5E; cursor: pointer;');
+const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 700; color: #B4453B; cursor: pointer;');
+
+// Compacte accountindicator + menu. Ingelogd: "👤 Naam · Tier" met een menu
+// (Mijn account / Mijn abonnement / Uitloggen). Uitgelogd: gewoon een
+// "Inloggen"-link — geen verplichting, Subsidie Kompas en het Collectief
+// blijven zonder account te gebruiken.
+function AccountMenu({ compact }) {
+  const app = useApp();
+  const authModal = useAuthModal();
+  const [open, setOpen] = React.useState(false);
+
+  if (!app.isLoggedIn) {
+    return (
+      <a
+        href="#"
+        onClick={(e) => {
+          e.preventDefault();
+          authModal.openLogin();
+        }}
+        style={navLink}
+      >
+        Inloggen
+      </a>
+    );
+  }
+
+  const tierLabel = app.isAdmin ? 'Admin' : TIER_LABEL[app.subscriptionTier] || 'Free';
+
+  return (
+    <div style={css('position: relative;')}>
+      <div
+        onClick={() => setOpen((v) => !v)}
+        role="button"
+        style={css(
+          `display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 7px 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #DCE7E1; font-size: ${compact ? '12.5px' : '13.5px'}; font-weight: 700; color: #2C4A5E; white-space: nowrap;`,
+        )}
+      >
+        <span>👤</span>
+        <span>
+          {app.profileFullName} · {tierLabel}
+        </span>
+      </div>
+
+      {open && (
+        <React.Fragment>
+          <div onClick={() => setOpen(false)} style={css('position: fixed; inset: 0; z-index: 59;')} />
+          <div
+            style={css(
+              'position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; min-width: 190px; background: #FFFFFF; border: 1px solid #E1EAE4; border-radius: 14px; box-shadow: 0 16px 40px rgba(44,74,94,0.18); padding: 6px; display: flex; flex-direction: column;',
+            )}
+          >
+            <div
+              role="button"
+              style={menuItemStijl}
+              onClick={() => {
+                setOpen(false);
+                naar('/kompas/account');
+              }}
+            >
+              Mijn account
+            </div>
+            <div
+              role="button"
+              style={menuItemStijl}
+              onClick={() => {
+                setOpen(false);
+                naar('/hoe-het-werkt');
+              }}
+            >
+              Mijn abonnement
+            </div>
+            <div
+              role="button"
+              style={menuItemUitloggenStijl}
+              onClick={() => {
+                setOpen(false);
+                app.logout();
+              }}
+            >
+              Uitloggen
+            </div>
+          </div>
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
 
 export default function Header() {
   const app = useApp();
@@ -29,9 +128,15 @@ export default function Header() {
     goKompas,
     goAdmin,
     isAdmin,
+    isLoggedIn,
+    profileFullName,
+    subscriptionTier,
+    logout,
   } = app;
 
   if (isCollectief === false) return null;
+
+  const tierLabelMobiel = isAdmin ? 'Admin' : TIER_LABEL[subscriptionTier] || 'Free';
 
   return (
     <div
@@ -85,6 +190,7 @@ export default function Header() {
             <a href="#" onClick={goKompas} style={navKnop}>
               Probeer Subsidie Kompas
             </a>
+            <AccountMenu />
           </div>
         )}
 
@@ -109,6 +215,14 @@ export default function Header() {
                   'flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; padding-top: 12px; margin-top: 4px; border-top: 1px solid #E1EAE4;',
                 )}
               >
+                <div
+                  style={css(
+                    'display: flex; align-items: center; gap: 8px; padding: 8px 4px 13px; margin-bottom: 4px; border-bottom: 1px solid #E1EAE4; font-size: 15px; font-weight: 700; color: #2C4A5E;',
+                  )}
+                >
+                  <span>👤</span>
+                  <span>{isLoggedIn ? `${profileFullName} · ${tierLabelMobiel}` : 'Gast · Free'}</span>
+                </div>
                 <a href="#voor-wie" onClick={goVoorWie} style={menuLink}>
                   Voor wie
                 </a>
@@ -122,6 +236,30 @@ export default function Header() {
                   <div onClick={goAdmin} style={css('cursor: pointer; padding: 13px 4px; font-size: 16px; font-weight: 700; color: #2C4A5E;')}>
                     Beheer
                   </div>
+                )}
+                {isLoggedIn ? (
+                  <>
+                    <div
+                      onClick={() => naar('/kompas/account')}
+                      style={css('cursor: pointer; padding: 13px 4px; font-size: 16px; font-weight: 600; color: #2C4A5E;')}
+                    >
+                      Mijn account
+                    </div>
+                    <div
+                      onClick={() => naar('/hoe-het-werkt')}
+                      style={css('cursor: pointer; padding: 13px 4px; font-size: 16px; font-weight: 600; color: #2C4A5E;')}
+                    >
+                      Mijn abonnement
+                    </div>
+                    <div
+                      onClick={logout}
+                      style={css('cursor: pointer; padding: 13px 4px; font-size: 16px; font-weight: 700; color: #B4453B;')}
+                    >
+                      Uitloggen
+                    </div>
+                  </>
+                ) : (
+                  <AccountMenu compact />
                 )}
                 <a
                   href="#"
@@ -138,9 +276,12 @@ export default function Header() {
         )}
 
         {isSubpage && (
-          <div onClick={goHome} style={css('display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 15px; font-weight: 700; color: #2C4A5E;')}>
-            <span style={css('font-size: 18px;')}>←</span> Terug naar home
-          </div>
+          <>
+            <div onClick={goHome} style={css('display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 15px; font-weight: 700; color: #2C4A5E;')}>
+              <span style={css('font-size: 18px;')}>←</span> Terug naar home
+            </div>
+            <AccountMenu compact />
+          </>
         )}
       </div>
     </div>

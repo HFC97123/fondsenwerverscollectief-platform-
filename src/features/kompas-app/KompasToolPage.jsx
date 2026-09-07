@@ -16,6 +16,7 @@ import { askKompas, buildContext } from '../../data/services/chat.js';
 import OrganisatieprofielPage from './OrganisatieprofielPage.jsx';
 import ProjectenPage from './ProjectenPage.jsx';
 import DocumentatiePage from './DocumentatiePage.jsx';
+import UpgradeUitleg from '../../shared/ui/UpgradeUitleg.jsx';
 
 const STARTERS = [
   'Ik zoek financiering voor een nieuw project',
@@ -80,6 +81,10 @@ export default function KompasToolPage() {
   // Admin overschrijft de pakketnaam: een beheerder heeft volledige toegang,
   // los van welk pakket er toevallig op het profiel staat.
   const planLabel = app.isAdmin ? 'Admin' : { free: 'Free', pro: 'Pro', premium: 'Premium' }[tier];
+  // Compacte statusindicator bovenin: naam + abonnement bij een account,
+  // expliciet 'Gastgebruiker' zonder account — zo weet iedereen altijd of
+  // hij is ingelogd, zonder dat Subsidie Kompas ooit eerst om inloggen vraagt.
+  const statusIndicator = app.isLoggedIn ? `${app.naam || 'Mijn account'} \u00b7 ${planLabel}` : `Gastgebruiker \u00b7 ${planLabel}`;
 
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
@@ -185,7 +190,7 @@ export default function KompasToolPage() {
 
           <div style={css('display: flex; align-items: center; gap: 12px;')}>
             <span style={css('padding: 5px 13px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 12px; font-weight: 800;')}>
-              {planLabel}
+              {statusIndicator}
             </span>
             <span style={css('display: flex; align-items: center; gap: 10px;')}>
               <img
@@ -224,28 +229,31 @@ export default function KompasToolPage() {
 
       <div style={css('position: relative; z-index: 1; max-width: 1040px; margin: 54px auto 80px; padding: 0 clamp(16px, 4vw, 24px);')}>
         {/* PILLEN */}
-        <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;')}>
-          {hasPlanTools && (
-            <>
-              <div onClick={nieuweChat} role="button" style={pil(false)}>
-                + Nieuwe chat
-              </div>
-              <div onClick={togglePaneel('historie')} role="button" style={pil(paneel === 'historie')}>
-                Eerdere gesprekken ({gesprekken.length})
-              </div>
-              <div onClick={togglePaneel('org')} role="button" style={pil(paneel === 'org')}>
-                Organisatie
-              </div>
-              <div onClick={togglePaneel('proj')} role="button" tabIndex={0} style={pil(paneel === 'proj')}>
-                Projecten
-              </div>
-              <div onClick={togglePaneel('doc')} role="button" tabIndex={0} style={{ ...pil(paneel === 'doc'), gap: '8px' }}>
-                Documentatie
-                <span style={css('font-size: 12px; font-weight: 700; opacity: 0.7;')}>{documenten.length}</span>
-              </div>
-            </>
-          )}
-        </div>
+        {hasPlanTools ? (
+          <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;')}>
+            <div onClick={nieuweChat} role="button" style={pil(false)}>
+              + Nieuwe chat
+            </div>
+            <div onClick={togglePaneel('historie')} role="button" style={pil(paneel === 'historie')}>
+              Eerdere gesprekken ({gesprekken.length})
+            </div>
+            <div onClick={togglePaneel('org')} role="button" style={pil(paneel === 'org')}>
+              Organisatie
+            </div>
+            <div onClick={togglePaneel('proj')} role="button" tabIndex={0} style={pil(paneel === 'proj')}>
+              Projecten
+            </div>
+            <div onClick={togglePaneel('doc')} role="button" tabIndex={0} style={{ ...pil(paneel === 'doc'), gap: '8px' }}>
+              Documentatie
+              <span style={css('font-size: 12px; font-weight: 700; opacity: 0.7;')}>{documenten.length}</span>
+            </div>
+          </div>
+        ) : (
+          // Niet langer stilzwijgend verbergen: Subsidie Kompas moet voelen als een
+          // open AI-tool. De chat hieronder blijft gewoon te gebruiken; dit legt
+          // alleen uit wat een account met Pro/Premium hier aan toevoegt.
+          <UpgradeUitleg toelichting="Met Pro en Premium bewaart Subsidie Kompas uw gesprekken, organisatieprofiel, projecten en documenten." />
+        )}
 
         {/* EERDERE GESPREKKEN */}
         {paneel === 'historie' && (
