@@ -26,15 +26,16 @@ const menuItemStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14
 const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 700; color: #B4453B; cursor: pointer;');
 
 // Accountbadge in de navigatie: zelfde pilvorm/padding/hoogte/lettergrootte
-// als de vorige indicator, alleen herkleurd naar het lichtgroen/donkergroen
-// dat elders op het platform al staat voor dit soort compacte labels (de
-// "Binnenkort"-badge op de landingspagina, en de wachtwoord-vergeten-
-// bevestiging hierboven/in AuthModalProvider.jsx: achtergrond #EAF4EE,
-// tekst #2F6D47). Zelfde badge voor niet-ingelogd ("Account") en ingelogd
-// ("Naam · Tier") — alleen de tekst erin verandert.
+// als de vorige indicator. Bewust niet het groen van de "Probeer Subsidie
+// Kompas"-knop (#4E9A6C) — dat is de actieknop-kleur. In plaats daarvan de
+// andere, zachtere groene kleur die al op meerdere plekken op de website
+// staat (HomePage.jsx-CTA's, de Footer-knop, het cijferblok): pastelgroen
+// #A8D5BA, hier verdund tot een lichte vlaktint met #43855D (de bestaande
+// donkere groentint uit tokens.js) als tekstkleur — dezelfde
+// lichtgroen/donkergroen-opbouw, maar losstaand van het Kompas-actiegroen.
 function accountBadgeStijl(compact, hover) {
   return css(
-    `display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 7px 14px; border-radius: 999px; background: ${hover ? '#DCEFE3' : '#EAF4EE'}; border: 1px solid #BFD4C6; font-size: ${compact ? '12.5px' : '13.5px'}; font-weight: 700; color: #2F6D47; white-space: nowrap;`,
+    `display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 7px 14px; border-radius: 999px; background: ${hover ? 'rgba(168,213,186,0.5)' : 'rgba(168,213,186,0.3)'}; border: 1px solid #A8D5BA; font-size: ${compact ? '12.5px' : '13.5px'}; font-weight: 700; color: #43855D; white-space: nowrap;`,
   );
 }
 
