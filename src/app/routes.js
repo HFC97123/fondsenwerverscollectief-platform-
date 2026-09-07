@@ -34,6 +34,15 @@ export const routes = [
   { pad: '/hoe-het-werkt', area: AREA.marketing, titel: 'Hoe het werkt', toegang: 'publiek' },
   { pad: '/kompas/faq', area: AREA.marketing, titel: 'Veelgestelde vragen', toegang: 'publiek' },
 
+  // Landingsplek voor de wachtwoord-resetlink uit de e-mail (zie
+  // AuthProvider.jsx, event PASSWORD_RECOVERY). Bewust in het
+  // kompas-marketing-gebied, niet 'website': dat gebied leest de eigen
+  // paginastatus nog niet uit de URL-hash (zie WebsitePages.jsx), en deze
+  // pagina moet juist wel meteen op het juiste pad landen. Publiek, want
+  // een net geopende resetlink heeft nog geen 'normale' ingelogde sessie
+  // in de zin van 'lid' - de tijdelijke herstelsessie regelt de pagina zelf.
+  { pad: '/wachtwoord-instellen', area: AREA.marketing, titel: 'Nieuw wachtwoord instellen', toegang: 'publiek' },
+
   // De Kompas-pagina van het ontwerp: de tool met de drie panelen.
   { pad: '/subsidie-kompas', area: AREA.app, titel: 'Subsidie Kompas', toegang: 'publiek' },
   { pad: '/kompas', area: AREA.app, titel: 'Subsidie Kompas', toegang: 'publiek' },

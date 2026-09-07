@@ -2,10 +2,12 @@
 import React from 'react';
 import HoeHetWerktPage from './HoeHetWerktPage.jsx';
 import KompasFaqPage from './KompasFaqPage.jsx';
+import WachtwoordInstellenPage from './WachtwoordInstellenPage.jsx';
 
 const PAGINAS = {
   '/hoe-het-werkt': HoeHetWerktPage,
   '/kompas/faq': KompasFaqPage,
+  '/wachtwoord-instellen': WachtwoordInstellenPage,
 };
 
 export default function MarketingPages({ route }) {

@@ -3,6 +3,7 @@
 // losgemaakt van de rest zodat de rechten één bron hebben.
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../data/client.js';
+import { naar } from '../routes.js';
 import {
   PLAN_PERMISSIONS,
   haalProfiel,
@@ -90,6 +91,7 @@ export function AuthProvider({ children }) {
     profielLaden: false,
     profielFout: '',
     naam: '',
+    wachtwoordResetFout: '',
   });
 
   const stRef = useRef(st);
@@ -137,6 +139,26 @@ export function AuthProvider({ children }) {
       update({ laden: false });
 
       return undefined;
+    }
+
+    // Supabase levert het resultaat van een wachtwoord-resetlink af via de
+    // URL-hash (#access_token=...&type=recovery bij succes, of
+    // #error=...&error_code=... bij een ongeldige/verlopen link). Deze app
+    // gebruikt diezelfde # voor haar eigen route-hash, dus vangen we een
+    // foutmelding hier één keer af — anders verdwijnt die stil zodra de
+    // router de onherkenbare hash negeert en op de homepage terechtkomt.
+    // Een geslaagde herstelsessie (type=recovery) wordt hieronder via het
+    // PASSWORD_RECOVERY-event van onAuthStateChange afgehandeld.
+    const ruweHash = window.location.hash || '';
+
+    if (ruweHash.includes('error=') && ruweHash.includes('error_code=')) {
+      const foutParams = new URLSearchParams(ruweHash.replace(/^#/, ''));
+
+      update({
+        wachtwoordResetFout:
+          foutParams.get('error_description') || 'Deze link is niet meer geldig.',
+      });
+      naar('/wachtwoord-instellen');
     }
 
     let actief = true;
@@ -190,6 +212,14 @@ export function AuthProvider({ children }) {
       } else {
         update({ profile: null, profielLaden: false, profielFout: '' });
       }
+
+      // Supabase heeft de herstelsessie uit de resetlink verwerkt: stuur de
+      // gebruiker naar de pagina waar hij een nieuw wachtwoord kiest. Geen
+      // eigen hash-parsing nodig — dit is het door Supabase bedoelde signaal.
+      if (_event === 'PASSWORD_RECOVERY') {
+        update({ wachtwoordResetFout: '' });
+        naar('/wachtwoord-instellen');
+      }
     });
 
     return () => {
@@ -236,6 +266,7 @@ export function AuthProvider({ children }) {
 
     isIngelogd,
     naam: st.naam || naamVan(st.user) || 'Uw profiel',
+    wachtwoordResetFout: st.wachtwoordResetFout,
 
     isBeheerder: isBeheerderEffectief,
     isGoedgekeurd: profiel.status === 'approved',

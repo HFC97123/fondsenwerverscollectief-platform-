@@ -134,14 +134,21 @@ export default function NetwerkPage() {
     visLabelColor,
     toggleMemberVisible,
     isAuthLogin,
-    emailDraft,
-    onEmailChange,
+    loginForm,
+    onLoginEmail,
+    onLoginPassword,
     login,
+    loginLoading,
+    loginError,
     forgotPassword,
     resetSent,
+    resetLoading,
+    resetError,
     isAuthRegister,
     applicationOpen,
     applicationSent,
+    applicationLoading,
+    applicationError,
     regForm,
     onRegFirstName,
     onRegLastName,
@@ -372,25 +379,58 @@ export default function NetwerkPage() {
             </div>
 
             <div style={css('display: flex; flex-direction: column; gap: 12px;')}>
-              <input type="email" placeholder="E-mailadres" value={emailDraft || ''} onChange={onEmailChange} style={invoer} />
-              <input type="password" placeholder="Wachtwoord" style={invoer} />
+              <input
+                type="email"
+                placeholder="E-mailadres"
+                value={loginForm.email || ''}
+                onChange={onLoginEmail}
+                style={invoer}
+              />
+              <input
+                type="password"
+                placeholder="Wachtwoord"
+                value={loginForm.password || ''}
+                onChange={onLoginPassword}
+                style={invoer}
+              />
+              {loginError && (
+                <div
+                  style={css(
+                    'padding: 11px 14px; border-radius: 12px; background: #FDF6F5; color: #9E3B2C; border: 1.5px solid #EDD3CE; font-size: 13.5px; line-height: 1.5; text-align: center;',
+                  )}
+                >
+                  {loginError}
+                </div>
+              )}
               <div
-                onClick={login}
+                onClick={loginLoading ? undefined : login}
+                role="button"
                 style={css(
-                  'cursor: pointer; text-align: center; padding: 13px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 15px;',
+                  `cursor: ${loginLoading ? 'default' : 'pointer'}; text-align: center; padding: 13px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 15px; opacity: ${loginLoading ? 0.7 : 1};`,
                 )}
               >
-                Inloggen
+                {loginLoading ? 'Bezig…' : 'Inloggen'}
               </div>
               <div style={css('display: flex; justify-content: center;')}>
                 <div
-                  onClick={forgotPassword}
+                  onClick={resetLoading ? undefined : forgotPassword}
                   role="button"
-                  style={css('cursor: pointer; padding: 2px 4px; color: #6B7B77; font-weight: 700; font-size: 12.5px;')}
+                  style={css(
+                    `cursor: ${resetLoading ? 'default' : 'pointer'}; padding: 2px 4px; color: #6B7B77; font-weight: 700; font-size: 12.5px;`,
+                  )}
                 >
-                  Wachtwoord vergeten?
+                  {resetLoading ? 'Bezig…' : 'Wachtwoord vergeten?'}
                 </div>
               </div>
+              {resetError && (
+                <div
+                  style={css(
+                    'padding: 11px 14px; border-radius: 12px; background: #FDF6F5; color: #9E3B2C; border: 1.5px solid #EDD3CE; font-size: 13.5px; line-height: 1.5; text-align: center;',
+                  )}
+                >
+                  {resetError}
+                </div>
+              )}
               {resetSent && (
                 <div
                   style={css(
@@ -474,13 +514,23 @@ export default function NetwerkPage() {
                   />
                 </div>
 
+                {applicationError && (
+                  <div
+                    style={css(
+                      'padding: 11px 14px; border-radius: 12px; background: #FDF6F5; color: #9E3B2C; border: 1.5px solid #EDD3CE; font-size: 13.5px; line-height: 1.5; text-align: center;',
+                    )}
+                  >
+                    {applicationError}
+                  </div>
+                )}
                 <div
-                  onClick={submitApplication}
+                  onClick={applicationLoading ? undefined : submitApplication}
+                  role="button"
                   style={css(
-                    'cursor: pointer; text-align: center; padding: 13px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 15px;',
+                    `cursor: ${applicationLoading ? 'default' : 'pointer'}; text-align: center; padding: 13px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 15px; opacity: ${applicationLoading ? 0.7 : 1};`,
                   )}
                 >
-                  Aanvraag versturen
+                  {applicationLoading ? 'Bezig…' : 'Aanvraag versturen'}
                 </div>
                 <div style={css('text-align: center; font-size: 13.5px; color: #4B5C58;')}>
                   Al lid?{' '}

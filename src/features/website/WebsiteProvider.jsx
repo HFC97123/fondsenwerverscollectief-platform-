@@ -15,6 +15,7 @@ import {
   startProefperiode as startProefperiodeService,
   tierVan,
   uitloggen,
+  verstuurResetmail,
 } from '../../data/services/profile.js';
 import { collections, siteTextBlocks } from '../../data/collections.js';
 import { naar } from '../../app/routes.js';
@@ -228,6 +229,8 @@ export function WebsiteProvider({ children, route, param }) {
     memberVisible: true,
     ledenQuery: '',
     resetSent: false,
+    resetLoading: false,
+    resetError: '',
     sessionDraftOpen: false,
     sessionDraft: { title: '', day: '', month: '', time: '', mode: 'Online', note: '' },
     sessionProposed: false,
@@ -1716,9 +1719,33 @@ export function WebsiteProvider({ children, route, param }) {
     }`,
     ledenHidden: !st.memberVisible,
 
-    /* ---- Wachtwoord vergeten ---- */
+    /* ---- Wachtwoord vergeten ----
+       Gebruikt hetzelfde e-mailveld als het inlogformulier (loginForm.email)
+       en dezelfde profielservice als AuthProvider/WachtwoordInstellenPage. */
     resetSent: Boolean(st.resetSent),
-    forgotPassword: () => update({ resetSent: true }),
+    resetLoading: Boolean(st.resetLoading),
+    resetError: st.resetError,
+    forgotPassword: async () => {
+      const email = stRef.current.loginForm.email.trim().toLowerCase();
+
+      if (!email) {
+        update({ resetError: 'Vul eerst uw e-mailadres in.' });
+
+        return;
+      }
+
+      update({ resetLoading: true, resetError: '' });
+
+      const { fout } = await verstuurResetmail(email);
+
+      if (fout) {
+        update({ resetLoading: false, resetError: fout });
+
+        return;
+      }
+
+      update({ resetLoading: false, resetSent: true });
+    },
 
     /* ---- Bijeenkomst voorstellen ---- */
     sessionDraftOpen: st.sessionDraftOpen,

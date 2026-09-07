@@ -14,6 +14,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from './AuthProvider.jsx';
 import { bewaarOnboarding } from '../../data/services/onboarding.js';
+import { verstuurResetmail } from '../../data/services/profile.js';
 import { css } from '../../shared/lib/css.js';
 import { color, font, radius, type } from '../../shared/tokens.js';
 import { Button, Field, Input, Notice, Select, Textarea } from '../../shared/ui/index.js';
@@ -54,12 +55,18 @@ export function AuthModalProvider({ children }) {
   const [registerForm, setRegisterForm] = useState(LEEG_REGISTER);
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState('');
+  const [resetBezig, setResetBezig] = useState(false);
+  const [resetFout, setResetFout] = useState('');
+  const [resetVerzonden, setResetVerzonden] = useState(false);
   const pendingActie = useRef(null);
 
   const dicht = () => {
     setOpen(false);
     setFout('');
     setBezig(false);
+    setResetFout('');
+    setResetVerzonden(false);
+    setResetBezig(false);
     pendingActie.current = null;
   };
 
@@ -67,6 +74,8 @@ export function AuthModalProvider({ children }) {
     setMode('login');
     setReden(redenTekst || '');
     setFout('');
+    setResetFout('');
+    setResetVerzonden(false);
     setOpen(true);
   };
 
@@ -137,6 +146,33 @@ export function AuthModalProvider({ children }) {
     // overschakelt — dat voorkomt dat we hier tweemaal dezelfde afronding
     // doen (open.login en de auth-state-listener kunnen anders om voorrang
     // wedijveren).
+  };
+
+  // Gebruikt hetzelfde e-mailveld als het inlogformulier hierboven en
+  // dezelfde profielservice als WebsiteProvider/WachtwoordInstellenPage.
+  const submitResetWachtwoord = async () => {
+    const email = loginForm.email.trim().toLowerCase();
+
+    if (!email) {
+      setResetFout('Vul eerst uw e-mailadres in.');
+
+      return;
+    }
+
+    setResetBezig(true);
+    setResetFout('');
+
+    const { fout: verstuurFout } = await verstuurResetmail(email);
+
+    setResetBezig(false);
+
+    if (verstuurFout) {
+      setResetFout(verstuurFout);
+
+      return;
+    }
+
+    setResetVerzonden(true);
   };
 
   const submitRegister = async () => {
@@ -213,6 +249,10 @@ export function AuthModalProvider({ children }) {
           loginForm={loginForm}
           setLoginForm={setLoginForm}
           onLogin={submitLogin}
+          resetBezig={resetBezig}
+          resetFout={resetFout}
+          resetVerzonden={resetVerzonden}
+          onResetWachtwoord={submitResetWachtwoord}
           registerForm={registerForm}
           setRegisterForm={setRegisterForm}
           onRegister={submitRegister}
@@ -232,6 +272,10 @@ function AuthModalOverlay({
   loginForm,
   setLoginForm,
   onLogin,
+  resetBezig,
+  resetFout,
+  resetVerzonden,
+  onResetWachtwoord,
   registerForm,
   setRegisterForm,
   onRegister,
@@ -309,6 +353,23 @@ function AuthModalOverlay({
             <Button block disabled={bezig} onClick={onLogin}>
               {bezig ? 'Bezig…' : 'Inloggen'}
             </Button>
+            <div style={css('display: flex; justify-content: center;')}>
+              <div
+                onClick={resetBezig ? undefined : onResetWachtwoord}
+                role="button"
+                style={css(
+                  `cursor: ${resetBezig ? 'default' : 'pointer'}; padding: 2px 4px; font-weight: 700; font-size: ${type.klein}; color: ${color.tekstZacht};`,
+                )}
+              >
+                {resetBezig ? 'Bezig…' : 'Wachtwoord vergeten?'}
+              </div>
+            </div>
+            {resetFout && <Notice tone="fout">{resetFout}</Notice>}
+            {resetVerzonden && (
+              <Notice tone="succes">
+                We sturen u een e-mail met een link om een nieuw wachtwoord in te stellen.
+              </Notice>
+            )}
             <div style={css(`text-align: center; font-size: ${type.klein}; color: ${color.tekstZacht};`)}>
               Nog geen account?{' '}
               <span

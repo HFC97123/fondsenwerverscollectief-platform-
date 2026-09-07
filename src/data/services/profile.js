@@ -207,3 +207,72 @@ export async function uitloggen() {
   }
 }
 
+/* ---- Wachtwoord vergeten / opnieuw instellen ----
+   Eén implementatie, gedeeld door AuthProvider (Kompas-overlay),
+   WebsiteProvider (/netwerk-inlogformulier) en WachtwoordInstellenPage
+   (de pagina waar de e-maillink naartoe leidt). */
+
+// Stap 1: verstuurt de resetmail via Supabase. redirectTo is bewust de kale
+// site-oorsprong (zelfde patroon als emailRedirectTo bij signUp hierboven) —
+// Supabase levert de herstelsessie af via de URL-hash, en AuthProvider vangt
+// die op (event PASSWORD_RECOVERY) om de gebruiker daarna zelf naar
+// /wachtwoord-instellen te sturen. Geen eigen pad in redirectTo: dat zou
+// botsen met Supabase's eigen hash-tokens op dezelfde URL.
+export async function verstuurResetmail(email) {
+  if (!supabase) {
+    return { fout: 'Wachtwoord opnieuw instellen is nu niet beschikbaar.' };
+  }
+
+  const schoon = String(email || '').trim().toLowerCase();
+
+  if (!schoon) {
+    return { fout: 'Vul eerst uw e-mailadres in.' };
+  }
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(schoon, {
+      redirectTo: window.location.origin,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return { fout: null };
+  } catch (e) {
+    return {
+      fout: 'Het versturen van de e-mail is niet gelukt. Probeer het opnieuw.',
+    };
+  }
+}
+
+// Stap 2: zet het nieuwe wachtwoord, met de tijdelijke sessie die Supabase
+// na het openen van de resetlink al heeft klaargezet.
+export async function stelNieuwWachtwoordIn(nieuwWachtwoord) {
+  if (!supabase) {
+    return { fout: 'Nu niet beschikbaar.' };
+  }
+
+  if (String(nieuwWachtwoord || '').length < 8) {
+    return { fout: 'Kies een wachtwoord van minimaal 8 tekens.' };
+  }
+
+  try {
+    const { error } = await supabase.auth.updateUser({ password: nieuwWachtwoord });
+
+    if (error) {
+      throw error;
+    }
+
+    return { fout: null };
+  } catch (e) {
+    const melding = String((e && e.message) || '').toLowerCase();
+
+    return {
+      fout: melding.includes('should be at least') || melding.includes('weak')
+        ? 'Kies een sterker wachtwoord van minimaal 8 tekens.'
+        : 'Het instellen van het nieuwe wachtwoord is niet gelukt. Vraag zo nodig een nieuwe link aan.',
+    };
+  }
+}
+
