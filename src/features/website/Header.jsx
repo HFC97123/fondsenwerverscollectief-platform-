@@ -25,45 +25,45 @@ const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
 const menuItemStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: #2C4A5E; cursor: pointer;');
 const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 700; color: #B4453B; cursor: pointer;');
 
-// Compacte accountindicator + menu. Ingelogd: "👤 Naam · Tier" met een menu
-// (Mijn account / Mijn abonnement / Uitloggen). Uitgelogd: gewoon een
-// "Inloggen"-link — geen verplichting, Subsidie Kompas en het Collectief
-// blijven zonder account te gebruiken.
+// Accountbadge in de navigatie: zelfde pilvorm/padding/hoogte/lettergrootte
+// als de vorige indicator, alleen herkleurd naar het lichtgroen/donkergroen
+// dat elders op het platform al staat voor dit soort compacte labels (de
+// "Binnenkort"-badge op de landingspagina, en de wachtwoord-vergeten-
+// bevestiging hierboven/in AuthModalProvider.jsx: achtergrond #EAF4EE,
+// tekst #2F6D47). Zelfde badge voor niet-ingelogd ("Account") en ingelogd
+// ("Naam · Tier") — alleen de tekst erin verandert.
+function accountBadgeStijl(compact, hover) {
+  return css(
+    `display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 7px 14px; border-radius: 999px; background: ${hover ? '#DCEFE3' : '#EAF4EE'}; border: 1px solid #BFD4C6; font-size: ${compact ? '12.5px' : '13.5px'}; font-weight: 700; color: #2F6D47; white-space: nowrap;`,
+  );
+}
+
+// Compacte accountbadge + menu, in dezelfde pilstijl als de bestaande
+// "Binnenkort"-badge. Ingelogd: "👤 Naam · Tier" met een menu (Mijn account
+// / Mijn abonnement / Uitloggen). Uitgelogd: "👤 Account" met een menu
+// (Inloggen / Gratis account maken) — geen verplichting, Subsidie Kompas en
+// het Collectief blijven zonder account te gebruiken.
 function AccountMenu({ compact }) {
   const app = useApp();
   const authModal = useAuthModal();
   const [open, setOpen] = React.useState(false);
-
-  if (!app.isLoggedIn) {
-    return (
-      <a
-        href="#"
-        onClick={(e) => {
-          e.preventDefault();
-          authModal.openLogin();
-        }}
-        style={navLink}
-      >
-        Inloggen
-      </a>
-    );
-  }
+  const [hover, setHover] = React.useState(false);
 
   const tierLabel = app.isAdmin ? 'Admin' : TIER_LABEL[app.subscriptionTier] || 'Free';
+  const badgeLabel = app.isLoggedIn ? `${app.profileFullName} · ${tierLabel}` : 'Account';
 
   return (
     <div style={css('position: relative;')}>
       <div
         onClick={() => setOpen((v) => !v)}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
         role="button"
-        style={css(
-          `display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 7px 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #DCE7E1; font-size: ${compact ? '12.5px' : '13.5px'}; font-weight: 700; color: #2C4A5E; white-space: nowrap;`,
-        )}
+        style={accountBadgeStijl(compact, hover)}
       >
         <span>👤</span>
-        <span>
-          {app.profileFullName} · {tierLabel}
-        </span>
+        <span>{badgeLabel}</span>
+        <span style={css('font-size: 9px; opacity: 0.7;')}>▼</span>
       </div>
 
       {open && (
@@ -74,36 +74,63 @@ function AccountMenu({ compact }) {
               'position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; min-width: 190px; background: #FFFFFF; border: 1px solid #E1EAE4; border-radius: 14px; box-shadow: 0 16px 40px rgba(44,74,94,0.18); padding: 6px; display: flex; flex-direction: column;',
             )}
           >
-            <div
-              role="button"
-              style={menuItemStijl}
-              onClick={() => {
-                setOpen(false);
-                naar('/kompas/account');
-              }}
-            >
-              Mijn account
-            </div>
-            <div
-              role="button"
-              style={menuItemStijl}
-              onClick={() => {
-                setOpen(false);
-                naar('/hoe-het-werkt');
-              }}
-            >
-              Mijn abonnement
-            </div>
-            <div
-              role="button"
-              style={menuItemUitloggenStijl}
-              onClick={() => {
-                setOpen(false);
-                app.logout();
-              }}
-            >
-              Uitloggen
-            </div>
+            {app.isLoggedIn ? (
+              <React.Fragment>
+                <div
+                  role="button"
+                  style={menuItemStijl}
+                  onClick={() => {
+                    setOpen(false);
+                    naar('/kompas/account');
+                  }}
+                >
+                  Mijn account
+                </div>
+                <div
+                  role="button"
+                  style={menuItemStijl}
+                  onClick={() => {
+                    setOpen(false);
+                    naar('/hoe-het-werkt');
+                  }}
+                >
+                  Mijn abonnement
+                </div>
+                <div
+                  role="button"
+                  style={menuItemUitloggenStijl}
+                  onClick={() => {
+                    setOpen(false);
+                    app.logout();
+                  }}
+                >
+                  Uitloggen
+                </div>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                <div
+                  role="button"
+                  style={menuItemStijl}
+                  onClick={() => {
+                    setOpen(false);
+                    authModal.openLogin();
+                  }}
+                >
+                  Inloggen
+                </div>
+                <div
+                  role="button"
+                  style={menuItemStijl}
+                  onClick={() => {
+                    setOpen(false);
+                    authModal.openRegister();
+                  }}
+                >
+                  Gratis account maken
+                </div>
+              </React.Fragment>
+            )}
           </div>
         </React.Fragment>
       )}

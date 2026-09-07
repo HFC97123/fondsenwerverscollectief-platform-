@@ -292,6 +292,7 @@ function AuthModalOverlay({
         background: rgba(44,74,94,0.45);
         display: flex; align-items: flex-start; justify-content: center;
         overflow-y: auto; padding: clamp(16px, 5vw, 60px) 16px;
+        font-family: ${font.tekst};
       `)}
     >
       <div
