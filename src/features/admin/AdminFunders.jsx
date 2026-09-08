@@ -1,8 +1,11 @@
-// Beheer · Funders. Bewust nu al opgezet als basis voor de latere
-// Classification Workspace: zoeken, sorteren, filteren (data_tier,
-// source_type, classification_reviewed, prioriteit) en bulk-selectie zijn er
-// al; de daadwerkelijke classificatie-workflow (review-wachtrij, groeperen
-// per bron, bulk-classificeren) komt pas in die volgende stap.
+// Beheer · Funders. Ingericht als inhoudelijke beheeromgeving: de
+// belangrijkste velden voor dagelijks beheer (type gever, disciplines,
+// doelgroepen, werkgebieden, bandbreedte bijdrage, toegangsniveau) staan
+// vooraan in zowel het overzicht als het bewerkscherm; technische
+// classificatie (data tier, bron, beoordeeld, research source) staat nog wel
+// gewoon in de admin, maar bewust achter "Geavanceerde filters" en onderaan
+// het bewerkscherm - niet omdat het onbelangrijk is, maar omdat het geen
+// dagelijkse beheertaak is.
 // Alle databasecommunicatie loopt via data/services/adminFunders.js.
 import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
@@ -35,6 +38,8 @@ import {
   sectionIntroStyle,
   sectionTitleStyle,
   smallButtonStyle,
+  subsectionTitleStyle,
+  textareaStyle,
 } from './shared/adminStyles.js';
 
 const PAGE_SIZE = 25;
@@ -45,6 +50,7 @@ const LEEG_BEWERKING = {
   status: '',
   website: '',
   missie: '',
+  aanvraagcriteria: '',
   bijdrageMin: '',
   bijdrageMax: '',
   jaarbudget: '',
@@ -66,6 +72,42 @@ function euro(bedrag) {
   return Number(bedrag).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 }
 
+// Eén klein, compact select-veld voor een classificatiefilter (discipline/
+// doelgroep/werkgebied) in de werkbalk. Bewust geen AdminFilters-pillen: bij
+// 80 disciplines zou dat de hele filterbalk vullen - exact het probleem
+// waarvoor ClassificatieSelect destijds is gebouwd in de bewerkschermen.
+function FilterSelect({ label, value, onChange, opties }) {
+  return (
+    <label style={css('display: grid; gap: 4px; font-size: 12px; font-weight: 800; color: #82918B; text-transform: uppercase; letter-spacing: 0.03em;')}>
+      {label}
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value || null)}
+        style={css('min-height: 40px; padding: 8px 10px; border: 1px solid #D5E0D9; border-radius: 10px; background: #FFFFFF; font-family: inherit; font-size: 13.5px; color: #2E3A38;')}
+      >
+        <option value="">Alle</option>
+        {opties.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function GeavanceerdeFiltersToggle({ open, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={css('margin: 2px 0 12px; padding: 0; border: none; background: none; font-family: inherit; font-size: 13px; font-weight: 700; color: #2F6D47; cursor: pointer;')}
+    >
+      {open ? '▾ Geavanceerde filters verbergen' : '▸ Geavanceerde filters (data tier, bron, beoordeeld, prioriteit)'}
+    </button>
+  );
+}
+
 export default function AdminFunders({ notify }) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -73,12 +115,19 @@ export default function AdminFunders({ notify }) {
   const [fout, setFout] = useState('');
 
   const [search, setSearch] = useState('');
+  const [type, setType] = useState(null);
+  const [thema, setThema] = useState(null);
+  const [doelgroep, setDoelgroep] = useState(null);
+  const [regio, setRegio] = useState(null);
+  const [accessTier, setAccessTierFilter] = useState(null);
+  const [bandbreedteBijdrageId, setBandbreedteBijdrageIdFilter] = useState(null);
+  const [gescandDoorAgent, setGescandDoorAgent] = useState(null);
+
+  const [geavanceerdOpen, setGeavanceerdOpen] = useState(false);
   const [dataTier, setDataTier] = useState(null);
   const [sourceType, setSourceType] = useState(null);
   const [reviewed, setReviewed] = useState(null);
   const [prioriteitMin, setPrioriteitMin] = useState(null);
-  const [accessTier, setAccessTierFilter] = useState(null);
-  const [bandbreedteBijdrageId, setBandbreedteBijdrageIdFilter] = useState(null);
 
   const [sortColumn, setSortColumn] = useState('naam');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -104,12 +153,17 @@ export default function AdminFunders({ notify }) {
 
     const res = await fetchFunders({
       search: search.trim() || null,
+      type,
       dataTier,
       sourceType,
       classificationReviewed: reviewed,
       accessTier,
       prioriteitMin,
       bandbreedteBijdrageId,
+      thema,
+      doelgroep,
+      regio,
+      gescandDoorAgent,
       sortColumn,
       sortDirection,
       page,
@@ -131,11 +185,11 @@ export default function AdminFunders({ notify }) {
   useEffect(() => {
     laad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, dataTier, sourceType, reviewed, accessTier, prioriteitMin, bandbreedteBijdrageId, sortColumn, sortDirection, page]);
+  }, [search, type, dataTier, sourceType, reviewed, accessTier, prioriteitMin, bandbreedteBijdrageId, thema, doelgroep, regio, gescandDoorAgent, sortColumn, sortDirection, page]);
 
   useEffect(() => {
     setPage(0);
-  }, [search, dataTier, sourceType, reviewed, accessTier, prioriteitMin, bandbreedteBijdrageId]);
+  }, [search, type, dataTier, sourceType, reviewed, accessTier, prioriteitMin, bandbreedteBijdrageId, thema, doelgroep, regio, gescandDoorAgent]);
 
   const onSort = (key) => {
     if (sortColumn === key) {
@@ -180,6 +234,7 @@ export default function AdminFunders({ notify }) {
       status: row.status || '',
       website: row.website || '',
       missie: row.missie || '',
+      aanvraagcriteria: row.aanvraagcriteria || '',
       bijdrageMin: row.bijdrage_min ?? '',
       bijdrageMax: row.bijdrage_max ?? '',
       jaarbudget: row.jaarbudget ?? '',
@@ -214,6 +269,7 @@ export default function AdminFunders({ notify }) {
       status: form.status || null,
       website: form.website || null,
       missie: form.missie || null,
+      aanvraagcriteria: form.aanvraagcriteria || null,
       bijdrageMin: form.bijdrageMin === '' ? null : Number(form.bijdrageMin),
       bijdrageMax: form.bijdrageMax === '' ? null : Number(form.bijdrageMax),
       jaarbudget: form.jaarbudget === '' ? null : Number(form.jaarbudget),
@@ -279,27 +335,7 @@ export default function AdminFunders({ notify }) {
   const columns = useMemo(
     () => [
       { key: 'naam', label: 'Naam', sortable: true, render: (r) => <strong>{r.naam}</strong> },
-      { key: 'type', label: 'Type', render: (r) => (FUNDER_TYPES.find((t) => t.value === r.type) || {}).label || r.type || '—' },
-      { key: 'status', label: 'Status', render: (r) => r.status || '—' },
-      {
-        key: 'data_tier',
-        label: 'Data tier',
-        render: (r) => <span style={badgeStyle(r.data_tier === 'premium' ? 'blauw' : 'groen')}>{r.data_tier || '—'}</span>,
-      },
-      {
-        key: 'source_type',
-        label: 'Bron',
-        render: (r) => (SOURCE_TYPES.find((s) => s.value === r.source_type) || {}).label || r.source_type || '—',
-      },
-      {
-        key: 'classification_reviewed',
-        label: 'Beoordeeld',
-        render: (r) => (
-          <span style={badgeStyle(r.classification_reviewed ? 'groen' : 'geel')}>
-            {r.classification_reviewed ? 'Ja' : 'Nee'}
-          </span>
-        ),
-      },
+      { key: 'type', label: 'Type gever', render: (r) => (FUNDER_TYPES.find((t) => t.value === r.type) || {}).label || r.type || '—' },
       {
         key: 'access_tier',
         label: 'Toegangsniveau',
@@ -314,13 +350,28 @@ export default function AdminFunders({ notify }) {
         label: 'Bandbreedte bijdrage',
         render: (r) => r.bandbreedte_bijdrage_naam || '—',
       },
-      { key: 'prioriteit', label: 'Prioriteit', sortable: true, render: (r) => (r.prioriteit ?? '—') },
       {
         key: 'bijdrage',
         label: 'Bijdrage',
         render: (r) => (r.bijdrage_min || r.bijdrage_max ? `${euro(r.bijdrage_min)} – ${euro(r.bijdrage_max)}` : '—'),
       },
       { key: 'contact', label: 'Contact', render: (r) => r.contactpersoon || r.email || '—' },
+      { key: 'prioriteit', label: 'Prioriteit', sortable: true, render: (r) => (r.prioriteit ?? '—') },
+      {
+        key: 'gescand_door_agent',
+        label: 'Gescand door agent',
+        render: (r) => <span style={badgeStyle('grijs')}>{r.source_type === 'internet_scan' ? 'Ja' : 'Nee'}</span>,
+      },
+      {
+        key: 'classification_reviewed',
+        label: 'Beoordeeld',
+        render: (r) => <span style={badgeStyle('grijs')}>{r.classification_reviewed ? 'Ja' : 'Nee'}</span>,
+      },
+      {
+        key: 'data_tier',
+        label: 'Data tier',
+        render: (r) => <span style={badgeStyle('grijs')}>{r.data_tier || '—'}</span>,
+      },
     ],
     [],
   );
@@ -329,8 +380,8 @@ export default function AdminFunders({ notify }) {
     <section>
       <h2 style={sectionTitleStyle}>Funders</h2>
       <p style={sectionIntroStyle}>
-        Zoek, sorteer en filter de funders in de database. Bewerken raakt nooit de classificatie (data tier, bron,
-        beoordeeld) — dat blijft voorbehouden aan de Classification Workspace.
+        Inhoudelijk beheer van fondsen: type gever, disciplines, doelgroepen, werkgebied, bandbreedte bijdrage en
+        toegangsniveau. Technische classificatie (data tier, bron, beoordeeld) staat onder Geavanceerde filters.
       </p>
 
       <div style={css('height: 22px;')} />
@@ -340,36 +391,11 @@ export default function AdminFunders({ notify }) {
       <AdminFilters
         groups={[
           {
-            key: 'data_tier',
-            label: 'Data tier',
-            value: dataTier,
-            onChange: setDataTier,
-            options: [{ value: null, label: 'Alle' }, ...DATA_TIERS],
-          },
-          {
-            key: 'source_type',
-            label: 'Bron',
-            value: sourceType,
-            onChange: setSourceType,
-            options: [{ value: null, label: 'Alle' }, ...SOURCE_TYPES],
-          },
-          {
-            key: 'reviewed',
-            label: 'Beoordeeld',
-            value: reviewed,
-            onChange: setReviewed,
-            options: [
-              { value: null, label: 'Alle' },
-              { value: true, label: 'Ja' },
-              { value: false, label: 'Nee' },
-            ],
-          },
-          {
-            key: 'prioriteit',
-            label: 'Prioriteit',
-            value: prioriteitMin,
-            onChange: setPrioriteitMin,
-            options: PRIORITEIT_BUCKETS,
+            key: 'type',
+            label: 'Type gever',
+            value: type,
+            onChange: setType,
+            options: [{ value: null, label: 'Alle' }, ...FUNDER_TYPES],
           },
           {
             key: 'access_tier',
@@ -388,8 +414,66 @@ export default function AdminFunders({ notify }) {
               ...bandbreedteOpties.map((b) => ({ value: b.id, label: b.naam })),
             ],
           },
+          {
+            key: 'gescand_door_agent',
+            label: 'Gescand door agent',
+            value: gescandDoorAgent,
+            onChange: setGescandDoorAgent,
+            options: [
+              { value: null, label: 'Alle' },
+              { value: true, label: 'Ja' },
+              { value: false, label: 'Nee' },
+            ],
+          },
         ]}
       />
+
+      <div style={css('display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 16px;')}>
+        <FilterSelect label="Discipline" value={thema} onChange={setThema} opties={classificatieOpties.themas} />
+        <FilterSelect label="Doelgroep" value={doelgroep} onChange={setDoelgroep} opties={classificatieOpties.doelgroepen} />
+        <FilterSelect label="Werkgebied" value={regio} onChange={setRegio} opties={classificatieOpties.regios} />
+      </div>
+
+      <GeavanceerdeFiltersToggle open={geavanceerdOpen} onToggle={() => setGeavanceerdOpen((o) => !o)} />
+
+      {geavanceerdOpen ? (
+        <AdminFilters
+          groups={[
+            {
+              key: 'data_tier',
+              label: 'Data tier',
+              value: dataTier,
+              onChange: setDataTier,
+              options: [{ value: null, label: 'Alle' }, ...DATA_TIERS],
+            },
+            {
+              key: 'source_type',
+              label: 'Bron',
+              value: sourceType,
+              onChange: setSourceType,
+              options: [{ value: null, label: 'Alle' }, ...SOURCE_TYPES],
+            },
+            {
+              key: 'reviewed',
+              label: 'Beoordeeld',
+              value: reviewed,
+              onChange: setReviewed,
+              options: [
+                { value: null, label: 'Alle' },
+                { value: true, label: 'Ja' },
+                { value: false, label: 'Nee' },
+              ],
+            },
+            {
+              key: 'prioriteit',
+              label: 'Prioriteit',
+              value: prioriteitMin,
+              onChange: setPrioriteitMin,
+              options: PRIORITEIT_BUCKETS,
+            },
+          ]}
+        />
+      ) : null}
 
       <AdminBulkActionsBar count={selectedIds.length} onClear={() => setSelectedIds([])}>
         <AdminAccessTierBulkActie onApply={bulkToegangsniveauToepassen} bezig={bulkAccessTierBezig} />
@@ -439,6 +523,34 @@ export default function AdminFunders({ notify }) {
   );
 }
 
+// Grid met 2-4 velden per rij, met een korte titel erboven. Zelfde
+// grid-template-columns als voorheen - alleen nu opgeknipt in duidelijk
+// gelabelde secties in plaats van één lange, ongesorteerde lijst.
+function VeldGrid({ children }) {
+  return <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px;')}>{children}</div>;
+}
+
+function Veld({ label, span, children }) {
+  return (
+    <label
+      style={css(`display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E; ${span ? `grid-column: span ${span};` : ''}`)}
+    >
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function SectieKop({ children, muted }) {
+  return (
+    <div style={css(`margin: 26px 0 14px; ${muted ? '' : 'padding-top: 10px; border-top: 1px solid #E1EAE4;'}`)}>
+      <div style={muted ? css('font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #82918B;') : subsectionTitleStyle}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, bandbreedteOpties, koppelingenLaden }) {
   if (!row) {
     return null;
@@ -461,21 +573,33 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, cla
       </div>
 
       <div
-        style={css('margin-bottom: 16px; padding: 14px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; font-size: 13px; color: #536460; line-height: 1.7;')}
+        style={css('margin-bottom: 6px; padding: 14px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; font-size: 13px; color: #536460; line-height: 1.7;')}
       >
         <strong style={css('color: #2C4A5E;')}>Contactgegevens (alleen-lezen):</strong>{' '}
         {row.contactpersoon || '—'} · {row.email || 'geen e-mail'} · {row.telefoon || 'geen telefoon'} ·{' '}
         {row.adres || 'geen adres'}
       </div>
 
-      <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px;')}>
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Naam
+      <SectieKop>Basisgegevens</SectieKop>
+      <VeldGrid>
+        <Veld label="Naam" span={2}>
           <input style={inputStyle} value={form.naam} onChange={set('naam')} />
-        </label>
+        </Veld>
+        <Veld label="Website">
+          <input style={inputStyle} value={form.website} onChange={set('website')} />
+        </Veld>
+        <Veld label="Missie / korte omschrijving" span={3}>
+          <input style={inputStyle} value={form.missie} onChange={set('missie')} />
+        </Veld>
+      </VeldGrid>
 
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Type
+      <SectieKop>Classificatie</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Alleen bestaande waarden zijn te kiezen. Ontbreekt een waarde? Voeg die eerst toe via Beheer →
+        Classificaties.
+      </p>
+      <VeldGrid>
+        <Veld label="Type gever">
           <select style={inputStyle} value={form.type} onChange={set('type')}>
             <option value="">Niet ingevuld</option>
             {FUNDER_TYPES.map((t) => (
@@ -484,26 +608,39 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, cla
               </option>
             ))}
           </select>
-        </label>
+        </Veld>
+        <Veld label="Disciplines">
+          <ClassificatieSelect
+            opties={classificatieOpties.themas}
+            waarde={form.themas}
+            onChange={(waarde) => setForm((f) => ({ ...f, themas: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Disciplines selecteren…'}
+            ariaLabel="Disciplines"
+          />
+        </Veld>
+        <Veld label="Doelgroepen">
+          <ClassificatieSelect
+            opties={classificatieOpties.doelgroepen}
+            waarde={form.doelgroepen}
+            onChange={(waarde) => setForm((f) => ({ ...f, doelgroepen: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Doelgroepen selecteren…'}
+            ariaLabel="Doelgroepen"
+          />
+        </Veld>
+        <Veld label="Werkgebieden">
+          <ClassificatieSelect
+            opties={classificatieOpties.regios}
+            waarde={form.regios}
+            onChange={(waarde) => setForm((f) => ({ ...f, regios: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Werkgebieden selecteren…'}
+            ariaLabel="Werkgebieden"
+          />
+        </Veld>
+      </VeldGrid>
 
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Status
-          <input style={inputStyle} value={form.status} onChange={set('status')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Toegangsniveau
-          <select style={inputStyle} value={form.accessTier} onChange={set('accessTier')}>
-            {ACCESS_TIERS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Bandbreedte bijdrage
+      <SectieKop>Financiering</SectieKop>
+      <VeldGrid>
+        <Veld label="Bandbreedte bijdrage">
           <select style={inputStyle} value={form.bandbreedteBijdrageId} onChange={set('bandbreedteBijdrageId')}>
             <option value="">Niet ingedeeld</option>
             {bandbreedteOpties.map((b) => (
@@ -512,93 +649,53 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, cla
               </option>
             ))}
           </select>
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Website
-          <input style={inputStyle} value={form.website} onChange={set('website')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Prioriteit (0–10)
-          <input style={inputStyle} type="number" value={form.prioriteit} onChange={set('prioriteit')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Bijdrage vanaf
+        </Veld>
+        <Veld label="Bijdrage vanaf (exact, optioneel)">
           <input style={inputStyle} type="number" value={form.bijdrageMin} onChange={set('bijdrageMin')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Bijdrage tot
+        </Veld>
+        <Veld label="Bijdrage tot (exact, optioneel)">
           <input style={inputStyle} type="number" value={form.bijdrageMax} onChange={set('bijdrageMax')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Jaarbudget
+        </Veld>
+        <Veld label="Jaarbudget">
           <input style={inputStyle} type="number" value={form.jaarbudget} onChange={set('jaarbudget')} />
-        </label>
+        </Veld>
+      </VeldGrid>
 
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E; grid-column: span 2;')}>
-          Missie
-          <input style={inputStyle} value={form.missie} onChange={set('missie')} />
-        </label>
+      <SectieKop>Aanvraag</SectieKop>
+      <VeldGrid>
+        <Veld label="Aanvraagcriteria (wie mag aanvragen, rechtsvorm, omvang, looptijd, eigen bijdrage, cofinanciering, uitsluitingen, overige voorwaarden)" span={3}>
+          <textarea style={textareaStyle} rows={4} value={form.aanvraagcriteria} onChange={set('aanvraagcriteria')} />
+        </Veld>
+      </VeldGrid>
 
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Bron
+      <SectieKop>Toegang</SectieKop>
+      <VeldGrid>
+        <Veld label="Toegangsniveau">
+          <select style={inputStyle} value={form.accessTier} onChange={set('accessTier')}>
+            {ACCESS_TIERS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop muted>Technische status</SectieKop>
+      <VeldGrid>
+        <Veld label="Status">
+          <input style={inputStyle} value={form.status} onChange={set('status')} />
+        </Veld>
+        <Veld label="Prioriteit (0–10)">
+          <input style={inputStyle} type="number" value={form.prioriteit} onChange={set('prioriteit')} />
+        </Veld>
+        <Veld label="Bron">
           <input style={inputStyle} value={form.bron} onChange={set('bron')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Research source
+        </Veld>
+        <Veld label="Research source">
           <input style={inputStyle} value={form.researchSource} onChange={set('researchSource')} />
-        </label>
-      </div>
-
-      <div style={css('margin: 22px 0 6px; height: 1px; background: #E1EAE4;')} />
-
-      <div style={css("margin-bottom: 14px; font-family: 'Newsreader', serif; font-size: 17px; color: #2C4A5E;")}>
-        Classificaties
-      </div>
-      <p style={css('margin: 0 0 14px; font-size: 12.5px; color: #82918B;')}>
-        Alleen bestaande waarden zijn te kiezen. Ontbreekt een waarde? Voeg die eerst toe via Beheer →
-        Classificaties.
-      </p>
-
-      <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px;')}>
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Disciplines
-          <ClassificatieSelect
-            opties={classificatieOpties.themas}
-            waarde={form.themas}
-            onChange={(waarde) => setForm((f) => ({ ...f, themas: waarde }))}
-            placeholder={koppelingenLaden ? 'Laden…' : 'Disciplines selecteren…'}
-            ariaLabel="Disciplines"
-          />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Doelgroepen
-          <ClassificatieSelect
-            opties={classificatieOpties.doelgroepen}
-            waarde={form.doelgroepen}
-            onChange={(waarde) => setForm((f) => ({ ...f, doelgroepen: waarde }))}
-            placeholder={koppelingenLaden ? 'Laden…' : 'Doelgroepen selecteren…'}
-            ariaLabel="Doelgroepen"
-          />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Werkgebieden
-          <ClassificatieSelect
-            opties={classificatieOpties.regios}
-            waarde={form.regios}
-            onChange={(waarde) => setForm((f) => ({ ...f, regios: waarde }))}
-            placeholder={koppelingenLaden ? 'Laden…' : 'Werkgebieden selecteren…'}
-            ariaLabel="Werkgebieden"
-          />
-        </label>
-      </div>
+        </Veld>
+      </VeldGrid>
 
       <div style={css('margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap;')}>
         <button type="button" disabled={opslaan} onClick={onSave} style={secondaryButtonStyle}>

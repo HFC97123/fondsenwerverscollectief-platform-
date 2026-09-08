@@ -13,19 +13,26 @@ export const REGELING_STATUSSEN = [
   { value: 'gesloten', label: 'Gesloten' },
 ];
 
-// params: { search, funderId, status, dataTier, sourceType,
-//           classificationReviewed, accessTier, bandbreedteBijdrageId,
-//           sortColumn, sortDirection, page, pageSize }
+// params: { search, funderId, funderSearch, status, dataTier, sourceType,
+//           classificationReviewed, accessTier, bandbreedteBijdrageId, thema,
+//           doelgroep, regio, type, discoveredBy, sortColumn, sortDirection,
+//           page, pageSize }
 export async function fetchSubsidieregelingen(params = {}) {
   const {
     search = null,
     funderId = null,
+    funderSearch = null,
     status = null,
     dataTier = null,
     sourceType = null,
     classificationReviewed = null,
     accessTier = null,
     bandbreedteBijdrageId = null,
+    thema = null,
+    doelgroep = null,
+    regio = null,
+    type = null,
+    discoveredBy = null,
     sortColumn = 'naam',
     sortDirection = 'asc',
     page = 0,
@@ -48,6 +55,12 @@ export async function fetchSubsidieregelingen(params = {}) {
         p_offset: page * pageSize,
         p_access_tier: accessTier || null,
         p_bandbreedte_bijdrage_id: bandbreedteBijdrageId || null,
+        p_thema: thema || null,
+        p_doelgroep: doelgroep || null,
+        p_regio: regio || null,
+        p_type: type || null,
+        p_funder_search: funderSearch || null,
+        p_discovered_by: discoveredBy || null,
       }),
     [],
   );
@@ -59,7 +72,9 @@ export async function fetchSubsidieregelingen(params = {}) {
 }
 
 // patch: { naam, thema, werkgebied, bedragMin, bedragMax, deadline, deadlineDatum,
-//          deadlineOmschrijving, voorwaarden, status, funderId }
+//          deadlineOmschrijving, voorwaarden, status, funderId, aanvraaglink,
+//          beoordelingscriteria, typeProjecten, begrotingseisen, eigenBijdrage,
+//          cofinanciering, behandeltermijn, aanvraagprocedure, type }
 export async function updateSubsidieregeling(regelingId, patch) {
   const res = await query((sb) =>
     sb.rpc('admin_update_subsidieregeling', {
@@ -75,6 +90,15 @@ export async function updateSubsidieregeling(regelingId, patch) {
       p_voorwaarden: patch.voorwaarden ?? null,
       p_status: patch.status ?? null,
       p_funder_id: patch.funderId ?? null,
+      p_aanvraaglink: patch.aanvraaglink ?? null,
+      p_beoordelingscriteria: patch.beoordelingscriteria ?? null,
+      p_type_projecten: patch.typeProjecten ?? null,
+      p_begrotingseisen: patch.begrotingseisen ?? null,
+      p_eigen_bijdrage: patch.eigenBijdrage ?? null,
+      p_cofinanciering: patch.cofinanciering ?? null,
+      p_behandeltermijn: patch.behandeltermijn ?? null,
+      p_aanvraagprocedure: patch.aanvraagprocedure ?? null,
+      p_type: patch.type ?? null,
     }),
   );
 

@@ -45,8 +45,8 @@ export const PRIORITEIT_BUCKETS = [
 ];
 
 // params: { search, type, status, dataTier, sourceType, classificationReviewed,
-//           accessTier, prioriteitMin, bandbreedteBijdrageId, sortColumn,
-//           sortDirection, page, pageSize }
+//           accessTier, prioriteitMin, bandbreedteBijdrageId, thema, doelgroep,
+//           regio, gescandDoorAgent, sortColumn, sortDirection, page, pageSize }
 export async function fetchFunders(params = {}) {
   const {
     search = null,
@@ -58,6 +58,10 @@ export async function fetchFunders(params = {}) {
     accessTier = null,
     prioriteitMin = null,
     bandbreedteBijdrageId = null,
+    thema = null,
+    doelgroep = null,
+    regio = null,
+    gescandDoorAgent = null,
     sortColumn = 'naam',
     sortDirection = 'asc',
     page = 0,
@@ -81,6 +85,10 @@ export async function fetchFunders(params = {}) {
         p_prioriteit_min: prioriteitMin,
         p_access_tier: accessTier || null,
         p_bandbreedte_bijdrage_id: bandbreedteBijdrageId || null,
+        p_thema: thema || null,
+        p_doelgroep: doelgroep || null,
+        p_regio: regio || null,
+        p_gescand_door_agent: gescandDoorAgent,
       }),
     [],
   );
@@ -91,8 +99,8 @@ export async function fetchFunders(params = {}) {
   return { rows, total, error: res.error };
 }
 
-// patch: { naam, type, status, website, missie, bijdrageMin, bijdrageMax,
-//          jaarbudget, prioriteit, bron, researchSource }
+// patch: { naam, type, status, website, missie, aanvraagcriteria, bijdrageMin,
+//          bijdrageMax, jaarbudget, prioriteit, bron, researchSource }
 // Bewust NOOIT data_tier/source_type/classification_reviewed (die horen bij
 // de classificatie-RPC's van stap 2) en NOOIT contactgegevens (die blijven
 // alleen-lezen totdat er een apart, expliciet goedgekeurd schrijfpad komt).
@@ -105,6 +113,7 @@ export async function updateFunder(funderId, patch) {
       p_status: patch.status ?? null,
       p_website: patch.website ?? null,
       p_missie: patch.missie ?? null,
+      p_aanvraagcriteria: patch.aanvraagcriteria ?? null,
       p_bijdrage_min: patch.bijdrageMin ?? null,
       p_bijdrage_max: patch.bijdrageMax ?? null,
       p_jaarbudget: patch.jaarbudget ?? null,

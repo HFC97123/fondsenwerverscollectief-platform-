@@ -1,9 +1,10 @@
-// Beheer · Subsidieregelingen / Deadlines.
-// Vervangt de oude, lokale (localStorage) implementatie volledig: lezen en
-// schrijven gaat nu via de echte tabellen, uitsluitend via de admin-only
-// RPC's in data/services/adminSubsidieregelingen.js. Zelfde architectuur
-// (zoeken, sorteren, filteren, bulk-selectie) als Funders, zodat de latere
-// Classification Workspace op beide pagina's hetzelfde patroon aantreft.
+// Beheer · Subsidieregelingen / Deadlines. Ingericht als inhoudelijke
+// beheeromgeving, zelfde opzet als AdminFunders.jsx: type gever, disciplines,
+// doelgroepen, werkgebieden, bandbreedte bijdrage en toegangsniveau staan
+// vooraan; technische classificatie (data tier, bron, beoordeeld) staat
+// achter "Geavanceerde filters" en onderaan het bewerkscherm.
+// Lezen en schrijven gaat uitsluitend via de admin-only RPC's in
+// data/services/adminSubsidieregelingen.js.
 import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import {
@@ -15,6 +16,7 @@ import {
 import {
   ACCESS_TIERS,
   DATA_TIERS,
+  FUNDER_TYPES,
   SOURCE_TYPES,
   bulkSetAccessTier,
   fetchFunders,
@@ -38,6 +40,8 @@ import {
   sectionIntroStyle,
   sectionTitleStyle,
   smallButtonStyle,
+  subsectionTitleStyle,
+  textareaStyle,
   uploadButtonStyle,
 } from './shared/adminStyles.js';
 
@@ -45,12 +49,21 @@ const PAGE_SIZE = 25;
 
 const LEEG_BEWERKING = {
   naam: '',
+  type: '',
+  aanvraaglink: '',
   bedragMin: '',
   bedragMax: '',
+  eigenBijdrage: '',
+  cofinanciering: '',
   deadline: '',
   deadlineDatum: '',
   deadlineOmschrijving: '',
   voorwaarden: '',
+  beoordelingscriteria: '',
+  typeProjecten: '',
+  begrotingseisen: '',
+  behandeltermijn: '',
+  aanvraagprocedure: '',
   status: 'open',
   themas: [],
   doelgroepen: [],
@@ -82,6 +95,40 @@ function euro(bedrag) {
   return Number(bedrag).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 }
 
+// Zelfde compacte select-filter als bij Funders — geen pillenrij bij 80
+// disciplines.
+function FilterSelect({ label, value, onChange, opties }) {
+  return (
+    <label style={css('display: grid; gap: 4px; font-size: 12px; font-weight: 800; color: #82918B; text-transform: uppercase; letter-spacing: 0.03em;')}>
+      {label}
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value || null)}
+        style={css('min-height: 40px; padding: 8px 10px; border: 1px solid #D5E0D9; border-radius: 10px; background: #FFFFFF; font-family: inherit; font-size: 13.5px; color: #2E3A38;')}
+      >
+        <option value="">Alle</option>
+        {opties.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function GeavanceerdeFiltersToggle({ open, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={css('margin: 2px 0 12px; padding: 0; border: none; background: none; font-family: inherit; font-size: 13px; font-weight: 700; color: #2F6D47; cursor: pointer;')}
+    >
+      {open ? '▾ Geavanceerde filters verbergen' : '▸ Geavanceerde filters (data tier, bron, beoordeeld)'}
+    </button>
+  );
+}
+
 export default function AdminDeadlines({ notify }) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -89,12 +136,20 @@ export default function AdminDeadlines({ notify }) {
   const [fout, setFout] = useState('');
 
   const [search, setSearch] = useState('');
+  const [funderSearch, setFunderSearch] = useState('');
   const [status, setStatus] = useState(null);
+  const [type, setType] = useState(null);
+  const [thema, setThema] = useState(null);
+  const [doelgroep, setDoelgroep] = useState(null);
+  const [regio, setRegio] = useState(null);
+  const [accessTier, setAccessTierFilter] = useState(null);
+  const [bandbreedteBijdrageId, setBandbreedteBijdrageIdFilter] = useState(null);
+  const [discoveredBy, setDiscoveredBy] = useState(null);
+
+  const [geavanceerdOpen, setGeavanceerdOpen] = useState(false);
   const [dataTier, setDataTier] = useState(null);
   const [sourceType, setSourceType] = useState(null);
   const [reviewed, setReviewed] = useState(null);
-  const [accessTier, setAccessTierFilter] = useState(null);
-  const [bandbreedteBijdrageId, setBandbreedteBijdrageIdFilter] = useState(null);
 
   const [sortColumn, setSortColumn] = useState('naam');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -122,12 +177,18 @@ export default function AdminDeadlines({ notify }) {
 
     const res = await fetchSubsidieregelingen({
       search: search.trim() || null,
+      funderSearch: funderSearch.trim() || null,
       status,
+      type,
       dataTier,
       sourceType,
       classificationReviewed: reviewed,
       accessTier,
       bandbreedteBijdrageId,
+      thema,
+      doelgroep,
+      regio,
+      discoveredBy,
       sortColumn,
       sortDirection,
       page,
@@ -149,11 +210,28 @@ export default function AdminDeadlines({ notify }) {
   useEffect(() => {
     laad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, dataTier, sourceType, reviewed, accessTier, bandbreedteBijdrageId, sortColumn, sortDirection, page]);
+  }, [
+    search,
+    funderSearch,
+    status,
+    type,
+    dataTier,
+    sourceType,
+    reviewed,
+    accessTier,
+    bandbreedteBijdrageId,
+    thema,
+    doelgroep,
+    regio,
+    discoveredBy,
+    sortColumn,
+    sortDirection,
+    page,
+  ]);
 
   useEffect(() => {
     setPage(0);
-  }, [search, status, dataTier, sourceType, reviewed, accessTier, bandbreedteBijdrageId]);
+  }, [search, funderSearch, status, type, dataTier, sourceType, reviewed, accessTier, bandbreedteBijdrageId, thema, doelgroep, regio, discoveredBy]);
 
   const onSort = (key) => {
     if (sortColumn === key) {
@@ -194,12 +272,21 @@ export default function AdminDeadlines({ notify }) {
     setEditingId(row.id);
     setForm({
       naam: row.naam || '',
+      type: row.type || '',
+      aanvraaglink: row.aanvraaglink || '',
       bedragMin: row.bedrag_min ?? '',
       bedragMax: row.bedrag_max ?? '',
+      eigenBijdrage: row.eigen_bijdrage || '',
+      cofinanciering: row.cofinanciering || '',
       deadline: row.deadline || '',
       deadlineDatum: row.deadline_datum || '',
       deadlineOmschrijving: row.deadline_omschrijving || '',
       voorwaarden: row.voorwaarden || '',
+      beoordelingscriteria: row.beoordelingscriteria || '',
+      typeProjecten: row.type_projecten || '',
+      begrotingseisen: row.begrotingseisen || '',
+      behandeltermijn: row.behandeltermijn || '',
+      aanvraagprocedure: row.aanvraagprocedure || '',
       status: row.status || 'open',
       themas: [],
       doelgroepen: [],
@@ -238,6 +325,15 @@ export default function AdminDeadlines({ notify }) {
       voorwaarden: form.voorwaarden || null,
       status: form.status || 'open',
       funderId: row.funder_id,
+      aanvraaglink: form.aanvraaglink || null,
+      beoordelingscriteria: form.beoordelingscriteria || null,
+      typeProjecten: form.typeProjecten || null,
+      begrotingseisen: form.begrotingseisen || null,
+      eigenBijdrage: form.eigenBijdrage || null,
+      cofinanciering: form.cofinanciering || null,
+      behandeltermijn: form.behandeltermijn || null,
+      aanvraagprocedure: form.aanvraagprocedure || null,
+      type: form.type || null,
     };
 
     const res = await updateSubsidieregeling(row.id, patch);
@@ -422,6 +518,11 @@ export default function AdminDeadlines({ notify }) {
     () => [
       { key: 'naam', label: 'Naam', sortable: true, render: (r) => <strong>{r.naam}</strong> },
       { key: 'funder_naam', label: 'Verstrekker', render: (r) => r.funder_naam || '—' },
+      {
+        key: 'type_gever',
+        label: 'Type gever',
+        render: (r) => (FUNDER_TYPES.find((t) => t.value === (r.type || r.funder_type)) || {}).label || r.type || r.funder_type || '—',
+      },
       { key: 'status', label: 'Status', render: (r) => (REGELING_STATUSSEN.find((s) => s.value === r.status) || {}).label || r.status },
       {
         key: 'deadline_datum',
@@ -433,20 +534,6 @@ export default function AdminDeadlines({ notify }) {
         key: 'bedrag',
         label: 'Bedrag',
         render: (r) => (r.bedrag_min || r.bedrag_max ? `${euro(r.bedrag_min)} – ${euro(r.bedrag_max)}` : '—'),
-      },
-      {
-        key: 'data_tier',
-        label: 'Data tier',
-        render: (r) => <span style={badgeStyle(r.data_tier === 'premium' ? 'blauw' : 'groen')}>{r.data_tier || '—'}</span>,
-      },
-      {
-        key: 'classification_reviewed',
-        label: 'Beoordeeld',
-        render: (r) => (
-          <span style={badgeStyle(r.classification_reviewed ? 'groen' : 'geel')}>
-            {r.classification_reviewed ? 'Ja' : 'Nee'}
-          </span>
-        ),
       },
       {
         key: 'access_tier',
@@ -462,6 +549,21 @@ export default function AdminDeadlines({ notify }) {
         label: 'Bandbreedte bijdrage',
         render: (r) => r.bandbreedte_bijdrage_naam || '—',
       },
+      {
+        key: 'gescand_door_agent',
+        label: 'Gescand door agent',
+        render: (r) => <span style={badgeStyle('grijs')}>{r.discovered_by === 'agent' ? 'Ja' : 'Nee'}</span>,
+      },
+      {
+        key: 'classification_reviewed',
+        label: 'Beoordeeld',
+        render: (r) => <span style={badgeStyle('grijs')}>{r.classification_reviewed ? 'Ja' : 'Nee'}</span>,
+      },
+      {
+        key: 'data_tier',
+        label: 'Data tier',
+        render: (r) => <span style={badgeStyle('grijs')}>{r.data_tier || '—'}</span>,
+      },
     ],
     [],
   );
@@ -470,8 +572,8 @@ export default function AdminDeadlines({ notify }) {
     <section>
       <h2 style={sectionTitleStyle}>Subsidieregelingen &amp; Deadlines</h2>
       <p style={sectionIntroStyle}>
-        Beheer de subsidieregelingen die op de publieke Deadlines-pagina staan. Classificatie (data tier, bron,
-        beoordeeld) verloopt via de Classification Workspace; hier wijzigt u de inhoudelijke gegevens.
+        Inhoudelijk beheer van subsidieregelingen: type gever, disciplines, doelgroepen, werkgebied, bandbreedte
+        bijdrage, aanvraagcriteria en toegangsniveau. Technische classificatie staat onder Geavanceerde filters.
       </p>
 
       <div
@@ -500,7 +602,15 @@ export default function AdminDeadlines({ notify }) {
         ) : null}
       </div>
 
-      <AdminToolbar search={search} onSearchChange={setSearch} searchPlaceholder="Zoek op naam…" />
+      <AdminToolbar search={search} onSearchChange={setSearch} searchPlaceholder="Zoek op naam…">
+        <input
+          type="search"
+          value={funderSearch}
+          onChange={(e) => setFunderSearch(e.target.value)}
+          placeholder="Zoek op verstrekker…"
+          style={css('min-height: 44px; padding: 11px 14px; border: 1px solid #D5E0D9; border-radius: 12px; font-family: inherit; font-size: 14px; min-width: 200px;')}
+        />
+      </AdminToolbar>
 
       <AdminFilters
         groups={[
@@ -512,29 +622,11 @@ export default function AdminDeadlines({ notify }) {
             options: [{ value: null, label: 'Alle' }, ...REGELING_STATUSSEN],
           },
           {
-            key: 'data_tier',
-            label: 'Data tier',
-            value: dataTier,
-            onChange: setDataTier,
-            options: [{ value: null, label: 'Alle' }, ...DATA_TIERS],
-          },
-          {
-            key: 'source_type',
-            label: 'Bron',
-            value: sourceType,
-            onChange: setSourceType,
-            options: [{ value: null, label: 'Alle' }, ...SOURCE_TYPES],
-          },
-          {
-            key: 'reviewed',
-            label: 'Beoordeeld',
-            value: reviewed,
-            onChange: setReviewed,
-            options: [
-              { value: null, label: 'Alle' },
-              { value: true, label: 'Ja' },
-              { value: false, label: 'Nee' },
-            ],
+            key: 'type',
+            label: 'Type gever',
+            value: type,
+            onChange: setType,
+            options: [{ value: null, label: 'Alle' }, ...FUNDER_TYPES],
           },
           {
             key: 'access_tier',
@@ -553,8 +645,59 @@ export default function AdminDeadlines({ notify }) {
               ...bandbreedteOpties.map((b) => ({ value: b.id, label: b.naam })),
             ],
           },
+          {
+            key: 'discovered_by',
+            label: 'Gescand door agent',
+            value: discoveredBy,
+            onChange: setDiscoveredBy,
+            options: [
+              { value: null, label: 'Alle' },
+              { value: 'agent', label: 'Ja' },
+              { value: 'handmatig', label: 'Nee' },
+            ],
+          },
         ]}
       />
+
+      <div style={css('display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 16px;')}>
+        <FilterSelect label="Discipline" value={thema} onChange={setThema} opties={classificatieOpties.themas} />
+        <FilterSelect label="Doelgroep" value={doelgroep} onChange={setDoelgroep} opties={classificatieOpties.doelgroepen} />
+        <FilterSelect label="Werkgebied" value={regio} onChange={setRegio} opties={classificatieOpties.regios} />
+      </div>
+
+      <GeavanceerdeFiltersToggle open={geavanceerdOpen} onToggle={() => setGeavanceerdOpen((o) => !o)} />
+
+      {geavanceerdOpen ? (
+        <AdminFilters
+          groups={[
+            {
+              key: 'data_tier',
+              label: 'Data tier',
+              value: dataTier,
+              onChange: setDataTier,
+              options: [{ value: null, label: 'Alle' }, ...DATA_TIERS],
+            },
+            {
+              key: 'source_type',
+              label: 'Bron',
+              value: sourceType,
+              onChange: setSourceType,
+              options: [{ value: null, label: 'Alle' }, ...SOURCE_TYPES],
+            },
+            {
+              key: 'reviewed',
+              label: 'Beoordeeld',
+              value: reviewed,
+              onChange: setReviewed,
+              options: [
+                { value: null, label: 'Alle' },
+                { value: true, label: 'Ja' },
+                { value: false, label: 'Nee' },
+              ],
+            },
+          ]}
+        />
+      ) : null}
 
       <AdminBulkActionsBar count={selectedIds.length} onClear={() => setSelectedIds([])}>
         <AdminAccessTierBulkActie onApply={bulkToegangsniveauToepassen} bezig={bulkAccessTierBezig} />
@@ -604,12 +747,38 @@ export default function AdminDeadlines({ notify }) {
   );
 }
 
+function VeldGrid({ children }) {
+  return <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px;')}>{children}</div>;
+}
+
+function Veld({ label, span, children }) {
+  return (
+    <label
+      style={css(`display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E; ${span ? `grid-column: span ${span};` : ''}`)}
+    >
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function SectieKop({ children, muted }) {
+  return (
+    <div style={css(`margin: 26px 0 14px; ${muted ? '' : 'padding-top: 10px; border-top: 1px solid #E1EAE4;'}`)}>
+      <div style={muted ? css('font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #82918B;') : subsectionTitleStyle}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, bandbreedteOpties, koppelingenLaden }) {
   if (!row) {
     return null;
   }
 
   const set = (veld) => (event) => setForm((f) => ({ ...f, [veld]: event.target.value }));
+  const geverTypeLabel = (FUNDER_TYPES.find((t) => t.value === row.funder_type) || {}).label || row.funder_type || 'niet ingevuld';
 
   return (
     <div
@@ -625,36 +794,68 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
         {row.naam} bewerken
       </div>
 
-      <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px;')}>
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E; grid-column: span 2;')}>
-          Naam
+      <SectieKop>Basisgegevens</SectieKop>
+      <VeldGrid>
+        <Veld label="Naam" span={2}>
           <input style={inputStyle} value={form.naam} onChange={set('naam')} />
-        </label>
+        </Veld>
+        <Veld label="Gekoppelde gever (alleen-lezen)">
+          <input style={inputStyle} value={row.funder_naam || '—'} disabled />
+        </Veld>
+        <Veld label="Website / URL regeling" span={2}>
+          <input style={inputStyle} value={form.aanvraaglink} onChange={set('aanvraaglink')} placeholder="https://…" />
+        </Veld>
+      </VeldGrid>
 
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Status
-          <select style={inputStyle} value={form.status} onChange={set('status')}>
-            {REGELING_STATUSSEN.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Toegangsniveau
-          <select style={inputStyle} value={form.accessTier} onChange={set('accessTier')}>
-            {ACCESS_TIERS.map((t) => (
+      <SectieKop>Classificatie</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Dit zijn de centrale categorieën waarop platformbreed gefilterd en gematcht wordt (Admin, publieke
+        zoekpagina, AI). Alleen bestaande waarden zijn te kiezen; ontbreekt er een, voeg die eerst toe via
+        Beheer → Classificaties.
+      </p>
+      <VeldGrid>
+        <Veld label={`Type gever (leeg = overgenomen van gever: ${geverTypeLabel})`}>
+          <select style={inputStyle} value={form.type} onChange={set('type')}>
+            <option value="">Overgenomen van gever ({geverTypeLabel})</option>
+            {FUNDER_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
               </option>
             ))}
           </select>
-        </label>
+        </Veld>
+        <Veld label="Disciplines">
+          <ClassificatieSelect
+            opties={classificatieOpties.themas}
+            waarde={form.themas}
+            onChange={(waarde) => setForm((f) => ({ ...f, themas: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Disciplines selecteren…'}
+            ariaLabel="Disciplines"
+          />
+        </Veld>
+        <Veld label="Doelgroepen">
+          <ClassificatieSelect
+            opties={classificatieOpties.doelgroepen}
+            waarde={form.doelgroepen}
+            onChange={(waarde) => setForm((f) => ({ ...f, doelgroepen: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Doelgroepen selecteren…'}
+            ariaLabel="Doelgroepen"
+          />
+        </Veld>
+        <Veld label="Werkgebieden">
+          <ClassificatieSelect
+            opties={classificatieOpties.regios}
+            waarde={form.regios}
+            onChange={(waarde) => setForm((f) => ({ ...f, regios: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Werkgebieden selecteren…'}
+            ariaLabel="Werkgebieden"
+          />
+        </Veld>
+      </VeldGrid>
 
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Bandbreedte bijdrage
+      <SectieKop>Financiering</SectieKop>
+      <VeldGrid>
+        <Veld label="Bandbreedte bijdrage">
           <select style={inputStyle} value={form.bandbreedteBijdrageId} onChange={set('bandbreedteBijdrageId')}>
             <option value="">Niet ingedeeld</option>
             {bandbreedteOpties.map((b) => (
@@ -663,84 +864,94 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
               </option>
             ))}
           </select>
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Deadline (jjjj-mm-dd, leeg = doorlopend)
-          <input style={inputStyle} value={form.deadlineDatum} onChange={set('deadlineDatum')} placeholder="2027-01-15" />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Deadline (vrije tekst)
-          <input style={inputStyle} value={form.deadline} onChange={set('deadline')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Deadline omschrijving
-          <input style={inputStyle} value={form.deadlineOmschrijving} onChange={set('deadlineOmschrijving')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Bedrag vanaf
+        </Veld>
+        <Veld label="Bedrag vanaf">
           <input style={inputStyle} type="number" value={form.bedragMin} onChange={set('bedragMin')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Bedrag tot
+        </Veld>
+        <Veld label="Bedrag tot">
           <input style={inputStyle} type="number" value={form.bedragMax} onChange={set('bedragMax')} />
-        </label>
+        </Veld>
+        <Veld label="Eigen bijdrage (indien relevant)">
+          <input style={inputStyle} value={form.eigenBijdrage} onChange={set('eigenBijdrage')} placeholder="bijv. minimaal 20%" />
+        </Veld>
+        <Veld label="Cofinanciering (indien relevant)">
+          <input style={inputStyle} value={form.cofinanciering} onChange={set('cofinanciering')} />
+        </Veld>
+      </VeldGrid>
 
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E; grid-column: span 2;')}>
-          Voorwaarden
-          <input style={inputStyle} value={form.voorwaarden} onChange={set('voorwaarden')} />
-        </label>
-      </div>
+      <SectieKop>Aanvraag</SectieKop>
+      <VeldGrid>
+        <Veld label="Aanvraagcriteria (wie mag aanvragen, doelgroep, looptijd, uitsluitingen, geografische eisen, overige voorwaarden)" span={3}>
+          <textarea style={textareaStyle} rows={4} value={form.voorwaarden} onChange={set('voorwaarden')} />
+        </Veld>
+        <Veld label="Beoordelingscriteria" span={2}>
+          <textarea style={textareaStyle} rows={3} value={form.beoordelingscriteria} onChange={set('beoordelingscriteria')} />
+        </Veld>
+        <Veld label="Type projecten">
+          <input style={inputStyle} value={form.typeProjecten} onChange={set('typeProjecten')} />
+        </Veld>
+        <Veld label="Begrotingseisen" span={2}>
+          <input style={inputStyle} value={form.begrotingseisen} onChange={set('begrotingseisen')} />
+        </Veld>
+        <Veld label="Behandeltermijn">
+          <input style={inputStyle} value={form.behandeltermijn} onChange={set('behandeltermijn')} placeholder="bijv. 8 weken" />
+        </Veld>
+        <Veld label="Aanvraagprocedure" span={3}>
+          <input style={inputStyle} value={form.aanvraagprocedure} onChange={set('aanvraagprocedure')} />
+        </Veld>
+      </VeldGrid>
 
-      <div style={css('margin: 22px 0 6px; height: 1px; background: #E1EAE4;')} />
+      <SectieKop>Deadlines / openstelling</SectieKop>
+      <VeldGrid>
+        <Veld label="Status">
+          <select style={inputStyle} value={form.status} onChange={set('status')}>
+            {REGELING_STATUSSEN.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </Veld>
+        <Veld label="Deadline (jjjj-mm-dd, leeg = doorlopend)">
+          <input style={inputStyle} value={form.deadlineDatum} onChange={set('deadlineDatum')} placeholder="2027-01-15" />
+        </Veld>
+        <Veld label="Deadline (vrije tekst)">
+          <input style={inputStyle} value={form.deadline} onChange={set('deadline')} />
+        </Veld>
+        <Veld label="Deadline omschrijving">
+          <input style={inputStyle} value={form.deadlineOmschrijving} onChange={set('deadlineOmschrijving')} />
+        </Veld>
+      </VeldGrid>
 
-      <div style={css("margin-bottom: 6px; font-family: 'Newsreader', serif; font-size: 17px; color: #2C4A5E;")}>
-        Classificaties
-      </div>
-      <p style={css('margin: 0 0 14px; font-size: 12.5px; color: #82918B;')}>
-        Dit zijn de centrale categorieën waarop platformbreed gefilterd en gematcht wordt (Admin, publieke
-        zoekpagina, AI). Alleen bestaande waarden zijn te kiezen; ontbreekt er een, voeg die eerst toe via
-        Beheer → Classificaties.
+      <SectieKop>Toegang</SectieKop>
+      <VeldGrid>
+        <Veld label="Toegangsniveau">
+          <select style={inputStyle} value={form.accessTier} onChange={set('accessTier')}>
+            {ACCESS_TIERS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop muted>Technische status</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Data tier, bron en beoordeeld-status worden beheerd via de Classification Workspace (Beheer →
+        Classificaties), niet hier.
       </p>
-
-      <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px;')}>
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Disciplines
-          <ClassificatieSelect
-            opties={classificatieOpties.themas}
-            waarde={form.themas}
-            onChange={(waarde) => setForm((f) => ({ ...f, themas: waarde }))}
-            placeholder={koppelingenLaden ? 'Laden…' : 'Disciplines selecteren…'}
-            ariaLabel="Disciplines"
-          />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Doelgroepen
-          <ClassificatieSelect
-            opties={classificatieOpties.doelgroepen}
-            waarde={form.doelgroepen}
-            onChange={(waarde) => setForm((f) => ({ ...f, doelgroepen: waarde }))}
-            placeholder={koppelingenLaden ? 'Laden…' : 'Doelgroepen selecteren…'}
-            ariaLabel="Doelgroepen"
-          />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Werkgebieden
-          <ClassificatieSelect
-            opties={classificatieOpties.regios}
-            waarde={form.regios}
-            onChange={(waarde) => setForm((f) => ({ ...f, regios: waarde }))}
-            placeholder={koppelingenLaden ? 'Laden…' : 'Werkgebieden selecteren…'}
-            ariaLabel="Werkgebieden"
-          />
-        </label>
-      </div>
+      <VeldGrid>
+        <Veld label="Data tier">
+          <input style={inputStyle} value={row.data_tier || '—'} disabled />
+        </Veld>
+        <Veld label="Gescand door agent">
+          <input style={inputStyle} value={row.discovered_by === 'agent' ? 'Ja' : 'Nee'} disabled />
+        </Veld>
+        <Veld label="Beoordeeld">
+          <input style={inputStyle} value={row.classification_reviewed ? 'Ja' : 'Nee'} disabled />
+        </Veld>
+      </VeldGrid>
 
       <div style={css('margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap;')}>
         <button type="button" disabled={opslaan} onClick={onSave} style={secondaryButtonStyle}>
