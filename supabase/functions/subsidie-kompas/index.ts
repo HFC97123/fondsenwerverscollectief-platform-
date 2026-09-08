@@ -16,6 +16,16 @@
 // dan komt dat terug als { veldVoorstellen } naast het antwoord - ook dit
 // wordt nooit automatisch opgeslagen, precies zoals bij extract/website.
 //
+// "Volgende fase" (dit onderdeel): het gewone gesprek krijgt er sinds deze
+// fase ook een systeembericht bij met de subsidieregelingen die dit lid,
+// op basis van zijn eigen abonnement, mag zien - rechtstreeks uit dezelfde
+// database/tabellen als Beheer en de Timeline (kompas_subsidieregelingen_voor_tier,
+// zie migratie volgende_fase_centrale_tier_functies). Geen hardcoded lijst
+// hier, geen tweede classificatiesysteem: de RPC past exact dezelfde
+// centrale regel toe (subsidie_zichtbaar_voor_tier) als de Timeline-view.
+// Het abonnement (tier) komt - zoals hieronder al gebeurde - uitsluitend uit
+// profiles.subscription_tier, nooit van de client.
+//
 // Legt per aanroep het tokengebruik vast in ai_verbruik, en leest de
 // systeemtekst uit ai_prompts zodat die zonder code te wijzigen aanpasbaar is.
 //
@@ -106,6 +116,69 @@ async function legVerbruikVast(admin: any, row: Record<string, unknown>) {
     await admin.from('ai_verbruik').insert(row);
   } catch (_) {
     // verbruik vastleggen mag een antwoord nooit blokkeren
+  }
+}
+
+// "Volgende fase": de subsidieregelingen die dit lid, op basis van zijn eigen
+// abonnement, mag zien - via de RPC die exact dezelfde centrale regel
+// toepast als de Timeline (subsidie_zichtbaar_voor_tier). tier komt hierboven
+// al veilig uit profiles.subscription_tier, nooit van de client. Geeft een
+// kant-en-klaar systeembericht terug, of null als er niets te tonen is of de
+// aanroep mislukt (mag het gesprek zelf nooit blokkeren).
+async function subsidieregelingContext(admin: any, tier: string) {
+  try {
+    const { data, error } = await admin.rpc('kompas_subsidieregelingen_voor_tier', { p_tier: tier });
+
+    if (error || !Array.isArray(data)) {
+      return null;
+    }
+
+    if (!data.length) {
+      return 'Er staan op dit moment geen subsidieregelingen in de database van Het Fondsenwervers Collectief die dit lid, op basis van zijn abonnement, mag zien. Verzin er zelf geen bij - zeg dat eerlijk en vraag zo nodig door naar wat het lid zoekt.';
+    }
+
+    const perRegeling = data.map((r: any) => {
+      const regelLijnen: string[] = [];
+
+      regelLijnen.push(
+        `- ${r.naam}${r.status ? ` (${r.status}${r.deadline_datum ? `, deadline ${r.deadline_datum}` : ''})` : ''} — gever: ${r.funder_naam || 'onbekend'} (${r.type_gever || 'onbekend type'}), toegangsniveau: ${r.access_tier || 'onbekend'}`,
+      );
+
+      if (r.themas_namen?.length) regelLijnen.push(`  Disciplines: ${r.themas_namen.join(', ')}`);
+      if (r.doelgroepen_namen?.length) regelLijnen.push(`  Doelgroepen: ${r.doelgroepen_namen.join(', ')}`);
+      if (r.werkgebieden_namen?.length) regelLijnen.push(`  Werkgebied: ${r.werkgebieden_namen.join(', ')}`);
+
+      const bijdrage = [
+        r.bandbreedte_bijdrage_naam,
+        r.bedrag_min || r.bedrag_max ? `(€ ${r.bedrag_min ?? '?'} - € ${r.bedrag_max ?? '?'})` : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      if (bijdrage) regelLijnen.push(`  Bijdrage: ${bijdrage}`);
+      if (r.deadline_omschrijving) regelLijnen.push(`  Openstelling/deadline: ${r.deadline_omschrijving}`);
+      if (r.aanvraagcriteria) regelLijnen.push(`  Aanvraagcriteria (regeling): ${r.aanvraagcriteria}`);
+      if (r.beoordelingscriteria) regelLijnen.push(`  Beoordelingscriteria: ${r.beoordelingscriteria}`);
+      if (r.type_projecten) regelLijnen.push(`  Type projecten: ${r.type_projecten}`);
+      if (r.begrotingseisen) regelLijnen.push(`  Begrotingseisen: ${r.begrotingseisen}`);
+      if (r.eigen_bijdrage) regelLijnen.push(`  Eigen bijdrage: ${r.eigen_bijdrage}`);
+      if (r.cofinanciering) regelLijnen.push(`  Cofinanciering: ${r.cofinanciering}`);
+      if (r.behandeltermijn) regelLijnen.push(`  Behandeltermijn: ${r.behandeltermijn}`);
+      if (r.aanvraagprocedure) regelLijnen.push(`  Aanvraagprocedure: ${r.aanvraagprocedure}`);
+      if (r.aanvraaglink) regelLijnen.push(`  Aanvraaglink: ${r.aanvraaglink}`);
+      if (r.funder_missie) regelLijnen.push(`  Missie gever: ${r.funder_missie}`);
+      if (r.funder_aanvraagcriteria) regelLijnen.push(`  Aanvraagcriteria (gever, algemeen): ${r.funder_aanvraagcriteria}`);
+      if (r.funder_website) regelLijnen.push(`  Website gever: ${r.funder_website}`);
+
+      return regelLijnen.join('\n');
+    });
+
+    const kop =
+      'Hieronder staan de subsidieregelingen die dit lid, op basis van zijn abonnement, mag zien - rechtstreeks uit de database van Het Fondsenwervers Collectief (beheerd via Beheer -> Subsidieregelingen). Gebruik uitsluitend deze lijst voor concreet fondsadvies: verzin nooit een regeling, gever, bedrag, deadline of voorwaarde die hier niet in staat. Is er niets passends bij, zeg dat eerlijk in plaats van een regeling te verzinnen.\n\n';
+
+    return (kop + perRegeling.join('\n')).slice(0, 60000);
+  } catch (_) {
+    return null;
   }
 }
 
@@ -493,6 +566,11 @@ Deno.serve(async (req) => {
   const premium = tier === 'premium';
   const systeem = await systeemtekst(admin, premium);
 
+  // "Volgende fase": de subsidieregelingen die dit lid mag zien, rechtstreeks
+  // uit dezelfde database als Beheer/Timeline - server-side gefilterd op
+  // tier, nooit op basis van iets dat de client meestuurt.
+  const subsidieContext = await subsidieregelingContext(admin, tier);
+
   // Fase 6, punt 1: actief leren tijdens gesprekken. Zelfde gate als
   // mode: 'extract'/'website' hierboven (geen Free-toegang), en alleen als
   // de frontend het huidige profiel meestuurt (alleen Pro/Premium doet dat -
@@ -510,6 +588,7 @@ Deno.serve(async (req) => {
 
   const invoer = [
     { role: 'system', content: systeem },
+    ...(subsidieContext ? [{ role: 'system', content: subsidieContext }] : []),
     ...(leerInstructie ? [{ role: 'system', content: leerInstructie }] : []),
     ...(body.context ? [{ role: 'system', content: String(body.context).slice(0, 24000) }] : []),
     ...berichten
