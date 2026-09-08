@@ -624,34 +624,37 @@ export default function OrganisatieprofielPage() {
                     </>
                   )}
                   {f.t === 'chips' && (
-                    <span style={css('display: flex; flex-wrap: wrap; gap: 8px;')}>
-                      {CHIP_OPTIES[f.n].map((optie) => {
-                        const actief = (profiel[f.n] || []).indexOf(optie) !== -1;
+                    <>
+                      <span style={css('display: flex; flex-wrap: wrap; gap: 8px;')}>
+                        {CHIP_OPTIES[f.n].map((optie) => {
+                          const actief = (profiel[f.n] || []).indexOf(optie) !== -1;
 
-                        return (
-                          <button
-                            key={optie}
-                            type="button"
-                            aria-pressed={actief}
-                            onClick={() => toggleChip(f.n, optie)}
-                            style={css(`
-                              cursor: pointer;
-                              min-height: 40px;
-                              padding: 9px 16px;
-                              border: 1px solid ${actief ? '#BFD4C6' : '#E1EAE4'};
-                              border-radius: 999px;
-                              background: ${actief ? '#EAF4EE' : '#FFFFFF'};
-                              color: ${actief ? '#2F6D47' : '#3D4B48'};
-                              font-family: 'Mulish', sans-serif;
-                              font-size: 13.5px;
-                              font-weight: 700;
-                            `)}
-                          >
-                            {optie}
-                          </button>
-                        );
-                      })}
-                    </span>
+                          return (
+                            <button
+                              key={optie}
+                              type="button"
+                              aria-pressed={actief}
+                              onClick={() => toggleChip(f.n, optie)}
+                              style={css(`
+                                cursor: pointer;
+                                min-height: 40px;
+                                padding: 9px 16px;
+                                border: 1px solid ${actief ? '#BFD4C6' : '#E1EAE4'};
+                                border-radius: 999px;
+                                background: ${actief ? '#EAF4EE' : '#FFFFFF'};
+                                color: ${actief ? '#2F6D47' : '#3D4B48'};
+                                font-family: 'Mulish', sans-serif;
+                                font-size: 13.5px;
+                                font-weight: 700;
+                              `)}
+                            >
+                              {optie}
+                            </button>
+                          );
+                        })}
+                      </span>
+                      <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
+                    </>
                   )}
                   {f.t === 'contacts' && (
                     <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
