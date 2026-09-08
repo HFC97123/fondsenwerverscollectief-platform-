@@ -71,10 +71,11 @@ export async function fetchSubsidieregelingen(params = {}) {
   return { rows, total, error: res.error };
 }
 
-// patch: { naam, thema, werkgebied, bedragMin, bedragMax, deadline, deadlineDatum,
-//          deadlineOmschrijving, voorwaarden, status, funderId, aanvraaglink,
-//          beoordelingscriteria, typeProjecten, begrotingseisen, eigenBijdrage,
-//          cofinanciering, behandeltermijn, aanvraagprocedure, type }
+// patch: { naam, thema, werkgebied, bedragMin, bedragMax, bijdrageToelichting,
+//          deadline, deadlineDatum, deadlineOmschrijving, voorwaarden, status,
+//          funderId, aanvraaglink, beoordelingscriteria, typeProjecten,
+//          begrotingseisen, eigenBijdrage, cofinanciering, behandeltermijn,
+//          aanvraagprocedure, type }
 export async function updateSubsidieregeling(regelingId, patch) {
   const res = await query((sb) =>
     sb.rpc('admin_update_subsidieregeling', {
@@ -99,6 +100,7 @@ export async function updateSubsidieregeling(regelingId, patch) {
       p_behandeltermijn: patch.behandeltermijn ?? null,
       p_aanvraagprocedure: patch.aanvraagprocedure ?? null,
       p_type: patch.type ?? null,
+      p_bijdrage_toelichting: patch.bijdrageToelichting ?? null,
     }),
   );
 

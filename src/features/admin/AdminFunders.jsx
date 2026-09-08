@@ -7,7 +7,7 @@
 // het bewerkscherm - niet omdat het onbelangrijk is, maar omdat het geen
 // dagelijkse beheertaak is.
 // Alle databasecommunicatie loopt via data/services/adminFunders.js.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import {
   ACCESS_TIERS,
@@ -30,11 +30,11 @@ import AdminDataTable from './shared/AdminDataTable.jsx';
 import AdminBulkActionsBar from './shared/AdminBulkActionsBar.jsx';
 import AdminAccessTierBulkActie from './shared/AdminAccessTierBulkActie.jsx';
 import AdminPagination from './shared/AdminPagination.jsx';
+import AdminEditModal from './shared/AdminEditModal.jsx';
+import ContributionEditor from './shared/ContributionEditor.jsx';
 import {
   badgeStyle,
   inputStyle,
-  plainButtonStyle,
-  secondaryButtonStyle,
   sectionIntroStyle,
   sectionTitleStyle,
   smallButtonStyle,
@@ -62,6 +62,7 @@ const LEEG_BEWERKING = {
   regios: [],
   accessTier: 'premium',
   bandbreedteBijdrageId: '',
+  bijdrageToelichting: '',
 };
 
 function euro(bedrag) {
@@ -141,10 +142,27 @@ export default function AdminFunders({ notify }) {
   const [bandbreedteOpties, setBandbreedteOpties] = useState([]);
   const [koppelingenLaden, setKoppelingenLaden] = useState(false);
   const [bulkAccessTierBezig, setBulkAccessTierBezig] = useState(false);
+  // Momentopname van het formulier direct na het volledig laden (incl.
+  // classificaties) van de bewerkte rij — vergelijkingsbasis voor de
+  // "niet-opgeslagen wijzigingen"-waarschuwing in AdminEditModal.
+  const initialFormRef = useRef(null);
 
   useEffect(() => {
-    haalClassificatiesOp().then(setClassificatieOpties);
-    haalBandbreedtesOp().then(setBandbreedteOpties);
+    haalClassificatiesOp().then((res) => {
+      setClassificatieOpties(res);
+
+      if (res.error) {
+        notify('error', 'Disciplines/doelgroepen/werkgebieden konden niet worden geladen. Ververs de pagina om het opnieuw te proberen.');
+      }
+    });
+    haalBandbreedtesOp().then((res) => {
+      setBandbreedteOpties(res.rows);
+
+      if (res.error) {
+        notify('error', 'De bandbreedtes bijdrage konden niet worden geladen. Ververs de pagina om het opnieuw te proberen.');
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const laad = async () => {
@@ -228,7 +246,8 @@ export default function AdminFunders({ notify }) {
 
   const openEdit = async (row) => {
     setEditingId(row.id);
-    setForm({
+
+    const basis = {
       naam: row.naam || '',
       type: row.type || '',
       status: row.status || '',
@@ -246,18 +265,31 @@ export default function AdminFunders({ notify }) {
       regios: [],
       accessTier: row.access_tier || 'premium',
       bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
-    });
+      bijdrageToelichting: row.bijdrage_toelichting || '',
+    };
+
+    setForm(basis);
 
     setKoppelingenLaden(true);
     const koppelingen = await fetchKoppelingen('funders', row.id);
     setKoppelingenLaden(false);
 
-    setForm((f) => ({
-      ...f,
+    if (koppelingen.error) {
+      notify('error', 'De bestaande classificaties van deze funder konden niet worden geladen.');
+    }
+
+    const volledig = {
+      ...basis,
       themas: koppelingen.themas,
       doelgroepen: koppelingen.doelgroepen,
       regios: koppelingen.regios,
-    }));
+    };
+
+    setForm(volledig);
+    // Pas ná het volledig laden (incl. classificaties) is dit de echte
+    // uitgangssituatie — anders zou het inladen van de koppelingen zelf al
+    // als "wijziging" tellen voor de niet-opgeslagen-wijzigingen-check.
+    initialFormRef.current = volledig;
   };
 
   const opslaanBewerking = async (row) => {
@@ -276,6 +308,7 @@ export default function AdminFunders({ notify }) {
       prioriteit: form.prioriteit === '' ? null : Number(form.prioriteit),
       bron: form.bron || null,
       researchSource: form.researchSource || null,
+      bijdrageToelichting: form.bijdrageToelichting || null,
     };
 
     const res = await updateFunder(row.id, patch);
@@ -328,6 +361,7 @@ export default function AdminFunders({ notify }) {
     }
 
     setEditingId(null);
+    initialFormRef.current = null;
     notify('success', 'Funder bijgewerkt.');
     laad();
   };
@@ -511,9 +545,13 @@ export default function AdminFunders({ notify }) {
           row={rows.find((r) => r.id === editingId)}
           form={form}
           setForm={setForm}
-          onCancel={() => setEditingId(null)}
+          onCancel={() => {
+            setEditingId(null);
+            initialFormRef.current = null;
+          }}
           onSave={() => opslaanBewerking(rows.find((r) => r.id === editingId))}
           opslaan={opslaan}
+          dirty={initialFormRef.current ? JSON.stringify(form) !== JSON.stringify(initialFormRef.current) : false}
           classificatieOpties={classificatieOpties}
           bandbreedteOpties={bandbreedteOpties}
           koppelingenLaden={koppelingenLaden}
@@ -551,7 +589,7 @@ function SectieKop({ children, muted }) {
   );
 }
 
-function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, bandbreedteOpties, koppelingenLaden }) {
+function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dirty, classificatieOpties, bandbreedteOpties, koppelingenLaden }) {
   if (!row) {
     return null;
   }
@@ -559,21 +597,9 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, cla
   const set = (veld) => (event) => setForm((f) => ({ ...f, [veld]: event.target.value }));
 
   return (
-    <div
-      style={css(`
-        margin-top: 20px;
-        padding: clamp(18px, 2.5vw, 24px);
-        border: 1px solid #BFD4C6;
-        border-radius: 18px;
-        background: #F7FAF8;
-      `)}
-    >
-      <div style={css("margin-bottom: 16px; font-family: 'Newsreader', serif; font-size: 22px; color: #2C4A5E;")}>
-        {row.naam} bewerken
-      </div>
-
+    <AdminEditModal title={`${row.naam} bewerken`} onClose={onCancel} onSave={onSave} saving={opslaan} dirty={dirty}>
       <div
-        style={css('margin-bottom: 6px; padding: 14px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; font-size: 13px; color: #536460; line-height: 1.7;')}
+        style={css('margin-bottom: 6px; padding: 14px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #F7FAF8; font-size: 13px; color: #536460; line-height: 1.7;')}
       >
         <strong style={css('color: #2C4A5E;')}>Contactgegevens (alleen-lezen):</strong>{' '}
         {row.contactpersoon || '—'} · {row.email || 'geen e-mail'} · {row.telefoon || 'geen telefoon'} ·{' '}
@@ -638,24 +664,16 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, cla
         </Veld>
       </VeldGrid>
 
-      <SectieKop>Financiering</SectieKop>
+      <SectieKop>Bijdrage</SectieKop>
+      <ContributionEditor
+        bandbreedteId={form.bandbreedteBijdrageId}
+        onBandbreedteChange={(waarde) => setForm((f) => ({ ...f, bandbreedteBijdrageId: waarde }))}
+        toelichting={form.bijdrageToelichting}
+        onToelichtingChange={(waarde) => setForm((f) => ({ ...f, bijdrageToelichting: waarde }))}
+        bandbreedteOpties={bandbreedteOpties}
+      />
+      <div style={css('height: 16px;')} />
       <VeldGrid>
-        <Veld label="Bandbreedte bijdrage">
-          <select style={inputStyle} value={form.bandbreedteBijdrageId} onChange={set('bandbreedteBijdrageId')}>
-            <option value="">Niet ingedeeld</option>
-            {bandbreedteOpties.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.naam}
-              </option>
-            ))}
-          </select>
-        </Veld>
-        <Veld label="Bijdrage vanaf (exact, optioneel)">
-          <input style={inputStyle} type="number" value={form.bijdrageMin} onChange={set('bijdrageMin')} />
-        </Veld>
-        <Veld label="Bijdrage tot (exact, optioneel)">
-          <input style={inputStyle} type="number" value={form.bijdrageMax} onChange={set('bijdrageMax')} />
-        </Veld>
         <Veld label="Jaarbudget">
           <input style={inputStyle} type="number" value={form.jaarbudget} onChange={set('jaarbudget')} />
         </Veld>
@@ -696,15 +714,6 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, cla
           <input style={inputStyle} value={form.researchSource} onChange={set('researchSource')} />
         </Veld>
       </VeldGrid>
-
-      <div style={css('margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap;')}>
-        <button type="button" disabled={opslaan} onClick={onSave} style={secondaryButtonStyle}>
-          {opslaan ? 'Opslaan…' : 'Opslaan'}
-        </button>
-        <button type="button" disabled={opslaan} onClick={onCancel} style={plainButtonStyle}>
-          Annuleren
-        </button>
-      </div>
-    </div>
+    </AdminEditModal>
   );
 }

@@ -100,7 +100,8 @@ export async function fetchFunders(params = {}) {
 }
 
 // patch: { naam, type, status, website, missie, aanvraagcriteria, bijdrageMin,
-//          bijdrageMax, jaarbudget, prioriteit, bron, researchSource }
+//          bijdrageMax, bijdrageToelichting, jaarbudget, prioriteit, bron,
+//          researchSource }
 // Bewust NOOIT data_tier/source_type/classification_reviewed (die horen bij
 // de classificatie-RPC's van stap 2) en NOOIT contactgegevens (die blijven
 // alleen-lezen totdat er een apart, expliciet goedgekeurd schrijfpad komt).
@@ -120,6 +121,7 @@ export async function updateFunder(funderId, patch) {
       p_prioriteit: patch.prioriteit ?? null,
       p_bron: patch.bron ?? null,
       p_research_source: patch.researchSource ?? null,
+      p_bijdrage_toelichting: patch.bijdrageToelichting ?? null,
     }),
   );
 

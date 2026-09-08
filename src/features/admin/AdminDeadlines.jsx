@@ -5,7 +5,7 @@
 // achter "Geavanceerde filters" en onderaan het bewerkscherm.
 // Lezen en schrijven gaat uitsluitend via de admin-only RPC's in
 // data/services/adminSubsidieregelingen.js.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import {
   REGELING_STATUSSEN,
@@ -35,6 +35,8 @@ import AdminDataTable from './shared/AdminDataTable.jsx';
 import AdminBulkActionsBar from './shared/AdminBulkActionsBar.jsx';
 import AdminAccessTierBulkActie from './shared/AdminAccessTierBulkActie.jsx';
 import AdminPagination from './shared/AdminPagination.jsx';
+import AdminEditModal from './shared/AdminEditModal.jsx';
+import ContributionEditor from './shared/ContributionEditor.jsx';
 import {
   badgeStyle,
   inputStyle,
@@ -73,6 +75,7 @@ const LEEG_BEWERKING = {
   regios: [],
   accessTier: 'premium',
   bandbreedteBijdrageId: '',
+  bijdrageToelichting: '',
 };
 
 // Leeg formulier voor een aanvraagronde (meerdere sluitingsdata per regeling).
@@ -198,10 +201,27 @@ export default function AdminDeadlines({ notify }) {
   const [bandbreedteOpties, setBandbreedteOpties] = useState([]);
   const [koppelingenLaden, setKoppelingenLaden] = useState(false);
   const [bulkAccessTierBezig, setBulkAccessTierBezig] = useState(false);
+  // Momentopname van het formulier direct na het volledig laden (incl.
+  // classificaties) van de bewerkte rij — vergelijkingsbasis voor de
+  // "niet-opgeslagen wijzigingen"-waarschuwing in AdminEditModal.
+  const initialFormRef = useRef(null);
 
   useEffect(() => {
-    haalClassificatiesOp().then(setClassificatieOpties);
-    haalBandbreedtesOp().then(setBandbreedteOpties);
+    haalClassificatiesOp().then((res) => {
+      setClassificatieOpties(res);
+
+      if (res.error) {
+        notify('error', 'Disciplines/doelgroepen/werkgebieden konden niet worden geladen. Ververs de pagina om het opnieuw te proberen.');
+      }
+    });
+    haalBandbreedtesOp().then((res) => {
+      setBandbreedteOpties(res.rows);
+
+      if (res.error) {
+        notify('error', 'De bandbreedtes bijdrage konden niet worden geladen. Ververs de pagina om het opnieuw te proberen.');
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const laad = async () => {
@@ -303,7 +323,8 @@ export default function AdminDeadlines({ notify }) {
 
   const openEdit = async (row) => {
     setEditingId(row.id);
-    setForm({
+
+    const basis = {
       naam: row.naam || '',
       type: row.type || '',
       aanvraaglink: row.aanvraaglink || '',
@@ -326,18 +347,31 @@ export default function AdminDeadlines({ notify }) {
       regios: [],
       accessTier: row.access_tier || 'premium',
       bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
-    });
+      bijdrageToelichting: row.bijdrage_toelichting || '',
+    };
+
+    setForm(basis);
 
     setKoppelingenLaden(true);
     const koppelingen = await fetchKoppelingen('subsidieregelingen', row.id);
     setKoppelingenLaden(false);
 
-    setForm((f) => ({
-      ...f,
+    if (koppelingen.error) {
+      notify('error', 'De bestaande classificaties van deze regeling konden niet worden geladen.');
+    }
+
+    const volledig = {
+      ...basis,
       themas: koppelingen.themas,
       doelgroepen: koppelingen.doelgroepen,
       regios: koppelingen.regios,
-    }));
+    };
+
+    setForm(volledig);
+    // Pas ná het volledig laden (incl. classificaties) is dit de echte
+    // uitgangssituatie — anders zou het inladen van de koppelingen zelf al
+    // als "wijziging" tellen voor de niet-opgeslagen-wijzigingen-check.
+    initialFormRef.current = volledig;
   };
 
   const opslaanBewerking = async (row) => {
@@ -367,6 +401,7 @@ export default function AdminDeadlines({ notify }) {
       behandeltermijn: form.behandeltermijn || null,
       aanvraagprocedure: form.aanvraagprocedure || null,
       type: form.type || null,
+      bijdrageToelichting: form.bijdrageToelichting || null,
     };
 
     const res = await updateSubsidieregeling(row.id, patch);
@@ -419,6 +454,7 @@ export default function AdminDeadlines({ notify }) {
     }
 
     setEditingId(null);
+    initialFormRef.current = null;
     notify('success', 'Regeling bijgewerkt.');
     laad();
   };
@@ -787,9 +823,13 @@ export default function AdminDeadlines({ notify }) {
           row={rows.find((r) => r.id === editingId)}
           form={form}
           setForm={setForm}
-          onCancel={() => setEditingId(null)}
+          onCancel={() => {
+            setEditingId(null);
+            initialFormRef.current = null;
+          }}
           onSave={() => opslaanBewerking(rows.find((r) => r.id === editingId))}
           opslaan={opslaan}
+          dirty={initialFormRef.current ? JSON.stringify(form) !== JSON.stringify(initialFormRef.current) : false}
           classificatieOpties={classificatieOpties}
           bandbreedteOpties={bandbreedteOpties}
           koppelingenLaden={koppelingenLaden}
@@ -825,7 +865,7 @@ function SectieKop({ children, muted }) {
   );
 }
 
-function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, bandbreedteOpties, koppelingenLaden, notify }) {
+function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dirty, classificatieOpties, bandbreedteOpties, koppelingenLaden, notify }) {
   if (!row) {
     return null;
   }
@@ -834,19 +874,7 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
   const geverTypeLabel = (FUNDER_TYPES.find((t) => t.value === row.funder_type) || {}).label || row.funder_type || 'niet ingevuld';
 
   return (
-    <div
-      style={css(`
-        margin-top: 20px;
-        padding: clamp(18px, 2.5vw, 24px);
-        border: 1px solid #BFD4C6;
-        border-radius: 18px;
-        background: #F7FAF8;
-      `)}
-    >
-      <div style={css("margin-bottom: 16px; font-family: 'Newsreader', serif; font-size: 22px; color: #2C4A5E;")}>
-        {row.naam} bewerken
-      </div>
-
+    <AdminEditModal title={`${row.naam} bewerken`} onClose={onCancel} onSave={onSave} saving={opslaan} dirty={dirty}>
       <SectieKop>Basisgegevens</SectieKop>
       <VeldGrid>
         <Veld label="Naam" span={2}>
@@ -906,24 +934,20 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
         </Veld>
       </VeldGrid>
 
-      <SectieKop>Financiering</SectieKop>
+      <SectieKop>Bijdrage</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Kan afwijken van de bandbreedte/toelichting van de gekoppelde gever hierboven — de waarde van deze regeling
+        is dan leidend voor deze regeling.
+      </p>
+      <ContributionEditor
+        bandbreedteId={form.bandbreedteBijdrageId}
+        onBandbreedteChange={(waarde) => setForm((f) => ({ ...f, bandbreedteBijdrageId: waarde }))}
+        toelichting={form.bijdrageToelichting}
+        onToelichtingChange={(waarde) => setForm((f) => ({ ...f, bijdrageToelichting: waarde }))}
+        bandbreedteOpties={bandbreedteOpties}
+      />
+      <div style={css('height: 16px;')} />
       <VeldGrid>
-        <Veld label="Bandbreedte bijdrage">
-          <select style={inputStyle} value={form.bandbreedteBijdrageId} onChange={set('bandbreedteBijdrageId')}>
-            <option value="">Niet ingedeeld</option>
-            {bandbreedteOpties.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.naam}
-              </option>
-            ))}
-          </select>
-        </Veld>
-        <Veld label="Bedrag vanaf">
-          <input style={inputStyle} type="number" value={form.bedragMin} onChange={set('bedragMin')} />
-        </Veld>
-        <Veld label="Bedrag tot">
-          <input style={inputStyle} type="number" value={form.bedragMax} onChange={set('bedragMax')} />
-        </Veld>
         <Veld label="Eigen bijdrage (indien relevant)">
           <input style={inputStyle} value={form.eigenBijdrage} onChange={set('eigenBijdrage')} placeholder="bijv. minimaal 20%" />
         </Veld>
@@ -1014,16 +1038,7 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
           <input style={inputStyle} value={row.classification_reviewed ? 'Ja' : 'Nee'} disabled />
         </Veld>
       </VeldGrid>
-
-      <div style={css('margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap;')}>
-        <button type="button" disabled={opslaan} onClick={onSave} style={secondaryButtonStyle}>
-          {opslaan ? 'Opslaan…' : 'Opslaan'}
-        </button>
-        <button type="button" disabled={opslaan} onClick={onCancel} style={plainButtonStyle}>
-          Annuleren
-        </button>
-      </div>
-    </div>
+    </AdminEditModal>
   );
 }
 

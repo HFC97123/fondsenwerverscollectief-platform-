@@ -10,29 +10,44 @@
 // authenticated/select/true) en veranderen zelden - vandaar de simpele,
 // module-brede cache (per sessie, niet persistent) in plaats van een
 // aanroep per veld/pagina.
+//
+// Belangrijk: bij een mislukte aanroep (bijvoorbeeld een permission-denied
+// door een ontbrekend databaserecht) wordt de cache NIET gevuld met het
+// mislukte resultaat - anders zou één tijdelijke fout de rest van de sessie
+// een lege lijst laten zien, zonder dat een ververste pagina dat ooit kan
+// herstellen. Elke aanroeper krijgt bovendien altijd een `error`-veld terug
+// en moet dat controleren; stilzwijgend doorgaan alsof de lijst "gewoon
+// leeg" is, is precies de fout die deze module eerder maskeerde.
 import { query } from '../client.js';
 
 let cachePromise = null;
 let bandbreedtesPromise = null;
 
 async function haalTabelOp(tabel) {
-  const { data } = await query((sb) => sb.from(tabel).select('naam').order('naam'), []);
+  const { data, error } = await query((sb) => sb.from(tabel).select('naam').order('naam'), []);
 
-  return (data || []).map((r) => r.naam).filter(Boolean);
+  return { rows: (data || []).map((r) => r.naam).filter(Boolean), error };
 }
 
-// Geeft { themas, doelgroepen, regios } terug (elk een array met namen,
-// alfabetisch). Bij geen sessie/database komt een lege lijst terug per
-// classificatie - de aanroepende pagina valt dan terug op "geen opties",
-// nooit op een eigen hardgecodeerde lijst (die zou weer een tweede source
-// of truth worden).
+// Geeft { themas, doelgroepen, regios, error } terug (elk een array met
+// namen, alfabetisch). `error` is null zolang alle drie de opvragingen
+// slaagden; anders het eerste foutobject dat optrad. Bij een fout blijven
+// de betreffende lijsten leeg (nooit een eigen hardgecodeerde lijst als
+// terugval) én wordt de cache overgeslagen, zodat een volgende aanroep
+// (bijvoorbeeld na een pagina-ververs) het opnieuw probeert.
 export function haalClassificatiesOp() {
   if (!cachePromise) {
-    cachePromise = Promise.all([
-      haalTabelOp('themas'),
-      haalTabelOp('doelgroepen'),
-      haalTabelOp('regios'),
-    ]).then(([themas, doelgroepen, regios]) => ({ themas, doelgroepen, regios }));
+    cachePromise = Promise.all([haalTabelOp('themas'), haalTabelOp('doelgroepen'), haalTabelOp('regios')]).then(
+      ([themas, doelgroepen, regios]) => {
+        const error = themas.error || doelgroepen.error || regios.error || null;
+
+        if (error) {
+          cachePromise = null;
+        }
+
+        return { themas: themas.rows, doelgroepen: doelgroepen.rows, regios: regios.rows, error };
+      },
+    );
   }
 
   return cachePromise;
@@ -42,15 +57,23 @@ export function haalClassificatiesOp() {
 // hoog bedrag) - niet alfabetisch, vandaar een los pad naast
 // haalClassificatiesOp() met zijn eigen vorm ({ id, naam, bedragMin,
 // bedragMax } i.p.v. een kale naam-string, omdat de gekoppelde kolom een
-// FK-id is, geen vrije tekst).
+// FK-id is, geen vrije tekst). Geeft { rows, error } terug — zie de
+// modulenotitie hierboven over waarom dit niet meer stilzwijgend faalt.
 export function haalBandbreedtesOp() {
   if (!bandbreedtesPromise) {
     bandbreedtesPromise = query(
       (sb) => sb.from('bandbreedtes_bijdrage').select('id, naam, bedrag_min, bedrag_max, volgorde').order('volgorde'),
       [],
-    ).then(({ data }) =>
-      (data || []).map((r) => ({ id: r.id, naam: r.naam, bedragMin: r.bedrag_min, bedragMax: r.bedrag_max })),
-    );
+    ).then(({ data, error }) => {
+      if (error) {
+        bandbreedtesPromise = null;
+      }
+
+      return {
+        rows: (data || []).map((r) => ({ id: r.id, naam: r.naam, bedragMin: r.bedrag_min, bedragMax: r.bedrag_max })),
+        error,
+      };
+    });
   }
 
   return bandbreedtesPromise;
