@@ -4,9 +4,11 @@
 //   stream: false  -> { answer, sources }        (de huidige frontend)
 //   stream: true   -> text/event-stream          (voor woord-voor-woord antwoord)
 //
-// Daarnaast, voor het organisatieprofiel (fase 3 - documenten uploaden):
-//   mode: 'extract' -> { velden }                (voorstellen uit documenttekst,
-//                                                  nooit automatisch opgeslagen)
+// Daarnaast, voor het organisatieprofiel:
+//   mode: 'extract' -> { velden }                (fase 3 - voorstellen uit documenttekst)
+//   mode: 'website' -> { velden, paginas }        (fase 4 - voorstellen uit de eigen website)
+//   Beide slaan nooit automatisch iets op - dat gebeurt pas als het lid de
+//   voorstellen in de UI bevestigt.
 //
 // Legt per aanroep het tokengebruik vast in ai_verbruik, en leest de
 // systeemtekst uit ai_prompts zodat die zonder code te wijzigen aanpasbaar is.
@@ -101,6 +103,186 @@ async function legVerbruikVast(admin: any, row: Record<string, unknown>) {
   }
 }
 
+// Gedeeld door mode: 'extract' (fase 3) en mode: 'website' (fase 4): dezelfde
+// vraag aan de AI, alleen de bronomschrijving in de systeemtekst verschilt.
+async function voorstelUitTekst(apiKey: string, model: string, tekst: string, bronOmschrijving: string) {
+  const veldenLijst = EXTRACTIE_VELDEN.map((v) => `${v.n} (${v.l})`).join(', ');
+
+  const systeemExtractie = `Je helpt Nederlandse maatschappelijke organisaties hun organisatieprofiel in Subsidie Kompas aan te vullen op basis van ${bronOmschrijving}.
+
+Lees de tekst hieronder en haal er uitsluitend gegevens uit die je met voldoende zekerheid in de tekst kunt terugvinden. Verzin nooit informatie en doe geen aannames. Laat een veld gewoon weg als het niet duidelijk in de tekst staat.
+
+De toegestane velden zijn: ${veldenLijst}.
+
+Antwoord uitsluitend met geldige JSON in de vorm {"velden": {"veldnaam": "waarde"}}, met alleen de velden waarover je zeker bent en uitsluitend de hierboven genoemde veldnamen.`;
+
+  const antwoord = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systeemExtractie },
+        { role: 'user', content: tekst.slice(0, 20000) },
+      ],
+      temperature: 0.1,
+      max_tokens: 1500,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!antwoord.ok) {
+    return { voorstel: null as Record<string, string> | null, usage: null as any, mislukt: true };
+  }
+
+  const data = await antwoord.json();
+  const ruw = data.choices?.[0]?.message?.content;
+  const toegestaan = new Set(EXTRACTIE_VELDEN.map((v) => v.n));
+  const voorstel: Record<string, string> = {};
+
+  try {
+    const parsed = JSON.parse(ruw || '{}');
+    const velden = parsed?.velden && typeof parsed.velden === 'object' ? parsed.velden : {};
+
+    Object.entries(velden).forEach(([k, v]) => {
+      if (toegestaan.has(k) && v != null && String(v).trim()) {
+        voorstel[k] = String(v).slice(0, 2000);
+      }
+    });
+  } catch (_) {
+    // laat voorstel leeg; de frontend toont dan "geen voorstellen gevonden"
+  }
+
+  return { voorstel, usage: data.usage, mislukt: false };
+}
+
+// Zelfde patroon als aan de frontend-kant (organisatieprofiel.js/projecten.js):
+// een lid kan een document of website laten analyseren vóórdat er een
+// organisatieprofiel is ingevuld, dus wordt er dan een naamloze organisatie
+// aangemaakt zodat de herkomst (fase 4: website_sources) ergens aan kan hangen.
+async function huidigeOfNieuweOrganisatie(admin: any, userId: string) {
+  const { data: bestaand } = await admin
+    .from('subsidie_kompas_organizations')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (bestaand?.id) {
+    return bestaand.id;
+  }
+
+  const { data: nieuw, error } = await admin
+    .from('subsidie_kompas_organizations')
+    .insert({ user_id: userId, organization_name: 'Naamloze organisatie' })
+    .select('id')
+    .single();
+
+  return error ? null : nieuw.id;
+}
+
+// Ruwe, afhankelijkheidsvrije HTML-naar-tekst-conversie (Deno Edge Functions
+// hebben geen DOM beschikbaar en een DOM-parser als afhankelijkheid toevoegen
+// is voor dit doel niet nodig - alleen leesbare tekst voor de AI, geen opmaak).
+function tekstUitHtml(html: string) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function paginaTitel(html: string) {
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+
+  return m ? tekstUitHtml(m[1]).slice(0, 200) : '';
+}
+
+// Zoekt op de homepage naar links die waarschijnlijk naar "over ons"/"missie"/
+// "contact"-achtige pagina's leiden - bewust licht gehouden (geen diepere
+// crawl), zoals afgesproken: bij onduidelijkheid vraagt Subsidie Kompas zelf
+// door in het gesprek in plaats van dieper te graven op de website.
+const PAGINA_TREFWOORDEN = [
+  'over-ons', 'over_ons', 'overons', 'about', 'missie', 'mission',
+  'wie-zijn-wij', 'wie-we-zijn', 'contact', 'wat-we-doen', 'doelstelling',
+];
+
+function vindOndersteunendePaginas(basis: URL, html: string, max = 2) {
+  const gevonden: string[] = [];
+  const re = /<a\s+[^>]*href=["']([^"'#]+)["'][^>]*>/gi;
+  let m;
+
+  while ((m = re.exec(html)) && gevonden.length < max) {
+    try {
+      const url = new URL(m[1], basis);
+
+      if (url.origin !== basis.origin || url.href === basis.href) {
+        continue;
+      }
+
+      const pad = url.pathname.toLowerCase();
+
+      if (PAGINA_TREFWOORDEN.some((w) => pad.indexOf(w) !== -1) && gevonden.indexOf(url.href) === -1) {
+        gevonden.push(url.href);
+      }
+    } catch (_) {
+      // ongeldige href; overslaan
+    }
+  }
+
+  return gevonden;
+}
+
+// Geen interne/lokale adressen laten ophalen door de server - dit is een
+// publiek bereikbare functie (achter inlog + Pro/Premium), dus een simpele
+// bescherming tegen misbruik als open "URL-ophaler".
+function isVeiligeUrl(u: URL) {
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    return false;
+  }
+
+  const host = u.hostname.toLowerCase();
+
+  if (host === 'localhost' || host === '0.0.0.0' || host === '::1') {
+    return false;
+  }
+
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function haalPaginaOp(url: string) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'SubsidieKompasBot/1.0 (+https://hetfondsenwerverscollectief.nl)' },
+    });
+
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      return null;
+    }
+
+    return (await res.text()).slice(0, 400000);
+  } catch (_) {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS });
@@ -163,51 +345,15 @@ Deno.serve(async (req) => {
       return json({ error: 'Geen tekst ontvangen om te analyseren.' }, 400);
     }
 
-    const veldenLijst = EXTRACTIE_VELDEN.map((v) => `${v.n} (${v.l})`).join(', ');
+    const { voorstel, usage, mislukt } = await voorstelUitTekst(
+      apiKey,
+      MODEL,
+      tekst,
+      'een geüpload document (bijvoorbeeld een beleidsplan, jaarverslag, projectplan, meerjarenstrategie, begroting, impactrapport of evaluatie)',
+    );
 
-    const systeemExtractie = `Je helpt Nederlandse maatschappelijke organisaties hun organisatieprofiel in Subsidie Kompas aan te vullen op basis van een geüpload document (bijvoorbeeld een beleidsplan, jaarverslag, projectplan, meerjarenstrategie, begroting, impactrapport of evaluatie).
-
-Lees de tekst hieronder en haal er uitsluitend gegevens uit die je met voldoende zekerheid in de tekst kunt terugvinden. Verzin nooit informatie en doe geen aannames. Laat een veld gewoon weg als het niet duidelijk in de tekst staat.
-
-De toegestane velden zijn: ${veldenLijst}.
-
-Antwoord uitsluitend met geldige JSON in de vorm {"velden": {"veldnaam": "waarde"}}, met alleen de velden waarover je zeker bent en uitsluitend de hierboven genoemde veldnamen.`;
-
-    const antwoordExtractie = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: 'system', content: systeemExtractie },
-          { role: 'user', content: tekst },
-        ],
-        temperature: 0.1,
-        max_tokens: 1500,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!antwoordExtractie.ok) {
+    if (mislukt) {
       return json({ error: 'Het document kon niet worden geanalyseerd. Probeer het opnieuw.' }, 502);
-    }
-
-    const extractieData = await antwoordExtractie.json();
-    const ruw = extractieData.choices?.[0]?.message?.content;
-    const toegestaan = new Set(EXTRACTIE_VELDEN.map((v) => v.n));
-    const voorstel: Record<string, string> = {};
-
-    try {
-      const parsed = JSON.parse(ruw || '{}');
-      const velden = parsed?.velden && typeof parsed.velden === 'object' ? parsed.velden : {};
-
-      Object.entries(velden).forEach(([k, v]) => {
-        if (toegestaan.has(k) && v != null && String(v).trim()) {
-          voorstel[k] = String(v).slice(0, 2000);
-        }
-      });
-    } catch (_) {
-      // laat voorstel leeg; de frontend toont dan "geen voorstellen gevonden"
     }
 
     if (profileId) {
@@ -215,12 +361,119 @@ Antwoord uitsluitend met geldige JSON in de vorm {"velden": {"veldnaam": "waarde
         profile_id: profileId,
         gesprek_id: null,
         model: MODEL,
-        tokens_in: extractieData.usage?.prompt_tokens ?? null,
-        tokens_uit: extractieData.usage?.completion_tokens ?? null,
+        tokens_in: usage?.prompt_tokens ?? null,
+        tokens_uit: usage?.completion_tokens ?? null,
       });
     }
 
     return json({ velden: voorstel });
+  }
+
+  // Website laten analyseren voor het organisatieprofiel (fase 4). Haalt
+  // alleen de homepage plus, indien te vinden, een paar voor de hand liggende
+  // pagina's op (over ons/missie/contact) - geen diepere crawl. Is iets
+  // onduidelijk, dan vraagt Subsidie Kompas daar in het gesprek zelf naar,
+  // zoals afgesproken.
+  if (body.mode === 'website') {
+    if (tier === 'free') {
+      return json({ error: 'Website laten analyseren is een Pro- en Premium-functie.' }, 403);
+    }
+
+    let basis: URL;
+
+    try {
+      const ruweUrl = String(body.url || '').trim();
+
+      if (!ruweUrl) {
+        throw new Error('leeg');
+      }
+
+      basis = new URL(/^https?:\/\//i.test(ruweUrl) ? ruweUrl : `https://${ruweUrl}`);
+    } catch (_) {
+      return json({ error: 'Dit is geen geldig website-adres.' }, 400);
+    }
+
+    if (!isVeiligeUrl(basis)) {
+      return json({ error: 'Deze website kan niet worden geanalyseerd.' }, 400);
+    }
+
+    const homepageHtml = await haalPaginaOp(basis.href);
+
+    if (!homepageHtml) {
+      return json({ error: 'De website kon niet worden bereikt. Controleer het adres.' }, 502);
+    }
+
+    const paginas = [
+      { url: basis.href, titel: paginaTitel(homepageHtml), tekst: tekstUitHtml(homepageHtml).slice(0, 8000) },
+    ];
+
+    for (const link of vindOndersteunendePaginas(basis, homepageHtml, 2)) {
+      const html = await haalPaginaOp(link);
+
+      if (html) {
+        paginas.push({ url: link, titel: paginaTitel(html), tekst: tekstUitHtml(html).slice(0, 8000) });
+      }
+    }
+
+    const samengevoegdeTekst = paginas
+      .map((p) => `Pagina: ${p.titel || p.url}\n${p.tekst}`)
+      .join('\n\n')
+      .slice(0, 20000);
+
+    if (!samengevoegdeTekst.trim()) {
+      return json({ error: 'Er kon geen bruikbare tekst van de website worden gelezen.' }, 502);
+    }
+
+    const { voorstel, usage, mislukt } = await voorstelUitTekst(
+      apiKey,
+      MODEL,
+      samengevoegdeTekst,
+      'de eigen website van de organisatie',
+    );
+
+    if (mislukt) {
+      return json({ error: 'De website kon niet worden geanalyseerd. Probeer het opnieuw.' }, 502);
+    }
+
+    if (profileId) {
+      const organizationId = await huidigeOfNieuweOrganisatie(admin, profileId);
+
+      if (organizationId) {
+        for (const p of paginas) {
+          const { data: bestaand } = await admin
+            .from('subsidie_kompas_website_sources')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .eq('url', p.url)
+            .maybeSingle();
+
+          const rij = {
+            user_id: profileId,
+            organization_id: organizationId,
+            url: p.url,
+            page_title: p.titel || null,
+            extracted_text: p.tekst || null,
+            last_scraped_at: new Date().toISOString(),
+          };
+
+          if (bestaand?.id) {
+            await admin.from('subsidie_kompas_website_sources').update(rij).eq('id', bestaand.id);
+          } else {
+            await admin.from('subsidie_kompas_website_sources').insert(rij);
+          }
+        }
+      }
+
+      await legVerbruikVast(admin, {
+        profile_id: profileId,
+        gesprek_id: null,
+        model: MODEL,
+        tokens_in: usage?.prompt_tokens ?? null,
+        tokens_uit: usage?.completion_tokens ?? null,
+      });
+    }
+
+    return json({ velden: voorstel, paginas: paginas.map((p) => ({ url: p.url, titel: p.titel })) });
   }
 
   const berichten = Array.isArray(body.messages) ? body.messages : [];

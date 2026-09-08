@@ -14,7 +14,7 @@ import {
   uploadOrganisatieDocument,
   verwijderOrganisatieDocument,
 } from '../../data/services/organisatiedocumenten.js';
-import { extractOrganisatieVelden } from '../../data/services/chat.js';
+import { analyseerWebsite, extractOrganisatieVelden } from '../../data/services/chat.js';
 import { Button, Field, Notice, Panel, PanelHeader, SectionHeading, veldStijl } from '../../shared/ui/index.js';
 
 const VELDEN = [
@@ -265,7 +265,11 @@ export default function OrganisatieprofielPage() {
     setMelding('');
   };
 
-  const analyseer = () => {
+  // Laat de eigen website lezen (fase 4): homepage plus, indien gevonden, een
+  // paar voor de hand liggende pagina's (over ons/missie/contact) - geen
+  // diepere crawl. Net als bij documenten: alleen voorstellen, nooit
+  // automatisch opslaan.
+  const analyseer = async () => {
     if (!String(profiel.website || '').trim()) {
       setMelding('Vul eerst uw website in, dan kan Subsidie Kompas die analyseren.');
 
@@ -273,12 +277,37 @@ export default function OrganisatieprofielPage() {
     }
 
     setAnalyseBezig(true);
+    setAnalyseFout('');
+    setMelding('');
+    setAnalyseVoorstel({ bronType: 'website', bronRef: profiel.website, bronLabel: `uw website (${profiel.website})`, velden: null, gekozen: {} });
 
-    // De echte analyse gebeurt aan de achterkant; hier alleen de terugkoppeling.
-    window.setTimeout(() => {
-      setAnalyseBezig(false);
-      setMelding('De analyse is aangevraagd. Voorstellen zijn niet bindend; u kunt ze aanpassen of weglaten.');
-    }, 900);
+    const { velden, paginas, error } = await analyseerWebsite({ url: profiel.website });
+
+    setAnalyseBezig(false);
+
+    if (error) {
+      setAnalyseFout(error);
+      setAnalyseVoorstel(null);
+
+      return;
+    }
+
+    if (!Object.keys(velden).length) {
+      setAnalyseFout('Er zijn geen bruikbare gegevens op uw website gevonden.');
+      setAnalyseVoorstel(null);
+
+      return;
+    }
+
+    const gelezenPaginas = (paginas || []).map((p) => p.titel || p.url).join(', ');
+
+    setAnalyseVoorstel({
+      bronType: 'website',
+      bronRef: profiel.website,
+      bronLabel: gelezenPaginas ? `uw website — gelezen: ${gelezenPaginas}` : `uw website (${profiel.website})`,
+      velden,
+      gekozen: Object.fromEntries(Object.keys(velden).map((k) => [k, true])),
+    });
   };
 
   // Upload + lokale tekst-extractie (mammoth/pdfjs voor .docx/.pdf, gewone
@@ -315,7 +344,7 @@ export default function OrganisatieprofielPage() {
   const verwijderDocument = async (doc) => {
     setDocumenten((cur) => (cur || []).filter((d) => d.id !== doc.id));
 
-    if (analyseVoorstel && analyseVoorstel.docId === doc.id) {
+    if (analyseVoorstel && analyseVoorstel.bronType === 'document' && analyseVoorstel.bronRef === doc.id) {
       setAnalyseVoorstel(null);
     }
 
@@ -324,7 +353,9 @@ export default function OrganisatieprofielPage() {
 
   // Laat de AI het document lezen en veldwaarden voorstellen. Nooit
   // automatisch opgeslagen: het lid kiest hieronder per veld of het wordt
-  // overgenomen.
+  // overgenomen. Zelfde voorstel-vorm (bronType/bronRef/bronLabel/velden/
+  // gekozen) als de website-analyse hierboven, zodat één goedkeurscherm
+  // (onder aan de pagina) beide kan tonen.
   const analyseerDocument = async (doc) => {
     if (!doc.tekst || !doc.tekst.trim()) {
       setAnalyseFout('Van dit document kon geen tekst worden gelezen om te laten analyseren.');
@@ -333,7 +364,7 @@ export default function OrganisatieprofielPage() {
     }
 
     setAnalyseFout('');
-    setAnalyseVoorstel({ docId: doc.id, docNaam: doc.naam, velden: null, gekozen: {} });
+    setAnalyseVoorstel({ bronType: 'document', bronRef: doc.id, bronLabel: `"${doc.naam}"`, velden: null, gekozen: {} });
 
     const { velden, error } = await extractOrganisatieVelden({ text: doc.tekst, fileName: doc.naam });
 
@@ -352,8 +383,9 @@ export default function OrganisatieprofielPage() {
     }
 
     setAnalyseVoorstel({
-      docId: doc.id,
-      docNaam: doc.naam,
+      bronType: 'document',
+      bronRef: doc.id,
+      bronLabel: `"${doc.naam}"`,
       velden,
       gekozen: Object.fromEntries(Object.keys(velden).map((k) => [k, true])),
     });
@@ -368,7 +400,7 @@ export default function OrganisatieprofielPage() {
       Object.entries(analyseVoorstel.velden).filter(([k]) => analyseVoorstel.gekozen[k]),
     );
 
-    store.overnemenOrgVelden(gekozenVelden, 'document', analyseVoorstel.docId);
+    store.overnemenOrgVelden(gekozenVelden, analyseVoorstel.bronType, analyseVoorstel.bronRef);
     setAnalyseVoorstel(null);
     setMelding('De gekozen gegevens zijn overgenomen in het profiel.');
   };
@@ -494,7 +526,7 @@ export default function OrganisatieprofielPage() {
         {analyseVoorstel && (
           <div style={css('margin-top: 18px; padding: 18px; border: 1px solid #BFD4C6; border-radius: 16px; background: #EAF4EE;')}>
             <div style={css('margin-bottom: 10px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
-              Voorstellen uit "{analyseVoorstel.docNaam}"
+              Voorstellen uit {analyseVoorstel.bronLabel}
             </div>
 
             {!analyseVoorstel.velden && (

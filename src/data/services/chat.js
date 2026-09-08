@@ -177,6 +177,34 @@ export async function extractOrganisatieVelden({ text, fileName }) {
 }
 
 /*
+  Laat de eigen website analyseren (fase 4). Geeft { velden, paginas, error }
+  terug - net als extractOrganisatieVelden() hierboven wordt niets vanzelf
+  opgeslagen; de pagina toont dit altijd eerst ter goedkeuring. 'paginas' is
+  de lijst gelezen pagina's (homepage plus, indien gevonden, een paar
+  voor de hand liggende pagina's zoals "over ons"), zodat de gebruiker kan
+  zien waar de voorstellen vandaan komen.
+*/
+export async function analyseerWebsite({ url }) {
+  if (!supabase) {
+    return { velden: {}, paginas: [], error: GEEN_VERBINDING };
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke(CHAT_FUNCTION, {
+      body: { mode: 'website', url },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return { velden: (data && data.velden) || {}, paginas: (data && data.paginas) || [], error: null };
+  } catch (e) {
+    return { velden: {}, paginas: [], error: 'De website kon niet worden geanalyseerd. Probeer het opnieuw.' };
+  }
+}
+
+/*
   Bouwt de achtergrondtekst uit het profiel, de projecten en het actieve
   document. Blijft aan deze kant zodat de Edge Function er niets van hoeft te
   weten tot die is bijgewerkt.
