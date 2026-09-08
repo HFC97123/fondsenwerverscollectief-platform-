@@ -17,7 +17,9 @@ import {
 import { analyseerWebsite, extractOrganisatieVelden } from '../../data/services/chat.js';
 import { Button, Field, Notice, Panel, PanelHeader, SectionHeading, veldStijl } from '../../shared/ui/index.js';
 
-const VELDEN = [
+// Ook gebruikt door KompasToolPage.jsx (fase 6, veldlabels voor de
+// goedkeuring van AI-voorstellen die tijdens een gesprek naar voren komen).
+export const VELDEN = [
   { s: 'Organisatieprofiel', n: 'name', l: 'Organisatienaam', t: 'text', p: 'Stichting Voorbeeld' },
   { s: 'Organisatieprofiel', n: 'website', l: 'Website', t: 'text', p: 'www.stichtingvoorbeeld.nl' },
   { s: 'Organisatieprofiel', n: 'rechtsvorm', l: 'Rechtsvorm', t: 'text', p: 'Stichting' },

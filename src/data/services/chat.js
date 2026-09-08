@@ -16,12 +16,15 @@ const GEEN_VERBINDING =
   permissions  { canGenerateFiles, canUploadFiles, canUseKnowledgeBase,
                  canUseFundDatabase, canUseOrganizationMemory }
   context      optioneel: organisatieprofiel, projecten, actief document
+  orgProfile   optioneel (fase 6): het organisatieprofiel zelf, alleen voor
+               Pro/Premium - laat de Edge Function zien welke velden nog
+               ontbreken, zodat de AI daar tijdens het gesprek naar kan vragen
 
-  Geeft terug: { answer, sources, error }
+  Geeft terug: { answer, sources, veldVoorstellen, error }
 */
-export async function askKompas({ messages, tier, permissions, context, conversationId }) {
+export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile }) {
   if (!supabase) {
-    return { answer: null, sources: [], error: GEEN_VERBINDING };
+    return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
   }
 
   try {
@@ -34,6 +37,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
         // nog niet is aangesloten; de aanroep blijft geldig.
         context: context || null,
         conversationId: conversationId ?? null,
+        orgProfile: orgProfile || null,
       },
     });
 
@@ -45,9 +49,9 @@ export async function askKompas({ messages, tier, permissions, context, conversa
       throw new Error('Geen antwoord ontvangen.');
     }
 
-    return { answer: data.answer, sources: data.sources || [], error: null };
+    return { answer: data.answer, sources: data.sources || [], veldVoorstellen: data.veldVoorstellen || {}, error: null };
   } catch (e) {
-    return { answer: null, sources: [], error: GEEN_VERBINDING };
+    return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
   }
 }
 

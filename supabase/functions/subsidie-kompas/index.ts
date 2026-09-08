@@ -10,6 +10,12 @@
 //   Beide slaan nooit automatisch iets op - dat gebeurt pas als het lid de
 //   voorstellen in de UI bevestigt.
 //
+// Het gewone gesprek (geen mode) geeft er sinds fase 6 ook actief aan mee:
+// ontbreken er relevante profielvelden, dan mag de AI daar tijdens het
+// gesprek natuurlijk naar vragen; noemt het lid daarna zelf zo'n gegeven,
+// dan komt dat terug als { veldVoorstellen } naast het antwoord - ook dit
+// wordt nooit automatisch opgeslagen, precies zoals bij extract/website.
+//
 // Legt per aanroep het tokengebruik vast in ai_verbruik, en leest de
 // systeemtekst uit ai_prompts zodat die zonder code te wijzigen aanpasbaar is.
 //
@@ -487,8 +493,24 @@ Deno.serve(async (req) => {
   const premium = tier === 'premium';
   const systeem = await systeemtekst(admin, premium);
 
+  // Fase 6, punt 1: actief leren tijdens gesprekken. Zelfde gate als
+  // mode: 'extract'/'website' hierboven (geen Free-toegang), en alleen als
+  // de frontend het huidige profiel meestuurt (alleen Pro/Premium doet dat -
+  // zie chat.js). orgProfile bevat alleen de scalaire velden uit
+  // EXTRACTIE_VELDEN; ontbrekend is wat daarvan nog leeg is.
+  const magOrganisatiegeheugen = tier !== 'free';
+  const orgProfile = magOrganisatiegeheugen && body.orgProfile && typeof body.orgProfile === 'object' ? body.orgProfile : null;
+  const ontbrekend = orgProfile ? EXTRACTIE_VELDEN.filter((v) => !String(orgProfile[v.n] || '').trim()) : [];
+
+  const leerInstructie = ontbrekend.length
+    ? `Dit lid laat je actief helpen het organisatieprofiel aan te vullen. Nog niet ingevuld: ${ontbrekend
+        .map((v) => v.l)
+        .join(', ')}. Vraag hier alleen naar als dat vanzelf in het gesprek past - nooit een vragenlijst afwerken, hooguit één gerichte vraag per antwoord, en alleen wanneer het relevant is voor waar het lid het op dat moment over heeft. Zeg nooit dat je iets al hebt opgeslagen: dat gebeurt pas als het lid dat straks zelf in een apart voorstel bevestigt.`
+    : '';
+
   const invoer = [
     { role: 'system', content: systeem },
+    ...(leerInstructie ? [{ role: 'system', content: leerInstructie }] : []),
     ...(body.context ? [{ role: 'system', content: String(body.context).slice(0, 24000) }] : []),
     ...berichten
       .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && m.content)
@@ -524,17 +546,63 @@ Deno.serve(async (req) => {
       return json({ error: 'De assistent gaf een leeg antwoord.' }, 502);
     }
 
+    // Fase 6, punt 1 (vervolg): is er iets ontbrekends waar het lid net zelf
+    // iets over gezegd kan hebben, laat dat dan uit het gesprek zelf voorstellen
+    // - met dezelfde functie als document-/website-analyse, alleen met een
+    // stukje gespreksgeschiedenis in plaats van een document als bron. Mislukt
+    // dit, dan blijft het gewone antwoord gewoon staan; dit mag dat nooit breken.
+    let veldVoorstellen: Record<string, string> = {};
+    let leerTokensIn = 0;
+    let leerTokensUit = 0;
+
+    const laatsteLidBericht = berichten
+      .slice()
+      .reverse()
+      .find((m: any) => m && m.role === 'user' && m.content);
+    const bevatMogelijkNieuweInfo = !!laatsteLidBericht && String(laatsteLidBericht.content).trim().length >= 8;
+
+    if (magOrganisatiegeheugen && ontbrekend.length && bevatMogelijkNieuweInfo) {
+      try {
+        const fragment = berichten
+          .slice(-6)
+          .map((m: any) => `${m.role === 'user' ? 'Lid' : 'Subsidie Kompas'}: ${String(m.content || '').slice(0, 2000)}`)
+          .join('\n');
+
+        const { voorstel, usage, mislukt } = await voorstelUitTekst(
+          apiKey,
+          MODEL,
+          fragment,
+          'een lopend gesprek met dit lid in Subsidie Kompas - haal alleen gegevens eruit die het lid zelf expliciet heeft genoemd, nooit afgeleid of aangenomen',
+        );
+
+        if (!mislukt && voorstel) {
+          Object.entries(voorstel).forEach(([k, v]) => {
+            const huidig = orgProfile ? String(orgProfile[k] || '').trim() : '';
+
+            if (!huidig || huidig !== String(v).trim()) {
+              veldVoorstellen[k] = v;
+            }
+          });
+
+          leerTokensIn = usage?.prompt_tokens ?? 0;
+          leerTokensUit = usage?.completion_tokens ?? 0;
+        }
+      } catch (_) {
+        // voorstellen ophalen mag het antwoord zelf nooit blokkeren
+      }
+    }
+
     if (profileId) {
       await legVerbruikVast(admin, {
         profile_id: profileId,
         gesprek_id: body.conversationId ?? null,
         model: MODEL,
-        tokens_in: data.usage?.prompt_tokens ?? null,
-        tokens_uit: data.usage?.completion_tokens ?? null,
+        tokens_in: (data.usage?.prompt_tokens ?? 0) + leerTokensIn || null,
+        tokens_uit: (data.usage?.completion_tokens ?? 0) + leerTokensUit || null,
       });
     }
 
-    return json({ answer: tekst, sources: [] });
+    return json({ answer: tekst, sources: [], veldVoorstellen });
   }
 
   // Antwoord woord voor woord. De frontend leest dit met een EventSource-achtige

@@ -19,7 +19,7 @@ import {
   maakGesprekAan,
   voegBerichtToe,
 } from '../../data/services/gesprekken.js';
-import OrganisatieprofielPage from './OrganisatieprofielPage.jsx';
+import OrganisatieprofielPage, { VELDEN } from './OrganisatieprofielPage.jsx';
 import ProjectenPage from './ProjectenPage.jsx';
 import DocumentatiePage from './DocumentatiePage.jsx';
 
@@ -122,6 +122,10 @@ export default function KompasToolPage() {
   const [conversationId, setConversationId] = useState(null);
   const [gekoppeldProjectId, setGekoppeldProjectId] = useState(null);
   const [historieLaadId, setHistorieLaadId] = useState(null);
+  // Fase 6: voorstel dat uit het lopende gesprek zelf naar voren kwam (nooit
+  // automatisch opgeslagen - zelfde goedkeurpatroon als document-/website-
+  // analyse op de Organisatie-pagina, hier alleen inline in de chat zelf).
+  const [chatVoorstel, setChatVoorstel] = useState(null);
 
   const scrollRef = useRef(null);
   const taRef = useRef(null);
@@ -197,6 +201,7 @@ export default function KompasToolPage() {
       },
       context: buildContext ? buildContext({ ...store, activeDoc: actiefDoc, linkedProjectId: gekoppeldProjectId }) : null,
       conversationId: actiefGesprekId,
+      orgProfile: hasPlanTools ? store.orgProfile || null : null,
     });
 
     setLoading(false);
@@ -213,6 +218,16 @@ export default function KompasToolPage() {
       voegBerichtToe({ conversationId: actiefGesprekId, role: 'assistant', content: res.answer, projectId: gekoppeldProjectId });
       store.upsertGesprekInLijst({ id: actiefGesprekId, tijd: new Date().toISOString() });
     }
+
+    // Fase 6: kwam er tijdens dit gesprek een voorstel uit voort (het lid
+    // noemde zelf iets dat nog in het profiel ontbrak), toon dat dan ter
+    // goedkeuring - nooit automatisch overnemen.
+    if (hasPlanTools && res.veldVoorstellen && Object.keys(res.veldVoorstellen).length) {
+      setChatVoorstel({
+        velden: res.veldVoorstellen,
+        gekozen: Object.fromEntries(Object.keys(res.veldVoorstellen).map((k) => [k, true])),
+      });
+    }
   };
 
   const togglePaneel = (naam) => () => setPaneel(paneel === naam ? null : naam);
@@ -223,6 +238,7 @@ export default function KompasToolPage() {
     setError('');
     setConversationId(null);
     setGekoppeldProjectId(null);
+    setChatVoorstel(null);
   };
 
   // Haalt de berichten van een eerder gesprek op (lazy - de lijst zelf bevat
@@ -240,6 +256,7 @@ export default function KompasToolPage() {
     setGekoppeldProjectId(h.projectId || null);
     setDraft('');
     setError('');
+    setChatVoorstel(null);
     setHistorieLaadId(null);
   };
 
@@ -259,6 +276,20 @@ export default function KompasToolPage() {
         store.upsertGesprekInLijst({ id: conversationId, projectId: genormaliseerd, tijd: new Date().toISOString() });
       }
     }
+  };
+
+  // Neemt de aangevinkte velden uit het gespreksvoorstel over in het profiel,
+  // met herkomst 'gesprek' (zie organisatieprofiel.js's bronLabel) en het
+  // gesprek zelf als referentie.
+  const overnemenChatVoorstel = () => {
+    if (!chatVoorstel) return;
+
+    const gekozenVelden = Object.fromEntries(
+      Object.entries(chatVoorstel.velden).filter(([k]) => chatVoorstel.gekozen[k]),
+    );
+
+    store.overnemenOrgVelden(gekozenVelden, 'gesprek', conversationId);
+    setChatVoorstel(null);
   };
 
   const subnavLink = css('font-size: 14.5px; font-weight: 700; color: #2C4A5E; white-space: nowrap;');
@@ -648,6 +679,64 @@ export default function KompasToolPage() {
                 >
                   ×
                 </span>
+              </div>
+            )}
+
+            {chatVoorstel && (
+              <div
+                style={css(
+                  'margin-bottom: 14px; padding: 18px; border: 1px solid #BFD4C6; border-radius: 16px; background: #EAF4EE;',
+                )}
+              >
+                <div style={css('margin-bottom: 10px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
+                  Subsidie Kompas wil dit toevoegen aan uw organisatieprofiel
+                </div>
+                <div style={css('display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;')}>
+                  {Object.entries(chatVoorstel.velden).map(([veld, waarde]) => {
+                    const def = VELDEN.find((f) => f.n === veld);
+
+                    return (
+                      <label key={veld} style={css('display: flex; align-items: flex-start; gap: 10px; cursor: pointer;')}>
+                        <input
+                          type="checkbox"
+                          checked={!!chatVoorstel.gekozen[veld]}
+                          onChange={(e) =>
+                            setChatVoorstel((cur) => ({
+                              ...cur,
+                              gekozen: { ...cur.gekozen, [veld]: e.target.checked },
+                            }))
+                          }
+                          style={css('margin-top: 3px;')}
+                        />
+                        <span style={css('font-size: 14px; color: #3D4B48;')}>
+                          <strong>{def ? def.l : veld}:</strong> {waarde}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div style={css('display: flex; gap: 10px; flex-wrap: wrap;')}>
+                  <div
+                    onClick={overnemenChatVoorstel}
+                    role="button"
+                    tabIndex={0}
+                    style={css(
+                      'cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-size: 13.5px; font-weight: 800;',
+                    )}
+                  >
+                    Overnemen in profiel
+                  </div>
+                  <div
+                    onClick={() => setChatVoorstel(null)}
+                    role="button"
+                    tabIndex={0}
+                    style={css(
+                      'cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 700;',
+                    )}
+                  >
+                    Niet overnemen
+                  </div>
+                </div>
               </div>
             )}
 
