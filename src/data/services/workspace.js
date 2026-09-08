@@ -77,10 +77,13 @@ export async function haalWerkomgevingOp() {
 
   // Let op: het organisatieprofiel loopt niet meer via dit bestand - zie
   // data/services/organisatieprofiel.js (subsidie_kompas_organizations).
-  // Projecten/documentatie/gesprekken/voorkeuren wachten nog op een eigen
-  // fase; de tabellen hieronder bestaan nog niet, dus dit blijft voorlopig
-  // altijd stil terugvallen op localStorage.
-  const [projecten, docs, gesprekken, voorkeuren] = await Promise.all([
+  // Projecten lopen ook niet meer hier - zie data/services/projecten.js
+  // (subsidie_kompas_programs). Gesprekken lopen ook niet meer hier - zie
+  // data/services/gesprekken.js (subsidie_kompas_conversations/messages).
+  // Documentatie/voorkeuren wachten nog op een eigen fase; de tabellen
+  // hieronder bestaan nog niet, dus dit blijft voorlopig altijd stil
+  // terugvallen op localStorage.
+  const [projecten, docs, voorkeuren] = await Promise.all([
     veilig(() =>
       supabase
         .from('projecten')
@@ -97,14 +100,11 @@ export async function haalWerkomgevingOp() {
         .eq('profile_id', id)
         .order('updated_at', { ascending: false }),
     ),
-    veilig(() =>
-      supabase.from('gesprekken').select('*').eq('profile_id', id).order('updated_at', { ascending: false }),
-    ),
     veilig(() => supabase.from('lid_voorkeuren').select('*').eq('profile_id', id).maybeSingle()),
   ]);
 
   // Kon niets worden gelezen, dan bestaan de tabellen nog niet.
-  if (projecten === null && docs === null && gesprekken === null) {
+  if (projecten === null && docs === null) {
     return null;
   }
 
@@ -112,12 +112,6 @@ export async function haalWerkomgevingOp() {
     ...LEEG,
     projects: projecten || [],
     genDocs: docs || [],
-    conversations: (gesprekken || []).map((g) => ({
-      id: g.id,
-      titel: g.titel,
-      berichten: g.berichten || [],
-      tijd: g.updated_at,
-    })),
     memberVisible: voorkeuren ? voorkeuren.zichtbaar_in_ledenlijst : true,
     reminderMail: voorkeuren ? voorkeuren.herinnering_mail : true,
     reminderDays: voorkeuren ? voorkeuren.herinnering_dagen : 14,
@@ -143,58 +137,6 @@ export async function bewaarVoorkeuren({ memberVisible, reminderMail, reminderDa
   );
 
   return !error;
-}
-
-export async function bewaarGesprek({ id: gesprekId, titel, berichten }) {
-  const id = await profielId();
-
-  if (!id) {
-    return null;
-  }
-
-  const rij = {
-    profile_id: id,
-    titel,
-    berichten,
-    updated_at: new Date().toISOString(),
-  };
-
-  if (gesprekId) {
-    rij.id = gesprekId;
-  }
-
-  const { data, error } = await supabase.from('gesprekken').upsert(rij).select('id').single();
-
-  return error ? null : data.id;
-}
-
-export async function verwijderGesprekken() {
-  const id = await profielId();
-
-  if (!id) {
-    return false;
-  }
-
-  const { error } = await supabase.from('gesprekken').delete().eq('profile_id', id);
-
-  return !error;
-}
-
-// Verwijdert het organisatieprofiel en alles wat eraan hangt.
-export async function verwijderOrganisatiegegevens() {
-  const id = await profielId();
-
-  if (!id) {
-    return false;
-  }
-
-  const uitkomsten = await Promise.all([
-    supabase.from('organisatieprofielen').delete().eq('profile_id', id),
-    supabase.from('projecten').delete().eq('profile_id', id),
-    supabase.from('documentatie').delete().eq('profile_id', id),
-  ]);
-
-  return uitkomsten.every((r) => !r.error);
 }
 
 /* ---------- bestanden ---------- */

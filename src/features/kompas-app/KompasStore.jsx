@@ -17,6 +17,11 @@ import {
   wisOrganisatieVeld,
 } from '../../data/services/organisatieprofiel.js';
 import { bewaarProject, haalProjectenOp, verwijderProject } from '../../data/services/projecten.js';
+import {
+  haalGesprekkenOp,
+  verwijderAlleGesprekken,
+  verwijderGesprek as verwijderGesprekService,
+} from '../../data/services/gesprekken.js';
 
 export const PROJECT_EMPTY = {
   id: null,
@@ -122,6 +127,31 @@ export function KompasProvider({ children }) {
 
       projectenBron.current = 'supabase';
       setSt((cur) => ({ ...cur, projects: lijst }));
+    });
+
+    return () => {
+      actief = false;
+    };
+  }, []);
+
+  // Gesprekken: ook al op de echte tabellen (subsidie_kompas_conversations/
+  // messages), los van haalWerkomgevingOp() hierboven. Hier komt alleen de
+  // lichte lijst (id/titel/tijd/projectId) binnen - de berichten van een
+  // gesprek worden pas geladen als het lid dat gesprek opent (zie
+  // gesprekken.js's haalBerichtenOp, rechtstreeks aangeroepen vanuit
+  // KompasToolPage.jsx).
+  const gesprekkenBron = useRef('lokaal');
+
+  useEffect(() => {
+    let actief = true;
+
+    haalGesprekkenOp().then((lijst) => {
+      if (!actief || lijst === null) {
+        return;
+      }
+
+      gesprekkenBron.current = 'supabase';
+      setSt((cur) => ({ ...cur, conversations: lijst }));
     });
 
     return () => {
@@ -339,10 +369,37 @@ export function KompasProvider({ children }) {
 
       deleteDoc: (docId) => setSt((cur) => ({ ...cur, genDocs: cur.genDocs.filter((d) => d.id !== docId) })),
 
-      deleteConversation: (id) =>
-        setSt((cur) => ({ ...cur, conversations: cur.conversations.filter((c) => c.id !== id) })),
+      deleteConversation: (id) => {
+        setSt((cur) => ({ ...cur, conversations: cur.conversations.filter((c) => c.id !== id) }));
 
-      clearConversations: () => patch({ conversations: [] }),
+        if (gesprekkenBron.current === 'supabase') {
+          verwijderGesprekService(id);
+        }
+      },
+
+      clearConversations: () => {
+        patch({ conversations: [] });
+
+        if (gesprekkenBron.current === 'supabase') {
+          verwijderAlleGesprekken();
+        }
+      },
+
+      // Zet een net aangemaakt of bijgewerkt gesprek vooraan in de lijst -
+      // gebruikt door KompasToolPage.jsx zelf rechtstreeks na
+      // maakGesprekAan()/voegBerichtToe()/koppelGesprekAanProject(), zodat de
+      // "Eerdere gesprekken"-lijst meteen klopt zonder opnieuw op te halen.
+      // Altijd vooraan zetten (in plaats van op de bestaande plek bijwerken)
+      // houdt dit in lijn met haalGesprekkenOp(), die op updated_at aflopend
+      // sorteert: het gesprek waarin net iets is gebeurd hoort bovenaan.
+      upsertGesprekInLijst: (gesprek) =>
+        setSt((cur) => {
+          const bestaand = cur.conversations.find((c) => c.id === gesprek.id);
+          const zonder = cur.conversations.filter((c) => c.id !== gesprek.id);
+          const bijgewerkt = bestaand ? { ...bestaand, ...gesprek } : gesprek;
+
+          return { ...cur, conversations: [bijgewerkt, ...zonder] };
+        }),
 
       // Beheer · Deadlines. Vervang deze drie door Supabase-writes op
       // subsidieregelingen_tijdlijn en subsidieregelingen.

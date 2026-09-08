@@ -13,9 +13,27 @@ import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import { askKompas, buildContext } from '../../data/services/chat.js';
+import {
+  haalBerichtenOp,
+  koppelGesprekAanProject,
+  maakGesprekAan,
+  voegBerichtToe,
+} from '../../data/services/gesprekken.js';
 import OrganisatieprofielPage from './OrganisatieprofielPage.jsx';
 import ProjectenPage from './ProjectenPage.jsx';
 import DocumentatiePage from './DocumentatiePage.jsx';
+
+function formatDatum(iso) {
+  if (!iso) {
+    return '';
+  }
+
+  try {
+    return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  } catch (e) {
+    return '';
+  }
+}
 
 const STARTERS = [
   'Ik zoek financiering voor een nieuw project',
@@ -98,6 +116,12 @@ export default function KompasToolPage() {
   const [paneel, setPaneel] = useState(null);
   const [accountMsg, setAccountMsg] = useState('');
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  // Fase 5: welk gesprek (rij in subsidie_kompas_conversations) er nu
+  // actief is - null zolang er nog geen bericht is verstuurd, want een
+  // gesprek wordt pas aangemaakt bij het eerste bericht (zie verstuur()).
+  const [conversationId, setConversationId] = useState(null);
+  const [gekoppeldProjectId, setGekoppeldProjectId] = useState(null);
+  const [historieLaadId, setHistorieLaadId] = useState(null);
 
   const scrollRef = useRef(null);
   const taRef = useRef(null);
@@ -121,6 +145,10 @@ export default function KompasToolPage() {
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   };
 
+  // Bewaart een gesprek pas op het eerste bericht (niet vooraf) zodat er geen
+  // lege gesprekken ontstaan; alleen voor wie de "Eerdere gesprekken"-lijst
+  // ook ziet (hasPlanTools) - voor Free blijft een gesprek puur lokaal, zoals
+  // voorheen.
   const verstuur = async (tekst) => {
     const vraag = (tekst != null ? tekst : draft).trim();
 
@@ -135,6 +163,29 @@ export default function KompasToolPage() {
 
     if (taRef.current) taRef.current.style.height = '48px';
 
+    let actiefGesprekId = conversationId;
+
+    if (hasPlanTools) {
+      if (!actiefGesprekId) {
+        const aangemaakt = await maakGesprekAan({ titel: vraag.slice(0, 60), projectId: gekoppeldProjectId });
+
+        if (aangemaakt.id) {
+          actiefGesprekId = aangemaakt.id;
+          setConversationId(actiefGesprekId);
+          store.upsertGesprekInLijst({
+            id: actiefGesprekId,
+            titel: vraag.slice(0, 60),
+            tijd: new Date().toISOString(),
+            projectId: gekoppeldProjectId,
+          });
+        }
+      }
+
+      if (actiefGesprekId) {
+        voegBerichtToe({ conversationId: actiefGesprekId, role: 'user', content: vraag, projectId: gekoppeldProjectId });
+      }
+    }
+
     const res = await askKompas({
       messages: nieuw,
       tier,
@@ -144,7 +195,8 @@ export default function KompasToolPage() {
         canUseFundDatabase: app.canUsePrivateDatabase,
         canUseOrganizationMemory: app.canUseOrganizationMemory,
       },
-      context: buildContext ? buildContext(store) : null,
+      context: buildContext ? buildContext({ ...store, activeDoc: actiefDoc, linkedProjectId: gekoppeldProjectId }) : null,
+      conversationId: actiefGesprekId,
     });
 
     setLoading(false);
@@ -156,6 +208,11 @@ export default function KompasToolPage() {
     }
 
     setMessages(nieuw.concat([{ role: 'assistant', content: res.answer, fromUser: false }]));
+
+    if (hasPlanTools && actiefGesprekId) {
+      voegBerichtToe({ conversationId: actiefGesprekId, role: 'assistant', content: res.answer, projectId: gekoppeldProjectId });
+      store.upsertGesprekInLijst({ id: actiefGesprekId, tijd: new Date().toISOString() });
+    }
   };
 
   const togglePaneel = (naam) => () => setPaneel(paneel === naam ? null : naam);
@@ -164,6 +221,44 @@ export default function KompasToolPage() {
     setMessages([]);
     setDraft('');
     setError('');
+    setConversationId(null);
+    setGekoppeldProjectId(null);
+  };
+
+  // Haalt de berichten van een eerder gesprek op (lazy - de lijst zelf bevat
+  // ze niet, zie gesprekken.js) en maakt dat gesprek weer actief, inclusief
+  // de eventuele projectkoppeling.
+  const openGesprek = async (h) => {
+    if (historieLaadId) return;
+
+    setHistorieLaadId(h.id);
+
+    const berichten = await haalBerichtenOp(h.id);
+
+    setMessages(berichten);
+    setConversationId(h.id);
+    setGekoppeldProjectId(h.projectId || null);
+    setDraft('');
+    setError('');
+    setHistorieLaadId(null);
+  };
+
+  // Koppelt (of ontkoppelt) het actieve gesprek aan een project - punt 6/7
+  // uit het oorspronkelijke verzoek. Bij een nog niet bewaard gesprek
+  // (conversationId is null) wordt alleen de lokale keuze onthouden; die gaat
+  // dan mee zodra verstuur() het gesprek aanmaakt.
+  const koppelProject = async (projectId) => {
+    const genormaliseerd = projectId || null;
+
+    setGekoppeldProjectId(genormaliseerd);
+
+    if (conversationId) {
+      const ok = await koppelGesprekAanProject(conversationId, genormaliseerd);
+
+      if (ok) {
+        store.upsertGesprekInLijst({ id: conversationId, projectId: genormaliseerd, tijd: new Date().toISOString() });
+      }
+    }
   };
 
   const subnavLink = css('font-size: 14.5px; font-weight: 700; color: #2C4A5E; white-space: nowrap;');
@@ -255,6 +350,24 @@ export default function KompasToolPage() {
                 Documentatie
                 <span style={css('font-size: 12px; font-weight: 700; opacity: 0.7;')}>{documenten.length}</span>
               </div>
+
+              {(store.projects || []).length > 0 && (
+                <select
+                  value={gekoppeldProjectId || ''}
+                  onChange={(e) => koppelProject(e.target.value || null)}
+                  aria-label="Koppel dit gesprek aan een project"
+                  style={css(
+                    'cursor: pointer; box-sizing: border-box; min-height: 38px; padding: 8px 16px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 800;',
+                  )}
+                >
+                  <option value="">Geen project gekoppeld</option>
+                  {store.projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.naam || 'Naamloos project'}
+                    </option>
+                  ))}
+                </select>
+              )}
             </>
           )}
         </div>
@@ -275,7 +388,7 @@ export default function KompasToolPage() {
                   )}
                 >
                   <span
-                    onClick={() => setMessages(h.berichten || [])}
+                    onClick={() => openGesprek(h)}
                     role="button"
                     tabIndex={0}
                     style={css('cursor: pointer; flex: 1 1 220px; min-width: 0; color: #2C4A5E; font-size: 14.5px; font-weight: 700;')}
@@ -283,9 +396,15 @@ export default function KompasToolPage() {
                     {h.titel}
                   </span>
                   <span style={css('display: flex; align-items: center; gap: 16px;')}>
-                    <span style={css('color: #7B8985; font-size: 13px;')}>{h.tijd}</span>
+                    <span style={css('color: #7B8985; font-size: 13px;')}>{historieLaadId === h.id ? 'Laden…' : formatDatum(h.tijd)}</span>
                     <span
-                      onClick={() => store.deleteConversation(h.id)}
+                      onClick={() => {
+                        store.deleteConversation(h.id);
+
+                        if (h.id === conversationId) {
+                          nieuweChat();
+                        }
+                      }}
                       role="button"
                       tabIndex={0}
                       style={css('cursor: pointer; min-height: 44px; display: flex; align-items: center; color: #9E3B2C; font-size: 13px; font-weight: 700;')}
@@ -325,6 +444,7 @@ export default function KompasToolPage() {
                 <div
                   onClick={() => {
                     store.clearConversations();
+                    nieuweChat();
                     setAccountMsg('Alle gesprekken zijn verwijderd.');
                   }}
                   role="button"

@@ -209,9 +209,21 @@ export async function analyseerWebsite({ url }) {
   document. Blijft aan deze kant zodat de Edge Function er niets van hoeft te
   weten tot die is bijgewerkt.
 */
-export function buildContext({ orgProfile, projects, activeDoc, fieldLabels }) {
+export function buildContext({ orgProfile, projects, activeDoc, fieldLabels, linkedProjectId }) {
   const delen = [];
   const profiel = orgProfile || {};
+
+  // Fase 5, punt 6/7 uit het oorspronkelijke verzoek: de AI moet weten welk
+  // project bij dit gesprek hoort, als het lid dat heeft gekoppeld.
+  if (linkedProjectId) {
+    const gekoppeld = (projects || []).find((p) => p.id === linkedProjectId);
+
+    if (gekoppeld) {
+      delen.push(
+        `Dit gesprek is door het lid gekoppeld aan het project "${gekoppeld.naam || 'Naamloos project'}". Ga hiervan uit als hoofdonderwerp, tenzij het lid het duidelijk over iets anders heeft.`,
+      );
+    }
+  }
 
   const gevuld = Object.keys(profiel).filter((k) => {
     const v = profiel[k];

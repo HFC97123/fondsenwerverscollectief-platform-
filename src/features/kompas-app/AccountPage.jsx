@@ -6,7 +6,6 @@ import { useKompas } from './KompasStore.jsx';
 import { Button, Field, Input, Notice, Panel, PanelHeader } from '../../shared/ui/index.js';
 import { useApp } from './useKompasApp.js';
 import { TIER_LABEL, openBeheerportaal } from '../../data/services/billing.js';
-import { verwijderGesprekken, verwijderOrganisatiegegevens } from '../../data/services/workspace.js';
 import { bewaarOnboarding, haalAankopen, haalOnboarding } from '../../data/services/onboarding.js';
 
 const AANKOOP_LABEL = { cursus: 'Cursus', template: 'Template', download: 'Download', overig: 'Overig' };
@@ -177,10 +176,10 @@ export default function AccountPage() {
               onClick={() => { window.location.hash = '#/subsidie-kompas'; }}
               style={css("cursor: pointer; flex: 1 1 220px; min-width: 0; border: none; background: none; padding: 0; text-align: left; font-family: 'Mulish', sans-serif; font-size: 14.5px; font-weight: 700; color: #2C4A5E;")}
             >
-              {c.title}
+              {c.titel}
             </button>
             <span style={css('display: flex; align-items: center; gap: 16px;')}>
-              <span style={css('color: #7B8985; font-size: 13px;')}>{c.when}</span>
+              <span style={css('color: #7B8985; font-size: 13px;')}>{formatDatum(c.tijd)}</span>
               <button
                 type="button"
                 onClick={() => { store.deleteConversation(c.id); setMelding('Gesprek verwijderd.'); }}
@@ -238,8 +237,10 @@ export default function AccountPage() {
           <Button
             variant="danger"
             onClick={async () => {
-              store.clearConversations();
-              await verwijderGesprekken();
+              // store.clearConversations() bewaart en verwijdert nu zelf ook
+              // echt in de database (subsidie_kompas_conversations, cascaded
+              // naar de bijbehorende berichten) - zie KompasStore.jsx.
+              await store.clearConversations();
               setMelding('Alle gesprekken zijn verwijderd.');
             }}
           >
@@ -248,8 +249,9 @@ export default function AccountPage() {
           <Button
             variant="danger"
             onClick={async () => {
-              store.clearOrgProfile();
-              await verwijderOrganisatiegegevens();
+              // store.clearOrgProfile() verwijdert sinds fase 1 ook echt het
+              // organisatieprofiel in de database - zie KompasStore.jsx.
+              await store.clearOrgProfile();
               setMelding('De informatie over uw organisatie is verwijderd.');
             }}
           >
