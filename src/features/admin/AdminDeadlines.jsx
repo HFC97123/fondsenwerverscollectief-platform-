@@ -21,7 +21,8 @@ import {
   setAccessTier,
 } from '../../data/services/adminFunders.js';
 import { fetchKoppelingen, zetKoppelingen } from '../../data/services/adminClassificaties.js';
-import { haalClassificatiesOp } from '../../data/services/classificaties.js';
+import { zetBandbreedte } from '../../data/services/adminBandbreedtes.js';
+import { haalBandbreedtesOp, haalClassificatiesOp } from '../../data/services/classificaties.js';
 import ClassificatieSelect from '../../shared/ui/ClassificatieSelect.jsx';
 import AdminToolbar from './shared/AdminToolbar.jsx';
 import AdminFilters from './shared/AdminFilters.jsx';
@@ -44,8 +45,6 @@ const PAGE_SIZE = 25;
 
 const LEEG_BEWERKING = {
   naam: '',
-  thema: '',
-  werkgebied: '',
   bedragMin: '',
   bedragMax: '',
   deadline: '',
@@ -57,6 +56,7 @@ const LEEG_BEWERKING = {
   doelgroepen: [],
   regios: [],
   accessTier: 'premium',
+  bandbreedteBijdrageId: '',
 };
 
 // CSV-kolommen; per veld de namen die we accepteren. Zelfde opzet als de
@@ -94,6 +94,7 @@ export default function AdminDeadlines({ notify }) {
   const [sourceType, setSourceType] = useState(null);
   const [reviewed, setReviewed] = useState(null);
   const [accessTier, setAccessTierFilter] = useState(null);
+  const [bandbreedteBijdrageId, setBandbreedteBijdrageIdFilter] = useState(null);
 
   const [sortColumn, setSortColumn] = useState('naam');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -106,11 +107,13 @@ export default function AdminDeadlines({ notify }) {
   const [importBezig, setImportBezig] = useState(false);
   const [importMelding, setImportMelding] = useState('');
   const [classificatieOpties, setClassificatieOpties] = useState({ themas: [], doelgroepen: [], regios: [] });
+  const [bandbreedteOpties, setBandbreedteOpties] = useState([]);
   const [koppelingenLaden, setKoppelingenLaden] = useState(false);
   const [bulkAccessTierBezig, setBulkAccessTierBezig] = useState(false);
 
   useEffect(() => {
     haalClassificatiesOp().then(setClassificatieOpties);
+    haalBandbreedtesOp().then(setBandbreedteOpties);
   }, []);
 
   const laad = async () => {
@@ -124,6 +127,7 @@ export default function AdminDeadlines({ notify }) {
       sourceType,
       classificationReviewed: reviewed,
       accessTier,
+      bandbreedteBijdrageId,
       sortColumn,
       sortDirection,
       page,
@@ -145,11 +149,11 @@ export default function AdminDeadlines({ notify }) {
   useEffect(() => {
     laad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, dataTier, sourceType, reviewed, accessTier, sortColumn, sortDirection, page]);
+  }, [search, status, dataTier, sourceType, reviewed, accessTier, bandbreedteBijdrageId, sortColumn, sortDirection, page]);
 
   useEffect(() => {
     setPage(0);
-  }, [search, status, dataTier, sourceType, reviewed, accessTier]);
+  }, [search, status, dataTier, sourceType, reviewed, accessTier, bandbreedteBijdrageId]);
 
   const onSort = (key) => {
     if (sortColumn === key) {
@@ -190,8 +194,6 @@ export default function AdminDeadlines({ notify }) {
     setEditingId(row.id);
     setForm({
       naam: row.naam || '',
-      thema: row.thema || '',
-      werkgebied: row.werkgebied || '',
       bedragMin: row.bedrag_min ?? '',
       bedragMax: row.bedrag_max ?? '',
       deadline: row.deadline || '',
@@ -203,6 +205,7 @@ export default function AdminDeadlines({ notify }) {
       doelgroepen: [],
       regios: [],
       accessTier: row.access_tier || 'premium',
+      bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
     });
 
     setKoppelingenLaden(true);
@@ -222,8 +225,11 @@ export default function AdminDeadlines({ notify }) {
 
     const patch = {
       naam: form.naam.trim(),
-      thema: form.thema || null,
-      werkgebied: form.werkgebied || null,
+      // thema/werkgebied worden bewust niet meer meegestuurd: het
+      // bewerkscherm kent geen vrije-tekstvelden meer voor deze twee, en de
+      // RPC laat het legacy tekstveld ongewijzigd (coalesce) wanneer het
+      // ontbreekt. De centrale multi-select hieronder is nu de enige manier
+      // om disciplines/werkgebieden te classificeren.
       bedragMin: form.bedragMin === '' ? null : Number(form.bedragMin),
       bedragMax: form.bedragMax === '' ? null : Number(form.bedragMax),
       deadline: form.deadline || null,
@@ -264,6 +270,18 @@ export default function AdminDeadlines({ notify }) {
 
       if (tierRes.error) {
         notify('error', 'Regeling bijgewerkt, maar het toegangsniveau kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
+    }
+
+    if (form.bandbreedteBijdrageId !== (row.bandbreedte_bijdrage_id || '')) {
+      const bandbreedteRes = await zetBandbreedte('subsidieregelingen', row.id, form.bandbreedteBijdrageId || null);
+
+      if (bandbreedteRes.error) {
+        notify('error', 'Regeling bijgewerkt, maar de bandbreedte bijdrage kon niet worden opgeslagen.');
         setEditingId(null);
         laad();
 
@@ -439,6 +457,11 @@ export default function AdminDeadlines({ notify }) {
           </span>
         ),
       },
+      {
+        key: 'bandbreedte_bijdrage',
+        label: 'Bandbreedte bijdrage',
+        render: (r) => r.bandbreedte_bijdrage_naam || '—',
+      },
     ],
     [],
   );
@@ -520,6 +543,16 @@ export default function AdminDeadlines({ notify }) {
             onChange: setAccessTierFilter,
             options: [{ value: null, label: 'Alle' }, ...ACCESS_TIERS],
           },
+          {
+            key: 'bandbreedte_bijdrage',
+            label: 'Bandbreedte bijdrage',
+            value: bandbreedteBijdrageId,
+            onChange: setBandbreedteBijdrageIdFilter,
+            options: [
+              { value: null, label: 'Alle' },
+              ...bandbreedteOpties.map((b) => ({ value: b.id, label: b.naam })),
+            ],
+          },
         ]}
       />
 
@@ -563,6 +596,7 @@ export default function AdminDeadlines({ notify }) {
           onSave={() => opslaanBewerking(rows.find((r) => r.id === editingId))}
           opslaan={opslaan}
           classificatieOpties={classificatieOpties}
+          bandbreedteOpties={bandbreedteOpties}
           koppelingenLaden={koppelingenLaden}
         />
       ) : null}
@@ -570,7 +604,7 @@ export default function AdminDeadlines({ notify }) {
   );
 }
 
-function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, koppelingenLaden }) {
+function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, bandbreedteOpties, koppelingenLaden }) {
   if (!row) {
     return null;
   }
@@ -598,16 +632,6 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
         </label>
 
         <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Discipline
-          <input style={inputStyle} value={form.thema} onChange={set('thema')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
-          Werkgebied
-          <input style={inputStyle} value={form.werkgebied} onChange={set('werkgebied')} />
-        </label>
-
-        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
           Status
           <select style={inputStyle} value={form.status} onChange={set('status')}>
             {REGELING_STATUSSEN.map((s) => (
@@ -624,6 +648,18 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
             {ACCESS_TIERS.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
+          Bandbreedte bijdrage
+          <select style={inputStyle} value={form.bandbreedteBijdrageId} onChange={set('bandbreedteBijdrageId')}>
+            <option value="">Niet ingedeeld</option>
+            {bandbreedteOpties.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.naam}
               </option>
             ))}
           </select>
@@ -663,12 +699,12 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
       <div style={css('margin: 22px 0 6px; height: 1px; background: #E1EAE4;')} />
 
       <div style={css("margin-bottom: 6px; font-family: 'Newsreader', serif; font-size: 17px; color: #2C4A5E;")}>
-        Classificaties (gestructureerd)
+        Classificaties
       </div>
       <p style={css('margin: 0 0 14px; font-size: 12.5px; color: #82918B;')}>
-        Nieuw, naast de vrije-tekstvelden Discipline/Werkgebied hierboven — filters en matching gaan hier straks
-        op over. Alleen bestaande waarden zijn te kiezen; ontbreekt er een, voeg die eerst toe via Beheer →
-        Classificaties.
+        Dit zijn de centrale categorieën waarop platformbreed gefilterd en gematcht wordt (Admin, publieke
+        zoekpagina, AI). Alleen bestaande waarden zijn te kiezen; ontbreekt er een, voeg die eerst toe via
+        Beheer → Classificaties.
       </p>
 
       <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px;')}>

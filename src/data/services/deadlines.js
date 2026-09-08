@@ -7,12 +7,20 @@
 // voorwaarden, naam/website van de fondsverstrekker) komen als `null` terug
 // uit de database zelf — dit bestand voegt geen eigen beveiliging toe en mag
 // dat ook niet doen. Zie data/SCHEMA.md.
+//
+// themas_namen/doelgroepen_namen/werkgebieden_namen komen uit de centrale
+// koppeltabellen (dezelfde disciplines/doelgroepen/werkgebieden als Beheer)
+// — dit is de source of truth voor filters/matching, niet de losse
+// thema/werkgebied-tekstvelden. Die tekstvelden blijven wel meekomen en
+// dienen alleen nog als fallback voor regelingen die nog niet (volledig)
+// aan de centrale lijsten gekoppeld zijn (zie normalize() hieronder).
 import { query, supabase } from '../client.js';
 
 export const SELECT = [
   'id, naam, thema, werkgebied, data_tier, source_type, status, status_ruw,',
   'volledig_zichtbaar, deadline_datum, dagen_resterend, deadline_periode,',
-  'bedrag_min, bedrag_max, voorwaarden, funder_naam, funder_website, funder_type',
+  'bedrag_min, bedrag_max, voorwaarden, funder_naam, funder_website, funder_type,',
+  'themas_namen, doelgroepen_namen, werkgebieden_namen, bandbreedte_bijdrage_naam',
 ].join(' ');
 
 export const STATUS_ORDER = [
@@ -26,13 +34,25 @@ export const STATUS_ORDER = [
 
 // Brengt een rij uit de view naar de vorm die de pagina gebruikt.
 export function normalize(row) {
+  const themasNamen = row.themas_namen || [];
+  const doelgroepenNamen = row.doelgroepen_namen || [];
+  const werkgebiedenNamen = row.werkgebieden_namen || [];
+
   return {
     id: row.id,
     naam: row.naam || '—',
     funder: row.funder_naam || '—',
     funderType: row.funder_type || '',
-    regio: row.werkgebied || 'Landelijk',
-    thema: row.thema || '',
+    // Voorkeur voor de centrale koppeling; valt terug op het oude
+    // vrije-tekstveld zolang een regeling nog niet (volledig) geclassificeerd
+    // is via Beheer → Classificaties. Zo blijft de weergave altijd gevuld,
+    // zonder dat er ergens een eigen tweede lijst nodig is.
+    regio: werkgebiedenNamen.length ? werkgebiedenNamen.join(', ') : row.werkgebied || 'Landelijk',
+    thema: themasNamen.length ? themasNamen.join(', ') : row.thema || '',
+    themasNamen,
+    doelgroepenNamen,
+    werkgebiedenNamen,
+    bandbreedteBijdrage: row.bandbreedte_bijdrage_naam || null,
     status: row.status || 'Open',
     deadline: row.deadline_datum || null,
     dagen: typeof row.dagen_resterend === 'number' ? row.dagen_resterend : null,

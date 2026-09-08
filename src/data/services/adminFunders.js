@@ -45,7 +45,8 @@ export const PRIORITEIT_BUCKETS = [
 ];
 
 // params: { search, type, status, dataTier, sourceType, classificationReviewed,
-//           accessTier, prioriteitMin, sortColumn, sortDirection, page, pageSize }
+//           accessTier, prioriteitMin, bandbreedteBijdrageId, sortColumn,
+//           sortDirection, page, pageSize }
 export async function fetchFunders(params = {}) {
   const {
     search = null,
@@ -56,6 +57,7 @@ export async function fetchFunders(params = {}) {
     classificationReviewed = null,
     accessTier = null,
     prioriteitMin = null,
+    bandbreedteBijdrageId = null,
     sortColumn = 'naam',
     sortDirection = 'asc',
     page = 0,
@@ -78,6 +80,7 @@ export async function fetchFunders(params = {}) {
         p_offset: page * pageSize,
         p_prioriteit_min: prioriteitMin,
         p_access_tier: accessTier || null,
+        p_bandbreedte_bijdrage_id: bandbreedteBijdrageId || null,
       }),
     [],
   );

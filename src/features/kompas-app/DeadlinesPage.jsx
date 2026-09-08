@@ -24,19 +24,39 @@ function kansrijkheid(regeling, orgProfile, projects) {
   const punten = [];
   const minpunten = [];
 
-  if (regeling.thema && themas.some((t) => t && (t.indexOf(regeling.thema.toLowerCase()) !== -1 || regeling.thema.toLowerCase().indexOf(t) !== -1))) {
-    punten.push(`de discipline ${regeling.thema} staat in uw profiel`);
-  } else if (regeling.thema && themas.length) {
-    minpunten.push(`de discipline ${regeling.thema} staat niet in uw profiel`);
+  // Voorkeur voor de centrale, gestructureerde koppelingen (themasNamen/
+  // werkgebiedenNamen, uit dezelfde disciplines/werkgebieden-tabellen als
+  // Beheer); valt terug op de losse thema/regio-strings voor regelingen die
+  // nog niet aan de centrale lijsten gekoppeld zijn.
+  const regelingThemas = regeling.themasNamen && regeling.themasNamen.length ? regeling.themasNamen : regeling.thema ? [regeling.thema] : [];
+  const aansluitendeThemas = regelingThemas.filter(
+    (rt) => rt && themas.some((t) => t && (t.indexOf(rt.toLowerCase()) !== -1 || rt.toLowerCase().indexOf(t) !== -1)),
+  );
+
+  if (regelingThemas.length && aansluitendeThemas.length) {
+    punten.push(`de disciplines ${aansluitendeThemas.join(', ')} sluiten aan bij uw profiel`);
+  } else if (regelingThemas.length && themas.length) {
+    minpunten.push(`de disciplines ${regelingThemas.join(', ')} sluiten niet aan bij uw profiel`);
   }
 
-  if (werkgebied && regeling.regio) {
-    const r = regeling.regio.toLowerCase();
+  const regelingWerkgebieden =
+    regeling.werkgebiedenNamen && regeling.werkgebiedenNamen.length
+      ? regeling.werkgebiedenNamen
+      : regeling.regio
+        ? [regeling.regio]
+        : [];
 
-    if (r === 'nederland' || r === 'landelijk' || werkgebied.indexOf(r) !== -1 || r.indexOf(werkgebied) !== -1) {
+  if (werkgebied && regelingWerkgebieden.length) {
+    const sluitAan = regelingWerkgebieden.some((rw) => {
+      const r = rw.toLowerCase();
+
+      return r === 'nederland' || r === 'landelijk' || werkgebied.indexOf(r) !== -1 || r.indexOf(werkgebied) !== -1;
+    });
+
+    if (sluitAan) {
       punten.push('het werkgebied sluit aan');
     } else {
-      minpunten.push(`het werkgebied ${regeling.regio} wijkt af van uw werkgebied`);
+      minpunten.push(`het werkgebied ${regelingWerkgebieden.join(', ')} wijkt af van uw werkgebied`);
     }
   }
 
@@ -207,6 +227,7 @@ export default function DeadlinesPage() {
   const [thema, setThema] = useState('alle');
   const [type, setType] = useState('alle');
   const [regio, setRegio] = useState('alle');
+  const [bandbreedte, setBandbreedte] = useState('alle');
   const [archief, setArchief] = useState(false);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -290,21 +311,33 @@ export default function DeadlinesPage() {
         return false;
       }
 
-      if (skip !== 'thema' && thema !== 'alle' && row.thema !== thema) {
-        return false;
+      if (skip !== 'thema' && thema !== 'alle') {
+        const themasNamen = row.themasNamen && row.themasNamen.length ? row.themasNamen : row.thema ? [row.thema] : [];
+
+        if (themasNamen.indexOf(thema) === -1) {
+          return false;
+        }
       }
 
       if (skip !== 'type' && type !== 'alle' && row.funderType !== type) {
         return false;
       }
 
-      if (skip !== 'regio' && regio !== 'alle' && row.regio !== regio) {
+      if (skip !== 'regio' && regio !== 'alle') {
+        const werkgebiedenNamen = row.werkgebiedenNamen && row.werkgebiedenNamen.length ? row.werkgebiedenNamen : row.regio ? [row.regio] : [];
+
+        if (werkgebiedenNamen.indexOf(regio) === -1) {
+          return false;
+        }
+      }
+
+      if (skip !== 'bandbreedte' && bandbreedte !== 'alle' && row.bandbreedteBijdrage !== bandbreedte) {
         return false;
       }
 
       return true;
     },
-    [archief, query, deadline, statuses, thema, type, regio],
+    [archief, query, deadline, statuses, thema, type, regio, bandbreedte],
   );
 
   const sorted = useMemo(
@@ -375,6 +408,7 @@ export default function DeadlinesPage() {
     setThema('alle');
     setType('alle');
     setRegio('alle');
+    setBandbreedte('alle');
     setArchief(false);
     setLimit(PAGE_SIZE);
   };
@@ -382,6 +416,25 @@ export default function DeadlinesPage() {
   const countFor = (skip, pred) => rows.filter((r) => matches(r, skip) && pred(r)).length;
   const unique = (key) =>
     Array.from(new Set(rows.map((r) => r[key]).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'nl'));
+  // Voor disciplines/werkgebieden: leest de centrale, meerwaardige
+  // koppelingen (arrayKey) uit i.p.v. het oude, mogelijk kommagescheiden
+  // vrije-tekstveld (fallbackKey), zodat elke discipline/elk werkgebied als
+  // los filter verschijnt in plaats van als samengevoegde combinatie.
+  const uniqueFlat = (arrayKey, fallbackKey) => {
+    const values = new Set();
+
+    rows.forEach((r) => {
+      const arr = r[arrayKey];
+
+      if (arr && arr.length) {
+        arr.forEach((v) => v && values.add(v));
+      } else if (r[fallbackKey]) {
+        values.add(r[fallbackKey]);
+      }
+    });
+
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'nl'));
+  };
 
   const pillStyle = (active) =>
     css(`
@@ -480,9 +533,10 @@ export default function DeadlinesPage() {
       </div>
 
       {[
-        ['Discipline', thema, setThema, 'Alle disciplines', unique('thema')],
+        ['Discipline', thema, setThema, 'Alle disciplines', uniqueFlat('themasNamen', 'thema')],
         ['Type verstrekker', type, setType, 'Alle typen', unique('funderType')],
-        ['Werkgebied', regio, setRegio, 'Alle werkgebieden', unique('regio')],
+        ['Werkgebied', regio, setRegio, 'Alle werkgebieden', uniqueFlat('werkgebiedenNamen', 'regio')],
+        ['Bandbreedte bijdrage', bandbreedte, setBandbreedte, 'Alle bandbreedtes', unique('bandbreedteBijdrage')],
       ].map(([title, value, setter, allLabel, values]) => (
         <div key={title}>
           <div style={groupTitle}>{title}</div>
@@ -948,6 +1002,7 @@ export default function DeadlinesPage() {
             <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 12px; margin-bottom: 18px;')}>
               {[
                 ['BEDRAG', formatAmount(detail.bedragMin, detail.bedragMax)],
+                detail.bandbreedteBijdrage ? ['BANDBREEDTE BIJDRAGE', detail.bandbreedteBijdrage] : null,
                 [
                   'DEADLINE',
                   detail.deadline
@@ -956,7 +1011,9 @@ export default function DeadlinesPage() {
                         : `${daysLeft(detail)} dagen · ${formatDate(detail.deadline)}`)
                     : 'Doorlopend, geen vaste sluitingsdatum',
                 ],
-              ].map(([label, value]) => (
+              ]
+                .filter(Boolean)
+                .map(([label, value]) => (
                 <div key={label} style={css('padding: 16px 18px; border: 1px solid #E1EAE4; border-radius: 14px; background: #F7F9F8;')}>
                   <div style={css('margin-bottom: 5px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; color: #9AA6A2;')}>
                     {label}

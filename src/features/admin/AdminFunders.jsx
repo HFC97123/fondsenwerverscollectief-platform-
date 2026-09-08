@@ -18,7 +18,8 @@ import {
   updateFunder,
 } from '../../data/services/adminFunders.js';
 import { fetchKoppelingen, zetKoppelingen } from '../../data/services/adminClassificaties.js';
-import { haalClassificatiesOp } from '../../data/services/classificaties.js';
+import { zetBandbreedte } from '../../data/services/adminBandbreedtes.js';
+import { haalBandbreedtesOp, haalClassificatiesOp } from '../../data/services/classificaties.js';
 import ClassificatieSelect from '../../shared/ui/ClassificatieSelect.jsx';
 import AdminToolbar from './shared/AdminToolbar.jsx';
 import AdminFilters from './shared/AdminFilters.jsx';
@@ -54,6 +55,7 @@ const LEEG_BEWERKING = {
   doelgroepen: [],
   regios: [],
   accessTier: 'premium',
+  bandbreedteBijdrageId: '',
 };
 
 function euro(bedrag) {
@@ -76,6 +78,7 @@ export default function AdminFunders({ notify }) {
   const [reviewed, setReviewed] = useState(null);
   const [prioriteitMin, setPrioriteitMin] = useState(null);
   const [accessTier, setAccessTierFilter] = useState(null);
+  const [bandbreedteBijdrageId, setBandbreedteBijdrageIdFilter] = useState(null);
 
   const [sortColumn, setSortColumn] = useState('naam');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -86,11 +89,13 @@ export default function AdminFunders({ notify }) {
   const [form, setForm] = useState(LEEG_BEWERKING);
   const [opslaan, setOpslaan] = useState(false);
   const [classificatieOpties, setClassificatieOpties] = useState({ themas: [], doelgroepen: [], regios: [] });
+  const [bandbreedteOpties, setBandbreedteOpties] = useState([]);
   const [koppelingenLaden, setKoppelingenLaden] = useState(false);
   const [bulkAccessTierBezig, setBulkAccessTierBezig] = useState(false);
 
   useEffect(() => {
     haalClassificatiesOp().then(setClassificatieOpties);
+    haalBandbreedtesOp().then(setBandbreedteOpties);
   }, []);
 
   const laad = async () => {
@@ -104,6 +109,7 @@ export default function AdminFunders({ notify }) {
       classificationReviewed: reviewed,
       accessTier,
       prioriteitMin,
+      bandbreedteBijdrageId,
       sortColumn,
       sortDirection,
       page,
@@ -125,11 +131,11 @@ export default function AdminFunders({ notify }) {
   useEffect(() => {
     laad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, dataTier, sourceType, reviewed, accessTier, prioriteitMin, sortColumn, sortDirection, page]);
+  }, [search, dataTier, sourceType, reviewed, accessTier, prioriteitMin, bandbreedteBijdrageId, sortColumn, sortDirection, page]);
 
   useEffect(() => {
     setPage(0);
-  }, [search, dataTier, sourceType, reviewed, accessTier, prioriteitMin]);
+  }, [search, dataTier, sourceType, reviewed, accessTier, prioriteitMin, bandbreedteBijdrageId]);
 
   const onSort = (key) => {
     if (sortColumn === key) {
@@ -184,6 +190,7 @@ export default function AdminFunders({ notify }) {
       doelgroepen: [],
       regios: [],
       accessTier: row.access_tier || 'premium',
+      bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
     });
 
     setKoppelingenLaden(true);
@@ -252,6 +259,18 @@ export default function AdminFunders({ notify }) {
       }
     }
 
+    if (form.bandbreedteBijdrageId !== (row.bandbreedte_bijdrage_id || '')) {
+      const bandbreedteRes = await zetBandbreedte('funders', row.id, form.bandbreedteBijdrageId || null);
+
+      if (bandbreedteRes.error) {
+        notify('error', 'Funder bijgewerkt, maar de bandbreedte bijdrage kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
+    }
+
     setEditingId(null);
     notify('success', 'Funder bijgewerkt.');
     laad();
@@ -289,6 +308,11 @@ export default function AdminFunders({ notify }) {
             {(ACCESS_TIERS.find((t) => t.value === r.access_tier) || {}).label || r.access_tier || '—'}
           </span>
         ),
+      },
+      {
+        key: 'bandbreedte_bijdrage',
+        label: 'Bandbreedte bijdrage',
+        render: (r) => r.bandbreedte_bijdrage_naam || '—',
       },
       { key: 'prioriteit', label: 'Prioriteit', sortable: true, render: (r) => (r.prioriteit ?? '—') },
       {
@@ -354,6 +378,16 @@ export default function AdminFunders({ notify }) {
             onChange: setAccessTierFilter,
             options: [{ value: null, label: 'Alle' }, ...ACCESS_TIERS],
           },
+          {
+            key: 'bandbreedte_bijdrage',
+            label: 'Bandbreedte bijdrage',
+            value: bandbreedteBijdrageId,
+            onChange: setBandbreedteBijdrageIdFilter,
+            options: [
+              { value: null, label: 'Alle' },
+              ...bandbreedteOpties.map((b) => ({ value: b.id, label: b.naam })),
+            ],
+          },
         ]}
       />
 
@@ -397,6 +431,7 @@ export default function AdminFunders({ notify }) {
           onSave={() => opslaanBewerking(rows.find((r) => r.id === editingId))}
           opslaan={opslaan}
           classificatieOpties={classificatieOpties}
+          bandbreedteOpties={bandbreedteOpties}
           koppelingenLaden={koppelingenLaden}
         />
       ) : null}
@@ -404,7 +439,7 @@ export default function AdminFunders({ notify }) {
   );
 }
 
-function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, koppelingenLaden }) {
+function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, bandbreedteOpties, koppelingenLaden }) {
   if (!row) {
     return null;
   }
@@ -462,6 +497,18 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, cla
             {ACCESS_TIERS.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
+          Bandbreedte bijdrage
+          <select style={inputStyle} value={form.bandbreedteBijdrageId} onChange={set('bandbreedteBijdrageId')}>
+            <option value="">Niet ingedeeld</option>
+            {bandbreedteOpties.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.naam}
               </option>
             ))}
           </select>
