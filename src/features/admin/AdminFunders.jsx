@@ -14,6 +14,9 @@ import {
   fetchFunders,
   updateFunder,
 } from '../../data/services/adminFunders.js';
+import { fetchKoppelingen, zetKoppelingen } from '../../data/services/adminClassificaties.js';
+import { haalClassificatiesOp } from '../../data/services/classificaties.js';
+import ClassificatieSelect from '../../shared/ui/ClassificatieSelect.jsx';
 import AdminToolbar from './shared/AdminToolbar.jsx';
 import AdminFilters from './shared/AdminFilters.jsx';
 import AdminDataTable from './shared/AdminDataTable.jsx';
@@ -43,6 +46,9 @@ const LEEG_BEWERKING = {
   prioriteit: '',
   bron: '',
   researchSource: '',
+  themas: [],
+  doelgroepen: [],
+  regios: [],
 };
 
 function euro(bedrag) {
@@ -73,6 +79,12 @@ export default function AdminFunders({ notify }) {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(LEEG_BEWERKING);
   const [opslaan, setOpslaan] = useState(false);
+  const [classificatieOpties, setClassificatieOpties] = useState({ themas: [], doelgroepen: [], regios: [] });
+  const [koppelingenLaden, setKoppelingenLaden] = useState(false);
+
+  useEffect(() => {
+    haalClassificatiesOp().then(setClassificatieOpties);
+  }, []);
 
   const laad = async () => {
     setLoading(true);
@@ -128,7 +140,7 @@ export default function AdminFunders({ notify }) {
     setSelectedIds(aan ? rows.map((r) => r.id) : []);
   };
 
-  const openEdit = (row) => {
+  const openEdit = async (row) => {
     setEditingId(row.id);
     setForm({
       naam: row.naam || '',
@@ -142,7 +154,21 @@ export default function AdminFunders({ notify }) {
       prioriteit: row.prioriteit ?? '',
       bron: row.bron || '',
       researchSource: row.research_source || '',
+      themas: [],
+      doelgroepen: [],
+      regios: [],
     });
+
+    setKoppelingenLaden(true);
+    const koppelingen = await fetchKoppelingen('funders', row.id);
+    setKoppelingenLaden(false);
+
+    setForm((f) => ({
+      ...f,
+      themas: koppelingen.themas,
+      doelgroepen: koppelingen.doelgroepen,
+      regios: koppelingen.regios,
+    }));
   };
 
   const opslaanBewerking = async (row) => {
@@ -164,10 +190,25 @@ export default function AdminFunders({ notify }) {
 
     const res = await updateFunder(row.id, patch);
 
+    if (res.error) {
+      setOpslaan(false);
+      notify('error', 'De funder kon niet worden bijgewerkt.');
+
+      return;
+    }
+
+    const koppelRes = await zetKoppelingen('funders', row.id, {
+      themas: form.themas,
+      doelgroepen: form.doelgroepen,
+      regios: form.regios,
+    });
+
     setOpslaan(false);
 
-    if (res.error) {
-      notify('error', 'De funder kon niet worden bijgewerkt.');
+    if (koppelRes.error) {
+      notify('error', 'Funder bijgewerkt, maar de classificaties konden niet worden opgeslagen.');
+      setEditingId(null);
+      laad();
 
       return;
     }
@@ -298,13 +339,15 @@ export default function AdminFunders({ notify }) {
           onCancel={() => setEditingId(null)}
           onSave={() => opslaanBewerking(rows.find((r) => r.id === editingId))}
           opslaan={opslaan}
+          classificatieOpties={classificatieOpties}
+          koppelingenLaden={koppelingenLaden}
         />
       ) : null}
     </section>
   );
 }
 
-function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan }) {
+function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, koppelingenLaden }) {
   if (!row) {
     return null;
   }
@@ -394,6 +437,51 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan }) {
         <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
           Research source
           <input style={inputStyle} value={form.researchSource} onChange={set('researchSource')} />
+        </label>
+      </div>
+
+      <div style={css('margin: 22px 0 6px; height: 1px; background: #E1EAE4;')} />
+
+      <div style={css("margin-bottom: 14px; font-family: 'Newsreader', serif; font-size: 17px; color: #2C4A5E;")}>
+        Classificaties
+      </div>
+      <p style={css('margin: 0 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Alleen bestaande waarden zijn te kiezen. Ontbreekt een waarde? Voeg die eerst toe via Beheer →
+        Classificaties.
+      </p>
+
+      <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px;')}>
+        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
+          Disciplines
+          <ClassificatieSelect
+            opties={classificatieOpties.themas}
+            waarde={form.themas}
+            onChange={(waarde) => setForm((f) => ({ ...f, themas: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Disciplines selecteren…'}
+            ariaLabel="Disciplines"
+          />
+        </label>
+
+        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
+          Doelgroepen
+          <ClassificatieSelect
+            opties={classificatieOpties.doelgroepen}
+            waarde={form.doelgroepen}
+            onChange={(waarde) => setForm((f) => ({ ...f, doelgroepen: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Doelgroepen selecteren…'}
+            ariaLabel="Doelgroepen"
+          />
+        </label>
+
+        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
+          Werkgebieden
+          <ClassificatieSelect
+            opties={classificatieOpties.regios}
+            waarde={form.regios}
+            onChange={(waarde) => setForm((f) => ({ ...f, regios: waarde }))}
+            placeholder={koppelingenLaden ? 'Laden…' : 'Werkgebieden selecteren…'}
+            ariaLabel="Werkgebieden"
+          />
         </label>
       </div>
 

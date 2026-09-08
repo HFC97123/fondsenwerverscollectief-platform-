@@ -7,6 +7,7 @@ import AdminDeadlines from './AdminDeadlines.jsx';
 import AdminAbonnementen from './AdminAbonnementen.jsx';
 import AdminAnalytics from './AdminAnalytics.jsx';
 import AdminFunders from './AdminFunders.jsx';
+import AdminClassificaties from './AdminClassificaties.jsx';
 import { fetchAdminDashboardCounts } from '../../data/services/adminDashboard.js';
 import { setRole, setStatus } from '../../data/services/adminGebruikers.js';
 import {
@@ -483,6 +484,8 @@ export default function AdminPage() {
           ) : null}
 
           {activeTab === 'funders' ? <AdminFunders notify={notify} /> : null}
+
+          {activeTab === 'classificaties' ? <AdminClassificaties notify={notify} /> : null}
 
           {activeTab === 'abonnementen' ? <AdminAbonnementen notify={notify} /> : null}
 
