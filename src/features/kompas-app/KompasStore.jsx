@@ -219,6 +219,35 @@ export function KompasProvider({ children }) {
         }
       },
 
+      // Neemt goedgekeurde AI-voorstellen over in het profiel, met de juiste
+      // herkomst (nooit 'handmatig') - gebruikt door de documentanalyse
+      // (fase 3) en straks ook door de website-analyse. Dit is geen getypte
+      // invoer maar een expliciete, eenmalige bevestiging door het lid, dus
+      // meteen bewaard in plaats van gedebiend zoals setOrgField.
+      overnemenOrgVelden: (velden, sourceType, sourceRef) => {
+        if (!velden || !Object.keys(velden).length) {
+          return;
+        }
+
+        setSt((cur) => ({ ...cur, orgProfile: { ...cur.orgProfile, ...velden } }));
+
+        const tijd = new Date().toISOString();
+
+        setOrgBronnen((cur) => {
+          const volgende = { ...cur };
+
+          Object.keys(velden).forEach((veld) => {
+            volgende[veld] = { type: sourceType, ref: sourceRef || null, tijd };
+          });
+
+          return volgende;
+        });
+
+        if (orgBron.current === 'supabase') {
+          bewaarOrganisatieVelden(velden, sourceType, sourceRef || null);
+        }
+      },
+
       // Een tijdelijk lokaal id (voor een nieuw project, vóórdat de database
       // een echt id teruggeeft) zodat de rij meteen zichtbaar is; zodra
       // bewaarProject() een echt id oplevert, wordt die er alsnog ingezet.

@@ -151,6 +151,32 @@ export async function askKompasStream({ messages, tier, permissions, context, co
 }
 
 /*
+  Laat een geüpload organisatiedocument analyseren (fase 3). Geeft
+  { velden, error } terug - velden is een object met voorgestelde
+  organisatieprofiel-waarden (bijv. { mission: '...', kvk: '12345678' }),
+  nooit vanzelf opgeslagen: de pagina toont dit altijd eerst ter goedkeuring.
+*/
+export async function extractOrganisatieVelden({ text, fileName }) {
+  if (!supabase) {
+    return { velden: {}, error: GEEN_VERBINDING };
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke(CHAT_FUNCTION, {
+      body: { mode: 'extract', text, fileName: fileName || null },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return { velden: (data && data.velden) || {}, error: null };
+  } catch (e) {
+    return { velden: {}, error: 'Het document kon niet worden geanalyseerd. Probeer het opnieuw.' };
+  }
+}
+
+/*
   Bouwt de achtergrondtekst uit het profiel, de projecten en het actieve
   document. Blijft aan deze kant zodat de Edge Function er niets van hoeft te
   weten tot die is bijgewerkt.

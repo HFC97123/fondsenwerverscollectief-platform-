@@ -33,6 +33,21 @@ export default defineConfig({
     // hierboven zorgt dat dist/index.html het resultaat is.
     rollupOptions: {
       input: 'app.html',
+      output: {
+        // mammoth (documenten uploaden, fase 3) wordt alleen dynamisch
+        // geimporteerd, maar Rollup bundelt een eenmalig dynamisch
+        // geimporteerd pakket zonder dit anders standaard in de aanroepende
+        // chunk - waardoor het alsnog in de hoofdbundel terechtkomt. Een
+        // eigen chunk zorgt dat het pas laadt wanneer een lid daadwerkelijk
+        // een document uploadt.
+        manualChunks(id) {
+          if (id.indexOf('node_modules/mammoth') !== -1) {
+            return 'mammoth';
+          }
+
+          return undefined;
+        },
+      },
     },
   },
 });

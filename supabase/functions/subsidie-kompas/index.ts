@@ -4,6 +4,10 @@
 //   stream: false  -> { answer, sources }        (de huidige frontend)
 //   stream: true   -> text/event-stream          (voor woord-voor-woord antwoord)
 //
+// Daarnaast, voor het organisatieprofiel (fase 3 - documenten uploaden):
+//   mode: 'extract' -> { velden }                (voorstellen uit documenttekst,
+//                                                  nooit automatisch opgeslagen)
+//
 // Legt per aanroep het tokengebruik vast in ai_verbruik, en leest de
 // systeemtekst uit ai_prompts zodat die zonder code te wijzigen aanpasbaar is.
 //
@@ -27,6 +31,32 @@ Werkwijze:
 - Verwijs bij bedragen en deadlines naar de bron.`;
 
 const PREMIUM_AANVULLING = `Dit lid heeft Premium. Je mag verwijzen naar de exclusieve fondsendatabase van het Collectief, met fondsen en subsidieverstrekkers die online niet of beperkt vindbaar zijn.`;
+
+// Velden die uit een geüpload document mogen worden voorgesteld (mode:
+// 'extract'). Bewust beperkt tot losse tekst/getal/tekstblok-velden - de
+// veldnamen komen overeen met organisatieprofiel.js aan de frontend-kant.
+// Chips (disciplines/doelgroepen) en gestructureerde lijstjes
+// (contactpersonen/social media) zitten hier bewust niet bij: die vragen om
+// exacte matches met bestaande opties resp. een eigen structuur, en worden
+// voorlopig alleen handmatig ingevuld.
+const EXTRACTIE_VELDEN = [
+  { n: 'name', l: 'organisatienaam' },
+  { n: 'website', l: 'website' },
+  { n: 'rechtsvorm', l: 'rechtsvorm' },
+  { n: 'opgericht', l: 'oprichtingsjaar' },
+  { n: 'kvk', l: 'KvK-nummer' },
+  { n: 'anbi', l: 'ANBI-status' },
+  { n: 'mission', l: 'missie' },
+  { n: 'visie', l: 'visie' },
+  { n: 'regio', l: 'werkgebied' },
+  { n: 'gemeente', l: 'gemeente' },
+  { n: 'provincie', l: 'provincie' },
+  { n: 'omzet', l: 'jaarlijkse omzet in euro, alleen het getal' },
+  { n: 'medewerkers', l: 'aantal medewerkers' },
+  { n: 'vrijwilligers', l: 'aantal vrijwilligers' },
+  { n: 'financiering', l: 'financieringsmix' },
+  { n: 'toon', l: 'toon van de organisatie in haar teksten' },
+];
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -116,6 +146,81 @@ Deno.serve(async (req) => {
     body = await req.json();
   } catch (_) {
     return json({ error: 'Ongeldige aanvraag.' }, 400);
+  }
+
+  // Documentanalyse voor het organisatieprofiel (fase 3). Los van het
+  // gesprek hieronder: geen chatgeschiedenis, alleen documenttekst in,
+  // voorgestelde veldwaarden uit. Wordt nooit automatisch opgeslagen - dat
+  // gebeurt pas als het lid de voorstellen in de UI bevestigt.
+  if (body.mode === 'extract') {
+    if (tier === 'free') {
+      return json({ error: 'Documenten laten analyseren is een Pro- en Premium-functie.' }, 403);
+    }
+
+    const tekst = String(body.text || '').slice(0, 20000);
+
+    if (!tekst.trim()) {
+      return json({ error: 'Geen tekst ontvangen om te analyseren.' }, 400);
+    }
+
+    const veldenLijst = EXTRACTIE_VELDEN.map((v) => `${v.n} (${v.l})`).join(', ');
+
+    const systeemExtractie = `Je helpt Nederlandse maatschappelijke organisaties hun organisatieprofiel in Subsidie Kompas aan te vullen op basis van een geüpload document (bijvoorbeeld een beleidsplan, jaarverslag, projectplan, meerjarenstrategie, begroting, impactrapport of evaluatie).
+
+Lees de tekst hieronder en haal er uitsluitend gegevens uit die je met voldoende zekerheid in de tekst kunt terugvinden. Verzin nooit informatie en doe geen aannames. Laat een veld gewoon weg als het niet duidelijk in de tekst staat.
+
+De toegestane velden zijn: ${veldenLijst}.
+
+Antwoord uitsluitend met geldige JSON in de vorm {"velden": {"veldnaam": "waarde"}}, met alleen de velden waarover je zeker bent en uitsluitend de hierboven genoemde veldnamen.`;
+
+    const antwoordExtractie = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: systeemExtractie },
+          { role: 'user', content: tekst },
+        ],
+        temperature: 0.1,
+        max_tokens: 1500,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!antwoordExtractie.ok) {
+      return json({ error: 'Het document kon niet worden geanalyseerd. Probeer het opnieuw.' }, 502);
+    }
+
+    const extractieData = await antwoordExtractie.json();
+    const ruw = extractieData.choices?.[0]?.message?.content;
+    const toegestaan = new Set(EXTRACTIE_VELDEN.map((v) => v.n));
+    const voorstel: Record<string, string> = {};
+
+    try {
+      const parsed = JSON.parse(ruw || '{}');
+      const velden = parsed?.velden && typeof parsed.velden === 'object' ? parsed.velden : {};
+
+      Object.entries(velden).forEach(([k, v]) => {
+        if (toegestaan.has(k) && v != null && String(v).trim()) {
+          voorstel[k] = String(v).slice(0, 2000);
+        }
+      });
+    } catch (_) {
+      // laat voorstel leeg; de frontend toont dan "geen voorstellen gevonden"
+    }
+
+    if (profileId) {
+      await legVerbruikVast(admin, {
+        profile_id: profileId,
+        gesprek_id: null,
+        model: MODEL,
+        tokens_in: extractieData.usage?.prompt_tokens ?? null,
+        tokens_uit: extractieData.usage?.completion_tokens ?? null,
+      });
+    }
+
+    return json({ velden: voorstel });
   }
 
   const berichten = Array.isArray(body.messages) ? body.messages : [];

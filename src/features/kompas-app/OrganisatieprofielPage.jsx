@@ -3,11 +3,18 @@
 // Vanaf nu echt bewaard in de database (subsidie_kompas_organizations),
 // per veld met herkomst (handmatig/website/document/gesprek) - zie
 // data/services/organisatieprofiel.js.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import { bronLabel } from '../../data/services/organisatieprofiel.js';
+import { extraheerTekst } from '../../data/services/documentExtractie.js';
+import {
+  haalOrganisatieDocumentenOp,
+  uploadOrganisatieDocument,
+  verwijderOrganisatieDocument,
+} from '../../data/services/organisatiedocumenten.js';
+import { extractOrganisatieVelden } from '../../data/services/chat.js';
 import { Button, Field, Notice, Panel, PanelHeader, SectionHeading, veldStijl } from '../../shared/ui/index.js';
 
 const VELDEN = [
@@ -140,6 +147,34 @@ const SECTIES = ['Organisatieprofiel', 'Werkgebied', 'Organisatiegegevens', 'Con
 const LEEG_CONTACT = { naam: '', functie: '', email: '', telefoon: '' };
 const LEEG_SOCIAL = { platform: '', url: '' };
 
+// Documenten die het organisatieprofiel kunnen aanvullen (fase 3). Ander
+// concept dan de documenten per project (ProjectenPage.jsx) of de
+// AI-gegenereerde documenten op de Documentatie-pagina.
+const ORG_DOC_SOORTEN = [
+  'Beleidsplan',
+  'Jaarverslag',
+  'Projectplan',
+  'Meerjarenstrategie',
+  'Begroting',
+  'Impactrapport',
+  'Evaluatie',
+  'Overig',
+];
+
+function raadDocSoort(naam) {
+  const l = (naam || '').toLowerCase();
+
+  if (l.indexOf('beleidsplan') !== -1) return 'Beleidsplan';
+  if (l.indexOf('jaarverslag') !== -1) return 'Jaarverslag';
+  if (l.indexOf('meerjaren') !== -1) return 'Meerjarenstrategie';
+  if (l.indexOf('projectplan') !== -1) return 'Projectplan';
+  if (l.indexOf('begroting') !== -1) return 'Begroting';
+  if (l.indexOf('impact') !== -1) return 'Impactrapport';
+  if (l.indexOf('evaluatie') !== -1) return 'Evaluatie';
+
+  return 'Overig';
+}
+
 // Kleine, discrete herkomstregel onder een veld - alleen zichtbaar als het
 // veld daadwerkelijk een waarde heeft. Transparantie-eis: waar komt dit
 // vandaan (handmatig/website/document/gesprek), en de mogelijkheid om het te
@@ -178,6 +213,28 @@ export default function OrganisatieprofielPage() {
 
   const [melding, setMelding] = useState('');
   const [analyseBezig, setAnalyseBezig] = useState(false);
+
+  // Organisatiedocumenten (fase 3): los van het organisatieprofiel zelf, dus
+  // eigen state hier in plaats van in KompasStore - een lijst bestanden met
+  // signed-url-achtige opslag hoeft niet in het gedeelde profiel te zitten.
+  const [documenten, setDocumenten] = useState(null);
+  const [documentBezig, setDocumentBezig] = useState(false);
+  const [analyseVoorstel, setAnalyseVoorstel] = useState(null);
+  const [analyseFout, setAnalyseFout] = useState('');
+
+  useEffect(() => {
+    let actief = true;
+
+    haalOrganisatieDocumentenOp().then((lijst) => {
+      if (actief) {
+        setDocumenten(lijst || []);
+      }
+    });
+
+    return () => {
+      actief = false;
+    };
+  }, []);
 
   if (!paid) {
     return (
@@ -222,6 +279,98 @@ export default function OrganisatieprofielPage() {
       setAnalyseBezig(false);
       setMelding('De analyse is aangevraagd. Voorstellen zijn niet bindend; u kunt ze aanpassen of weglaten.');
     }, 900);
+  };
+
+  // Upload + lokale tekst-extractie (mammoth/pdfjs voor .docx/.pdf, gewone
+  // tekst voor .txt/.md/.csv). Het bestand zelf wordt niet automatisch
+  // geanalyseerd - dat is een aparte, expliciete stap per document hieronder.
+  const uploadDocument = async (e) => {
+    const files = Array.prototype.slice.call(e.target.files || []);
+
+    e.target.value = '';
+
+    if (!files.length) {
+      return;
+    }
+
+    setDocumentBezig(true);
+    setAnalyseFout('');
+
+    for (const file of files) {
+      const tekst = await extraheerTekst(file);
+      const soort = raadDocSoort(file.name);
+      const res = await uploadOrganisatieDocument({ file, soort, tekst });
+
+      if (res.id) {
+        setDocumenten((cur) => [
+          { id: res.id, naam: file.name, soort, mimeType: file.type, pad: res.pad, tekst, aangemaakt: new Date().toISOString() },
+          ...(cur || []),
+        ]);
+      }
+    }
+
+    setDocumentBezig(false);
+  };
+
+  const verwijderDocument = async (doc) => {
+    setDocumenten((cur) => (cur || []).filter((d) => d.id !== doc.id));
+
+    if (analyseVoorstel && analyseVoorstel.docId === doc.id) {
+      setAnalyseVoorstel(null);
+    }
+
+    await verwijderOrganisatieDocument(doc.id, doc.pad);
+  };
+
+  // Laat de AI het document lezen en veldwaarden voorstellen. Nooit
+  // automatisch opgeslagen: het lid kiest hieronder per veld of het wordt
+  // overgenomen.
+  const analyseerDocument = async (doc) => {
+    if (!doc.tekst || !doc.tekst.trim()) {
+      setAnalyseFout('Van dit document kon geen tekst worden gelezen om te laten analyseren.');
+
+      return;
+    }
+
+    setAnalyseFout('');
+    setAnalyseVoorstel({ docId: doc.id, docNaam: doc.naam, velden: null, gekozen: {} });
+
+    const { velden, error } = await extractOrganisatieVelden({ text: doc.tekst, fileName: doc.naam });
+
+    if (error) {
+      setAnalyseFout(error);
+      setAnalyseVoorstel(null);
+
+      return;
+    }
+
+    if (!Object.keys(velden).length) {
+      setAnalyseFout('Er zijn geen bruikbare gegevens in dit document gevonden.');
+      setAnalyseVoorstel(null);
+
+      return;
+    }
+
+    setAnalyseVoorstel({
+      docId: doc.id,
+      docNaam: doc.naam,
+      velden,
+      gekozen: Object.fromEntries(Object.keys(velden).map((k) => [k, true])),
+    });
+  };
+
+  const overnemenVoorstel = () => {
+    if (!analyseVoorstel || !analyseVoorstel.velden) {
+      return;
+    }
+
+    const gekozenVelden = Object.fromEntries(
+      Object.entries(analyseVoorstel.velden).filter(([k]) => analyseVoorstel.gekozen[k]),
+    );
+
+    store.overnemenOrgVelden(gekozenVelden, 'document', analyseVoorstel.docId);
+    setAnalyseVoorstel(null);
+    setMelding('De gekozen gegevens zijn overgenomen in het profiel.');
   };
 
   return (
@@ -270,6 +419,124 @@ export default function OrganisatieprofielPage() {
         <Button variant="outline" onClick={analyseer}>
           {analyseBezig ? 'Bezig met analyseren…' : 'Analyseer mijn website'}
         </Button>
+      </div>
+
+      <div style={css('margin-bottom: 30px; padding: 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #F7F9F8;')}>
+        <div style={css('margin-bottom: 6px; font-size: 15px; font-weight: 800; color: #2C4A5E;')}>
+          Documenten uploaden
+        </div>
+        <div style={css('margin-bottom: 18px; max-width: 620px; font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
+          Upload een beleidsplan, jaarverslag, projectplan, meerjarenstrategie, begroting, impactrapport of evaluatie.
+          Subsidie Kompas kan zo'n document laten uitlezen en velden voorstellen - u kiest zelf welke worden overgenomen.
+        </div>
+
+        <label
+          style={css(
+            'position: relative; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; min-height: 44px; padding: 0 18px; border: 1px solid #2C4A5E; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-weight: 700; font-size: 13.5px;',
+          )}
+        >
+          {documentBezig ? 'Bezig met uploaden…' : '+ Document uploaden'}
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.docx,.txt,.md,.csv"
+            onChange={uploadDocument}
+            disabled={documentBezig}
+            style={css('position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden;')}
+          />
+        </label>
+
+        {documenten === null && (
+          <div style={css('margin-top: 16px; font-size: 14px; color: #7B8985;')}>Documenten laden…</div>
+        )}
+
+        {documenten && documenten.length === 0 && (
+          <div style={css('margin-top: 16px; font-size: 14px; color: #7B8985;')}>Nog geen documenten geüpload.</div>
+        )}
+
+        {documenten && documenten.length > 0 && (
+          <div style={css('margin-top: 18px; display: flex; flex-direction: column; gap: 10px;')}>
+            {documenten.map((doc) => (
+              <div
+                key={doc.id}
+                style={css(
+                  'display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 14px; border: 1px solid #E1EAE4; border-radius: 14px; background: #FFFFFF;',
+                )}
+              >
+                <div style={css('flex: 1 1 220px; min-width: 0;')}>
+                  <div style={css('font-size: 14px; font-weight: 700; color: #2C4A5E; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;')}>
+                    {doc.naam}
+                  </div>
+                  <div style={css('font-size: 12.5px; color: #7B8985;')}>
+                    {doc.soort}
+                    {!doc.tekst && ' · geen tekst kunnen lezen'}
+                  </div>
+                </div>
+                <Button variant="outline" onClick={() => analyseerDocument(doc)} disabled={!doc.tekst}>
+                  Laten analyseren
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => verwijderDocument(doc)}
+                  style={css(
+                    'cursor: pointer; min-height: 40px; padding: 0 10px; border: 1px solid #E1EAE4; border-radius: 10px; background: #FFFFFF; color: #9E3B2C; font-weight: 700; font-size: 13px;',
+                  )}
+                >
+                  Verwijderen
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {analyseFout && <div style={css('margin-top: 14px; font-size: 13.5px; color: #9E3B2C;')}>{analyseFout}</div>}
+
+        {analyseVoorstel && (
+          <div style={css('margin-top: 18px; padding: 18px; border: 1px solid #BFD4C6; border-radius: 16px; background: #EAF4EE;')}>
+            <div style={css('margin-bottom: 10px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
+              Voorstellen uit "{analyseVoorstel.docNaam}"
+            </div>
+
+            {!analyseVoorstel.velden && (
+              <div style={css('font-size: 14px; color: #4B5C58;')}>Bezig met analyseren…</div>
+            )}
+
+            {analyseVoorstel.velden && (
+              <>
+                <div style={css('display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;')}>
+                  {Object.entries(analyseVoorstel.velden).map(([veld, waarde]) => {
+                    const def = VELDEN.find((f) => f.n === veld);
+
+                    return (
+                      <label key={veld} style={css('display: flex; align-items: flex-start; gap: 10px; cursor: pointer;')}>
+                        <input
+                          type="checkbox"
+                          checked={!!analyseVoorstel.gekozen[veld]}
+                          onChange={(e) =>
+                            setAnalyseVoorstel((cur) => ({
+                              ...cur,
+                              gekozen: { ...cur.gekozen, [veld]: e.target.checked },
+                            }))
+                          }
+                          style={css('margin-top: 3px;')}
+                        />
+                        <span style={css('font-size: 14px; color: #3D4B48;')}>
+                          <strong>{def ? def.l : veld}:</strong> {waarde}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div style={css('display: flex; gap: 10px; flex-wrap: wrap;')}>
+                  <Button onClick={overnemenVoorstel}>Overnemen in profiel</Button>
+                  <Button variant="outline" onClick={() => setAnalyseVoorstel(null)}>
+                    Annuleren
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={css('display: flex; flex-direction: column; gap: 34px;')}>
