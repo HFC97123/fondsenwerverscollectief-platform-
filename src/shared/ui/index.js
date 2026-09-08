@@ -1,5 +1,6 @@
 export { default as FundingDatabaseCount } from './FundingDatabaseCount.jsx';
 export { default as KompasSubnav } from './KompasSubnav.jsx';
+export { default as ClassificatieSelect } from './ClassificatieSelect.jsx';
 
 export {
   Badge,

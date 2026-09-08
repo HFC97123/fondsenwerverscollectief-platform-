@@ -87,7 +87,7 @@ export const space = {
   xxl: '30px',
   sectie: 'clamp(34px, 5vw, 64px)',
   paginaX: 'clamp(16px, 4vw, 24px)',
-  paneel: 'clamp(22px, 3.4vw, 40px)',
+  paneel: 'clamp(18px, 2.6vw, 30px)',
 };
 
 export const radius = {

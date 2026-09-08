@@ -15,7 +15,8 @@ import {
   verwijderOrganisatieDocument,
 } from '../../data/services/organisatiedocumenten.js';
 import { analyseerWebsite, extractOrganisatieVelden } from '../../data/services/chat.js';
-import { Button, Field, Notice, Panel, PanelHeader, SectionHeading, veldStijl } from '../../shared/ui/index.js';
+import { haalClassificatiesOp } from '../../data/services/classificaties.js';
+import { Button, ClassificatieSelect, Field, Notice, Panel, PanelHeader, SectionHeading, veldStijl } from '../../shared/ui/index.js';
 
 // Ook gebruikt door KompasToolPage.jsx (fase 6, veldlabels voor de
 // goedkeuring van AI-voorstellen die tijdens een gesprek naar voren komen).
@@ -47,102 +48,6 @@ export const VELDEN = [
   { s: 'Contact', n: 'socials', l: 'Social media', t: 'socials' },
   { s: 'Toon', n: 'toon', l: 'Toon van uw teksten', t: 'area', p: 'Hoe schrijft uw organisatie? Zakelijk, warm, direct?' },
 ];
-
-const CHIP_OPTIES = {
-  themas: [
-    'Amateurkunst',
-    'Architectuur',
-    'Armoede/zelfredzaamheid',
-    'Armoedebestrijding',
-    'Beeldende kunst',
-    'Beurzen',
-    'Cultureel erfgoed',
-    'Cultuur',
-    'Cultuureducatie',
-    'Dans',
-    'Democratie',
-    'Design',
-    'Dieren',
-    'Dierenwelzijn',
-    'Diversiteit en inclusie',
-    'Duurzaamheid',
-    'Educatie',
-    'Eenzaamheid',
-    'Erfgoed',
-    'Festival',
-    'Film',
-    'Fotografie',
-    'Gehandicaptenzorg',
-    'Gezondheid',
-    'Innovatie',
-    'Internationale samenwerking',
-    'Internationalisering',
-    'Jeugd en kinderen',
-    'Joods',
-    'Journalistiek',
-    'Kerken',
-    'Kinderen/jongeren',
-    'Kunst',
-    'Kwetsbare doelgroep',
-    'Letterkunde',
-    'Literaire kunsten',
-    'Literatuur',
-    'Maatschappij',
-    'Media',
-    'Media en journalistiek',
-    'Mensenrechten',
-    'Mindervaliden',
-    'Mobiliteit',
-    'Mode',
-    'Monumentenzorg',
-    'Muziek',
-    'Natuur',
-    'Natuur en milieu',
-    'Nieuwe media',
-    'Noodhulp',
-    'Onderwijs',
-    'Onderzoek',
-    'Ontwikkelingshulp',
-    'Ouderen',
-    'Podiumkunsten',
-    'Rechten',
-    'Recreatie',
-    'Religie',
-    'Restauratie',
-    'Sociaal-cultureel',
-    'Sociaal-maatschappelijk',
-    'Sport',
-    'Taalvaardigheid',
-    'Talentontwikkeling',
-    'Technologie',
-    'Theater en podiumkunsten',
-    'Toneelkunsten',
-    'Urban',
-    'Verslavingszorg',
-    'Vluchtelingen',
-    'Vluchtelingen en migranten',
-    'Vormgeving',
-    'Vrede, vrijheid en veiligheid',
-    'Vrijheid',
-    'Vrijwilligers',
-    'Welzijn',
-    'Wetenschap',
-    'Wetenschappelijk onderzoek',
-    'Wonen en huisvesting',
-    'Zorg',
-  ],
-  doelgroepen: [
-    'Kinderen',
-    'Jongeren',
-    'Ouderen',
-    'Mensen met een beperking',
-    'Nieuwkomers/ongedocumenteerden',
-    'Dieren',
-    'Mensen in armoede',
-    'Buurtbewoners',
-    'Vrijwilligers',
-  ],
-};
 
 const SECTIES = ['Organisatieprofiel', 'Werkgebied', 'Organisatiegegevens', 'Contact', 'Toon'];
 
@@ -224,12 +129,24 @@ export default function OrganisatieprofielPage() {
   const [analyseVoorstel, setAnalyseVoorstel] = useState(null);
   const [analyseFout, setAnalyseFout] = useState('');
 
+  // Disciplines/doelgroepen komen niet meer uit een hardgecodeerde lijst in
+  // deze pagina, maar live uit de centrale classificatietabellen (themas,
+  // doelgroepen) - zie data/services/classificaties.js. Zo hoeft een nieuwe
+  // discipline maar op één plek (de database) te worden toegevoegd.
+  const [classificaties, setClassificaties] = useState({ themas: [], doelgroepen: [] });
+
   useEffect(() => {
     let actief = true;
 
     haalOrganisatieDocumentenOp().then((lijst) => {
       if (actief) {
         setDocumenten(lijst || []);
+      }
+    });
+
+    haalClassificatiesOp().then((lijst) => {
+      if (actief) {
+        setClassificaties(lijst);
       }
     });
 
@@ -259,13 +176,6 @@ export default function OrganisatieprofielPage() {
 
     return Array.isArray(v) ? v.length : String(v || '').trim();
   });
-
-  const toggleChip = (veld, waarde) => {
-    const huidig = profiel[veld] || [];
-
-    store.setOrgField(veld, huidig.indexOf(waarde) === -1 ? huidig.concat([waarde]) : huidig.filter((x) => x !== waarde));
-    setMelding('');
-  };
 
   // Laat de eigen website lezen (fase 4): homepage plus, indien gevonden, een
   // paar voor de hand liggende pagina's (over ons/missie/contact) - geen
@@ -414,15 +324,15 @@ export default function OrganisatieprofielPage() {
       />
 
       {isLeeg && (
-        <div style={css('margin-bottom: 26px; padding: clamp(22px, 3.2vw, 34px); border: 1px solid #D5E6DB; border-radius: 24px; background: #EAF4EE;')}>
+        <div style={css('margin-bottom: 18px; padding: clamp(16px, 2.4vw, 26px); border: 1px solid #D5E6DB; border-radius: 24px; background: #EAF4EE;')}>
           <div style={css("margin-bottom: 8px; font-family: 'Newsreader', serif; font-size: clamp(23px, 3vw, 28px); font-weight: 600; color: #2C4A5E;")}>
             Begin met drie vragen
           </div>
-          <div style={css('margin-bottom: 22px; max-width: 640px; font-size: 15px; line-height: 1.7; color: #4B5C58;')}>
+          <div style={css('margin-bottom: 16px; max-width: 640px; font-size: 15px; line-height: 1.7; color: #4B5C58;')}>
             Met deze drie gegevens kan Subsidie Kompas al gericht adviseren. De rest van uw profiel vult u later aan, of
             laat u opbouwen uit uw website.
           </div>
-          <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px;')}>
+          <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px;')}>
             {['name', 'website', 'mission'].map((n) => {
               const def = VELDEN.find((f) => f.n === n);
 
@@ -442,11 +352,11 @@ export default function OrganisatieprofielPage() {
         </div>
       )}
 
-      <div style={css('margin-bottom: 30px; padding: 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #F7F9F8;')}>
+      <div style={css('margin-bottom: 20px; padding: 16px; border: 1px solid #E1EAE4; border-radius: 20px; background: #F7F9F8;')}>
         <div style={css('margin-bottom: 6px; font-size: 15px; font-weight: 800; color: #2C4A5E;')}>
           Website analyseren
         </div>
-        <div style={css('margin-bottom: 18px; max-width: 620px; font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
+        <div style={css('margin-bottom: 14px; max-width: 620px; font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
           Laat Subsidie Kompas uw website lezen en het profiel voorstellen. De voorstellen zijn niet bindend: u past ze
           aan of laat ze weg.
         </div>
@@ -455,11 +365,11 @@ export default function OrganisatieprofielPage() {
         </Button>
       </div>
 
-      <div style={css('margin-bottom: 30px; padding: 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #F7F9F8;')}>
+      <div style={css('margin-bottom: 20px; padding: 16px; border: 1px solid #E1EAE4; border-radius: 20px; background: #F7F9F8;')}>
         <div style={css('margin-bottom: 6px; font-size: 15px; font-weight: 800; color: #2C4A5E;')}>
           Documenten uploaden
         </div>
-        <div style={css('margin-bottom: 18px; max-width: 620px; font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
+        <div style={css('margin-bottom: 14px; max-width: 620px; font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
           Upload een beleidsplan, jaarverslag, projectplan, meerjarenstrategie, begroting, impactrapport of evaluatie.
           Subsidie Kompas kan zo'n document laten uitlezen en velden voorstellen - u kiest zelf welke worden overgenomen.
         </div>
@@ -489,7 +399,7 @@ export default function OrganisatieprofielPage() {
         )}
 
         {documenten && documenten.length > 0 && (
-          <div style={css('margin-top: 18px; display: flex; flex-direction: column; gap: 10px;')}>
+          <div style={css('margin-top: 14px; display: flex; flex-direction: column; gap: 10px;')}>
             {documenten.map((doc) => (
               <div
                 key={doc.id}
@@ -526,7 +436,7 @@ export default function OrganisatieprofielPage() {
         {analyseFout && <div style={css('margin-top: 14px; font-size: 13.5px; color: #9E3B2C;')}>{analyseFout}</div>}
 
         {analyseVoorstel && (
-          <div style={css('margin-top: 18px; padding: 18px; border: 1px solid #BFD4C6; border-radius: 16px; background: #EAF4EE;')}>
+          <div style={css('margin-top: 14px; padding: 14px; border: 1px solid #BFD4C6; border-radius: 16px; background: #EAF4EE;')}>
             <div style={css('margin-bottom: 10px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
               Voorstellen uit {analyseVoorstel.bronLabel}
             </div>
@@ -537,7 +447,7 @@ export default function OrganisatieprofielPage() {
 
             {analyseVoorstel.velden && (
               <>
-                <div style={css('display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;')}>
+                <div style={css('display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;')}>
                   {Object.entries(analyseVoorstel.velden).map(([veld, waarde]) => {
                     const def = VELDEN.find((f) => f.n === veld);
 
@@ -573,11 +483,11 @@ export default function OrganisatieprofielPage() {
         )}
       </div>
 
-      <div style={css('display: flex; flex-direction: column; gap: 34px;')}>
+      <div style={css('display: flex; flex-direction: column; gap: 22px;')}>
         {SECTIES.map((sectie) => (
           <div key={sectie}>
             <SectionHeading>{sectie}</SectionHeading>
-            <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 18px;')}>
+            <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 14px;')}>
               {VELDEN.filter((f) => f.s === sectie).map((f) => (
                 <Field
                   key={f.n}
@@ -625,34 +535,15 @@ export default function OrganisatieprofielPage() {
                   )}
                   {f.t === 'chips' && (
                     <>
-                      <span style={css('display: flex; flex-wrap: wrap; gap: 8px;')}>
-                        {CHIP_OPTIES[f.n].map((optie) => {
-                          const actief = (profiel[f.n] || []).indexOf(optie) !== -1;
-
-                          return (
-                            <button
-                              key={optie}
-                              type="button"
-                              aria-pressed={actief}
-                              onClick={() => toggleChip(f.n, optie)}
-                              style={css(`
-                                cursor: pointer;
-                                min-height: 40px;
-                                padding: 9px 16px;
-                                border: 1px solid ${actief ? '#BFD4C6' : '#E1EAE4'};
-                                border-radius: 999px;
-                                background: ${actief ? '#EAF4EE' : '#FFFFFF'};
-                                color: ${actief ? '#2F6D47' : '#3D4B48'};
-                                font-family: 'Mulish', sans-serif;
-                                font-size: 13.5px;
-                                font-weight: 700;
-                              `)}
-                            >
-                              {optie}
-                            </button>
-                          );
-                        })}
-                      </span>
+                      <ClassificatieSelect
+                        opties={classificaties[f.n] || []}
+                        waarde={profiel[f.n] || []}
+                        onChange={(nieuw) => { store.setOrgField(f.n, nieuw); setMelding(''); }}
+                        multi
+                        metAnders
+                        placeholder={`${f.l} selecteren…`}
+                        ariaLabel={f.l}
+                      />
                       <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
                     </>
                   )}
@@ -777,7 +668,7 @@ export default function OrganisatieprofielPage() {
         ))}
       </div>
 
-      <div style={css('margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;')}>
+      <div style={css('margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;')}>
         <Button onClick={() => setMelding('Profiel opgeslagen.')}>Profiel opslaan</Button>
         <Button
           variant="danger"

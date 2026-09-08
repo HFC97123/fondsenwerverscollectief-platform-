@@ -465,7 +465,7 @@ export default function KompasToolPage() {
               </div>
             </div>
 
-            <div style={css('margin-top: 22px; padding-top: 20px; border-top: 1px solid #E1EAE4;')}>
+            <div style={css('margin-top: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
               <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>Gegevens verwijderen</div>
               <div style={css('margin-bottom: 16px; max-width: 620px; font-size: 14px; line-height: 1.65; color: #536460;')}>
                 U bepaalt zelf wat Subsidie Kompas van u bewaart. Verwijderen kan niet worden teruggedraaid; wat u
@@ -540,7 +540,7 @@ export default function KompasToolPage() {
               <div style={css("margin-bottom: 10px; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
                 Automatisch uw organisatieprofiel laten opbouwen?
               </div>
-              <div style={css('margin-bottom: 24px; font-size: 15px; line-height: 1.7; color: #4B5C58;')}>
+              <div style={css('margin-bottom: 18px; font-size: 15px; line-height: 1.7; color: #4B5C58;')}>
                 Met Pro en Premium analyseert Subsidie Kompas uw website en bouwt automatisch een organisatieprofiel op.
                 Dit bespaart tijd en zorgt voor betere fondsselecties en nauwkeurigere AI-adviezen.
               </div>

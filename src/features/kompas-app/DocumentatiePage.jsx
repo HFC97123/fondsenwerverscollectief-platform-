@@ -70,7 +70,7 @@ export default function DocumentatiePage() {
         intro="Alles wat Subsidie Kompas voor u opmaakt komt hier terecht: projectplannen en aanvragen in Word, begrotingen en dekkingsplannen in Excel, en definitieve versies in pdf. Koppel elk document aan een project, zodat uw documentatie bij de juiste aanvraag blijft. Klik op een naam om er in de chat mee verder te werken."
       />
 
-      <div style={css('display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px;')}>
+      <div style={css('display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;')}>
         {FILTERS.map(([value, label]) => {
           const actief = filter === value;
           const aantal = value === 'alle' ? alle.length : alle.filter((d) => d.soort === value).length;
@@ -195,7 +195,7 @@ export default function DocumentatiePage() {
       )}
 
       {alle.length > 0 && !zichtbaar.length && (
-        <div style={css('padding: 20px 18px; border: 1px dashed #D5E0D9; border-radius: 16px; font-size: 14.5px; color: #7B8985;')}>
+        <div style={css('padding: 16px; border: 1px dashed #D5E0D9; border-radius: 16px; font-size: 14.5px; color: #7B8985;')}>
           Geen documentatie van dit type.
         </div>
       )}

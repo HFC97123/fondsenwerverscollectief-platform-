@@ -1,6 +1,6 @@
 // Projecten: per project looptijd, begroting, eerdere toekenningen,
 // co-financiers, regelingen in het dekkingsplan en documenten.
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import {
@@ -12,7 +12,8 @@ import {
   berekenDekking,
   useKompas,
 } from './KompasStore.jsx';
-import { Button, Field, EmptyState, Notice, Panel, PanelHeader, SectionHeading, Toggle, veldStijl, selectStijl } from '../../shared/ui/index.js';
+import { haalClassificatiesOp } from '../../data/services/classificaties.js';
+import { Button, ClassificatieSelect, Field, EmptyState, Notice, Panel, PanelHeader, SectionHeading, Toggle, veldStijl, selectStijl } from '../../shared/ui/index.js';
 
 const MAANDEN = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 
@@ -40,7 +41,7 @@ function dagenTot(iso) {
 const VELDEN = [
   { n: 'naam', l: 'Naam van het project', p: 'Bijvoorbeeld: Buurtkeuken De Brug', breed: true },
   { n: 'programma', l: 'Programma of onderdeel', p: 'Waar valt het project onder?' },
-  { n: 'doelgroep', l: 'Doelgroep', p: 'Voor wie is het project bedoeld?' },
+  { n: 'doelgroep', l: 'Doelgroep', p: 'Voor wie is het project bedoeld?', classificatie: true },
   { n: 'periodeVan', l: 'Looptijd van', p: 'jan 2027' },
   { n: 'periodeTot', l: 'Looptijd tot', p: 'dec 2027' },
   { n: 'regio', l: 'Regio of plaats', p: 'Utrecht' },
@@ -61,6 +62,25 @@ export default function ProjectenPage() {
   const [form, setForm] = useState(null);
   const [melding, setMelding] = useState('');
   const [fout, setFout] = useState('');
+
+  // Doelgroep gebruikt dezelfde centrale classificatielijst als het
+  // organisatieprofiel (zie data/services/classificaties.js) in plaats van
+  // vrije tekst, zodat er maar één plek is waar doelgroepen worden beheerd.
+  const [doelgroepen, setDoelgroepen] = useState([]);
+
+  useEffect(() => {
+    let actief = true;
+
+    haalClassificatiesOp().then((lijst) => {
+      if (actief) {
+        setDoelgroepen(lijst.doelgroepen || []);
+      }
+    });
+
+    return () => {
+      actief = false;
+    };
+  }, []);
 
   const komende = useMemo(() => {
     const uit = [];
@@ -203,8 +223,8 @@ export default function ProjectenPage() {
       />
 
       {komende.length > 0 && (
-        <div style={css('margin-bottom: 24px; padding: 20px 22px; border: 1px solid #D6E3E9; border-radius: 20px; background: #EAF1F6;')}>
-          <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 16px;')}>
+        <div style={css('margin-bottom: 16px; padding: 14px 18px; border: 1px solid #D6E3E9; border-radius: 20px; background: #EAF1F6;')}>
+          <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 12px;')}>
             <span style={css('font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
               Komende deadlines uit uw projecten
             </span>
@@ -256,13 +276,13 @@ export default function ProjectenPage() {
       )}
 
       {store.projects.length > 0 && (
-        <div style={css('margin-bottom: 22px; display: flex; flex-direction: column; gap: 10px;')}>
+        <div style={css('margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;')}>
           {store.projects.map((p) => {
             const toegekend = (p.eerder || []).filter((x) => String(x.uitkomst || '').indexOf('oegekend') !== -1).length;
             const bits = [p.programma, [p.periodeVan, p.periodeTot].filter(Boolean).join(' – '), p.regio].filter(Boolean);
 
             return (
-              <div key={p.id} style={css('padding: 18px 20px; border: 1px solid #E1EAE4; border-radius: 16px; background: #F7F9F8; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;')}>
+              <div key={p.id} style={css('padding: 14px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #F7F9F8; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;')}>
                 <div style={css('min-width: 0; flex: 1 1 260px;')}>
                   <div style={css('margin-bottom: 5px; font-size: 15.5px; font-weight: 800; color: #2C4A5E;')}>
                     {p.naam || 'Naamloos project'}
@@ -293,7 +313,7 @@ export default function ProjectenPage() {
       )}
 
       {!store.projects.length && !form && (
-        <div style={css('margin-bottom: 22px;')}>
+        <div style={css('margin-bottom: 16px;')}>
           <EmptyState title="Nog geen projecten vastgelegd" text="Voeg uw eerste project toe om er per aanvraag mee te werken." />
         </div>
       )}
@@ -308,16 +328,26 @@ export default function ProjectenPage() {
 
       {form && (
         <div>
-          <div style={css("margin-bottom: 26px; padding-bottom: 12px; border-bottom: 1px solid #E1EAE4; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
+          <div style={css("margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid #E1EAE4; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
             {String(form.naam || '').trim() || 'Nieuw project'}
           </div>
 
-          <div style={css('display: flex; flex-direction: column; gap: 34px;')}>
-            <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 18px;')}>
+          <div style={css('display: flex; flex-direction: column; gap: 22px;')}>
+            <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 14px;')}>
               {VELDEN.map((f) => (
                 <Field key={f.n} style={f.breed ? { gridColumn: 'span 2' } : undefined}>
                   {f.l}
-                  {f.area ? (
+                  {f.classificatie ? (
+                    <ClassificatieSelect
+                      opties={doelgroepen}
+                      waarde={Array.isArray(form[f.n]) ? form[f.n] : form[f.n] ? [form[f.n]] : []}
+                      onChange={(nieuw) => setVeld(f.n, nieuw)}
+                      multi
+                      metAnders
+                      placeholder={f.p}
+                      ariaLabel={f.l}
+                    />
+                  ) : f.area ? (
                     <textarea
                       value={form[f.n] || ''}
                       onChange={(e) => setVeld(f.n, e.target.value)}
@@ -419,7 +449,7 @@ export default function ProjectenPage() {
                     ))}
                   </div>
 
-                  <div style={css('margin-top: 18px; padding: 20px 22px; border: 1px solid #D5E6DB; border-radius: 18px; background: #EAF4EE;')}>
+                  <div style={css('margin-top: 14px; padding: 14px 18px; border: 1px solid #D5E6DB; border-radius: 18px; background: #EAF4EE;')}>
                     <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px;')}>
                       <span style={css('font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>Dekking van de begroting</span>
                       <span style={css('font-size: 14px; font-weight: 700; color: #2F6D47;')}>{dekking.begroting}</span>
@@ -501,7 +531,7 @@ export default function ProjectenPage() {
             </div>
           )}
 
-          <div style={css('margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap;')}>
+          <div style={css('margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;')}>
             <Button onClick={opslaan}>Project opslaan</Button>
             <Button variant="outline" onClick={() => { setForm(null); setFout(''); }}>Annuleren</Button>
           </div>

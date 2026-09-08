@@ -10,6 +10,27 @@
 // vertalen naar de Engelse kolomnamen in de database.
 import { supabase } from '../client.js';
 
+// Doelgroep is voorheen een los tekstveld geweest (target_groups, plain
+// text in de database). Om meervoudige selectie mogelijk te maken zonder
+// een schemawijziging of een migratie voor bestaande projecten, wordt het
+// hier - net als themas/doelgroepen in organisatieprofiel.js - bewaard als
+// kommagescheiden tekst en uitgelezen als array. Een bestaand project met
+// één vrije-tekstwaarde wordt zo automatisch een array met één item.
+function doelgroepUitKolom(waarde) {
+  if (waarde == null) {
+    return [];
+  }
+
+  return String(waarde)
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function doelgroepNaarKolom(waarde) {
+  return (Array.isArray(waarde) ? waarde : waarde ? [waarde] : []).join(', ') || null;
+}
+
 async function huidigeGebruiker() {
   if (!supabase) {
     return null;
@@ -53,7 +74,7 @@ function naarProjectVeld(rij, docs) {
     id: rij.id,
     naam: rij.name || '',
     programma: rij.program_label || '',
-    doelgroep: rij.target_groups || '',
+    doelgroep: doelgroepUitKolom(rij.target_groups),
     regio: rij.location || '',
     periodeVan: rij.period_start || '',
     periodeTot: rij.period_end || '',
@@ -89,7 +110,7 @@ function naarKolomPatch(project) {
   return {
     name: project.naam || 'Naamloos project',
     program_label: project.programma || null,
-    target_groups: project.doelgroep || null,
+    target_groups: doelgroepNaarKolom(project.doelgroep),
     location: project.regio || null,
     period_start: project.periodeVan || null,
     period_end: project.periodeTot || null,

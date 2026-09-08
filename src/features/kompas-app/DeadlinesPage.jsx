@@ -417,7 +417,7 @@ export default function DeadlinesPage() {
   `);
 
   const groupTitle = css(`
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     font-size: 12.5px;
     font-weight: 800;
     letter-spacing: 0.06em;
@@ -574,8 +574,8 @@ export default function DeadlinesPage() {
               top: 18px;
               display: flex;
               flex-direction: column;
-              gap: 22px;
-              padding: 22px;
+              gap: 16px;
+              padding: 16px;
               border: 1px solid #E1EAE4;
               border-radius: 20px;
               background: #FFFFFF;
@@ -924,7 +924,7 @@ export default function DeadlinesPage() {
               </button>
             </div>
 
-            <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;')}>
+            <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px;')}>
               <span style={css(`
                 padding: 6px 14px;
                 border: 1px solid ${(STATUS_STYLE[detail.status] || STATUS_STYLE.Open).border};
@@ -945,7 +945,7 @@ export default function DeadlinesPage() {
               )}
             </div>
 
-            <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 14px; margin-bottom: 26px;')}>
+            <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 12px; margin-bottom: 18px;')}>
               {[
                 ['BEDRAG', formatAmount(detail.bedragMin, detail.bedragMax)],
                 [
@@ -967,7 +967,7 @@ export default function DeadlinesPage() {
             </div>
 
             {detail.omschrijving && (
-              <div style={css('margin-bottom: 22px;')}>
+              <div style={css('margin-bottom: 16px;')}>
                 <div style={css('margin-bottom: 7px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.05em; color: #2C4A5E;')}>
                   OVER DEZE REGELING
                 </div>
@@ -978,7 +978,7 @@ export default function DeadlinesPage() {
             )}
 
             {detail.voorwaarden && (
-              <div style={css('margin-bottom: 22px;')}>
+              <div style={css('margin-bottom: 16px;')}>
                 <div style={css('margin-bottom: 7px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.05em; color: #2C4A5E;')}>
                   VOORWAARDEN
                 </div>
@@ -989,7 +989,7 @@ export default function DeadlinesPage() {
             )}
 
             {!detail.omschrijving && !detail.voorwaarden && (
-              <div style={css('margin-bottom: 22px; padding: 14px 16px; border: 1px dashed #D5E0D9; border-radius: 14px; font-size: 14.5px; line-height: 1.65; color: #7B8985;')}>
+              <div style={css('margin-bottom: 16px; padding: 14px 16px; border: 1px dashed #D5E0D9; border-radius: 14px; font-size: 14.5px; line-height: 1.65; color: #7B8985;')}>
                 Omschrijving en voorwaarden komen uit de database. Zodra deze regeling daar is aangevuld, staan ze hier.
               </div>
             )}
@@ -998,7 +998,7 @@ export default function DeadlinesPage() {
               const kans = kansrijkheid(detail, store.orgProfile || {}, store.projects);
 
               return (
-                <div style={css(`margin-bottom: 22px; padding: 16px 18px; border: 1px solid ${kans.border}; border-radius: 16px; background: ${kans.bg};`)}>
+                <div style={css(`margin-bottom: 16px; padding: 16px 18px; border: 1px solid ${kans.border}; border-radius: 16px; background: ${kans.bg};`)}>
                   <div style={css(`margin-bottom: 6px; font-size: 13px; font-weight: 800; color: ${kans.color};`)}>
                     {kans.label}
                   </div>
@@ -1007,7 +1007,7 @@ export default function DeadlinesPage() {
               );
             })()}
 
-            <div style={css('margin-bottom: 22px; padding-top: 22px; border-top: 1px solid #E1EAE4;')}>
+            <div style={css('margin-bottom: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
               <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
                 Opnemen in een project
               </div>
@@ -1185,7 +1185,7 @@ export default function DeadlinesPage() {
               </button>
             </div>
 
-            <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 22px;')}>
+            <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;')}>
               <span style={css(`
                 padding: 6px 14px;
                 border: 1px solid ${(STATUS_STYLE[upgradeRow.status] || STATUS_STYLE.Open).border};
@@ -1211,7 +1211,7 @@ export default function DeadlinesPage() {
               Met een Pro- of Premium-abonnement krijgt u toegang tot:
             </div>
 
-            <div style={css('display: flex; flex-direction: column; gap: 10px; margin-bottom: 26px;')}>
+            <div style={css('display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;')}>
               {[
                 'Uitgebreide informatie over deze regeling',
                 'Alle subsidiedetails: bedrag, deadline en voorwaarden',

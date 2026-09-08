@@ -109,7 +109,7 @@ export default function AccountPage() {
         intro="Hier staan uw abonnement en uw bewaarde gesprekken, en bepaalt u wat Subsidie Kompas van u bewaart."
       />
 
-      <div style={css('margin-bottom: 18px; padding: 18px 20px; border: 1px solid #E1EAE4; border-radius: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;')}>
+      <div style={css('margin-bottom: 14px; padding: 14px 18px; border: 1px solid #E1EAE4; border-radius: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;')}>
         <div>
           <div style={css('margin-bottom: 3px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; color: #9AA6A2;')}>NAAM</div>
           <div style={css('font-size: 14.5px; font-weight: 700; color: #2C4A5E;')}>{app.naam || '—'}</div>
@@ -139,7 +139,7 @@ export default function AccountPage() {
         </div>
       </div>
 
-      <div style={css('margin-bottom: 18px; padding: 18px 20px; border: 1px solid #E1EAE4; border-radius: 16px; background: #F7F9F8; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;')}>
+      <div style={css('margin-bottom: 14px; padding: 14px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #F7F9F8; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;')}>
         <span style={css('min-width: 0;')}>
           <span style={css('display: block; margin-bottom: 3px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; color: #9AA6A2;')}>
             ABONNEMENT
@@ -159,7 +159,7 @@ export default function AccountPage() {
       </div>
 
       {app.proefActief && (
-        <div style={css('margin-bottom: 18px; padding: 14px 20px; border: 1px solid #D5E6DB; border-radius: 16px; background: #EAF4EE; font-size: 14px; color: #2F6D47;')}>
+        <div style={css('margin-bottom: 14px; padding: 12px 18px; border: 1px solid #D5E6DB; border-radius: 16px; background: #EAF4EE; font-size: 14px; color: #2F6D47;')}>
           U heeft een actieve proefperiode ({TIER_LABEL[tier] || tier})
           {app.proefEind && <> tot en met {formatDatum(app.proefEind)}</>}. Daarna valt uw account automatisch terug op
           Free, tenzij u vóór die datum een betaald abonnement afsluit.
@@ -199,7 +199,7 @@ export default function AccountPage() {
         )}
       </div>
 
-      <div style={css('margin-top: 26px; padding-top: 22px; border-top: 1px solid #E1EAE4;')}>
+      <div style={css('margin-top: 20px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
         <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
           Uw aankopen
         </div>
@@ -225,7 +225,7 @@ export default function AccountPage() {
         </div>
       </div>
 
-      <div style={css('margin-top: 26px; padding-top: 22px; border-top: 1px solid #E1EAE4;')}>
+      <div style={css('margin-top: 20px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
         <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
           Gegevens verwijderen
         </div>

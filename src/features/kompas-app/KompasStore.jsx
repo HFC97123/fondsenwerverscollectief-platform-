@@ -29,7 +29,7 @@ export const PROJECT_EMPTY = {
   programma: '',
   periodeVan: '',
   periodeTot: '',
-  doelgroep: '',
+  doelgroep: [],
   regio: '',
   omschrijving: '',
   doelstellingen: '',

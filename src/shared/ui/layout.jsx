@@ -70,7 +70,7 @@ export function Card({ children, tone = 'wit', pad, style }) {
 export function Panel({ children }) {
   return (
     <div style={css(`min-height: 100vh; background: ${color.achtergrond};`)}>
-      <Container style={css('padding-top: clamp(28px, 4.4vw, 56px); padding-bottom: clamp(48px, 7vw, 90px);')}>
+      <Container style={css('padding-top: clamp(20px, 3.2vw, 40px); padding-bottom: clamp(32px, 5vw, 64px);')}>
         <div
           style={css(`
             padding: ${space.paneel};
@@ -200,7 +200,7 @@ export function PanelHeader({ title, intro }) {
       {intro && (
         <p
           style={css(`
-            margin: 0 0 26px;
+            margin: 0 0 18px;
             max-width: 700px;
             font-family: ${font.tekst};
             font-size: 15.5px;
@@ -219,8 +219,8 @@ export function SectionHeading({ children }) {
   return (
     <div
       style={css(`
-        margin-bottom: 16px;
-        padding-bottom: ${space.s};
+        margin-bottom: 12px;
+        padding-bottom: ${space.xs};
         border-bottom: 1px solid ${color.lijn};
         font-family: ${font.kop};
         font-size: ${type.blokKop};
