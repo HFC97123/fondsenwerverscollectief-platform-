@@ -1011,6 +1011,12 @@ export default function DeadlinesPage() {
                         : `${daysLeft(detail)} dagen · ${formatDate(detail.deadline)}`)
                     : 'Doorlopend, geen vaste sluitingsdatum',
                 ],
+                // Meerdere aanvraagrondes: beoordelingsdatum/-periode komen uit
+                // dezelfde eerstvolgende-ronde als de DEADLINE-tegel hierboven
+                // (subsidieregeling_volgende_ronde) — geen eigen logica.
+                detail.beoordelingsdatum || detail.beoordelingsperiode
+                  ? ['BEOORDELING', detail.beoordelingsdatum ? formatDate(detail.beoordelingsdatum) : detail.beoordelingsperiode]
+                  : null,
               ]
                 .filter(Boolean)
                 .map(([label, value]) => (
@@ -1022,6 +1028,12 @@ export default function DeadlinesPage() {
                 </div>
               ))}
             </div>
+
+            {detail.rondesAantal > 1 && (
+              <div style={css('margin: -8px 0 16px; font-size: 13px; color: #7B8985;')}>
+                Volgende ronde van in totaal {detail.rondesAantal} aanvraagrondes voor deze regeling.
+              </div>
+            )}
 
             {detail.omschrijving && (
               <div style={css('margin-bottom: 16px;')}>

@@ -141,7 +141,7 @@ async function subsidieregelingContext(admin: any, tier: string) {
       const regelLijnen: string[] = [];
 
       regelLijnen.push(
-        `- ${r.naam}${r.status ? ` (${r.status}${r.deadline_datum ? `, deadline ${r.deadline_datum}` : ''})` : ''} — gever: ${r.funder_naam || 'onbekend'} (${r.type_gever || 'onbekend type'}), toegangsniveau: ${r.access_tier || 'onbekend'}`,
+        `- ${r.naam}${r.status ? ` (${r.status}${r.deadline_datum ? `, deadline ${r.deadline_datum}${r.sluitingstijd ? ` om ${String(r.sluitingstijd).slice(0, 5)}` : ''}` : ''})` : ''} — gever: ${r.funder_naam || 'onbekend'} (${r.type_gever || 'onbekend type'}), toegangsniveau: ${r.access_tier || 'onbekend'}`,
       );
 
       if (r.themas_namen?.length) regelLijnen.push(`  Disciplines: ${r.themas_namen.join(', ')}`);
@@ -157,6 +157,16 @@ async function subsidieregelingContext(admin: any, tier: string) {
 
       if (bijdrage) regelLijnen.push(`  Bijdrage: ${bijdrage}`);
       if (r.deadline_omschrijving) regelLijnen.push(`  Openstelling/deadline: ${r.deadline_omschrijving}`);
+      // Meerdere aanvraagrondes: eerstvolgende ronde komt uit dezelfde centrale
+      // rondelogica als de Timeline (subsidieregeling_volgende_ronde). deadline_datum
+      // hierboven is al ronde-aware; deze regel voegt alleen de beoordelingsinfo
+      // en het totaal aantal (huidige + historische) rondes toe.
+      if ((r.rondes_aantal ?? 0) > 0) {
+        const beoordeling = r.beoordelingsdatum || r.beoordelingsperiode_ronde;
+        regelLijnen.push(
+          `  Eerstvolgende aanvraagronde: sluit ${r.deadline_datum ?? 'onbekend'}${r.sluitingstijd ? ` om ${String(r.sluitingstijd).slice(0, 5)}` : ''}${beoordeling ? `; beoordeling ${r.beoordelingsdatum ? `op ${r.beoordelingsdatum}` : r.beoordelingsperiode_ronde}` : ''} (in totaal ${r.rondes_aantal} aanvraagronde${r.rondes_aantal === 1 ? '' : 's'} voor deze regeling, inclusief eventuele afgelopen rondes).`,
+        );
+      }
       if (r.aanvraagcriteria) regelLijnen.push(`  Aanvraagcriteria (regeling): ${r.aanvraagcriteria}`);
       if (r.beoordelingscriteria) regelLijnen.push(`  Beoordelingscriteria: ${r.beoordelingscriteria}`);
       if (r.type_projecten) regelLijnen.push(`  Type projecten: ${r.type_projecten}`);

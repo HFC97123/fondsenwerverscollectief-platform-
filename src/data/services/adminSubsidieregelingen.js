@@ -105,6 +105,44 @@ export async function updateSubsidieregeling(regelingId, patch) {
   return { error: res.error };
 }
 
+// Aanvraagrondes (meerdere sluitingsdata per subsidieregeling — "Volgende fase":
+// meerdere aanvraagrondes). Eén regeling heeft 0..n rondes. Zolang er 0 rondes
+// bestaan blijft de legacy deadline/deadlineDatum/deadlineOmschrijving hierboven
+// de actieve bron (compatibiliteitslaag in de subsidieregelingen_deadlines-view en
+// in admin_list_subsidieregelingen/kompas_subsidieregelingen_voor_tier); zodra er
+// 1+ rondes bestaan is de eerstvolgende, nog geldige ronde de enige bron voor de
+// deadline van die regeling — nooit tegelijk beide.
+export async function fetchRondes(regelingId) {
+  const res = await query((sb) => sb.rpc('admin_list_rondes', { p_regeling_id: regelingId }), []);
+  return { rows: res.data || [], error: res.error };
+}
+
+// ronde: { id (leeg = nieuwe ronde), regelingId, sluitingsdatum, sluitingstijd,
+//          openVanaf, beoordelingsdatum, beoordelingsperiode, toelichting,
+//          bronUrl, actief }
+export async function upsertRonde(ronde) {
+  const res = await query((sb) =>
+    sb.rpc('admin_upsert_ronde', {
+      p_ronde_id: ronde.id || null,
+      p_regeling_id: ronde.regelingId,
+      p_sluitingsdatum: ronde.sluitingsdatum || null,
+      p_sluitingstijd: ronde.sluitingstijd || null,
+      p_open_vanaf: ronde.openVanaf || null,
+      p_beoordelingsdatum: ronde.beoordelingsdatum || null,
+      p_beoordelingsperiode: ronde.beoordelingsperiode || null,
+      p_toelichting: ronde.toelichting || null,
+      p_bron_url: ronde.bronUrl || null,
+      p_actief: ronde.actief ?? true,
+    }),
+  );
+  return { id: res.data || null, error: res.error };
+}
+
+export async function verwijderRonde(rondeId) {
+  const res = await query((sb) => sb.rpc('admin_verwijder_ronde', { p_ronde_id: rondeId }));
+  return { error: res.error };
+}
+
 // rows: [{ funderId, naam, thema, werkgebied, bedragMin, bedragMax, deadline,
 //          deadlineDatum, deadlineOmschrijving, voorwaarden, status,
 //          dataTier, sourceType }]

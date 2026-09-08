@@ -20,7 +20,8 @@ export const SELECT = [
   'id, naam, thema, werkgebied, data_tier, source_type, status, status_ruw,',
   'volledig_zichtbaar, deadline_datum, dagen_resterend, deadline_periode,',
   'bedrag_min, bedrag_max, voorwaarden, funder_naam, funder_website, funder_type,',
-  'themas_namen, doelgroepen_namen, werkgebieden_namen, bandbreedte_bijdrage_naam',
+  'themas_namen, doelgroepen_namen, werkgebieden_namen, bandbreedte_bijdrage_naam,',
+  'beoordelingsdatum, beoordelingsperiode, rondes_aantal',
 ].join(' ');
 
 export const STATUS_ORDER = [
@@ -65,6 +66,14 @@ export function normalize(row) {
     dataTier: row.data_tier || null,
     sourceType: row.source_type || null,
     periode: row.deadline_periode || null,
+    // Meerdere aanvraagrondes: alleen gevuld wanneer deze regeling rondes
+    // heeft (rondes_aantal > 0) én de eerstvolgende ronde nog geldig is —
+    // dezelfde eerstvolgende-ronde die ook `deadline` hierboven bepaalt.
+    // Voor niet-volledig-zichtbare regelingen komt dit al als null terug uit
+    // de view zelf, net als de andere vergrendelde velden.
+    beoordelingsdatum: row.beoordelingsdatum || null,
+    beoordelingsperiode: row.beoordelingsperiode || null,
+    rondesAantal: typeof row.rondes_aantal === 'number' ? row.rondes_aantal : 0,
   };
 }
 
@@ -196,8 +205,12 @@ export function buildDeadlineDisplayOrder(sortedRows, { bypass = false, pageSize
 
 // Volgt wijzigingen live. Geeft een opzegfunctie terug, of null als realtime
 // niet beschikbaar is. De view zelf is niet realtime-abonneerbaar, dus we
-// luisteren op de onderliggende tabel; de client haalt bij een wijziging
-// opnieuw op via fetchDeadlines(), waarna de toegangsregels weer via de view lopen.
+// luisteren op de onderliggende tabellen; de client haalt bij een wijziging
+// opnieuw op via fetchDeadlines(), waarna de toegangsregels weer via de view
+// lopen. subsidieregeling_rondes moet hier ook bij: zodra een regeling
+// aanvraagrondes heeft is die tabel de bron van de deadline, dus een
+// toegevoegde/gewijzigde/verwijderde ronde in Beheer moet de Timeline net zo
+// live bijwerken als een wijziging op subsidieregelingen zelf.
 export function watchDeadlines(onChange) {
   if (!supabase || typeof supabase.channel !== 'function') {
     return null;
@@ -207,6 +220,7 @@ export function watchDeadlines(onChange) {
     const channel = supabase
       .channel('sk-deadlines')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'subsidieregelingen' }, onChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'subsidieregeling_rondes' }, onChange)
       .subscribe();
 
     return () => supabase.removeChannel(channel);

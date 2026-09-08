@@ -10,8 +10,11 @@ import { css } from '../../shared/lib/css.js';
 import {
   REGELING_STATUSSEN,
   bulkCreateSubsidieregelingen,
+  fetchRondes,
   fetchSubsidieregelingen,
   updateSubsidieregeling,
+  upsertRonde,
+  verwijderRonde,
 } from '../../data/services/adminSubsidieregelingen.js';
 import {
   ACCESS_TIERS,
@@ -72,6 +75,21 @@ const LEEG_BEWERKING = {
   bandbreedteBijdrageId: '',
 };
 
+// Leeg formulier voor een aanvraagronde (meerdere sluitingsdata per regeling).
+// beoordelingsdatum en beoordelingsperiode zijn allebei optioneel en sluiten
+// elkaar niet uit qua invoer — is de exacte datum nog niet bekend, vul dan
+// alleen de periode in (bijv. "maart 2027") in plaats van een verzonnen datum.
+const LEEG_RONDE = {
+  sluitingsdatum: '',
+  sluitingstijd: '',
+  openVanaf: '',
+  beoordelingsdatum: '',
+  beoordelingsperiode: '',
+  toelichting: '',
+  bronUrl: '',
+  actief: true,
+};
+
 // CSV-kolommen; per veld de namen die we accepteren. Zelfde opzet als de
 // oude implementatie, nu gemapt op de echte kolommen.
 const KOLOMMEN = {
@@ -93,6 +111,21 @@ function euro(bedrag) {
   }
 
   return Number(bedrag).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+}
+
+// Compacte weergave van een datum voor de aanvraagrondes-lijst, bijv. "03 aug 2026".
+function formatDatumKort(datum) {
+  if (!datum) {
+    return null;
+  }
+
+  const d = new Date(`${datum}T00:00:00`);
+
+  if (Number.isNaN(d.getTime())) {
+    return datum;
+  }
+
+  return d.toLocaleDateString('nl-NL', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // Zelfde compacte select-filter als bij Funders — geen pillenrij bij 80
@@ -528,7 +561,26 @@ export default function AdminDeadlines({ notify }) {
         key: 'deadline_datum',
         label: 'Deadline',
         sortable: true,
-        render: (r) => r.deadline_datum || r.deadline_omschrijving || r.deadline || 'doorlopend',
+        // Zodra een regeling aanvraagrondes heeft (rondes_aantal > 0) is de
+        // eerstvolgende ronde de enige bron — zelfde regel als de Timeline en
+        // de kompas-RPC, nooit de oude losse velden ernaast tonen.
+        render: (r) =>
+          (r.rondes_aantal ?? 0) > 0 ? (
+            r.volgende_ronde_sluitingsdatum ? (
+              <>
+                {formatDatumKort(r.volgende_ronde_sluitingsdatum)}
+                {r.volgende_ronde_sluitingstijd ? ` · ${String(r.volgende_ronde_sluitingstijd).slice(0, 5)}` : ''}
+                <span style={badgeStyle('grijs')}> {r.rondes_aantal} rondes</span>
+              </>
+            ) : (
+              <>
+                geen aankomende ronde
+                <span style={badgeStyle('grijs')}> {r.rondes_aantal} rondes</span>
+              </>
+            )
+          ) : (
+            r.deadline_datum || r.deadline_omschrijving || r.deadline || 'doorlopend'
+          ),
       },
       {
         key: 'bedrag',
@@ -741,6 +793,7 @@ export default function AdminDeadlines({ notify }) {
           classificatieOpties={classificatieOpties}
           bandbreedteOpties={bandbreedteOpties}
           koppelingenLaden={koppelingenLaden}
+          notify={notify}
         />
       ) : null}
     </section>
@@ -772,7 +825,7 @@ function SectieKop({ children, muted }) {
   );
 }
 
-function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, bandbreedteOpties, koppelingenLaden }) {
+function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, classificatieOpties, bandbreedteOpties, koppelingenLaden, notify }) {
   if (!row) {
     return null;
   }
@@ -923,6 +976,15 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
         </Veld>
       </VeldGrid>
 
+      <SectieKop>Aanvraagrondes</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Voor regelingen met meerdere aanvraagmomenten per jaar (bijv. een bestuur dat 3× per jaar vergadert). Zodra
+        hieronder minimaal één ronde bestaat, is de eerstvolgende nog geldige ronde overal (Timeline, filters,
+        matching, Subsidie Kompas) de enige bron voor de deadline van deze regeling — de velden hierboven worden dan
+        genegeerd. Zonder rondes blijven de velden hierboven gewoon de actieve deadline.
+      </p>
+      <AanvraagrondesSectie regelingId={row.id} notify={notify} />
+
       <SectieKop>Toegang</SectieKop>
       <VeldGrid>
         <Veld label="Toegangsniveau">
@@ -956,6 +1018,258 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
       <div style={css('margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap;')}>
         <button type="button" disabled={opslaan} onClick={onSave} style={secondaryButtonStyle}>
           {opslaan ? 'Opslaan…' : 'Opslaan'}
+        </button>
+        <button type="button" disabled={opslaan} onClick={onCancel} style={plainButtonStyle}>
+          Annuleren
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Beheer van aanvraagrondes (meerdere sluitingsdata per regeling). Eigen,
+// kleine deelstaat binnen het bewerkpaneel: laadt/herlaadt onafhankelijk van
+// het hoofdformulier van de regeling, zodat toevoegen/bewerken/verwijderen/
+// (de)activeren van een ronde niet door de "Opslaan"-knop van de regeling
+// hoeft te lopen. Lezen/schrijven uitsluitend via de admin-only RPC's
+// (admin_list_rondes / admin_upsert_ronde / admin_verwijder_ronde).
+function AanvraagrondesSectie({ regelingId, notify }) {
+  const [rondes, setRondes] = useState([]);
+  const [laden, setLaden] = useState(true);
+  // undefined = geen formulier open, null = nieuwe ronde, anders id = bestaande ronde bewerken
+  const [bewerkId, setBewerkId] = useState(undefined);
+  const [rondeForm, setRondeForm] = useState(LEEG_RONDE);
+  const [opslaanRonde, setOpslaanRonde] = useState(false);
+
+  const laadRondes = async () => {
+    setLaden(true);
+    const res = await fetchRondes(regelingId);
+    setRondes(res.rows || []);
+    setLaden(false);
+  };
+
+  useEffect(() => {
+    laadRondes();
+    setBewerkId(undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regelingId]);
+
+  const openNieuw = () => {
+    setRondeForm(LEEG_RONDE);
+    setBewerkId(null);
+  };
+
+  const openBewerken = (ronde) => {
+    setRondeForm({
+      sluitingsdatum: ronde.sluitingsdatum || '',
+      sluitingstijd: ronde.sluitingstijd || '',
+      openVanaf: ronde.open_vanaf || '',
+      beoordelingsdatum: ronde.beoordelingsdatum || '',
+      beoordelingsperiode: ronde.beoordelingsperiode || '',
+      toelichting: ronde.toelichting || '',
+      bronUrl: ronde.bron_url || '',
+      actief: ronde.actief,
+    });
+    setBewerkId(ronde.id);
+  };
+
+  const opslaanRondeForm = async () => {
+    if (!rondeForm.sluitingsdatum) {
+      notify('error', 'Sluitingsdatum is verplicht voor een aanvraagronde.');
+
+      return;
+    }
+
+    setOpslaanRonde(true);
+
+    const res = await upsertRonde({
+      id: bewerkId || null,
+      regelingId,
+      sluitingsdatum: rondeForm.sluitingsdatum,
+      sluitingstijd: rondeForm.sluitingstijd || null,
+      openVanaf: rondeForm.openVanaf || null,
+      beoordelingsdatum: rondeForm.beoordelingsdatum || null,
+      beoordelingsperiode: rondeForm.beoordelingsperiode || null,
+      toelichting: rondeForm.toelichting || null,
+      bronUrl: rondeForm.bronUrl || null,
+      actief: rondeForm.actief,
+    });
+
+    setOpslaanRonde(false);
+
+    if (res.error) {
+      notify('error', 'De aanvraagronde kon niet worden opgeslagen.');
+
+      return;
+    }
+
+    setBewerkId(undefined);
+    notify('success', 'Aanvraagronde opgeslagen.');
+    laadRondes();
+  };
+
+  const toggleActief = async (ronde) => {
+    const res = await upsertRonde({
+      id: ronde.id,
+      regelingId,
+      sluitingsdatum: ronde.sluitingsdatum,
+      sluitingstijd: ronde.sluitingstijd,
+      openVanaf: ronde.open_vanaf,
+      beoordelingsdatum: ronde.beoordelingsdatum,
+      beoordelingsperiode: ronde.beoordelingsperiode,
+      toelichting: ronde.toelichting,
+      bronUrl: ronde.bron_url,
+      actief: !ronde.actief,
+    });
+
+    if (res.error) {
+      notify('error', 'De status van de ronde kon niet worden gewijzigd.');
+
+      return;
+    }
+
+    laadRondes();
+  };
+
+  const verwijder = async (ronde) => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Aanvraagronde van ${formatDatumKort(ronde.sluitingsdatum)} verwijderen? Dit kan niet ongedaan worden gemaakt.`)) {
+      return;
+    }
+
+    const res = await verwijderRonde(ronde.id);
+
+    if (res.error) {
+      notify('error', 'De aanvraagronde kon niet worden verwijderd.');
+
+      return;
+    }
+
+    notify('success', 'Aanvraagronde verwijderd.');
+    laadRondes();
+  };
+
+  return (
+    <div style={css('margin-bottom: 6px;')}>
+      {laden ? (
+        <div style={css('font-size: 13.5px; color: #82918B;')}>Rondes laden…</div>
+      ) : rondes.length ? (
+        <div style={css('display: grid; gap: 8px; margin-bottom: 12px;')}>
+          {rondes.map((ronde) => (
+            <RondeRij
+              key={ronde.id}
+              ronde={ronde}
+              onBewerken={() => openBewerken(ronde)}
+              onVerwijderen={() => verwijder(ronde)}
+              onToggleActief={() => toggleActief(ronde)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div style={css('margin-bottom: 12px; font-size: 13.5px; color: #82918B;')}>
+          Nog geen aanvraagrondes voor deze regeling — de deadline hierboven blijft actief.
+        </div>
+      )}
+
+      {bewerkId !== undefined ? (
+        <RondeFormulier
+          form={rondeForm}
+          setForm={setRondeForm}
+          onSave={opslaanRondeForm}
+          onCancel={() => setBewerkId(undefined)}
+          opslaan={opslaanRonde}
+          nieuw={bewerkId === null}
+        />
+      ) : (
+        <button type="button" style={smallButtonStyle} onClick={openNieuw}>
+          + Aanvraagronde toevoegen
+        </button>
+      )}
+    </div>
+  );
+}
+
+function RondeRij({ ronde, onBewerken, onVerwijderen, onToggleActief }) {
+  const beoordeling = ronde.beoordelingsdatum ? formatDatumKort(ronde.beoordelingsdatum) : ronde.beoordelingsperiode || null;
+
+  return (
+    <div
+      style={css(`
+        display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px;
+        background: ${ronde.actief ? '#FFFFFF' : '#F2F2EF'};
+        ${!ronde.actief || ronde.is_verstreken ? 'opacity: 0.7;' : ''}
+      `)}
+    >
+      <div>
+        <div style={css('font-weight: 800; color: #2C4A5E; font-size: 14px;')}>
+          {formatDatumKort(ronde.sluitingsdatum)}
+          {ronde.sluitingstijd ? ` · ${String(ronde.sluitingstijd).slice(0, 5)}` : ''}
+          {!ronde.actief ? <span style={badgeStyle('grijs')}> Gedeactiveerd</span> : null}
+          {ronde.actief && ronde.is_verstreken ? <span style={badgeStyle('grijs')}> Verstreken</span> : null}
+        </div>
+        {beoordeling ? <div style={css('font-size: 12.5px; color: #536460;')}>Beoordeling: {beoordeling}</div> : null}
+      </div>
+      <div style={css('display: flex; gap: 8px; flex-shrink: 0;')}>
+        <button type="button" style={smallButtonStyle} onClick={onBewerken}>
+          Bewerken
+        </button>
+        <button type="button" style={plainButtonStyle} onClick={onToggleActief}>
+          {ronde.actief ? 'Deactiveren' : 'Activeren'}
+        </button>
+        <button type="button" style={plainButtonStyle} onClick={onVerwijderen}>
+          Verwijderen
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RondeFormulier({ form, setForm, onSave, onCancel, opslaan, nieuw }) {
+  const set = (veld) => (event) => setForm((f) => ({ ...f, [veld]: event.target.value }));
+
+  return (
+    <div style={css('margin-top: 4px; padding: 14px 16px; border: 1px dashed #BFD4C6; border-radius: 12px; background: #FFFFFF;')}>
+      <div style={css('margin-bottom: 12px; font-size: 13.5px; font-weight: 800; color: #2C4A5E;')}>
+        {nieuw ? 'Nieuwe aanvraagronde' : 'Aanvraagronde bewerken'}
+      </div>
+      <VeldGrid>
+        <Veld label="Sluitingsdatum">
+          <input style={inputStyle} type="date" value={form.sluitingsdatum} onChange={set('sluitingsdatum')} />
+        </Veld>
+        <Veld label="Sluitingstijd (leeg = 23:59)">
+          <input style={inputStyle} type="time" value={form.sluitingstijd} onChange={set('sluitingstijd')} />
+        </Veld>
+        <Veld label="Open vanaf (optioneel)">
+          <input style={inputStyle} type="date" value={form.openVanaf} onChange={set('openVanaf')} />
+        </Veld>
+        <Veld label="Beoordelingsdatum (indien exact bekend)">
+          <input style={inputStyle} type="date" value={form.beoordelingsdatum} onChange={set('beoordelingsdatum')} />
+        </Veld>
+        <Veld label="Beoordelingsperiode (indien alleen maand/periode bekend)">
+          <input style={inputStyle} value={form.beoordelingsperiode} onChange={set('beoordelingsperiode')} placeholder="bijv. maart 2027" />
+        </Veld>
+        <Veld label="Toelichting (optioneel)" span={2}>
+          <input style={inputStyle} value={form.toelichting} onChange={set('toelichting')} />
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop muted>Technische status / Bron</SectieKop>
+      <VeldGrid>
+        <Veld label="Bron / URL (optioneel)" span={2}>
+          <input style={inputStyle} value={form.bronUrl} onChange={set('bronUrl')} placeholder="https://…" />
+        </Veld>
+        <Veld label="Actief">
+          <select style={inputStyle} value={form.actief ? '1' : '0'} onChange={(e) => setForm((f) => ({ ...f, actief: e.target.value === '1' }))}>
+            <option value="1">Ja</option>
+            <option value="0">Nee (tijdelijk gedeactiveerd)</option>
+          </select>
+        </Veld>
+      </VeldGrid>
+
+      <div style={css('margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap;')}>
+        <button type="button" disabled={opslaan} onClick={onSave} style={secondaryButtonStyle}>
+          {opslaan ? 'Opslaan…' : 'Opslaan ronde'}
         </button>
         <button type="button" disabled={opslaan} onClick={onCancel} style={plainButtonStyle}>
           Annuleren
