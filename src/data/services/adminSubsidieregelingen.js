@@ -14,7 +14,8 @@ export const REGELING_STATUSSEN = [
 ];
 
 // params: { search, funderId, status, dataTier, sourceType,
-//           classificationReviewed, sortColumn, sortDirection, page, pageSize }
+//           classificationReviewed, accessTier, sortColumn, sortDirection,
+//           page, pageSize }
 export async function fetchSubsidieregelingen(params = {}) {
   const {
     search = null,
@@ -23,6 +24,7 @@ export async function fetchSubsidieregelingen(params = {}) {
     dataTier = null,
     sourceType = null,
     classificationReviewed = null,
+    accessTier = null,
     sortColumn = 'naam',
     sortDirection = 'asc',
     page = 0,
@@ -43,6 +45,7 @@ export async function fetchSubsidieregelingen(params = {}) {
         p_sort_direction: sortDirection,
         p_limit: pageSize,
         p_offset: page * pageSize,
+        p_access_tier: accessTier || null,
       }),
     [],
   );

@@ -12,7 +12,14 @@ import {
   fetchSubsidieregelingen,
   updateSubsidieregeling,
 } from '../../data/services/adminSubsidieregelingen.js';
-import { DATA_TIERS, SOURCE_TYPES, fetchFunders } from '../../data/services/adminFunders.js';
+import {
+  ACCESS_TIERS,
+  DATA_TIERS,
+  SOURCE_TYPES,
+  bulkSetAccessTier,
+  fetchFunders,
+  setAccessTier,
+} from '../../data/services/adminFunders.js';
 import { fetchKoppelingen, zetKoppelingen } from '../../data/services/adminClassificaties.js';
 import { haalClassificatiesOp } from '../../data/services/classificaties.js';
 import ClassificatieSelect from '../../shared/ui/ClassificatieSelect.jsx';
@@ -20,6 +27,7 @@ import AdminToolbar from './shared/AdminToolbar.jsx';
 import AdminFilters from './shared/AdminFilters.jsx';
 import AdminDataTable from './shared/AdminDataTable.jsx';
 import AdminBulkActionsBar from './shared/AdminBulkActionsBar.jsx';
+import AdminAccessTierBulkActie from './shared/AdminAccessTierBulkActie.jsx';
 import AdminPagination from './shared/AdminPagination.jsx';
 import {
   badgeStyle,
@@ -48,6 +56,7 @@ const LEEG_BEWERKING = {
   themas: [],
   doelgroepen: [],
   regios: [],
+  accessTier: 'premium',
 };
 
 // CSV-kolommen; per veld de namen die we accepteren. Zelfde opzet als de
@@ -84,6 +93,7 @@ export default function AdminDeadlines({ notify }) {
   const [dataTier, setDataTier] = useState(null);
   const [sourceType, setSourceType] = useState(null);
   const [reviewed, setReviewed] = useState(null);
+  const [accessTier, setAccessTierFilter] = useState(null);
 
   const [sortColumn, setSortColumn] = useState('naam');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -97,6 +107,7 @@ export default function AdminDeadlines({ notify }) {
   const [importMelding, setImportMelding] = useState('');
   const [classificatieOpties, setClassificatieOpties] = useState({ themas: [], doelgroepen: [], regios: [] });
   const [koppelingenLaden, setKoppelingenLaden] = useState(false);
+  const [bulkAccessTierBezig, setBulkAccessTierBezig] = useState(false);
 
   useEffect(() => {
     haalClassificatiesOp().then(setClassificatieOpties);
@@ -112,6 +123,7 @@ export default function AdminDeadlines({ notify }) {
       dataTier,
       sourceType,
       classificationReviewed: reviewed,
+      accessTier,
       sortColumn,
       sortDirection,
       page,
@@ -133,11 +145,11 @@ export default function AdminDeadlines({ notify }) {
   useEffect(() => {
     laad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, dataTier, sourceType, reviewed, sortColumn, sortDirection, page]);
+  }, [search, status, dataTier, sourceType, reviewed, accessTier, sortColumn, sortDirection, page]);
 
   useEffect(() => {
     setPage(0);
-  }, [search, status, dataTier, sourceType, reviewed]);
+  }, [search, status, dataTier, sourceType, reviewed, accessTier]);
 
   const onSort = (key) => {
     if (sortColumn === key) {
@@ -156,6 +168,24 @@ export default function AdminDeadlines({ notify }) {
     setSelectedIds(aan ? rows.map((r) => r.id) : []);
   };
 
+  const bulkToegangsniveauToepassen = async (waarde) => {
+    setBulkAccessTierBezig(true);
+
+    const res = await bulkSetAccessTier('subsidieregelingen', selectedIds, waarde);
+
+    setBulkAccessTierBezig(false);
+
+    if (res.error) {
+      notify('error', 'Het toegangsniveau kon niet worden bijgewerkt.');
+
+      return;
+    }
+
+    setSelectedIds([]);
+    notify('success', `Toegangsniveau van ${res.count} regeling(en) gezet op ${waarde}.`);
+    laad();
+  };
+
   const openEdit = async (row) => {
     setEditingId(row.id);
     setForm({
@@ -172,6 +202,7 @@ export default function AdminDeadlines({ notify }) {
       themas: [],
       doelgroepen: [],
       regios: [],
+      accessTier: row.access_tier || 'premium',
     });
 
     setKoppelingenLaden(true);
@@ -226,6 +257,18 @@ export default function AdminDeadlines({ notify }) {
       laad();
 
       return;
+    }
+
+    if (form.accessTier !== (row.access_tier || 'premium')) {
+      const tierRes = await setAccessTier('subsidieregelingen', row.id, form.accessTier);
+
+      if (tierRes.error) {
+        notify('error', 'Regeling bijgewerkt, maar het toegangsniveau kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
     }
 
     setEditingId(null);
@@ -387,6 +430,15 @@ export default function AdminDeadlines({ notify }) {
           </span>
         ),
       },
+      {
+        key: 'access_tier',
+        label: 'Toegangsniveau',
+        render: (r) => (
+          <span style={badgeStyle(r.access_tier === 'premium' ? 'blauw' : r.access_tier === 'pro' ? 'geel' : 'groen')}>
+            {(ACCESS_TIERS.find((t) => t.value === r.access_tier) || {}).label || r.access_tier || '—'}
+          </span>
+        ),
+      },
     ],
     [],
   );
@@ -461,10 +513,19 @@ export default function AdminDeadlines({ notify }) {
               { value: false, label: 'Nee' },
             ],
           },
+          {
+            key: 'access_tier',
+            label: 'Toegangsniveau',
+            value: accessTier,
+            onChange: setAccessTierFilter,
+            options: [{ value: null, label: 'Alle' }, ...ACCESS_TIERS],
+          },
         ]}
       />
 
-      <AdminBulkActionsBar count={selectedIds.length} onClear={() => setSelectedIds([])} />
+      <AdminBulkActionsBar count={selectedIds.length} onClear={() => setSelectedIds([])}>
+        <AdminAccessTierBulkActie onApply={bulkToegangsniveauToepassen} bezig={bulkAccessTierBezig} />
+      </AdminBulkActionsBar>
 
       {fout ? (
         <div style={css('margin-bottom: 16px; padding: 16px 18px; border-radius: 14px; background: #FFF1EF; color: #A13B2F; font-weight: 600;')}>
@@ -552,6 +613,17 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, c
             {REGELING_STATUSSEN.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={css('display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: #2C4A5E;')}>
+          Toegangsniveau
+          <select style={inputStyle} value={form.accessTier} onChange={set('accessTier')}>
+            {ACCESS_TIERS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
               </option>
             ))}
           </select>

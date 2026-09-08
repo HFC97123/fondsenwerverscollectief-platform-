@@ -27,6 +27,16 @@ export const SOURCE_TYPES = [
   { value: 'csv_import', label: 'CSV-import' },
 ];
 
+// Het nieuwe, expliciete toegangsniveau (fase 2) — losstaand van DATA_TIERS
+// hierboven (dat blijft de herkomstgebaseerde public/premium-as). Een
+// beheerder zet dit per funder ÉN apart per subsidieregeling; nooit
+// automatisch afgeleid.
+export const ACCESS_TIERS = [
+  { value: 'free', label: 'Free' },
+  { value: 'pro', label: 'Pro' },
+  { value: 'premium', label: 'Premium' },
+];
+
 // Simpele drempel-buckets voor de prioriteitsfilter (server-side >=).
 export const PRIORITEIT_BUCKETS = [
   { value: null, label: 'Alle prioriteiten' },
@@ -35,7 +45,7 @@ export const PRIORITEIT_BUCKETS = [
 ];
 
 // params: { search, type, status, dataTier, sourceType, classificationReviewed,
-//           prioriteitMin, sortColumn, sortDirection, page, pageSize }
+//           accessTier, prioriteitMin, sortColumn, sortDirection, page, pageSize }
 export async function fetchFunders(params = {}) {
   const {
     search = null,
@@ -44,6 +54,7 @@ export async function fetchFunders(params = {}) {
     dataTier = null,
     sourceType = null,
     classificationReviewed = null,
+    accessTier = null,
     prioriteitMin = null,
     sortColumn = 'naam',
     sortDirection = 'asc',
@@ -66,6 +77,7 @@ export async function fetchFunders(params = {}) {
         p_limit: pageSize,
         p_offset: page * pageSize,
         p_prioriteit_min: prioriteitMin,
+        p_access_tier: accessTier || null,
       }),
     [],
   );
@@ -100,4 +112,26 @@ export async function updateFunder(funderId, patch) {
   );
 
   return { error: res.error };
+}
+
+// Eén funder of subsidieregeling een expliciet toegangsniveau geven.
+// tabel: 'funders' | 'subsidieregelingen'. Elke wijziging komt in
+// classification_audit_log terecht (RPC admin_set_access_tier).
+export async function setAccessTier(tabel, id, accessTier, reden = null) {
+  const res = await query((sb) =>
+    sb.rpc('admin_set_access_tier', { p_tabel: tabel, p_id: id, p_access_tier: accessTier, p_reden: reden }),
+  );
+
+  return { error: res.error };
+}
+
+// Zelfde toegangsniveau in één keer voor meerdere rijen (bulk-actie).
+export async function bulkSetAccessTier(tabel, ids, accessTier, reden = null) {
+  const res = await query(
+    (sb) =>
+      sb.rpc('admin_bulk_set_access_tier', { p_tabel: tabel, p_ids: ids, p_access_tier: accessTier, p_reden: reden }),
+    0,
+  );
+
+  return { count: res.data || 0, error: res.error };
 }
