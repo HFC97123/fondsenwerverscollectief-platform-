@@ -433,13 +433,15 @@ function leesMatchSignalen(body: any): MatchSignalen | null {
 // gehouden (niet die RPC's kolomvorm uitgebreid) omdat funder-brede data geen
 // regelingspecifieke velden heeft (begrotingseisen, aanvraagprocedure, etc.).
 // tier komt, net als hieronder, uitsluitend server-side uit profiles.subscription_tier.
-async function funderDeadlineContext(admin: any, tier: string) {
+async function funderDeadlineContext(admin: any, tier: string): Promise<{ tekst: string; funderIds: Set<string> } | null> {
   try {
     const { data, error } = await admin.rpc('kompas_funder_deadlines_voor_tier', { p_tier: tier });
 
     if (error || !Array.isArray(data) || !data.length) {
       return null;
     }
+
+    const funderIds = new Set<string>(data.map((f: any) => String(f.funder_id)));
 
     const regels = data.map((f: any) => {
       const lijnen: string[] = [];
@@ -471,6 +473,62 @@ async function funderDeadlineContext(admin: any, tier: string) {
 
     const kop =
       'Hieronder staan funder-brede deadlines: deze gelden voor het hele fonds (niet voor één specifieke subsidieregeling uit de lijst hierboven of hieronder) en zijn, op basis van het abonnement van dit lid, zichtbaar. Verzin nooit een fonds, bedrag, deadline of voorwaarde die hier niet in staat. Noem bij advies duidelijk dat dit een deadline van het fonds zelf is, niet van één specifieke regeling.\n\n';
+
+    return { tekst: (kop + regels.join('\n')).slice(0, 30000), funderIds };
+  } catch (_) {
+    return null;
+  }
+}
+
+// Architectuurregel "Reviewed bepaalt opname in de centrale dataset": de AI moet
+// ALLE door een beheerder beoordeelde Funders kunnen uitlezen, niet alleen de
+// funders die (via funderDeadlineContext hierboven) toevallig een eigen,
+// toekomstig datamoment hebben. Zonder dit zou een beoordeeld vermogensfonds
+// zonder eigen aanvraagronde/vergaderdatum (bijv. een fonds dat uitsluitend op
+// uitnodiging schenkt) voor de AI onzichtbaar blijven, terwijl het wel
+// "Beoordeeld" staat. Zelfde tier-regel (subsidie_zichtbaar_voor_tier via de
+// RPC), geen tweede rechtenmodel. Om dubbele/overlappende vermelding met
+// funderDeadlineContext te voorkomen, filtert deze functie fondsen eruit die
+// daar al met hun eigen deadline in staan (dezelfde funder_id) - dit blok gaat
+// dus alleen over beoordeelde fondsen zonder eigen funder-brede deadline; een
+// fonds met eigen subsidieregelingen staat sowieso al in subsidieregelingContext.
+async function funderAlgemeneContext(admin: any, tier: string, reedsGenoemdeFunderIds: Set<string>) {
+  try {
+    const { data, error } = await admin.rpc('kompas_funders_voor_tier', { p_tier: tier });
+
+    if (error || !Array.isArray(data) || !data.length) {
+      return null;
+    }
+
+    const overige = data.filter((f: any) => !reedsGenoemdeFunderIds.has(String(f.funder_id)));
+    if (!overige.length) return null;
+
+    const regels = overige.map((f: any) => {
+      const lijnen: string[] = [];
+
+      lijnen.push(`- ${f.funder_naam}${f.funder_type ? ` (${f.funder_type})` : ''} — toegangsniveau: ${f.access_tier || 'onbekend'}`);
+
+      if (f.themas_namen?.length) lijnen.push(`  Disciplines: ${f.themas_namen.join(', ')}`);
+      if (f.doelgroepen_namen?.length) lijnen.push(`  Doelgroepen: ${f.doelgroepen_namen.join(', ')}`);
+      if (f.werkgebieden_namen?.length) lijnen.push(`  Werkgebied: ${f.werkgebieden_namen.join(', ')}`);
+
+      const bijdrage = [
+        f.bandbreedte_bijdrage_naam,
+        f.bijdrage_min || f.bijdrage_max ? `(€ ${f.bijdrage_min ?? '?'} - € ${f.bijdrage_max ?? '?'})` : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      if (bijdrage) lijnen.push(`  Bijdrage: ${bijdrage}`);
+      if (f.missie) lijnen.push(`  Missie: ${f.missie}`);
+      if (f.aanvraagcriteria) lijnen.push(`  Aanvraagcriteria: ${f.aanvraagcriteria}`);
+      if (f.funder_website) lijnen.push(`  Website: ${f.funder_website}`);
+
+      return lijnen.join('\n');
+    });
+
+    const kop =
+      'Hieronder staan overige, door een beheerder beoordeelde fondsen zonder eigen, eerstvolgende aanvraagronde of vergaderdatum (bijv. fondsen die uitsluitend op uitnodiging of doorlopend schenken). Zijn, op basis van het abonnement van dit lid, zichtbaar. Verzin nooit een fonds, bedrag of voorwaarde die hier niet in staat.\n\n';
 
     return (kop + regels.join('\n')).slice(0, 30000);
   } catch (_) {
@@ -982,7 +1040,15 @@ Deno.serve(async (req) => {
   // met dezelfde Free/Pro/Premium-rechten. Regeling-specifieke deadlines
   // zitten al in subsidieContext hierboven; funder-brede deadlines komen
   // hier als apart systeembericht bij, uit dezelfde tier-gefilterde RPC-familie.
-  const funderDeadlineTekst = await funderDeadlineContext(admin, tier);
+  const funderDeadlineResultaat = await funderDeadlineContext(admin, tier);
+  const funderDeadlineTekst = funderDeadlineResultaat?.tekst ?? null;
+
+  // Architectuurregel "Reviewed bepaalt opname in de centrale dataset": ook
+  // beoordeelde fondsen zonder eigen funder-brede deadline moeten door de AI
+  // uitgelezen kunnen worden (missie, criteria, classificaties, bandbreedte).
+  // Fondsen die hierboven al met hun eigen deadline zijn genoemd, worden hier
+  // overgeslagen om dubbele vermelding te voorkomen.
+  const funderAlgemeenTekst = await funderAlgemeneContext(admin, tier, funderDeadlineResultaat?.funderIds ?? new Set<string>());
 
   // Fase 6, punt 1: actief leren tijdens gesprekken. Zelfde gate als
   // mode: 'extract'/'website' hierboven (geen Free-toegang), en alleen als
@@ -1017,6 +1083,7 @@ Deno.serve(async (req) => {
     { role: 'system', content: systeem },
     ...(subsidieContext ? [{ role: 'system', content: subsidieContext }] : []),
     ...(funderDeadlineTekst ? [{ role: 'system', content: funderDeadlineTekst }] : []),
+    ...(funderAlgemeenTekst ? [{ role: 'system', content: funderAlgemeenTekst }] : []),
     ...(leerInstructie ? [{ role: 'system', content: leerInstructie }] : []),
     ...(projectInstructie ? [{ role: 'system', content: projectInstructie }] : []),
     ...(body.context ? [{ role: 'system', content: String(body.context).slice(0, 24000) }] : []),
