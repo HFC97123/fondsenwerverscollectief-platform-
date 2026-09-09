@@ -78,6 +78,22 @@ const LEEG_BEWERKING = {
   bandbreedteBijdrageId: '',
   bijdrageToelichting: '',
   classificationReviewed: false,
+  contactpersoon: '',
+  contactpersoonFunctie: '',
+  email: '',
+  telefoon: '',
+  algemeenEmail: '',
+  algemeenTelefoon: '',
+  website: '',
+  straat: '',
+  huisnummer: '',
+  postcode: '',
+  plaats: '',
+  provincie: '',
+  land: '',
+  volgendeVergaderdatum: '',
+  vergaderfrequentie: '',
+  vergaderingToelichting: '',
 };
 
 // Leeg formulier voor een aanvraagronde (meerdere sluitingsdata per regeling).
@@ -351,6 +367,22 @@ export default function AdminDeadlines({ notify }) {
       bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
       bijdrageToelichting: row.bijdrage_toelichting || '',
       classificationReviewed: !!row.classification_reviewed,
+      contactpersoon: row.contactpersoon || '',
+      contactpersoonFunctie: row.contactpersoon_functie || '',
+      email: row.email || '',
+      telefoon: row.telefoon || '',
+      algemeenEmail: row.algemeen_email || '',
+      algemeenTelefoon: row.algemeen_telefoon || '',
+      website: row.website || '',
+      straat: row.straat || '',
+      huisnummer: row.huisnummer || '',
+      postcode: row.postcode || '',
+      plaats: row.plaats || '',
+      provincie: row.provincie || '',
+      land: row.land || '',
+      volgendeVergaderdatum: row.volgende_vergaderdatum || '',
+      vergaderfrequentie: row.vergaderfrequentie || '',
+      vergaderingToelichting: row.vergadering_toelichting || '',
     };
 
     setForm(basis);
@@ -405,6 +437,22 @@ export default function AdminDeadlines({ notify }) {
       aanvraagprocedure: form.aanvraagprocedure || null,
       type: form.type || null,
       bijdrageToelichting: form.bijdrageToelichting || null,
+      contactpersoon: form.contactpersoon || null,
+      contactpersoonFunctie: form.contactpersoonFunctie || null,
+      email: form.email || null,
+      telefoon: form.telefoon || null,
+      algemeenEmail: form.algemeenEmail || null,
+      algemeenTelefoon: form.algemeenTelefoon || null,
+      website: form.website || null,
+      straat: form.straat || null,
+      huisnummer: form.huisnummer || null,
+      postcode: form.postcode || null,
+      plaats: form.plaats || null,
+      provincie: form.provincie || null,
+      land: form.land || null,
+      volgendeVergaderdatum: form.volgendeVergaderdatum || null,
+      vergaderfrequentie: form.vergaderfrequentie || null,
+      vergaderingToelichting: form.vergaderingToelichting || null,
     };
 
     const res = await updateSubsidieregeling(row.id, patch);
@@ -907,6 +955,79 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, d
         </Veld>
         <Veld label="Website / URL regeling" span={2}>
           <input style={inputStyle} value={form.aanvraaglink} onChange={set('aanvraaglink')} placeholder="https://…" />
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop>Contactpersoon</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Indien deze regeling een eigen contactpersoon heeft, afwijkend van de gekoppelde gever hierboven. Leeg
+        laten als de contactgegevens van de gever van toepassing zijn.
+      </p>
+      <VeldGrid>
+        <Veld label="Naam">
+          <input style={inputStyle} value={form.contactpersoon} onChange={set('contactpersoon')} />
+        </Veld>
+        <Veld label="Functie">
+          <input style={inputStyle} value={form.contactpersoonFunctie} onChange={set('contactpersoonFunctie')} />
+        </Veld>
+        <Veld label="E-mailadres">
+          <input style={inputStyle} type="email" value={form.email} onChange={set('email')} />
+        </Veld>
+        <Veld label="Telefoonnummer">
+          <input style={inputStyle} value={form.telefoon} onChange={set('telefoon')} />
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop muted>Algemene contactinformatie</SectieKop>
+      <VeldGrid>
+        <Veld label="Algemeen e-mailadres">
+          <input style={inputStyle} type="email" value={form.algemeenEmail} onChange={set('algemeenEmail')} />
+        </Veld>
+        <Veld label="Algemeen telefoonnummer">
+          <input style={inputStyle} value={form.algemeenTelefoon} onChange={set('algemeenTelefoon')} />
+        </Veld>
+        <Veld label="Website">
+          <input style={inputStyle} value={form.website} onChange={set('website')} placeholder="https://…" />
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop>Adres</SectieKop>
+      <VeldGrid>
+        <Veld label="Straat" span={2}>
+          <input style={inputStyle} value={form.straat} onChange={set('straat')} />
+        </Veld>
+        <Veld label="Huisnummer">
+          <input style={inputStyle} value={form.huisnummer} onChange={set('huisnummer')} />
+        </Veld>
+        <Veld label="Postcode">
+          <input style={inputStyle} value={form.postcode} onChange={set('postcode')} />
+        </Veld>
+        <Veld label="Plaats">
+          <input style={inputStyle} value={form.plaats} onChange={set('plaats')} />
+        </Veld>
+        <Veld label="Provincie">
+          <input style={inputStyle} value={form.provincie} onChange={set('provincie')} />
+        </Veld>
+        <Veld label="Land">
+          <input style={inputStyle} value={form.land} onChange={set('land')} />
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop>Vergaderdatum</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Voor een bestuur/commissie dat specifiek voor deze regeling vergadert, afwijkend van de gever hierboven. Voor
+        regelingen met formele aanvraagrondes is "Aanvraagrondes" verderop de bron voor beoordelingsdata — dit veld
+        is voor de eerstvolgende vergadering in algemene zin.
+      </p>
+      <VeldGrid>
+        <Veld label="Eerstvolgende vergaderdatum">
+          <input style={inputStyle} type="date" value={form.volgendeVergaderdatum} onChange={set('volgendeVergaderdatum')} />
+        </Veld>
+        <Veld label="Vergaderfrequentie">
+          <input style={inputStyle} value={form.vergaderfrequentie} onChange={set('vergaderfrequentie')} placeholder="bijv. 3x per jaar" />
+        </Veld>
+        <Veld label="Toelichting" span={3}>
+          <textarea style={textareaStyle} rows={2} value={form.vergaderingToelichting} onChange={set('vergaderingToelichting')} />
         </Veld>
       </VeldGrid>
 

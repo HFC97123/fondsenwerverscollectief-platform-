@@ -75,7 +75,12 @@ export async function fetchSubsidieregelingen(params = {}) {
 //          deadline, deadlineDatum, deadlineOmschrijving, voorwaarden, status,
 //          funderId, aanvraaglink, beoordelingscriteria, typeProjecten,
 //          begrotingseisen, eigenBijdrage, cofinanciering, behandeltermijn,
-//          aanvraagprocedure, type }
+//          aanvraagprocedure, type, contactpersoon, contactpersoonFunctie,
+//          email, telefoon, algemeenEmail, algemeenTelefoon, website, straat,
+//          huisnummer, postcode, plaats, provincie, land,
+//          volgendeVergaderdatum, vergaderfrequentie, vergaderingToelichting }
+// Contactgegevens/adres/vergaderdatum zijn nieuw voor subsidieregelingen (die
+// hadden nog geen enkel contactveld) - vervolgopdracht, punt 1 en 4.
 export async function updateSubsidieregeling(regelingId, patch) {
   const res = await query((sb) =>
     sb.rpc('admin_update_subsidieregeling', {
@@ -101,6 +106,22 @@ export async function updateSubsidieregeling(regelingId, patch) {
       p_aanvraagprocedure: patch.aanvraagprocedure ?? null,
       p_type: patch.type ?? null,
       p_bijdrage_toelichting: patch.bijdrageToelichting ?? null,
+      p_contactpersoon: patch.contactpersoon ?? null,
+      p_contactpersoon_functie: patch.contactpersoonFunctie ?? null,
+      p_email: patch.email ?? null,
+      p_telefoon: patch.telefoon ?? null,
+      p_algemeen_email: patch.algemeenEmail ?? null,
+      p_algemeen_telefoon: patch.algemeenTelefoon ?? null,
+      p_website: patch.website ?? null,
+      p_straat: patch.straat ?? null,
+      p_huisnummer: patch.huisnummer ?? null,
+      p_postcode: patch.postcode ?? null,
+      p_plaats: patch.plaats ?? null,
+      p_provincie: patch.provincie ?? null,
+      p_land: patch.land ?? null,
+      p_volgende_vergaderdatum: patch.volgendeVergaderdatum ?? null,
+      p_vergaderfrequentie: patch.vergaderfrequentie ?? null,
+      p_vergadering_toelichting: patch.vergaderingToelichting ?? null,
     }),
   );
 

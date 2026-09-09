@@ -44,11 +44,16 @@ export const PRIORITEIT_BUCKETS = [
   { value: 4, label: 'Gemiddeld (4+)' },
 ];
 
-// params: { search, type, status, dataTier, sourceType, classificationReviewed,
-//           accessTier, prioriteitMin, bandbreedteBijdrageId, thema, doelgroep,
-//           regio, gescandDoorAgent, sortColumn, sortDirection, page, pageSize }
+// params: { funderId, search, type, status, dataTier, sourceType,
+//           classificationReviewed, accessTier, prioriteitMin,
+//           bandbreedteBijdrageId, thema, doelgroep, regio, gescandDoorAgent,
+//           sortColumn, sortDirection, page, pageSize }
+// funderId: haalt (via dezelfde admin_list_funders) precies één funder op -
+// gebruikt na createFunder() om de zojuist aangemaakte rij meteen te openen
+// zonder een aparte "haal één funder op"-RPC te hoeven bouwen.
 export async function fetchFunders(params = {}) {
   const {
+    funderId = null,
     search = null,
     type = null,
     status = null,
@@ -71,7 +76,7 @@ export async function fetchFunders(params = {}) {
   const res = await query(
     (sb) =>
       sb.rpc('admin_list_funders', {
-        p_funder_id: null,
+        p_funder_id: funderId || null,
         p_search: search || null,
         p_type: type || null,
         p_status: status || null,
@@ -101,10 +106,16 @@ export async function fetchFunders(params = {}) {
 
 // patch: { naam, type, status, website, missie, aanvraagcriteria, bijdrageMin,
 //          bijdrageMax, bijdrageToelichting, jaarbudget, prioriteit, bron,
-//          researchSource }
+//          researchSource, contactpersoon, contactpersoonFunctie, email,
+//          telefoon, algemeenEmail, algemeenTelefoon, straat, huisnummer,
+//          postcode, plaats, provincie, land, volgendeVergaderdatum,
+//          vergaderfrequentie, vergaderingToelichting }
 // Bewust NOOIT data_tier/source_type/classification_reviewed (die horen bij
-// de classificatie-RPC's van stap 2) en NOOIT contactgegevens (die blijven
-// alleen-lezen totdat er een apart, expliciet goedgekeurd schrijfpad komt).
+// de classificatie-RPC's van stap 2). Contactgegevens/adres/vergaderdatum
+// waren tot nu toe bewust alleen-lezen ("totdat er een apart, expliciet
+// goedgekeurd schrijfpad komt") - dat pad is er nu, expliciet gevraagd.
+// De oude, vrije-tekst `adres`-kolom blijft bewust ongewijzigd (niet hier
+// opgenomen): de nieuwe, gestructureerde adresvelden zijn nu de ene bron.
 export async function updateFunder(funderId, patch) {
   const res = await query((sb) =>
     sb.rpc('admin_update_funder', {
@@ -122,8 +133,42 @@ export async function updateFunder(funderId, patch) {
       p_bron: patch.bron ?? null,
       p_research_source: patch.researchSource ?? null,
       p_bijdrage_toelichting: patch.bijdrageToelichting ?? null,
+      p_contactpersoon: patch.contactpersoon ?? null,
+      p_contactpersoon_functie: patch.contactpersoonFunctie ?? null,
+      p_email: patch.email ?? null,
+      p_telefoon: patch.telefoon ?? null,
+      p_algemeen_email: patch.algemeenEmail ?? null,
+      p_algemeen_telefoon: patch.algemeenTelefoon ?? null,
+      p_straat: patch.straat ?? null,
+      p_huisnummer: patch.huisnummer ?? null,
+      p_postcode: patch.postcode ?? null,
+      p_plaats: patch.plaats ?? null,
+      p_provincie: patch.provincie ?? null,
+      p_land: patch.land ?? null,
+      p_volgende_vergaderdatum: patch.volgendeVergaderdatum ?? null,
+      p_vergaderfrequentie: patch.vergaderfrequentie ?? null,
+      p_vergadering_toelichting: patch.vergaderingToelichting ?? null,
     }),
   );
+
+  return { error: res.error };
+}
+
+// Nieuw fonds aanmaken (prioriteit 2, CRUD). Alleen naam + type zijn
+// verplicht (dezelfde twee NOT NULL-kolommen als de database zelf al
+// afdwingt) - alles overig vult de beheerder direct daarna in via hetzelfde
+// bewerkscherm (updateFunder hierboven), geen tweede formulier.
+export async function createFunder({ naam, type }) {
+  const res = await query((sb) => sb.rpc('admin_create_funder', { p_naam: naam, p_type: type }));
+
+  return { id: res.data || null, error: res.error };
+}
+
+// Fonds verwijderen. Gekoppelde subsidieregelingen/classificaties/notities
+// worden door de database zelf opgeruimd (on delete cascade, geverifieerd
+// vóór het bouwen van deze functie) - geen aparte opruimstappen hier nodig.
+export async function deleteFunder(funderId) {
+  const res = await query((sb) => sb.rpc('admin_delete_funder', { p_funder_id: funderId }));
 
   return { error: res.error };
 }

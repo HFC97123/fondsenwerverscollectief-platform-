@@ -17,10 +17,16 @@ import {
   SOURCE_TYPES,
   bulkSetAccessTier,
   classifyFunder,
+  createFunder,
+  deleteFunder,
   fetchFunders,
   setAccessTier,
   updateFunder,
 } from '../../data/services/adminFunders.js';
+// Hergebruikt om, vóór het verwijderen van een fonds, te tonen hoeveel
+// gekoppelde subsidieregelingen er ook verdwijnen (§3, "controleer vóór
+// verwijderen op relaties") - geen nieuwe telling/RPC nodig, deze bestaat al.
+import { fetchSubsidieregelingen } from '../../data/services/adminSubsidieregelingen.js';
 import { fetchKoppelingen, zetKoppelingen } from '../../data/services/adminClassificaties.js';
 import { zetBandbreedte } from '../../data/services/adminBandbreedtes.js';
 import { haalBandbreedtesOp, haalClassificatiesOp } from '../../data/services/classificaties.js';
@@ -65,7 +71,63 @@ const LEEG_BEWERKING = {
   bandbreedteBijdrageId: '',
   bijdrageToelichting: '',
   classificationReviewed: false,
+  // Vervolgopdracht - contactpersoon (functie erbij, de rest bestond al maar
+  // was alleen-lezen) en "algemene" contactgegevens (los van de persoonlijke
+  // contactpersoon hierboven).
+  contactpersoon: '',
+  contactpersoonFunctie: '',
+  email: '',
+  telefoon: '',
+  algemeenEmail: '',
+  algemeenTelefoon: '',
+  // Vervolgopdracht - gestructureerd adres (naast, niet in plaats van, het
+  // oude vrije-tekstveld `adres`, dat alleen-lezen ter referentie blijft).
+  straat: '',
+  huisnummer: '',
+  postcode: '',
+  plaats: '',
+  provincie: '',
+  land: '',
+  // Vervolgopdracht - vergaderdatum.
+  volgendeVergaderdatum: '',
+  vergaderfrequentie: '',
+  vergaderingToelichting: '',
 };
+
+const LEEG_NIEUW_FONDS = { naam: '', type: '' };
+
+// Vervolgopdracht, prioriteit 2/3 (CRUD): twee kleine, lokale knopstijlen -
+// primair voor "Nieuw fonds" (dezelfde donkere kleur als andere primaire
+// acties elders in de app), en een duidelijk afwijkende (rode) variant voor
+// "Verwijderen", zodat dit nooit met "Bewerken" te verwarren is.
+const nieuwFondsKnopStijl = css(`
+  cursor: pointer;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 999px;
+  background: #2C4A5E;
+  color: #FFFFFF;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 800;
+  white-space: nowrap;
+`);
+
+const verwijderKnopStijl = css(`
+  cursor: pointer;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid #E1D3D0;
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #9E3B2C;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+`);
 
 function euro(bedrag) {
   if (bedrag == null || bedrag === '') {
@@ -138,6 +200,7 @@ export default function AdminFunders({ notify }) {
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [editingId, setEditingId] = useState(null);
+  const [editingRow, setEditingRow] = useState(null);
   const [form, setForm] = useState(LEEG_BEWERKING);
   const [opslaan, setOpslaan] = useState(false);
   const [classificatieOpties, setClassificatieOpties] = useState({ themas: [], doelgroepen: [], regios: [] });
@@ -148,6 +211,15 @@ export default function AdminFunders({ notify }) {
   // classificaties) van de bewerkte rij — vergelijkingsbasis voor de
   // "niet-opgeslagen wijzigingen"-waarschuwing in AdminEditModal.
   const initialFormRef = useRef(null);
+
+  // Vervolgopdracht, prioriteit 2 (CRUD): "Nieuw fonds" is een klein, apart
+  // stapje (alleen de twee verplichte velden) dat na opslaan meteen
+  // doorschakelt naar hetzelfde bewerkscherm als hierboven - geen tweede,
+  // volledige formulierimplementatie.
+  const [nieuwFondsOpen, setNieuwFondsOpen] = useState(false);
+  const [nieuwFondsForm, setNieuwFondsForm] = useState(LEEG_NIEUW_FONDS);
+  const [nieuwFondsBezig, setNieuwFondsBezig] = useState(false);
+  const [nieuwFondsFout, setNieuwFondsFout] = useState('');
 
   useEffect(() => {
     haalClassificatiesOp().then((res) => {
@@ -248,6 +320,11 @@ export default function AdminFunders({ notify }) {
 
   const openEdit = async (row) => {
     setEditingId(row.id);
+    // Losse snapshot van de bewerkte rij zelf, i.p.v. steeds opnieuw
+    // rows.find((r) => r.id === editingId) - nodig omdat een net aangemaakt
+    // fonds (nieuwFondsOpslaan hieronder) nog niet per se in de huidige
+    // gepagineerde/gefilterde `rows` staat.
+    setEditingRow(row);
 
     const basis = {
       naam: row.naam || '',
@@ -269,6 +346,21 @@ export default function AdminFunders({ notify }) {
       bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
       bijdrageToelichting: row.bijdrage_toelichting || '',
       classificationReviewed: !!row.classification_reviewed,
+      contactpersoon: row.contactpersoon || '',
+      contactpersoonFunctie: row.contactpersoon_functie || '',
+      email: row.email || '',
+      telefoon: row.telefoon || '',
+      algemeenEmail: row.algemeen_email || '',
+      algemeenTelefoon: row.algemeen_telefoon || '',
+      straat: row.straat || '',
+      huisnummer: row.huisnummer || '',
+      postcode: row.postcode || '',
+      plaats: row.plaats || '',
+      provincie: row.provincie || '',
+      land: row.land || '',
+      volgendeVergaderdatum: row.volgende_vergaderdatum || '',
+      vergaderfrequentie: row.vergaderfrequentie || '',
+      vergaderingToelichting: row.vergadering_toelichting || '',
     };
 
     setForm(basis);
@@ -312,6 +404,21 @@ export default function AdminFunders({ notify }) {
       bron: form.bron || null,
       researchSource: form.researchSource || null,
       bijdrageToelichting: form.bijdrageToelichting || null,
+      contactpersoon: form.contactpersoon || null,
+      contactpersoonFunctie: form.contactpersoonFunctie || null,
+      email: form.email || null,
+      telefoon: form.telefoon || null,
+      algemeenEmail: form.algemeenEmail || null,
+      algemeenTelefoon: form.algemeenTelefoon || null,
+      straat: form.straat || null,
+      huisnummer: form.huisnummer || null,
+      postcode: form.postcode || null,
+      plaats: form.plaats || null,
+      provincie: form.provincie || null,
+      land: form.land || null,
+      volgendeVergaderdatum: form.volgendeVergaderdatum || null,
+      vergaderfrequentie: form.vergaderfrequentie || null,
+      vergaderingToelichting: form.vergaderingToelichting || null,
     };
 
     const res = await updateFunder(row.id, patch);
@@ -334,6 +441,7 @@ export default function AdminFunders({ notify }) {
     if (koppelRes.error) {
       notify('error', 'Funder bijgewerkt, maar de classificaties konden niet worden opgeslagen.');
       setEditingId(null);
+      setEditingRow(null);
       laad();
 
       return;
@@ -383,8 +491,84 @@ export default function AdminFunders({ notify }) {
     }
 
     setEditingId(null);
+    setEditingRow(null);
     initialFormRef.current = null;
     notify('success', 'Funder bijgewerkt.');
+    laad();
+  };
+
+  // Vervolgopdracht, prioriteit 2 (CRUD - Create). Alleen naam + type worden
+  // hier gevraagd (de twee verplichte velden); na aanmaken schakelt dit
+  // meteen door naar hetzelfde bewerkscherm als openEdit hierboven gebruikt,
+  // zodat missie/bijdrage/classificaties/contact/adres/vergaderdatum/
+  // toegangsniveau in één en hetzelfde formulier worden ingevuld - geen
+  // tweede, dubbele veldenset.
+  const nieuwFondsOpslaan = async () => {
+    if (!nieuwFondsForm.naam.trim() || !nieuwFondsForm.type) {
+      setNieuwFondsFout('Naam en type gever zijn beide verplicht.');
+
+      return;
+    }
+
+    setNieuwFondsFout('');
+    setNieuwFondsBezig(true);
+
+    const res = await createFunder({ naam: nieuwFondsForm.naam.trim(), type: nieuwFondsForm.type });
+
+    setNieuwFondsBezig(false);
+
+    if (res.error || !res.id) {
+      setNieuwFondsFout('Het fonds kon niet worden aangemaakt.');
+
+      return;
+    }
+
+    setNieuwFondsOpen(false);
+    setNieuwFondsForm(LEEG_NIEUW_FONDS);
+    notify('success', `"${nieuwFondsForm.naam.trim()}" is aangemaakt.`);
+    laad();
+
+    // Direct de zojuist aangemaakte rij ophalen (via dezelfde admin_list_funders
+    // die ook de tabel vult, nu gefilterd op p_funder_id) en meteen bewerken -
+    // in de gewone tabel/paginering staat hij mogelijk nog niet (andere
+    // filters/sortering/pagina), maar dat is voor deze ene rij niet nodig.
+    const vers = await fetchFunders({ funderId: res.id, pageSize: 1 });
+
+    if (vers.rows[0]) {
+      openEdit(vers.rows[0]);
+    }
+  };
+
+  // Vervolgopdracht, prioriteit 3 (CRUD - Delete). Geen handmatige
+  // relatie-opruiming nodig (on delete cascade regelt subsidieregelingen/
+  // classificaties/notities al op databaseniveau), maar de beheerder krijgt
+  // wél te zien hoeveel gekoppelde subsidieregelingen ook verdwijnen, zodat
+  // dit nooit een verrassing is.
+  const verwijderFunder = async (row) => {
+    const gekoppeld = await fetchSubsidieregelingen({ funderId: row.id, pageSize: 1 });
+    const aantal = gekoppeld.total || 0;
+    const extra = aantal > 0 ? ` Dit fonds heeft ${aantal} gekoppelde subsidieregeling(en), die ook worden verwijderd.` : '';
+
+    if (!window.confirm(`Weet u zeker dat u "${row.naam}" wilt verwijderen?${extra}`)) {
+      return;
+    }
+
+    const res = await deleteFunder(row.id);
+
+    if (res.error) {
+      notify('error', 'Het fonds kon niet worden verwijderd.');
+
+      return;
+    }
+
+    if (editingId === row.id) {
+      setEditingId(null);
+      setEditingRow(null);
+      initialFormRef.current = null;
+    }
+
+    setSelectedIds((cur) => cur.filter((id) => id !== row.id));
+    notify('success', `"${row.naam}" is verwijderd.`);
     laad();
   };
 
@@ -434,11 +618,18 @@ export default function AdminFunders({ notify }) {
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Funders</h2>
-      <p style={sectionIntroStyle}>
-        Inhoudelijk beheer van fondsen: type gever, disciplines, doelgroepen, werkgebied, bandbreedte bijdrage en
-        toegangsniveau. Technische classificatie (data tier, bron, beoordeeld) staat onder Geavanceerde filters.
-      </p>
+      <div style={css('display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;')}>
+        <div>
+          <h2 style={sectionTitleStyle}>Funders</h2>
+          <p style={sectionIntroStyle}>
+            Inhoudelijk beheer van fondsen: type gever, disciplines, doelgroepen, werkgebied, bandbreedte bijdrage en
+            toegangsniveau. Technische classificatie (data tier, bron, beoordeeld) staat onder Geavanceerde filters.
+          </p>
+        </div>
+        <button type="button" onClick={() => setNieuwFondsOpen(true)} style={nieuwFondsKnopStijl}>
+          + Nieuw fonds
+        </button>
+      </div>
 
       <div style={css('height: 22px;')} />
 
@@ -554,9 +745,14 @@ export default function AdminFunders({ notify }) {
         onToggleRow={toggleRow}
         onToggleAll={toggleAll}
         actions={(row) => (
-          <button type="button" style={smallButtonStyle} onClick={() => openEdit(row)}>
-            Bewerken
-          </button>
+          <span style={css('display: flex; gap: 8px;')}>
+            <button type="button" style={smallButtonStyle} onClick={() => openEdit(row)}>
+              Bewerken
+            </button>
+            <button type="button" style={verwijderKnopStijl} onClick={() => verwijderFunder(row)}>
+              Verwijderen
+            </button>
+          </span>
         )}
       />
 
@@ -564,19 +760,35 @@ export default function AdminFunders({ notify }) {
 
       {editingId ? (
         <FunderBewerkPaneel
-          row={rows.find((r) => r.id === editingId)}
+          row={editingRow}
           form={form}
           setForm={setForm}
           onCancel={() => {
             setEditingId(null);
+            setEditingRow(null);
             initialFormRef.current = null;
           }}
-          onSave={() => opslaanBewerking(rows.find((r) => r.id === editingId))}
+          onSave={() => opslaanBewerking(editingRow)}
           opslaan={opslaan}
           dirty={initialFormRef.current ? JSON.stringify(form) !== JSON.stringify(initialFormRef.current) : false}
           classificatieOpties={classificatieOpties}
           bandbreedteOpties={bandbreedteOpties}
           koppelingenLaden={koppelingenLaden}
+        />
+      ) : null}
+
+      {nieuwFondsOpen ? (
+        <NieuwFondsModal
+          form={nieuwFondsForm}
+          setForm={setNieuwFondsForm}
+          onCancel={() => {
+            setNieuwFondsOpen(false);
+            setNieuwFondsForm(LEEG_NIEUW_FONDS);
+            setNieuwFondsFout('');
+          }}
+          onSave={nieuwFondsOpslaan}
+          opslaan={nieuwFondsBezig}
+          fout={nieuwFondsFout}
         />
       ) : null}
     </section>
@@ -620,14 +832,6 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
 
   return (
     <AdminEditModal title={`${row.naam} bewerken`} onClose={onCancel} onSave={onSave} saving={opslaan} dirty={dirty}>
-      <div
-        style={css('margin-bottom: 6px; padding: 14px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #F7FAF8; font-size: 13px; color: #536460; line-height: 1.7;')}
-      >
-        <strong style={css('color: #2C4A5E;')}>Contactgegevens (alleen-lezen):</strong>{' '}
-        {row.contactpersoon || '—'} · {row.email || 'geen e-mail'} · {row.telefoon || 'geen telefoon'} ·{' '}
-        {row.adres || 'geen adres'}
-      </div>
-
       <SectieKop>Basisgegevens</SectieKop>
       <VeldGrid>
         <Veld label="Naam" span={2}>
@@ -638,6 +842,86 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
         </Veld>
         <Veld label="Missie / korte omschrijving" span={3}>
           <input style={inputStyle} value={form.missie} onChange={set('missie')} />
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop>Contactpersoon</SectieKop>
+      <VeldGrid>
+        <Veld label="Naam">
+          <input style={inputStyle} value={form.contactpersoon} onChange={set('contactpersoon')} />
+        </Veld>
+        <Veld label="Functie">
+          <input style={inputStyle} value={form.contactpersoonFunctie} onChange={set('contactpersoonFunctie')} />
+        </Veld>
+        <Veld label="E-mailadres">
+          <input style={inputStyle} type="email" value={form.email} onChange={set('email')} />
+        </Veld>
+        <Veld label="Telefoonnummer">
+          <input style={inputStyle} type="tel" value={form.telefoon} onChange={set('telefoon')} />
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop muted>Algemene contactinformatie</SectieKop>
+      <VeldGrid>
+        <Veld label="Algemeen e-mailadres">
+          <input style={inputStyle} type="email" value={form.algemeenEmail} onChange={set('algemeenEmail')} />
+        </Veld>
+        <Veld label="Algemeen telefoonnummer">
+          <input style={inputStyle} type="tel" value={form.algemeenTelefoon} onChange={set('algemeenTelefoon')} />
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop>Adres</SectieKop>
+      <VeldGrid>
+        <Veld label="Straat" span={2}>
+          <input style={inputStyle} value={form.straat} onChange={set('straat')} />
+        </Veld>
+        <Veld label="Huisnummer">
+          <input style={inputStyle} value={form.huisnummer} onChange={set('huisnummer')} />
+        </Veld>
+        <Veld label="Postcode">
+          <input style={inputStyle} value={form.postcode} onChange={set('postcode')} />
+        </Veld>
+        <Veld label="Plaats">
+          <input style={inputStyle} value={form.plaats} onChange={set('plaats')} />
+        </Veld>
+        <Veld label="Provincie">
+          <input style={inputStyle} value={form.provincie} onChange={set('provincie')} />
+        </Veld>
+        <Veld label="Land">
+          <input style={inputStyle} value={form.land} onChange={set('land')} />
+        </Veld>
+      </VeldGrid>
+      {row.adres ? (
+        <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+          Eerder vrij ingevoerd adres (alleen-lezen, ter referentie): {row.adres}
+        </p>
+      ) : null}
+
+      <SectieKop>Vergaderdatum</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Voor een fonds met meerdere vergaderdata per jaar: vul de eerstvolgende datum in en noem de overige data in de
+        toelichting - er is geen aparte lijst met losse datums.
+      </p>
+      <VeldGrid>
+        <Veld label="Eerstvolgende vergaderdatum">
+          <input
+            style={inputStyle}
+            type="date"
+            value={form.volgendeVergaderdatum || ''}
+            onChange={set('volgendeVergaderdatum')}
+          />
+        </Veld>
+        <Veld label="Vergaderfrequentie">
+          <input
+            style={inputStyle}
+            value={form.vergaderfrequentie}
+            onChange={set('vergaderfrequentie')}
+            placeholder="bijv. 3x per jaar"
+          />
+        </Veld>
+        <Veld label="Toelichting" span={3}>
+          <textarea style={textareaStyle} rows={2} value={form.vergaderingToelichting} onChange={set('vergaderingToelichting')} />
         </Veld>
       </VeldGrid>
 
@@ -748,6 +1032,46 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
         />
         Beoordeeld — toegangsniveau is leidend voor deze funder
       </label>
+    </AdminEditModal>
+  );
+}
+
+// Vervolgopdracht, prioriteit 2 (CRUD - Create). Hergebruikt AdminEditModal
+// (dezelfde modal-schil als FunderBewerkPaneel hierboven) voor een klein
+// formulier met alleen de twee verplichte velden - de rest vult de
+// beheerder meteen daarna in via FunderBewerkPaneel zelf (zie
+// nieuwFondsOpslaan hierboven).
+function NieuwFondsModal({ form, setForm, onCancel, onSave, opslaan, fout }) {
+  const set = (veld) => (event) => setForm((f) => ({ ...f, [veld]: event.target.value }));
+
+  return (
+    <AdminEditModal title="Nieuw fonds" onClose={onCancel} onSave={onSave} saving={opslaan} dirty>
+      <p style={css('margin: -4px 0 16px; font-size: 12.5px; color: #82918B;')}>
+        Alleen naam en type gever zijn nu verplicht. Missie, bijdrage, contactgegevens, classificaties en
+        toegangsniveau vult u direct hierna in, in hetzelfde bewerkscherm als bij een bestaand fonds.
+      </p>
+      {fout ? (
+        <div
+          style={css('margin-bottom: 14px; padding: 12px 14px; border-radius: 10px; background: #FFF1EF; color: #A13B2F; font-size: 13px; font-weight: 600;')}
+        >
+          {fout}
+        </div>
+      ) : null}
+      <VeldGrid>
+        <Veld label="Naam" span={2}>
+          <input style={inputStyle} value={form.naam} onChange={set('naam')} autoFocus />
+        </Veld>
+        <Veld label="Type gever">
+          <select style={inputStyle} value={form.type} onChange={set('type')}>
+            <option value="">Kies een type…</option>
+            {FUNDER_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </Veld>
+      </VeldGrid>
     </AdminEditModal>
   );
 }
