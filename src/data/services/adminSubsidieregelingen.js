@@ -128,6 +128,34 @@ export async function updateSubsidieregeling(regelingId, patch) {
   return { error: res.error };
 }
 
+// Bulk-bijwerken van losse, enkelvoudige regelingsvelden (Type, Status,
+// Type projecten, Data tier, Vergaderfrequentie) uit de nieuwe bulk-editor —
+// zelfde `*Actief`-vlagpatroon als bulkUpdateFunder() in adminFunders.js: een
+// veld wijzigt alleen wanneer de sleutel in `velden` voorkomt, ongeacht of de
+// waarde zelf null is (Type mag bewust terug naar "overgenomen van gever" =
+// null gezet worden).
+export async function bulkUpdateSubsidieregeling(regelingIds, velden = {}) {
+  const res = await query(
+    (sb) =>
+      sb.rpc('admin_bulk_update_subsidieregeling', {
+        p_regeling_ids: regelingIds,
+        p_type_actief: 'type' in velden,
+        p_type: velden.type ?? null,
+        p_status_actief: 'status' in velden,
+        p_status: velden.status ?? null,
+        p_type_projecten_actief: 'typeProjecten' in velden,
+        p_type_projecten: velden.typeProjecten ?? null,
+        p_data_tier_actief: 'dataTier' in velden,
+        p_data_tier: velden.dataTier ?? null,
+        p_vergaderfrequentie_actief: 'vergaderfrequentie' in velden,
+        p_vergaderfrequentie: velden.vergaderfrequentie ?? null,
+      }),
+    0,
+  );
+
+  return { count: res.data || 0, error: res.error };
+}
+
 // Markeert (of ontmarkeert) een subsidieregeling als "beoordeeld"
 // (classification_reviewed) — zelfde schakelaar en zelfde bevestigings-
 // patroon als classifyFunder() in adminFunders.js: de bestaande data_tier/

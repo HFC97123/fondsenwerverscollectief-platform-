@@ -32,6 +32,11 @@ export default function AdminEditModal({
   children,
   saveLabel = 'Opslaan',
   savingLabel = 'Opslaan…',
+  // Optioneel: knop uitschakelen zonder saving te zijn (bijv. de
+  // bulk-editor die pas naar de samenvatting mag als er minimaal één
+  // geldig ingevuld veld is aangevinkt). Standaard false — geen wijziging
+  // voor bestaande aanroepers die dit niet meegeven.
+  saveDisabled = false,
 }) {
   const requestClose = () => {
     // eslint-disable-next-line no-alert
@@ -100,7 +105,7 @@ export default function AdminEditModal({
         <div
           style={css('flex-shrink: 0; display: flex; gap: 12px; flex-wrap: wrap; padding: 16px 24px; border-top: 1px solid #E1EAE4; background: #F7FAF8;')}
         >
-          <button type="button" disabled={saving} onClick={onSave} style={secondaryButtonStyle}>
+          <button type="button" disabled={saving || saveDisabled} onClick={onSave} style={secondaryButtonStyle}>
             {saving ? savingLabel : saveLabel}
           </button>
           <button type="button" disabled={saving} onClick={requestClose} style={plainButtonStyle}>

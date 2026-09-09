@@ -195,6 +195,45 @@ export async function bulkSetAccessTier(tabel, ids, accessTier, reden = null) {
   return { count: res.data || 0, error: res.error };
 }
 
+// Volwaardige bulk-editor (vervolgopdracht): "Beoordeeld" in één keer voor
+// meerdere rijen, zonder — zoals admin_bulk_classify_funders/
+// -subsidieregelingen dat wél zouden doen — ook data_tier/source_type
+// geforceerd gelijk te trekken voor de hele selectie. Gebruikt dezelfde
+// onderliggende kolom (classification_reviewed) als de individuele
+// "Beoordeeld"-schakelaar hierboven — geen tweede statusveld. Generiek over
+// beide tabellen, zelfde p_tabel-patroon als bulkSetAccessTier hierboven.
+export async function bulkSetReviewed(tabel, ids, reviewed) {
+  const res = await query((sb) => sb.rpc('admin_bulk_set_reviewed', { p_tabel: tabel, p_ids: ids, p_reviewed: reviewed }), 0);
+
+  return { count: res.data || 0, error: res.error };
+}
+
+// Bulk-bijwerken van losse, enkelvoudige funder-velden (Type gever, Data
+// tier, Vergaderfrequentie) uit de nieuwe bulk-editor.
+// velden: alleen de sleutels die de beheerder in de bulk-editor heeft
+// aangevinkt worden meegegeven — 'type' in velden bepaalt of het veld
+// "actief" is, niet of de waarde zelf null is. Dit is bewust een expliciete
+// vlag per veld i.p.v. "null = niet gekozen": Type gever mag ook naar een
+// lege waarde gezet worden, dus null moet daar een geldige, actieve keuze
+// kunnen zijn.
+export async function bulkUpdateFunder(funderIds, velden = {}) {
+  const res = await query(
+    (sb) =>
+      sb.rpc('admin_bulk_update_funder', {
+        p_funder_ids: funderIds,
+        p_type_actief: 'type' in velden,
+        p_type: velden.type ?? null,
+        p_data_tier_actief: 'dataTier' in velden,
+        p_data_tier: velden.dataTier ?? null,
+        p_vergaderfrequentie_actief: 'vergaderfrequentie' in velden,
+        p_vergaderfrequentie: velden.vergaderfrequentie ?? null,
+      }),
+    0,
+  );
+
+  return { count: res.data || 0, error: res.error };
+}
+
 // Markeert (of ontmarkeert) een funder als "beoordeeld" (classification_reviewed) —
 // dit is de schakelaar die bepaalt of het toegangsniveau (access_tier)
 // hierboven leidend is voor wat leden te zien krijgen, of dat de oudere

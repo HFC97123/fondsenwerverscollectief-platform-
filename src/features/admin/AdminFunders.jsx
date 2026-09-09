@@ -16,6 +16,8 @@ import {
   PRIORITEIT_BUCKETS,
   SOURCE_TYPES,
   bulkSetAccessTier,
+  bulkSetReviewed,
+  bulkUpdateFunder,
   classifyFunder,
   createFunder,
   deleteFunder,
@@ -27,8 +29,8 @@ import {
 // gekoppelde subsidieregelingen er ook verdwijnen (§3, "controleer vóór
 // verwijderen op relaties") - geen nieuwe telling/RPC nodig, deze bestaat al.
 import { fetchSubsidieregelingen } from '../../data/services/adminSubsidieregelingen.js';
-import { fetchKoppelingen, zetKoppelingen } from '../../data/services/adminClassificaties.js';
-import { zetBandbreedte } from '../../data/services/adminBandbreedtes.js';
+import { bulkZetKoppelingen, fetchKoppelingen, zetKoppelingen } from '../../data/services/adminClassificaties.js';
+import { bulkZetBandbreedte, zetBandbreedte } from '../../data/services/adminBandbreedtes.js';
 import { haalBandbreedtesOp, haalClassificatiesOp } from '../../data/services/classificaties.js';
 import ClassificatieSelect from '../../shared/ui/ClassificatieSelect.jsx';
 import AdminToolbar from './shared/AdminToolbar.jsx';
@@ -36,6 +38,7 @@ import AdminFilters from './shared/AdminFilters.jsx';
 import AdminDataTable from './shared/AdminDataTable.jsx';
 import AdminBulkActionsBar from './shared/AdminBulkActionsBar.jsx';
 import AdminAccessTierBulkActie from './shared/AdminAccessTierBulkActie.jsx';
+import BulkBewerkModal from './shared/BulkBewerkModal.jsx';
 import AdminPagination from './shared/AdminPagination.jsx';
 import AdminEditModal from './shared/AdminEditModal.jsx';
 import ContributionEditor from './shared/ContributionEditor.jsx';
@@ -207,6 +210,15 @@ export default function AdminFunders({ notify }) {
   const [bandbreedteOpties, setBandbreedteOpties] = useState([]);
   const [koppelingenLaden, setKoppelingenLaden] = useState(false);
   const [bulkAccessTierBezig, setBulkAccessTierBezig] = useState(false);
+  // Vervolgopdracht - volwaardige bulk-editor (meerdere velden in één
+  // actie). Vervangt AdminAccessTierBulkActie hierboven niet (die blijft
+  // bestaan voor een snelle toegangsniveau-wijziging zonder de modal te
+  // openen) - "Toegangsniveau" is hieronder ook gewoon een van de velden in
+  // de nieuwe, bredere bulk-editor, beide roepen dezelfde bulkSetAccessTier
+  // aan, dus geen dubbele implementatie.
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkBezig, setBulkBezig] = useState(false);
+  const [bulkFout, setBulkFout] = useState('');
   // Momentopname van het formulier direct na het volledig laden (incl.
   // classificaties) van de bewerkte rij — vergelijkingsbasis voor de
   // "niet-opgeslagen wijzigingen"-waarschuwing in AdminEditModal.
@@ -315,6 +327,169 @@ export default function AdminFunders({ notify }) {
 
     setSelectedIds([]);
     notify('success', `Toegangsniveau van ${res.count} funder(s) gezet op ${waarde}.`);
+    laad();
+  };
+
+  // Veldenlijst voor de generieke BulkBewerkModal (vervolgopdracht §4).
+  // "Actief/inactief" en "aanvraagstatus/open-gesloten" bestaan niet als
+  // aparte, gestandaardiseerde velden op funders (alleen het vrije-tekstveld
+  // `status`, dat bewust als "technische status" apart staat) - vandaar dat
+  // die twee hier niet als bulkveld voorkomen (zie oplevering, punt 11).
+  const bulkVelden = useMemo(
+    () => [
+      {
+        key: 'reviewed',
+        label: 'Beoordeeld',
+        kind: 'single',
+        control: 'select',
+        opties: [
+          { value: 'true', label: 'Ja' },
+          { value: 'false', label: 'Nee' },
+        ],
+        accessor: (r) => String(!!r.classification_reviewed),
+        labelVoorWaarde: (v) => (v === 'true' ? 'Ja' : 'Nee'),
+      },
+      {
+        key: 'accessTier',
+        label: 'Toegangsniveau',
+        kind: 'single',
+        control: 'select',
+        opties: ACCESS_TIERS,
+        accessor: (r) => r.access_tier || 'premium',
+        labelVoorWaarde: (v) => (ACCESS_TIERS.find((t) => t.value === v) || {}).label || v,
+      },
+      {
+        // Anders dan bij Subsidieregelingen (waar Type gever leeg mag zijn -
+        // "overgenomen van gever") heeft funders.type een harde NOT NULL-
+        // constraint in de database (bevestigd tijdens de smoke test: een
+        // lege waarde hier laat admin_bulk_update_funder crashen op een
+        // 23502 not-null violation) - dus bewust geen "Niet ingevuld"-optie
+        // in dit bulkveld.
+        key: 'type',
+        label: 'Type gever',
+        kind: 'single',
+        control: 'select',
+        opties: FUNDER_TYPES,
+        accessor: (r) => r.type || '',
+        labelVoorWaarde: (v) => (FUNDER_TYPES.find((t) => t.value === v) || {}).label || v,
+      },
+      {
+        key: 'dataTier',
+        label: 'Data tier',
+        kind: 'single',
+        control: 'select',
+        opties: DATA_TIERS,
+        accessor: (r) => r.data_tier || '',
+        labelVoorWaarde: (v) => (DATA_TIERS.find((t) => t.value === v) || {}).label || v,
+      },
+      {
+        key: 'bandbreedteBijdrageId',
+        label: 'Bandbreedte bijdrage',
+        kind: 'single',
+        control: 'select',
+        opties: [
+          { value: '', label: 'Geen bandbreedte' },
+          ...bandbreedteOpties.map((b) => ({ value: b.id, label: b.naam })),
+        ],
+        accessor: (r) => r.bandbreedte_bijdrage_id || '',
+        labelVoorWaarde: (v) => (v === '' ? 'Geen bandbreedte' : (bandbreedteOpties.find((b) => b.id === v) || {}).naam || v),
+      },
+      {
+        key: 'vergaderfrequentie',
+        label: 'Vergaderfrequentie',
+        kind: 'single',
+        control: 'text',
+        placeholder: 'bijv. 3x per jaar',
+        accessor: (r) => r.vergaderfrequentie || '',
+      },
+      { key: 'themas', label: 'Disciplines', kind: 'classificatie', opties: classificatieOpties.themas },
+      { key: 'doelgroepen', label: 'Doelgroepen', kind: 'classificatie', opties: classificatieOpties.doelgroepen },
+      { key: 'regios', label: 'Werkgebieden', kind: 'classificatie', opties: classificatieOpties.regios },
+    ],
+    [classificatieOpties, bandbreedteOpties],
+  );
+
+  // Orchestreert de daadwerkelijke opslag van de bulk-editor: roept per
+  // groep aangevinkte velden precies één bestaande service-functie aan (geen
+  // request per record — §16) en meldt per groep welke mislukt is, zonder de
+  // geslaagde wijzigingen terug te draaien (die staan al in de database).
+  const bulkBewerkingToepassen = async (payload) => {
+    setBulkBezig(true);
+    setBulkFout('');
+
+    const ids = [...selectedIds];
+    const mislukt = [];
+
+    if ('reviewed' in payload) {
+      const res = await bulkSetReviewed('funders', ids, payload.reviewed === 'true');
+
+      if (res.error) {
+        mislukt.push('Beoordeeld');
+      }
+    }
+
+    if ('accessTier' in payload) {
+      const res = await bulkSetAccessTier('funders', ids, payload.accessTier);
+
+      if (res.error) {
+        mislukt.push('Toegangsniveau');
+      }
+    }
+
+    const veldenPatch = {};
+
+    ['type', 'dataTier', 'vergaderfrequentie'].forEach((k) => {
+      if (k in payload) {
+        veldenPatch[k] = payload[k];
+      }
+    });
+
+    if (Object.keys(veldenPatch).length > 0) {
+      const res = await bulkUpdateFunder(ids, veldenPatch);
+
+      if (res.error) {
+        mislukt.push('Type gever / Data tier / Vergaderfrequentie');
+      }
+    }
+
+    if ('bandbreedteBijdrageId' in payload) {
+      const res = await bulkZetBandbreedte('funders', ids, payload.bandbreedteBijdrageId || null);
+
+      if (res.error) {
+        mislukt.push('Bandbreedte bijdrage');
+      }
+    }
+
+    const koppelingenPatch = {};
+
+    ['themas', 'doelgroepen', 'regios'].forEach((k) => {
+      if (k in payload) {
+        koppelingenPatch[k] = payload[k];
+      }
+    });
+
+    if (Object.keys(koppelingenPatch).length > 0) {
+      const res = await bulkZetKoppelingen('funders', ids, koppelingenPatch);
+
+      if (res.error) {
+        mislukt.push('Disciplines / Doelgroepen / Werkgebieden');
+      }
+    }
+
+    setBulkBezig(false);
+
+    if (mislukt.length > 0) {
+      setBulkFout(
+        `Niet alle wijzigingen konden worden opgeslagen (mislukt: ${mislukt.join('; ')}). De overige, wél gelukte wijzigingen staan al verwerkt — controleer de gegevens en probeer de mislukte onderdelen opnieuw.`,
+      );
+      laad();
+
+      return;
+    }
+
+    setBulkModalOpen(false);
+    setSelectedIds([]);
+    notify('success', `${ids.length} funder(s) bijgewerkt.`);
     laad();
   };
 
@@ -724,6 +899,9 @@ export default function AdminFunders({ notify }) {
 
       <AdminBulkActionsBar count={selectedIds.length} onClear={() => setSelectedIds([])}>
         <AdminAccessTierBulkActie onApply={bulkToegangsniveauToepassen} bezig={bulkAccessTierBezig} />
+        <button type="button" style={smallButtonStyle} onClick={() => setBulkModalOpen(true)}>
+          Bulk bewerken…
+        </button>
       </AdminBulkActionsBar>
 
       {fout ? (
@@ -789,6 +967,22 @@ export default function AdminFunders({ notify }) {
           onSave={nieuwFondsOpslaan}
           opslaan={nieuwFondsBezig}
           fout={nieuwFondsFout}
+        />
+      ) : null}
+
+      {bulkModalOpen ? (
+        <BulkBewerkModal
+          titel="Funders bulk bewerken"
+          aantal={selectedIds.length}
+          rijen={rows.filter((r) => selectedIds.includes(r.id))}
+          velden={bulkVelden}
+          onCancel={() => {
+            setBulkModalOpen(false);
+            setBulkFout('');
+          }}
+          onBevestig={bulkBewerkingToepassen}
+          bezig={bulkBezig}
+          fout={bulkFout}
         />
       ) : null}
     </section>

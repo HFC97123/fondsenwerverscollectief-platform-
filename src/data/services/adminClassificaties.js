@@ -79,3 +79,30 @@ export async function zetKoppelingen(tabel, rijId, koppelingen = {}) {
 
   return { error: res.error };
 }
+
+// Bulk-editor: disciplines/doelgroepen/werkgebieden in één keer toevoegen,
+// verwijderen of volledig vervangen voor meerdere funders/subsidieregelingen
+// tegelijk — anders dan zetKoppelingen() hierboven (dat altijd "vervangen"
+// betekent per record), kiest de beheerder hier per classificatietype
+// expliciet Toevoegen/Verwijderen/Vervangen; bestaande koppelingen van een
+// niet-aangevinkt classificatietype blijven op elk record ongewijzigd.
+// wijzigingen: { themas?: { actie: 'add'|'remove'|'replace', namen: string[] },
+//                doelgroepen?: {...}, regios?: {...} } — alleen meegegeven
+// classificatietypes worden aangepast; een weggelaten type blijft overal
+// ongewijzigd (net als undefined bij zetKoppelingen()).
+export async function bulkZetKoppelingen(tabel, ids, wijzigingen = {}) {
+  const res = await query((sb) =>
+    sb.rpc('admin_bulk_set_classificatie_koppelingen', {
+      p_tabel: tabel,
+      p_ids: ids,
+      p_thema_actie: wijzigingen.themas?.actie ?? null,
+      p_thema_namen: wijzigingen.themas?.namen ?? null,
+      p_doelgroep_actie: wijzigingen.doelgroepen?.actie ?? null,
+      p_doelgroep_namen: wijzigingen.doelgroepen?.namen ?? null,
+      p_regio_actie: wijzigingen.regios?.actie ?? null,
+      p_regio_namen: wijzigingen.regios?.namen ?? null,
+    }),
+  );
+
+  return { error: res.error };
+}

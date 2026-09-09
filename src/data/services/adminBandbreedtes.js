@@ -56,3 +56,17 @@ export async function zetBandbreedte(tabel, rijId, bandbreedteId) {
 
   return { error: res.error };
 }
+
+// Zelfde, maar dan voor meerdere rijen tegelijk (bulk-editor). bandbreedteId
+// mag hier bewust ook null zijn ("geen bandbreedte") — deze functie wordt
+// alleen aangeroepen wanneer de beheerder dit veld expliciet aanvinkt in de
+// bulk-editor, dus null is hier altijd een actieve keuze, geen "niet
+// gewijzigd".
+export async function bulkZetBandbreedte(tabel, ids, bandbreedteId) {
+  const res = await query(
+    (sb) => sb.rpc('admin_bulk_set_bandbreedte', { p_tabel: tabel, p_ids: ids, p_bandbreedte_id: bandbreedteId }),
+    0,
+  );
+
+  return { count: res.data || 0, error: res.error };
+}
