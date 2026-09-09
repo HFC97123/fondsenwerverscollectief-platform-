@@ -13,6 +13,22 @@ export const REGELING_STATUSSEN = [
   { value: 'gesloten', label: 'Gesloten' },
 ];
 
+// Gedeeld tussen aanvraagrondes (per subsidieregeling) en datamomenten (per
+// Funder) — beide leven in dezelfde subsidieregeling_rondes-tabel en dezelfde
+// twee Postgres-enums (datamoment_type/datamoment_status).
+export const DATAMOMENT_TYPES = [
+  { value: 'aanvraagdeadline', label: 'Aanvraagdeadline' },
+  { value: 'vergaderdatum', label: 'Vergaderdatum' },
+  { value: 'vooraanvraag', label: 'Vooraanvraag' },
+  { value: 'overig', label: 'Overig' },
+];
+
+export const DATAMOMENT_STATUSSEN = [
+  { value: 'gepland', label: 'Gepland' },
+  { value: 'verzet', label: 'Verzet' },
+  { value: 'geannuleerd', label: 'Geannuleerd' },
+];
+
 // params: { search, funderId, funderSearch, status, dataTier, sourceType,
 //           classificationReviewed, accessTier, bandbreedteBijdrageId, thema,
 //           doelgroep, regio, type, discoveredBy, sortColumn, sortDirection,
@@ -189,7 +205,9 @@ export async function fetchRondes(regelingId) {
 
 // ronde: { id (leeg = nieuwe ronde), regelingId, sluitingsdatum, sluitingstijd,
 //          openVanaf, beoordelingsdatum, beoordelingsperiode, toelichting,
-//          bronUrl, actief }
+//          bronUrl, actief, type, naam, status }
+// type/naam/status zijn optioneel (defaulten in de RPC naar 'aanvraagdeadline'/
+// null/'gepland') — "Volgende fase, deel 2": generieke datamoment-architectuur.
 export async function upsertRonde(ronde) {
   const res = await query((sb) =>
     sb.rpc('admin_upsert_ronde', {
@@ -203,6 +221,9 @@ export async function upsertRonde(ronde) {
       p_toelichting: ronde.toelichting || null,
       p_bron_url: ronde.bronUrl || null,
       p_actief: ronde.actief ?? true,
+      p_type: ronde.type || 'aanvraagdeadline',
+      p_naam: ronde.naam || null,
+      p_status: ronde.status || 'gepland',
     }),
   );
   return { id: res.data || null, error: res.error };
@@ -210,6 +231,48 @@ export async function upsertRonde(ronde) {
 
 export async function verwijderRonde(rondeId) {
   const res = await query((sb) => sb.rpc('admin_verwijder_ronde', { p_ronde_id: rondeId }));
+  return { error: res.error };
+}
+
+// Datamomenten op funderniveau: dezelfde onderliggende rondes-tabel als
+// fetchRondes/upsertRonde hierboven, maar dan gegroepeerd per Funder in
+// plaats van per subsidieregeling, met expliciete koppeling aan 0..n
+// regelingen via subsidieregeling_ronde_koppelingen. Toevoegen/wijzigen/
+// verwijderen van een datamoment werkt automatisch door naar elke gekoppelde
+// subsidieregeling (subsidieregeling_volgende_ronde/ de deadlines-view lezen
+// dezelfde koppeltabel) — geen aparte synchronisatiestap nodig.
+export async function fetchFunderDatamomenten(funderId) {
+  const res = await query((sb) => sb.rpc('admin_list_funder_datamomenten', { p_funder_id: funderId }), []);
+  return { rows: res.data || [], error: res.error };
+}
+
+// datamoment: { id (leeg = nieuw), funderId, type, naam, sluitingsdatum,
+//               sluitingstijd, status, toelichting, bronUrl, actief,
+//               regelingIds: string[] (welke subsidieregelingen van deze
+//               Funder dit datamoment delen — vervangt bij elke opslag de
+//               volledige koppeling, dus altijd de complete gewenste lijst
+//               meesturen, niet alleen de wijziging) }
+export async function upsertFunderDatamoment(datamoment) {
+  const res = await query((sb) =>
+    sb.rpc('admin_upsert_funder_datamoment', {
+      p_datamoment_id: datamoment.id || null,
+      p_funder_id: datamoment.funderId,
+      p_type: datamoment.type || 'aanvraagdeadline',
+      p_naam: datamoment.naam || null,
+      p_sluitingsdatum: datamoment.sluitingsdatum || null,
+      p_sluitingstijd: datamoment.sluitingstijd || null,
+      p_status: datamoment.status || 'gepland',
+      p_toelichting: datamoment.toelichting || null,
+      p_bron_url: datamoment.bronUrl || null,
+      p_actief: datamoment.actief ?? true,
+      p_regeling_ids: datamoment.regelingIds && datamoment.regelingIds.length ? datamoment.regelingIds : null,
+    }),
+  );
+  return { id: res.data || null, error: res.error };
+}
+
+export async function verwijderFunderDatamoment(datamomentId) {
+  const res = await query((sb) => sb.rpc('admin_verwijder_funder_datamoment', { p_datamoment_id: datamomentId }));
   return { error: res.error };
 }
 

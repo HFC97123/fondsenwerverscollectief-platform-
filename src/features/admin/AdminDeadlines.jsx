@@ -8,6 +8,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import {
+  DATAMOMENT_STATUSSEN,
+  DATAMOMENT_TYPES,
   REGELING_STATUSSEN,
   bulkCreateSubsidieregelingen,
   bulkUpdateSubsidieregeling,
@@ -112,6 +114,9 @@ const LEEG_RONDE = {
   toelichting: '',
   bronUrl: '',
   actief: true,
+  type: 'aanvraagdeadline',
+  naam: '',
+  status: 'gepland',
 };
 
 // CSV-kolommen; per veld de namen die we accepteren. Zelfde opzet als de
@@ -1350,7 +1355,10 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, d
         Voor regelingen met meerdere aanvraagmomenten per jaar (bijv. een bestuur dat 3× per jaar vergadert). Zodra
         hieronder minimaal één ronde bestaat, is de eerstvolgende nog geldige ronde overal (Timeline, filters,
         matching, Subsidie Kompas) de enige bron voor de deadline van deze regeling — de velden hierboven worden dan
-        genegeerd. Zonder rondes blijven de velden hierboven gewoon de actieve deadline.
+        genegeerd. Zonder rondes blijven de velden hierboven gewoon de actieve deadline. Een datum die voor meerdere
+        regelingen van dit fonds tegelijk geldt, kan het handigst worden beheerd via "Datamomenten" op de Funder zelf
+        (Beheer → Funders) — die koppelt automatisch aan alle gekozen regelingen; hier ziet u dan bij "Ook geldig
+        voor" welke andere regelingen dezelfde datum delen.
       </p>
       <AanvraagrondesSectie regelingId={row.id} notify={notify} />
 
@@ -1435,6 +1443,9 @@ function AanvraagrondesSectie({ regelingId, notify }) {
       toelichting: ronde.toelichting || '',
       bronUrl: ronde.bron_url || '',
       actief: ronde.actief,
+      type: ronde.type || 'aanvraagdeadline',
+      naam: ronde.naam || '',
+      status: ronde.status || 'gepland',
     });
     setBewerkId(ronde.id);
   };
@@ -1459,6 +1470,9 @@ function AanvraagrondesSectie({ regelingId, notify }) {
       toelichting: rondeForm.toelichting || null,
       bronUrl: rondeForm.bronUrl || null,
       actief: rondeForm.actief,
+      type: rondeForm.type,
+      naam: rondeForm.naam || null,
+      status: rondeForm.status,
     });
 
     setOpslaanRonde(false);
@@ -1486,6 +1500,9 @@ function AanvraagrondesSectie({ regelingId, notify }) {
       toelichting: ronde.toelichting,
       bronUrl: ronde.bron_url,
       actief: !ronde.actief,
+      type: ronde.type,
+      naam: ronde.naam,
+      status: ronde.status,
     });
 
     if (res.error) {
@@ -1557,6 +1574,10 @@ function AanvraagrondesSectie({ regelingId, notify }) {
 
 function RondeRij({ ronde, onBewerken, onVerwijderen, onToggleActief }) {
   const beoordeling = ronde.beoordelingsdatum ? formatDatumKort(ronde.beoordelingsdatum) : ronde.beoordelingsperiode || null;
+  const typeLabel = (DATAMOMENT_TYPES.find((t) => t.value === ronde.type) || {}).label || ronde.type;
+  const statusLabel = (DATAMOMENT_STATUSSEN.find((s) => s.value === ronde.status) || {}).label || ronde.status;
+  const statusTone = ronde.status === 'geannuleerd' ? 'rood' : ronde.status === 'verzet' ? 'geel' : null;
+  const gedeeld = ronde.gedeeld_met_namen || [];
 
   return (
     <div
@@ -1571,10 +1592,17 @@ function RondeRij({ ronde, onBewerken, onVerwijderen, onToggleActief }) {
         <div style={css('font-weight: 800; color: #2C4A5E; font-size: 14px;')}>
           {formatDatumKort(ronde.sluitingsdatum)}
           {ronde.sluitingstijd ? ` · ${String(ronde.sluitingstijd).slice(0, 5)}` : ''}
+          {' · '}
+          {typeLabel}
+          {ronde.naam ? ` — ${ronde.naam}` : ''}
+          {statusTone ? <span style={badgeStyle(statusTone)}> {statusLabel}</span> : null}
           {!ronde.actief ? <span style={badgeStyle('grijs')}> Gedeactiveerd</span> : null}
           {ronde.actief && ronde.is_verstreken ? <span style={badgeStyle('grijs')}> Verstreken</span> : null}
         </div>
         {beoordeling ? <div style={css('font-size: 12.5px; color: #536460;')}>Beoordeling: {beoordeling}</div> : null}
+        {gedeeld.length ? (
+          <div style={css('font-size: 12.5px; color: #536460;')}>Ook geldig voor: {gedeeld.join(', ')}</div>
+        ) : null}
       </div>
       <div style={css('display: flex; gap: 8px; flex-shrink: 0;')}>
         <button type="button" style={smallButtonStyle} onClick={onBewerken}>
@@ -1600,6 +1628,27 @@ function RondeFormulier({ form, setForm, onSave, onCancel, opslaan, nieuw }) {
         {nieuw ? 'Nieuwe aanvraagronde' : 'Aanvraagronde bewerken'}
       </div>
       <VeldGrid>
+        <Veld label="Type">
+          <select style={inputStyle} value={form.type} onChange={set('type')}>
+            {DATAMOMENT_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </Veld>
+        <Veld label="Naam van de aanvraagronde (optioneel)">
+          <input style={inputStyle} value={form.naam} onChange={set('naam')} placeholder="bijv. Ronde 1 2027" />
+        </Veld>
+        <Veld label="Status">
+          <select style={inputStyle} value={form.status} onChange={set('status')}>
+            {DATAMOMENT_STATUSSEN.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </Veld>
         <Veld label="Sluitingsdatum">
           <input style={inputStyle} type="date" value={form.sluitingsdatum} onChange={set('sluitingsdatum')} />
         </Veld>

@@ -28,7 +28,17 @@ import {
 // Hergebruikt om, vóór het verwijderen van een fonds, te tonen hoeveel
 // gekoppelde subsidieregelingen er ook verdwijnen (§3, "controleer vóór
 // verwijderen op relaties") - geen nieuwe telling/RPC nodig, deze bestaat al.
-import { fetchSubsidieregelingen } from '../../data/services/adminSubsidieregelingen.js';
+// Datamomenten* / DATAMOMENT_* horen bij de generieke deadline-architectuur
+// ("Volgende fase, deel 2"): meerdere aanvraag-/vergaderdata per Funder,
+// elk optioneel gekoppeld aan 0..n subsidieregelingen van diezelfde Funder.
+import {
+  DATAMOMENT_STATUSSEN,
+  DATAMOMENT_TYPES,
+  fetchFunderDatamomenten,
+  fetchSubsidieregelingen,
+  upsertFunderDatamoment,
+  verwijderFunderDatamoment,
+} from '../../data/services/adminSubsidieregelingen.js';
 import { bulkZetKoppelingen, fetchKoppelingen, zetKoppelingen } from '../../data/services/adminClassificaties.js';
 import { bulkZetBandbreedte, zetBandbreedte } from '../../data/services/adminBandbreedtes.js';
 import { haalBandbreedtesOp, haalClassificatiesOp } from '../../data/services/classificaties.js';
@@ -45,6 +55,8 @@ import ContributionEditor from './shared/ContributionEditor.jsx';
 import {
   badgeStyle,
   inputStyle,
+  plainButtonStyle,
+  secondaryButtonStyle,
   sectionIntroStyle,
   sectionTitleStyle,
   smallButtonStyle,
@@ -139,6 +151,38 @@ function euro(bedrag) {
 
   return Number(bedrag).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 }
+
+// Compacte weergave van een datum, bijv. "03 aug 2026" — zelfde formattering
+// als formatDatumKort() in AdminDeadlines.jsx (aanvraagrondes-lijst).
+function formatDatumKort(datum) {
+  if (!datum) {
+    return null;
+  }
+
+  const d = new Date(`${datum}T00:00:00`);
+
+  if (Number.isNaN(d.getTime())) {
+    return datum;
+  }
+
+  return d.toLocaleDateString('nl-NL', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Leeg formulier voor een funder-breed datamoment (aanvraagdeadline/
+// vergaderdatum/vooraanvraag/overig — "Volgende fase, deel 2": generieke
+// datamoment-architectuur). regelingIds: welke subsidieregelingen van deze
+// Funder dit datamoment delen; leeg = (nog) aan geen enkele regeling gekoppeld.
+const LEEG_DATAMOMENT = {
+  type: 'aanvraagdeadline',
+  naam: '',
+  sluitingsdatum: '',
+  sluitingstijd: '',
+  status: 'gepland',
+  toelichting: '',
+  bronUrl: '',
+  actief: true,
+  regelingIds: [],
+};
 
 // Eén klein, compact select-veld voor een classificatiefilter (discipline/
 // doelgroep/werkgebied) in de werkbalk. Bewust geen AdminFilters-pillen: bij
@@ -952,6 +996,7 @@ export default function AdminFunders({ notify }) {
           classificatieOpties={classificatieOpties}
           bandbreedteOpties={bandbreedteOpties}
           koppelingenLaden={koppelingenLaden}
+          notify={notify}
         />
       ) : null}
 
@@ -1017,7 +1062,7 @@ function SectieKop({ children, muted }) {
   );
 }
 
-function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dirty, classificatieOpties, bandbreedteOpties, koppelingenLaden }) {
+function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dirty, classificatieOpties, bandbreedteOpties, koppelingenLaden, notify }) {
   if (!row) {
     return null;
   }
@@ -1094,8 +1139,9 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
 
       <SectieKop>Vergaderdatum</SectieKop>
       <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
-        Voor een fonds met meerdere vergaderdata per jaar: vul de eerstvolgende datum in en noem de overige data in de
-        toelichting - er is geen aparte lijst met losse datums.
+        Los tekstveld voor een korte samenvatting (bijv. op de publieke fondspagina). Voor de daadwerkelijke planning
+        met meerdere data per jaar: gebruik hieronder de datamomenten-lijst — die koppelt automatisch door naar de
+        subsidieregeling(en) van dit fonds, zonder handmatige synchronisatie.
       </p>
       <VeldGrid>
         <Veld label="Eerstvolgende vergaderdatum">
@@ -1118,6 +1164,13 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
           <textarea style={textareaStyle} rows={2} value={form.vergaderingToelichting} onChange={set('vergaderingToelichting')} />
         </Veld>
       </VeldGrid>
+
+      <SectieKop muted>Datamomenten (aanvraagdeadlines / vergaderdata)</SectieKop>
+      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
+        Alle bekende toekomstige data voor dit fonds blijven hier bewaard, ook verstreken data. De Deadlines-pagina
+        toont per subsidieregeling automatisch alleen de eerstvolgende, nog niet verstreken datum.
+      </p>
+      <FunderDatamomentenSectie funderId={row.id} notify={notify} />
 
       <SectieKop>Classificatie</SectieKop>
       <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
@@ -1227,6 +1280,330 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
         Beoordeeld — toegangsniveau is leidend voor deze funder
       </label>
     </AdminEditModal>
+  );
+}
+
+// Beheer van funder-brede datamomenten (meerdere aanvraagdeadlines/
+// vergaderdata per jaar, ongeacht subsidieregeling) — "Volgende fase, deel 2":
+// generieke deadline-architectuur. Eigen, kleine deelstaat binnen het
+// bewerkpaneel van de Funder, zelfde opzet als AanvraagrondesSectie in
+// AdminDeadlines.jsx. Elk datamoment kan aan 0..n subsidieregelingen van deze
+// Funder gekoppeld worden; die koppeling bepaalt automatisch (via
+// subsidieregeling_volgende_ronde/de deadlines-view) welke datum er als
+// eerstvolgende deadline van die regeling verschijnt — geen aparte
+// synchronisatiestap. Lezen/schrijven uitsluitend via de admin-only RPC's
+// (admin_list_funder_datamomenten / admin_upsert_funder_datamoment /
+// admin_verwijder_funder_datamoment).
+function FunderDatamomentenSectie({ funderId, notify }) {
+  const [datamomenten, setDatamomenten] = useState([]);
+  const [regelingen, setRegelingen] = useState([]);
+  const [laden, setLaden] = useState(true);
+  // undefined = geen formulier open, null = nieuw datamoment, anders id = bestaand datamoment bewerken
+  const [bewerkId, setBewerkId] = useState(undefined);
+  const [datamomentForm, setDatamomentForm] = useState(LEEG_DATAMOMENT);
+  const [opslaanDatamoment, setOpslaanDatamoment] = useState(false);
+
+  const laadAlles = async () => {
+    setLaden(true);
+    const [datamomentenRes, regelingenRes] = await Promise.all([
+      fetchFunderDatamomenten(funderId),
+      fetchSubsidieregelingen({ funderId, pageSize: 200, sortColumn: 'naam', sortDirection: 'asc' }),
+    ]);
+    setDatamomenten(datamomentenRes.rows || []);
+    setRegelingen(regelingenRes.rows || []);
+    setLaden(false);
+  };
+
+  useEffect(() => {
+    laadAlles();
+    setBewerkId(undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [funderId]);
+
+  const openNieuw = () => {
+    setDatamomentForm(LEEG_DATAMOMENT);
+    setBewerkId(null);
+  };
+
+  const openBewerken = (datamoment) => {
+    setDatamomentForm({
+      type: datamoment.type || 'aanvraagdeadline',
+      naam: datamoment.naam || '',
+      sluitingsdatum: datamoment.sluitingsdatum || '',
+      sluitingstijd: datamoment.sluitingstijd || '',
+      status: datamoment.status || 'gepland',
+      toelichting: datamoment.toelichting || '',
+      bronUrl: datamoment.bron_url || '',
+      actief: datamoment.actief,
+      regelingIds: datamoment.regeling_ids || [],
+    });
+    setBewerkId(datamoment.id);
+  };
+
+  const opslaanDatamomentForm = async () => {
+    if (!datamomentForm.sluitingsdatum) {
+      notify('error', 'Datum is verplicht voor een datamoment.');
+
+      return;
+    }
+
+    setOpslaanDatamoment(true);
+
+    const res = await upsertFunderDatamoment({
+      id: bewerkId || null,
+      funderId,
+      type: datamomentForm.type,
+      naam: datamomentForm.naam || null,
+      sluitingsdatum: datamomentForm.sluitingsdatum,
+      sluitingstijd: datamomentForm.sluitingstijd || null,
+      status: datamomentForm.status,
+      toelichting: datamomentForm.toelichting || null,
+      bronUrl: datamomentForm.bronUrl || null,
+      actief: datamomentForm.actief,
+      regelingIds: datamomentForm.regelingIds,
+    });
+
+    setOpslaanDatamoment(false);
+
+    if (res.error) {
+      notify('error', 'Het datamoment kon niet worden opgeslagen.');
+
+      return;
+    }
+
+    setBewerkId(undefined);
+    notify('success', 'Datamoment opgeslagen.');
+    laadAlles();
+  };
+
+  const toggleActief = async (datamoment) => {
+    const res = await upsertFunderDatamoment({
+      id: datamoment.id,
+      funderId,
+      type: datamoment.type,
+      naam: datamoment.naam,
+      sluitingsdatum: datamoment.sluitingsdatum,
+      sluitingstijd: datamoment.sluitingstijd,
+      status: datamoment.status,
+      toelichting: datamoment.toelichting,
+      bronUrl: datamoment.bron_url,
+      actief: !datamoment.actief,
+      regelingIds: datamoment.regeling_ids || [],
+    });
+
+    if (res.error) {
+      notify('error', 'De status van het datamoment kon niet worden gewijzigd.');
+
+      return;
+    }
+
+    laadAlles();
+  };
+
+  const verwijder = async (datamoment) => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Datamoment van ${formatDatumKort(datamoment.sluitingsdatum)} verwijderen? Dit kan niet ongedaan worden gemaakt.`)) {
+      return;
+    }
+
+    const res = await verwijderFunderDatamoment(datamoment.id);
+
+    if (res.error) {
+      notify('error', 'Het datamoment kon niet worden verwijderd.');
+
+      return;
+    }
+
+    notify('success', 'Datamoment verwijderd.');
+    laadAlles();
+  };
+
+  return (
+    <div style={css('margin-bottom: 6px;')}>
+      {laden ? (
+        <div style={css('font-size: 13.5px; color: #82918B;')}>Datamomenten laden…</div>
+      ) : datamomenten.length ? (
+        <div style={css('display: grid; gap: 8px; margin-bottom: 12px;')}>
+          {datamomenten.map((datamoment) => (
+            <DatamomentRij
+              key={datamoment.id}
+              datamoment={datamoment}
+              onBewerken={() => openBewerken(datamoment)}
+              onVerwijderen={() => verwijder(datamoment)}
+              onToggleActief={() => toggleActief(datamoment)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div style={css('margin-bottom: 12px; font-size: 13.5px; color: #82918B;')}>
+          Nog geen datamomenten voor dit fonds.
+        </div>
+      )}
+
+      {bewerkId !== undefined ? (
+        <DatamomentFormulier
+          form={datamomentForm}
+          setForm={setDatamomentForm}
+          onSave={opslaanDatamomentForm}
+          onCancel={() => setBewerkId(undefined)}
+          opslaan={opslaanDatamoment}
+          nieuw={bewerkId === null}
+          regelingen={regelingen}
+        />
+      ) : (
+        <button type="button" style={smallButtonStyle} onClick={openNieuw}>
+          + Datamoment toevoegen
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DatamomentRij({ datamoment, onBewerken, onVerwijderen, onToggleActief }) {
+  const typeLabel = (DATAMOMENT_TYPES.find((t) => t.value === datamoment.type) || {}).label || datamoment.type;
+  const statusLabel = (DATAMOMENT_STATUSSEN.find((s) => s.value === datamoment.status) || {}).label || datamoment.status;
+  const statusTone = datamoment.status === 'geannuleerd' ? 'rood' : datamoment.status === 'verzet' ? 'geel' : 'groen';
+  const gekoppeld = datamoment.regeling_namen || [];
+
+  return (
+    <div
+      style={css(`
+        display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px;
+        background: ${datamoment.actief ? '#FFFFFF' : '#F2F2EF'};
+        ${!datamoment.actief || datamoment.is_verstreken ? 'opacity: 0.7;' : ''}
+      `)}
+    >
+      <div>
+        <div style={css('font-weight: 800; color: #2C4A5E; font-size: 14px;')}>
+          {formatDatumKort(datamoment.sluitingsdatum)}
+          {datamoment.sluitingstijd ? ` · ${String(datamoment.sluitingstijd).slice(0, 5)}` : ''}
+          {' · '}
+          {typeLabel}
+          {datamoment.naam ? ` — ${datamoment.naam}` : ''}
+          <span style={badgeStyle(statusTone)}> {statusLabel}</span>
+          {!datamoment.actief ? <span style={badgeStyle('grijs')}> Gedeactiveerd</span> : null}
+          {datamoment.actief && datamoment.is_verstreken ? <span style={badgeStyle('grijs')}> Verstreken</span> : null}
+        </div>
+        <div style={css('font-size: 12.5px; color: #536460;')}>
+          {gekoppeld.length ? `Gekoppeld aan: ${gekoppeld.join(', ')}` : 'Nog aan geen enkele subsidieregeling gekoppeld'}
+        </div>
+        {datamoment.toelichting ? <div style={css('font-size: 12.5px; color: #82918B;')}>{datamoment.toelichting}</div> : null}
+      </div>
+      <div style={css('display: flex; gap: 8px; flex-shrink: 0;')}>
+        <button type="button" style={smallButtonStyle} onClick={onBewerken}>
+          Bewerken
+        </button>
+        <button type="button" style={plainButtonStyle} onClick={onToggleActief}>
+          {datamoment.actief ? 'Deactiveren' : 'Activeren'}
+        </button>
+        <button type="button" style={plainButtonStyle} onClick={onVerwijderen}>
+          Verwijderen
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DatamomentFormulier({ form, setForm, onSave, onCancel, opslaan, nieuw, regelingen }) {
+  const set = (veld) => (event) => setForm((f) => ({ ...f, [veld]: event.target.value }));
+
+  const toggleRegeling = (id) => {
+    setForm((f) => ({
+      ...f,
+      regelingIds: f.regelingIds.includes(id) ? f.regelingIds.filter((r) => r !== id) : [...f.regelingIds, id],
+    }));
+  };
+
+  const selecteerAlles = () => setForm((f) => ({ ...f, regelingIds: regelingen.map((r) => r.id) }));
+  const selecteerGeen = () => setForm((f) => ({ ...f, regelingIds: [] }));
+
+  return (
+    <div style={css('margin-top: 4px; padding: 14px 16px; border: 1px dashed #BFD4C6; border-radius: 12px; background: #FFFFFF;')}>
+      <div style={css('margin-bottom: 12px; font-size: 13.5px; font-weight: 800; color: #2C4A5E;')}>
+        {nieuw ? 'Nieuw datamoment' : 'Datamoment bewerken'}
+      </div>
+      <VeldGrid>
+        <Veld label="Type">
+          <select style={inputStyle} value={form.type} onChange={set('type')}>
+            {DATAMOMENT_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </Veld>
+        <Veld label="Naam van de aanvraagronde (optioneel)">
+          <input style={inputStyle} value={form.naam} onChange={set('naam')} placeholder="bijv. Ronde 1 2027" />
+        </Veld>
+        <Veld label="Datum">
+          <input style={inputStyle} type="date" value={form.sluitingsdatum} onChange={set('sluitingsdatum')} />
+        </Veld>
+        <Veld label="Tijd (leeg = 23:59)">
+          <input style={inputStyle} type="time" value={form.sluitingstijd} onChange={set('sluitingstijd')} />
+        </Veld>
+        <Veld label="Status">
+          <select style={inputStyle} value={form.status} onChange={set('status')}>
+            {DATAMOMENT_STATUSSEN.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </Veld>
+        <Veld label="Toelichting (optioneel)" span={2}>
+          <input style={inputStyle} value={form.toelichting} onChange={set('toelichting')} />
+        </Veld>
+        <Veld label="Bron / URL (optioneel)">
+          <input style={inputStyle} value={form.bronUrl} onChange={set('bronUrl')} placeholder="https://…" />
+        </Veld>
+        <Veld label="Actief">
+          <select style={inputStyle} value={form.actief ? '1' : '0'} onChange={(e) => setForm((f) => ({ ...f, actief: e.target.value === '1' }))}>
+            <option value="1">Ja</option>
+            <option value="0">Nee (tijdelijk gedeactiveerd)</option>
+          </select>
+        </Veld>
+      </VeldGrid>
+
+      <SectieKop muted>Gekoppelde subsidieregelingen</SectieKop>
+      <p style={css('margin: -8px 0 10px; font-size: 12.5px; color: #82918B;')}>
+        Dit datamoment verschijnt als eerstvolgende deadline op precies de hier aangevinkte subsidieregelingen van dit
+        fonds. Meerdere regelingen kunnen dezelfde datum delen.
+      </p>
+      {regelingen.length ? (
+        <>
+          <div style={css('display: flex; gap: 10px; margin-bottom: 10px;')}>
+            <button type="button" style={plainButtonStyle} onClick={selecteerAlles}>
+              Alles selecteren
+            </button>
+            <button type="button" style={plainButtonStyle} onClick={selecteerGeen}>
+              Niets selecteren
+            </button>
+          </div>
+          <div style={css('display: grid; gap: 6px; margin-bottom: 16px;')}>
+            {regelingen.map((r) => (
+              <label key={r.id} style={css('display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: #2C4A5E; cursor: pointer;')}>
+                <input type="checkbox" checked={form.regelingIds.includes(r.id)} onChange={() => toggleRegeling(r.id)} />
+                {r.naam}
+              </label>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div style={css('margin-bottom: 16px; font-size: 13px; color: #82918B;')}>
+          Dit fonds heeft nog geen subsidieregelingen om aan te koppelen.
+        </div>
+      )}
+
+      <div style={css('display: flex; gap: 12px; flex-wrap: wrap;')}>
+        <button type="button" disabled={opslaan} onClick={onSave} style={secondaryButtonStyle}>
+          {opslaan ? 'Opslaan…' : 'Opslaan datamoment'}
+        </button>
+        <button type="button" disabled={opslaan} onClick={onCancel} style={plainButtonStyle}>
+          Annuleren
+        </button>
+      </div>
+    </div>
   );
 }
 
