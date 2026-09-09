@@ -50,6 +50,23 @@ Werkwijze:
 
 const PREMIUM_AANVULLING = `Dit lid heeft Premium. Je mag verwijzen naar de exclusieve fondsendatabase van het Collectief, met fondsen en subsidieverstrekkers die online niet of beperkt vindbaar zijn.`;
 
+// AI Fundraising Assistant, prioriteit 5 (aanvraagbeoordeling): geen aparte
+// modus/eindpunt en geen apart scherm - het lid plakt of hangt tekst aan zijn
+// bericht (zie het bijlage-knopje in de frontend, dat de bestaande
+// extraheerTekst()-utility hergebruikt), noemt de regeling waarvoor het is
+// bedoeld, en de AI beoordeelt dit binnen hetzelfde gesprek. Dit hergebruikt
+// volledig de al bestaande fondscontext (subsidieregelingContext hieronder
+// geeft per regeling al beoordelingscriteria/type_projecten/begrotingseisen/
+// aanvraagprocedure mee) in plaats van een tweede, losse implementatie te
+// bouwen. Alleen Premium krijgt deze aanvulling (net als PREMIUM_AANVULLING
+// hierboven) - Free/Pro krijgen bij een vergelijkbaar verzoek gewoon de
+// standaard-systeemtekst en mogen daarbij op de Premium-functie wijzen
+// (opdrachtpunt 13), zonder dat er twee keer dezelfde beoordelingslogica
+// hoeft te bestaan.
+const AANVRAAGBEOORDELING_AANVULLING = `Vraagt dit lid om een aanvraag, projectplan of projecttekst te beoordelen (zelf getypt, geplakt, of als bijlage aangeleverd) voor een subsidieregeling die je uit de lijst hierboven kent, beoordeel dan puntsgewijs op: aansluiting bij de doelstelling van de regeling, doelgroep, urgentie, projectlogica, verwachte impact, haalbaarheid, begroting, aansluiting bij de beoordelingscriteria van de regeling, taal en overtuigingskracht, en ontbrekende informatie.
+
+Geef per onderdeel een duidelijk label - Sterk, Aandachtspunt, Ontbreekt, of Risico - met een korte toelichting en waar mogelijk een concrete verbetersuggestie. Doe nooit een uitspraak over een onderdeel waarover de aangeleverde tekst niets zegt; noem dat dan expliciet als "Ontbreekt" in plaats van te gokken. Doe nooit een voorspelling of belofte over de kans dat een aanvraag wordt toegekend - dat weet je niet en dat mag je niet suggereren. Ontbreekt de naam van de regeling waarvoor dit bedoeld is, vraag daar eerst naar in plaats van tegen een willekeurige regeling te beoordelen.`;
+
 // Velden die uit een geüpload document mogen worden voorgesteld (mode:
 // 'extract'). Bewust beperkt tot losse tekst/getal/tekstblok-velden - de
 // veldnamen komen overeen met organisatieprofiel.js aan de frontend-kant.
@@ -93,22 +110,24 @@ function json(body: unknown, status = 200) {
 async function systeemtekst(admin: any, premium: boolean) {
   let basis = SYSTEEM_STANDAARD;
   let aanvulling = PREMIUM_AANVULLING;
+  let aanvraagbeoordeling = AANVRAAGBEOORDELING_AANVULLING;
 
   try {
     const { data } = await admin
       .from('ai_prompts')
       .select('key, prompt')
-      .in('key', ['kompas.system', 'kompas.premium_addendum']);
+      .in('key', ['kompas.system', 'kompas.premium_addendum', 'kompas.aanvraagbeoordeling_addendum']);
 
     (data || []).forEach((r: any) => {
       if (r.key === 'kompas.system' && r.prompt) basis = r.prompt;
       if (r.key === 'kompas.premium_addendum' && r.prompt) aanvulling = r.prompt;
+      if (r.key === 'kompas.aanvraagbeoordeling_addendum' && r.prompt) aanvraagbeoordeling = r.prompt;
     });
   } catch (_) {
     // tabel bestaat nog niet; de standaardtekst geldt
   }
 
-  return premium ? `${basis}\n\n${aanvulling}` : basis;
+  return premium ? `${basis}\n\n${aanvulling}\n\n${aanvraagbeoordeling}` : basis;
 }
 
 async function legVerbruikVast(admin: any, row: Record<string, unknown>) {

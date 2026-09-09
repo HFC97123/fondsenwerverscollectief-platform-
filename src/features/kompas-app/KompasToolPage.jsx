@@ -13,6 +13,7 @@ import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import { askKompas, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
+import { extraheerTekst } from '../../data/services/documentExtractie.js';
 import {
   haalBerichtenOp,
   koppelGesprekAanProject,
@@ -126,6 +127,15 @@ export default function KompasToolPage() {
   // automatisch opgeslagen - zelfde goedkeurpatroon als document-/website-
   // analyse op de Organisatie-pagina, hier alleen inline in de chat zelf).
   const [chatVoorstel, setChatVoorstel] = useState(null);
+  // Aanvraagbeoordeling (prioriteit 5): een lid kan een document (aanvraag,
+  // projectplan, tekst) aan zijn bericht hangen. Hergebruikt bewust dezelfde
+  // client-side extractie (mammoth/pdfjs) als de documentupload bij
+  // Organisatie/Projecten - geen tweede extractiepad. Alleen de tekst
+  // verlaat de browser, ingevoegd in het bericht zelf; er is geen apart
+  // eindpunt of aparte opslag voor nodig.
+  const [attachBezig, setAttachBezig] = useState(false);
+  const [attachFout, setAttachFout] = useState('');
+  const bestandRef = useRef(null);
 
   const scrollRef = useRef(null);
   const taRef = useRef(null);
@@ -147,6 +157,40 @@ export default function KompasToolPage() {
 
     el.style.height = '48px';
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  };
+
+  // Leest het gekozen bestand client-side uit (extraheerTekst regelt zelf
+  // .pdf/.docx/.txt, en geeft nooit een uitzondering) en zet de tekst, met
+  // een duidelijk label, vóór wat het lid al had getypt - zodat in het
+  // gesprek altijd zichtbaar blijft wat een bijlage was en wat eigen tekst.
+  // Geen aparte opslag/upload: dit is puur tekst die met het eerstvolgende
+  // bericht wordt meegestuurd, net als geplakte tekst.
+  const voegDocumentToe = async (e) => {
+    const file = (e.target.files || [])[0];
+
+    e.target.value = '';
+
+    if (!file) return;
+
+    setAttachFout('');
+    setAttachBezig(true);
+
+    const tekst = await extraheerTekst(file);
+
+    setAttachBezig(false);
+
+    if (!tekst.trim()) {
+      setAttachFout(`Van "${file.name}" kon geen tekst worden gelezen.`);
+
+      return;
+    }
+
+    setDraft((huidig) => `Bijgevoegd document "${file.name}":\n${tekst}\n\n${huidig}`.trim());
+
+    if (taRef.current) {
+      taRef.current.focus();
+      groeiMee();
+    }
   };
 
   // Bewaart een gesprek pas op het eerste bericht (niet vooraf) zodat er geen
@@ -747,6 +791,28 @@ export default function KompasToolPage() {
             )}
 
             <div style={css('display: flex; align-items: flex-end; gap: 10px; padding: 10px 10px 10px 20px; border-radius: 26px; background: #FFFFFF;')}>
+              {app.canUploadFiles && (
+                <>
+                  <input
+                    ref={bestandRef}
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md,.csv"
+                    onChange={voegDocumentToe}
+                    style={css('display: none;')}
+                  />
+                  <div
+                    onClick={() => !attachBezig && bestandRef.current?.click()}
+                    role="button"
+                    aria-label="Document toevoegen aan bericht"
+                    title="Aanvraag, projectplan of andere tekst toevoegen (pdf/docx/tekst)"
+                    style={css(
+                      `width: 40px; height: 40px; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; border: 1px solid #D6E3E9; background: #FFFFFF; cursor: ${attachBezig ? 'wait' : 'pointer'};`,
+                    )}
+                  >
+                    <span style={css('font-size: 18px; line-height: 1; color: #2C4A5E;')}>{attachBezig ? '…' : '📎'}</span>
+                  </div>
+                </>
+              )}
               <textarea
                 ref={taRef}
                 value={draft}
@@ -781,6 +847,10 @@ export default function KompasToolPage() {
                 />
               </div>
             </div>
+
+            {attachFout && (
+              <p style={css('margin: 8px 0 0; font-size: 12.5px; color: #B23B3B;')}>{attachFout}</p>
+            )}
 
             {isFreePlan && (
               <div style={css('margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;')}>
