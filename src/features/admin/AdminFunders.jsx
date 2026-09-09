@@ -873,6 +873,17 @@ export default function AdminFunders({ notify }) {
             options: [{ value: null, label: 'Alle' }, ...ACCESS_TIERS],
           },
           {
+            key: 'reviewed',
+            label: 'Beoordeeld',
+            value: reviewed,
+            onChange: setReviewed,
+            options: [
+              { value: null, label: 'Alle' },
+              { value: true, label: 'Beoordeeld' },
+              { value: false, label: 'Niet beoordeeld' },
+            ],
+          },
+          {
             key: 'bandbreedte_bijdrage',
             label: 'Bandbreedte bijdrage',
             value: bandbreedteBijdrageId,
@@ -920,17 +931,6 @@ export default function AdminFunders({ notify }) {
               value: sourceType,
               onChange: setSourceType,
               options: [{ value: null, label: 'Alle' }, ...SOURCE_TYPES],
-            },
-            {
-              key: 'reviewed',
-              label: 'Beoordeeld',
-              value: reviewed,
-              onChange: setReviewed,
-              options: [
-                { value: null, label: 'Alle' },
-                { value: true, label: 'Ja' },
-                { value: false, label: 'Nee' },
-              ],
             },
             {
               key: 'prioriteit',
