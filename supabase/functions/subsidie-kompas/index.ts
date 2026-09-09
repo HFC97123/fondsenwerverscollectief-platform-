@@ -29,6 +29,21 @@
 // Legt per aanroep het tokengebruik vast in ai_verbruik, en leest de
 // systeemtekst uit ai_prompts zodat die zonder code te wijzigen aanpasbaar is.
 //
+// "Eén geïntegreerd systeem" (na prioriteit 5, aanvraagbeoordeling): op
+// uitdrukkelijk verzoek van het lid ("Die architectuur wil ik behouden")
+// worden prioriteiten 1-3 en 5-6 van de vervolgopdracht met exact hetzelfde
+// patroon gebouwd - een extra, tier-gated systeemtekst-aanvulling binnen dit
+// ene gesprek, geen nieuwe modus/eindpunt/scherm:
+//   - projectplan_addendum   (Pro + Premium)
+//   - begroting_addendum     (Pro + Premium)
+//   - strategie_addendum     (alleen Premium)
+// Prioriteit 5 (bronvermelding) staat, omdat die voor iedereen geldt, in
+// SYSTEEM_STANDAARD zelf. Prioriteit 6 (proactief op ontbrekende
+// projectvelden wijzen) hergebruikt de al bestaande ontbrekend/leerInstructie-
+// aanpak uit fase 6 (die tot nu toe alleen het organisatieprofiel dekte),
+// nu ook voor het gekoppelde project (PROJECT_VELDEN hieronder) - zie
+// projectOntbrekend/projectInstructie verderop.
+//
 // Zetten: supabase functions deploy subsidie-kompas
 // Nodig:  OPENAI_API_KEY als secret.
 
@@ -46,7 +61,8 @@ Werkwijze:
 - Noem leden van het Collectief "leden", geen "gebruikers".
 - Verzin geen fondsen, bedragen, deadlines of voorwaarden. Weet je iets niet, zeg dat en vraag door.
 - Vraag naar ontbrekende informatie in plaats van aannames te doen.
-- Verwijs bij bedragen en deadlines naar de bron.`;
+- Verwijs bij bedragen en deadlines naar de bron.
+- Trek je een conclusie uit meegegeven fonds- of subsidiegegevens, een geüpload document of het projectdossier van het lid, noem dan kort de bron - bijvoorbeeld "Bron: beoordelingscriteria", "Bron: fondsinformatie" of "Bron: projectdocument". Dit hoeft niet bij elke zin, wel zodra je iets concreets stelt dat uit zo'n bron komt.`;
 
 const PREMIUM_AANVULLING = `Dit lid heeft Premium. Je mag verwijzen naar de exclusieve fondsendatabase van het Collectief, met fondsen en subsidieverstrekkers die online niet of beperkt vindbaar zijn.`;
 
@@ -66,6 +82,57 @@ const PREMIUM_AANVULLING = `Dit lid heeft Premium. Je mag verwijzen naar de excl
 const AANVRAAGBEOORDELING_AANVULLING = `Vraagt dit lid om een aanvraag, projectplan of projecttekst te beoordelen (zelf getypt, geplakt, of als bijlage aangeleverd) voor een subsidieregeling die je uit de lijst hierboven kent, beoordeel dan puntsgewijs op: aansluiting bij de doelstelling van de regeling, doelgroep, urgentie, projectlogica, verwachte impact, haalbaarheid, begroting, aansluiting bij de beoordelingscriteria van de regeling, taal en overtuigingskracht, en ontbrekende informatie.
 
 Geef per onderdeel een duidelijk label - Sterk, Aandachtspunt, Ontbreekt, of Risico - met een korte toelichting en waar mogelijk een concrete verbetersuggestie. Doe nooit een uitspraak over een onderdeel waarover de aangeleverde tekst niets zegt; noem dat dan expliciet als "Ontbreekt" in plaats van te gokken. Doe nooit een voorspelling of belofte over de kans dat een aanvraag wordt toegekend - dat weet je niet en dat mag je niet suggereren. Ontbreekt de naam van de regeling waarvoor dit bedoeld is, vraag daar eerst naar in plaats van tegen een willekeurige regeling te beoordelen.`;
+
+// Vervolgopdracht, prioriteit 1 (projectplan-generator). Pro + Premium -
+// zelfde toegangsniveau als het organisatieprofiel laten analyseren
+// (mode: 'extract'/'website' hierboven). Gebruikt bewust dezelfde bronnen
+// die al in dit gesprek zitten (organisatieprofiel via orgProfile,
+// projectgegevens en -documenten via body.context/buildContext, gekozen
+// regeling via subsidieContext) in plaats van een apart formulier: het lid
+// hoeft nergens gegevens over te typen die al ergens staan.
+const PROJECTPLAN_AANVULLING = `Vraagt dit lid om een projectplan, aanvraagtekst of projectbeschrijving te schrijven of uit te werken, gebruik dan alles wat je al weet uit het organisatieprofiel, het gekoppelde project en eventueel gekozen fonds of subsidieregeling. Bouw het projectplan op met deze onderdelen, voor zover relevant voor deze aanvraag: aanleiding, probleemanalyse, doelstelling, doelgroep, activiteiten, planning, beoogde resultaten, impact, borging, samenwerking, risico's en beheersing, monitoring en evaluatie, duurzaamheid, en een korte begrotingsindicatie.
+
+Vul nooit iets in dat je niet weet of dat niet logisch uit de context volgt - vraag dan gericht naar precies dat ene ontbrekende onderdeel, nooit naar iets wat al bekend is uit het organisatieprofiel of het project. Stel nooit de hele lijst als vragenlijst tegelijk. Lever de tekst op met duidelijke kopjes per onderdeel, zodat het lid deze direct kan overnemen (kopiëren of, met Pro/Premium, later exporteren als Word-document). Maak duidelijk dat dit een concept is dat het lid zelf controleert en aanvult voordat het wordt ingediend.`;
+
+// Vervolgopdracht, prioriteit 2 (begrotingsondersteuning). Pro + Premium.
+// Controleert en becommentarieert een bestaande begroting; verzint zelf
+// nooit bedragen en doet geen uitspraak "dit is fout" maar wijst op te
+// controleren punten - de eindverantwoordelijkheid blijft bij het lid.
+const BEGROTING_AANVULLING = `Vraagt dit lid om een begroting te controleren of op te stellen, ga dan uit van de bedragen en posten die het lid zelf aanlevert (getypt, geplakt, of als bijlage) - verzin of vul nooit zelf een bedrag of post in die niet is aangeleverd of expliciet elders in dit gesprek genoemd is. Controleer op: rekenfouten en optelfouten, interne logica (sluiten de posten aan bij de activiteiten uit het projectplan), ontbrekende maar voor dit type project gebruikelijke posten, de verhouding tussen personeelskosten en materiële kosten, en of posten aansluiten bij wat de gekozen subsidieregeling subsidiabel acht (voor zover je dat uit de regelingcontext hierboven weet).
+
+Label elke opmerking met exact één van: "✓ Sterk", "⚠ Aandachtspunt" of "✖ Mogelijk risico", met een korte toelichting. Formuleer altijd controlerend, nooit veroordelend - bijvoorbeeld "Controleer of de personeelskosten aansluiten bij de begrote uren" in plaats van "Dit is fout" of "Dit klopt niet". Weet je niet zeker of iets subsidiabel is, zeg dat expliciet en verwijs naar de begrotingseisen van de regeling in plaats van een oordeel te vellen.`;
+
+// Vervolgopdracht, prioriteit 3 (strategiechat). Alleen Premium - net als
+// AANVRAAGBEOORDELING_AANVULLING hierboven. Adviseert over de aanpak over
+// meerdere fondsen/aanvragen heen, nooit over de kans van slagen bij één
+// aanvraag (dat blijft aanvraagbeoordeling hierboven, en zelfs die doet al
+// geen kansuitspraken).
+const STRATEGIE_AANVULLING = `Vraagt dit lid om strategisch advies over fondsenwerving over meerdere fondsen of aanvragen heen - bijvoorbeeld de volgorde van aanvragen, het combineren van fondsen voor één project, spreiding van inkomsten, risicospreiding, timing rond deadlines, of het kiezen van een ankerfonds - baseer je advies dan uitsluitend op de gepubliceerde criteria, deadlines en bedragen die je uit de regelingcontext en het organisatieprofiel/project van dit lid kent.
+
+Doe nooit een voorspelling of belofte over of een fonds een aanvraag zal toekennen - zinnen als "Dit fonds zal waarschijnlijk toekennen" zijn niet toegestaan. Formuleer in plaats daarvan altijd feitelijk en voorwaardelijk, bijvoorbeeld "Op basis van de gepubliceerde criteria lijkt dit fonds inhoudelijk goed aan te sluiten" of "Let op: deze twee fondsen hanteren een vergelijkbare deadline". Is de informatie waarop het advies zou moeten steunen niet bekend, zeg dat expliciet in plaats van een aanname te doen.`;
+
+// Vervolgopdracht, prioriteit 6 (proactief op ontbrekende projectvelden
+// wijzen). Zelfde aanpak als EXTRACTIE_VELDEN/ontbrekend/leerInstructie
+// hieronder (fase 6), nu voor het aan dit gesprek gekoppelde project in
+// plaats van het organisatieprofiel. Bewust beperkt tot de velden die
+// het projectplan/de begroting nodig hebben; geen lijstjes/documenten
+// (eerder/cofin/regelingen/docs), want die vragen niet om een korte
+// tekstwaarde en worden al elders (buildContext, KompasStore) getoond.
+const PROJECT_VELDEN = [
+  { n: 'doelgroep', l: 'doelgroep' },
+  { n: 'regio', l: 'regio/werkgebied' },
+  { n: 'omschrijving', l: 'projectomschrijving' },
+  { n: 'doelstellingen', l: 'doelstellingen' },
+  { n: 'partners', l: 'samenwerkingspartners' },
+  { n: 'resultaten', l: 'beoogde resultaten' },
+  { n: 'begroting', l: 'totale begroting' },
+  { n: 'gevraagd', l: 'gevraagd bedrag' },
+  { n: 'eigenBijdrage', l: 'eigen bijdrage' },
+];
+
+function leegVeld(v: unknown) {
+  return Array.isArray(v) ? v.length === 0 : !String(v ?? '').trim();
+}
 
 // Velden die uit een geüpload document mogen worden voorgesteld (mode:
 // 'extract'). Bewust beperkt tot losse tekst/getal/tekstblok-velden - de
@@ -106,28 +173,59 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// Beheerbare systeemtekst; valt terug op de tekst hierboven.
-async function systeemtekst(admin: any, premium: boolean) {
+// Beheerbare systeemtekst; valt terug op de teksten hierboven. tier bepaalt
+// welke aanvullingen meegaan - zelfde principe als de losse premium-gate die
+// hier eerder stond, nu met een extra laag voor Pro (projectplan/begroting)
+// naast de bestaande Premium-laag (aanvraagbeoordeling/strategie).
+async function systeemtekst(admin: any, tier: string) {
+  const premium = tier === 'premium';
+  const proOfPremium = tier !== 'free';
+
   let basis = SYSTEEM_STANDAARD;
-  let aanvulling = PREMIUM_AANVULLING;
+  let premiumTekst = PREMIUM_AANVULLING;
   let aanvraagbeoordeling = AANVRAAGBEOORDELING_AANVULLING;
+  let projectplan = PROJECTPLAN_AANVULLING;
+  let begroting = BEGROTING_AANVULLING;
+  let strategie = STRATEGIE_AANVULLING;
 
   try {
     const { data } = await admin
       .from('ai_prompts')
       .select('key, prompt')
-      .in('key', ['kompas.system', 'kompas.premium_addendum', 'kompas.aanvraagbeoordeling_addendum']);
+      .in('key', [
+        'kompas.system',
+        'kompas.premium_addendum',
+        'kompas.aanvraagbeoordeling_addendum',
+        'kompas.projectplan_addendum',
+        'kompas.begroting_addendum',
+        'kompas.strategie_addendum',
+      ]);
 
     (data || []).forEach((r: any) => {
       if (r.key === 'kompas.system' && r.prompt) basis = r.prompt;
-      if (r.key === 'kompas.premium_addendum' && r.prompt) aanvulling = r.prompt;
+      if (r.key === 'kompas.premium_addendum' && r.prompt) premiumTekst = r.prompt;
       if (r.key === 'kompas.aanvraagbeoordeling_addendum' && r.prompt) aanvraagbeoordeling = r.prompt;
+      if (r.key === 'kompas.projectplan_addendum' && r.prompt) projectplan = r.prompt;
+      if (r.key === 'kompas.begroting_addendum' && r.prompt) begroting = r.prompt;
+      if (r.key === 'kompas.strategie_addendum' && r.prompt) strategie = r.prompt;
     });
   } catch (_) {
-    // tabel bestaat nog niet; de standaardtekst geldt
+    // tabel bestaat nog niet; de standaardteksten gelden
   }
 
-  return premium ? `${basis}\n\n${aanvulling}\n\n${aanvraagbeoordeling}` : basis;
+  const delen = [basis];
+
+  // Pro + Premium: projectplan-generator en begrotingsondersteuning.
+  if (proOfPremium) {
+    delen.push(projectplan, begroting);
+  }
+
+  // Alleen Premium: fondsendatabase, aanvraagbeoordeling en strategiechat.
+  if (premium) {
+    delen.push(premiumTekst, aanvraagbeoordeling, strategie);
+  }
+
+  return delen.join('\n\n');
 }
 
 async function legVerbruikVast(admin: any, row: Record<string, unknown>) {
@@ -812,8 +910,7 @@ Deno.serve(async (req) => {
 
   // Het abonnement komt uit het profiel, niet uit de aanvraag. De browser kan
   // dit dus niet ophogen.
-  const premium = tier === 'premium';
-  const systeem = await systeemtekst(admin, premium);
+  const systeem = await systeemtekst(admin, tier);
 
   // "Volgende fase": de subsidieregelingen die dit lid mag zien, rechtstreeks
   // uit dezelfde database als Beheer/Timeline - server-side gefilterd op
@@ -842,10 +939,25 @@ Deno.serve(async (req) => {
         .join(', ')}. Vraag hier alleen naar als dat vanzelf in het gesprek past - nooit een vragenlijst afwerken, hooguit één gerichte vraag per antwoord, en alleen wanneer het relevant is voor waar het lid het op dat moment over heeft. Zeg nooit dat je iets al hebt opgeslagen: dat gebeurt pas als het lid dat straks zelf in een apart voorstel bevestigt.`
     : '';
 
+  // Vervolgopdracht, prioriteit 6: zelfde aanpak als hierboven, nu voor het
+  // aan dit gesprek gekoppelde project (body.project, alleen meegestuurd
+  // door de frontend als er een project gekoppeld is - zie chat.js). Geen
+  // aparte opslag: net als orgProfile hierboven is dit alleen input voor de
+  // instructietekst, nooit iets dat hier wordt weggeschreven.
+  const project = magOrganisatiegeheugen && body.project && typeof body.project === 'object' ? body.project : null;
+  const projectOntbrekend = project ? PROJECT_VELDEN.filter((v) => leegVeld(project[v.n])) : [];
+
+  const projectInstructie = projectOntbrekend.length
+    ? `Voor het project waaraan dit gesprek gekoppeld is, ontbreekt nog: ${projectOntbrekend
+        .map((v) => v.l)
+        .join(', ')}. Wijs het lid hier proactief op zodra dat past in het gesprek - bijvoorbeeld door aan te bieden er samen een eerste opzet voor te maken - maar dring niet aan en werk dit nooit af als vragenlijst. Sla niets automatisch op: het lid vult het project zelf aan in het projectformulier.`
+    : '';
+
   const invoer = [
     { role: 'system', content: systeem },
     ...(subsidieContext ? [{ role: 'system', content: subsidieContext }] : []),
     ...(leerInstructie ? [{ role: 'system', content: leerInstructie }] : []),
+    ...(projectInstructie ? [{ role: 'system', content: projectInstructie }] : []),
     ...(body.context ? [{ role: 'system', content: String(body.context).slice(0, 24000) }] : []),
     ...berichten
       .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && m.content)

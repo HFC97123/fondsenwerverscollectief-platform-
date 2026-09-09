@@ -19,6 +19,11 @@ const GEEN_VERBINDING =
   orgProfile   optioneel (fase 6): het organisatieprofiel zelf, alleen voor
                Pro/Premium - laat de Edge Function zien welke velden nog
                ontbreken, zodat de AI daar tijdens het gesprek naar kan vragen
+  project      optioneel (vervolgopdracht, prioriteit 6): het aan dit gesprek
+               gekoppelde project zelf, alleen voor Pro/Premium - zelfde
+               principe als orgProfile hierboven, nu voor projectvelden
+               (doelgroep, omschrijving, begroting, ...) in plaats van
+               organisatievelden.
   matchSignalen  optioneel (AI Fundraising Assistant, fase 1): de rauwe
                signalen voor de matchscore-engine - zie buildMatchSignalen()
                hieronder. Alleen ruwe data, geen berekening: het scoren zelf
@@ -27,7 +32,7 @@ const GEEN_VERBINDING =
 
   Geeft terug: { answer, sources, veldVoorstellen, error }
 */
-export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile, matchSignalen }) {
+export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen }) {
   if (!supabase) {
     return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
   }
@@ -43,6 +48,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
         context: context || null,
         conversationId: conversationId ?? null,
         orgProfile: orgProfile || null,
+        project: project || null,
         matchSignalen: matchSignalen || null,
       },
     });
@@ -225,6 +231,14 @@ export function buildContext({ orgProfile, projects, activeDoc, fieldLabels, lin
 
   // Fase 5, punt 6/7 uit het oorspronkelijke verzoek: de AI moet weten welk
   // project bij dit gesprek hoort, als het lid dat heeft gekoppeld.
+  //
+  // Vervolgopdracht ("één geïntegreerd systeem"), volledige gespreks-
+  // context: naast de naam nu ook de eigen projectvelden zelf (doelgroep,
+  // regio, periode, omschrijving, doelstellingen, partners, resultaten,
+  // begroting/gevraagd/eigen bijdrage) - nodig voor de projectplan-generator
+  // en begrotingsondersteuning om niet naar al bekende informatie te
+  // hoeven vragen. Documenten van dit project blijven, zoals hierna al
+  // gebeurde, apart in de projectenlijst hieronder.
   if (linkedProjectId) {
     const gekoppeld = (projects || []).find((p) => p.id === linkedProjectId);
 
@@ -232,6 +246,36 @@ export function buildContext({ orgProfile, projects, activeDoc, fieldLabels, lin
       delen.push(
         `Dit gesprek is door het lid gekoppeld aan het project "${gekoppeld.naam || 'Naamloos project'}". Ga hiervan uit als hoofdonderwerp, tenzij het lid het duidelijk over iets anders heeft.`,
       );
+
+      const projectLabels = {
+        doelgroep: 'doelgroep',
+        regio: 'regio/werkgebied',
+        periodeVan: 'periode van',
+        periodeTot: 'periode tot',
+        omschrijving: 'projectomschrijving',
+        doelstellingen: 'doelstellingen',
+        partners: 'samenwerkingspartners',
+        resultaten: 'beoogde resultaten',
+        begroting: 'totale begroting',
+        gevraagd: 'gevraagd bedrag',
+        eigenBijdrage: 'eigen bijdrage',
+      };
+
+      const projectRegels = Object.keys(projectLabels)
+        .filter((k) => {
+          const v = gekoppeld[k];
+
+          return Array.isArray(v) ? v.length : String(v ?? '').trim();
+        })
+        .map((k) => {
+          const v = Array.isArray(gekoppeld[k]) ? gekoppeld[k].join(', ') : gekoppeld[k];
+
+          return `- ${projectLabels[k]}: ${v}`;
+        });
+
+      if (projectRegels.length) {
+        delen.push(`Gegevens van dit project:\n${projectRegels.join('\n')}`);
+      }
     }
   }
 

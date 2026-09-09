@@ -246,6 +246,10 @@ export default function KompasToolPage() {
       context: buildContext ? buildContext({ ...store, activeDoc: actiefDoc, linkedProjectId: gekoppeldProjectId }) : null,
       conversationId: actiefGesprekId,
       orgProfile: hasPlanTools ? store.orgProfile || null : null,
+      // Vervolgopdracht, prioriteit 6: het gekoppelde project zelf meesturen
+      // (net als orgProfile hierboven), zodat de Edge Function kan zien welke
+      // projectvelden nog ontbreken en het lid daar proactief op kan wijzen.
+      project: hasPlanTools ? (store.projects || []).find((p) => p.id === gekoppeldProjectId) || null : null,
       // AI Fundraising Assistant, fase 1: alleen zinvol voor leden met een
       // organisatieprofiel/project (Pro/Premium) - zelfde voorwaarde als
       // orgProfile hierboven, want Free heeft deze gegevens structureel niet.
