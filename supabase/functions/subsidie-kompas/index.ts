@@ -528,7 +528,7 @@ async function funderAlgemeneContext(admin: any, tier: string, reedsGenoemdeFund
     });
 
     const kop =
-      'Hieronder staan overige, door een beheerder beoordeelde fondsen zonder eigen, eerstvolgende aanvraagronde of vergaderdatum (bijv. fondsen die uitsluitend op uitnodiging of doorlopend schenken). Zijn, op basis van het abonnement van dit lid, zichtbaar. Verzin nooit een fonds, bedrag of voorwaarde die hier niet in staat.\n\n';
+      'Hieronder staan overige, door een beheerder beoordeelde fondsen zonder eigen, eerstvolgende aanvraagronde of vergaderdatum (bijv. fondsen die uitsluitend op uitnodiging of doorlopend schenken). Deze fondsen zijn, op basis van het abonnement van dit lid, volledig bruikbaar: gebruik gewoon alle onderstaande informatie (missie, disciplines, doelgroepen, werkgebied, aanvraagcriteria, bijdrage, website) om het fonds te bespreken of te adviseren. Het ontbreken van een bekende eerstvolgende datum is geen reden om een fonds minder te noemen of over te slaan. Vermeld dat er geen bekende, toekomstige deadline of vergaderdatum bekend is uitsluitend wanneer een lid daar expliciet naar vraagt. Verzin nooit een fonds, bedrag of voorwaarde die hier niet in staat.\n\n';
 
     return (kop + regels.join('\n')).slice(0, 30000);
   } catch (_) {
