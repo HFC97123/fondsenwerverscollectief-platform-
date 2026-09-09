@@ -16,6 +16,7 @@ import {
   PRIORITEIT_BUCKETS,
   SOURCE_TYPES,
   bulkSetAccessTier,
+  classifyFunder,
   fetchFunders,
   setAccessTier,
   updateFunder,
@@ -63,6 +64,7 @@ const LEEG_BEWERKING = {
   accessTier: 'premium',
   bandbreedteBijdrageId: '',
   bijdrageToelichting: '',
+  classificationReviewed: false,
 };
 
 function euro(bedrag) {
@@ -266,6 +268,7 @@ export default function AdminFunders({ notify }) {
       accessTier: row.access_tier || 'premium',
       bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
       bijdrageToelichting: row.bijdrage_toelichting || '',
+      classificationReviewed: !!row.classification_reviewed,
     };
 
     setForm(basis);
@@ -353,6 +356,25 @@ export default function AdminFunders({ notify }) {
 
       if (bandbreedteRes.error) {
         notify('error', 'Funder bijgewerkt, maar de bandbreedte bijdrage kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
+    }
+
+    // "Beoordeeld" is een bevestiging, geen herclassificatie: data_tier/
+    // source_type gaan ongewijzigd (de bestaande waarden van deze funder) mee,
+    // alleen de reviewed-vlag zelf wijzigt.
+    if (form.classificationReviewed !== !!row.classification_reviewed) {
+      const reviewRes = await classifyFunder(row.id, {
+        dataTier: row.data_tier,
+        sourceType: row.source_type,
+        reviewed: form.classificationReviewed,
+      });
+
+      if (reviewRes.error) {
+        notify('error', 'Funder bijgewerkt, maar "beoordeeld" kon niet worden opgeslagen.');
         setEditingId(null);
         laad();
 
@@ -714,6 +736,18 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
           <input style={inputStyle} value={form.researchSource} onChange={set('researchSource')} />
         </Veld>
       </VeldGrid>
+      <p style={css('margin: 4px 0 10px; font-size: 12.5px; color: #82918B;')}>
+        "Beoordeeld" bepaalt of het toegangsniveau hierboven leidend is voor wat leden van deze funder te zien
+        krijgen. Vink dit pas aan nadat u de gegevens van deze funder heeft nagelopen.
+      </p>
+      <label style={css('display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; font-weight: 700; color: #2C4A5E;')}>
+        <input
+          type="checkbox"
+          checked={form.classificationReviewed}
+          onChange={(e) => setForm((f) => ({ ...f, classificationReviewed: e.target.checked }))}
+        />
+        Beoordeeld — toegangsniveau is leidend voor deze funder
+      </label>
     </AdminEditModal>
   );
 }

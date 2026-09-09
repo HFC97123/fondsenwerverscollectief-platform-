@@ -12,7 +12,7 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
-import { askKompas, buildContext } from '../../data/services/chat.js';
+import { askKompas, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
 import {
   haalBerichtenOp,
   koppelGesprekAanProject,
@@ -202,6 +202,12 @@ export default function KompasToolPage() {
       context: buildContext ? buildContext({ ...store, activeDoc: actiefDoc, linkedProjectId: gekoppeldProjectId }) : null,
       conversationId: actiefGesprekId,
       orgProfile: hasPlanTools ? store.orgProfile || null : null,
+      // AI Fundraising Assistant, fase 1: alleen zinvol voor leden met een
+      // organisatieprofiel/project (Pro/Premium) - zelfde voorwaarde als
+      // orgProfile hierboven, want Free heeft deze gegevens structureel niet.
+      matchSignalen: hasPlanTools
+        ? buildMatchSignalen({ orgProfile: store.orgProfile, projects: store.projects, linkedProjectId: gekoppeldProjectId })
+        : null,
     });
 
     setLoading(false);

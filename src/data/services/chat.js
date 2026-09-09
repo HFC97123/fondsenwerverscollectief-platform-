@@ -19,10 +19,15 @@ const GEEN_VERBINDING =
   orgProfile   optioneel (fase 6): het organisatieprofiel zelf, alleen voor
                Pro/Premium - laat de Edge Function zien welke velden nog
                ontbreken, zodat de AI daar tijdens het gesprek naar kan vragen
+  matchSignalen  optioneel (AI Fundraising Assistant, fase 1): de rauwe
+               signalen voor de matchscore-engine - zie buildMatchSignalen()
+               hieronder. Alleen ruwe data, geen berekening: het scoren zelf
+               gebeurt uitsluitend server-side in de Edge Function, zodat er
+               geen matchlogica dubbel bestaat in frontend én backend.
 
   Geeft terug: { answer, sources, veldVoorstellen, error }
 */
-export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile }) {
+export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile, matchSignalen }) {
   if (!supabase) {
     return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
   }
@@ -38,6 +43,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
         context: context || null,
         conversationId: conversationId ?? null,
         orgProfile: orgProfile || null,
+        matchSignalen: matchSignalen || null,
       },
     });
 
@@ -282,4 +288,33 @@ export function buildContext({ orgProfile, projects, activeDoc, fieldLabels, lin
   }
 
   return `Gebruik deze achtergrondinformatie waar die relevant is. Verzin niets wat er niet staat.\n\n${delen.join('\n\n')}`;
+}
+
+/*
+  AI Fundraising Assistant, fase 1: bouwt de rauwe matchsignalen uit het
+  organisatieprofiel en het gekoppelde (of, bij ontbreken daarvan, het eerste)
+  project van dit lid. Puur een uitleesfunctie, geen scoring — het berekenen
+  van een matchscore gebeurt uitsluitend server-side in de Edge Function
+  (subsidie-kompas), zodat er geen matchlogica dubbel bestaat in frontend én
+  backend. Geeft null terug zolang er niets bruikbaars bekend is, dan blijft
+  het gesprek werken zoals voorheen (zonder matchscores).
+*/
+export function buildMatchSignalen({ orgProfile, projects, linkedProjectId }) {
+  const profiel = orgProfile || {};
+  const themas = Array.isArray(profiel.themas) ? profiel.themas : [];
+  const doelgroepen = Array.isArray(profiel.doelgroepen) ? profiel.doelgroepen : [];
+  const werkgebied = profiel.regio || '';
+
+  const project = linkedProjectId
+    ? (projects || []).find((p) => p.id === linkedProjectId)
+    : (projects || [])[0];
+
+  const gevraagdCijfers = project ? String(project.gevraagd || '').replace(/[^0-9]/g, '') : '';
+  const gevraagdBedrag = gevraagdCijfers ? Number(gevraagdCijfers) : null;
+
+  if (!themas.length && !doelgroepen.length && !werkgebied && !gevraagdBedrag) {
+    return null;
+  }
+
+  return { themas, doelgroepen, werkgebied, gevraagdBedrag };
 }

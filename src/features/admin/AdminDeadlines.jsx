@@ -10,6 +10,7 @@ import { css } from '../../shared/lib/css.js';
 import {
   REGELING_STATUSSEN,
   bulkCreateSubsidieregelingen,
+  classifySubsidieregeling,
   fetchRondes,
   fetchSubsidieregelingen,
   updateSubsidieregeling,
@@ -76,6 +77,7 @@ const LEEG_BEWERKING = {
   accessTier: 'premium',
   bandbreedteBijdrageId: '',
   bijdrageToelichting: '',
+  classificationReviewed: false,
 };
 
 // Leeg formulier voor een aanvraagronde (meerdere sluitingsdata per regeling).
@@ -348,6 +350,7 @@ export default function AdminDeadlines({ notify }) {
       accessTier: row.access_tier || 'premium',
       bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
       bijdrageToelichting: row.bijdrage_toelichting || '',
+      classificationReviewed: !!row.classification_reviewed,
     };
 
     setForm(basis);
@@ -446,6 +449,25 @@ export default function AdminDeadlines({ notify }) {
 
       if (bandbreedteRes.error) {
         notify('error', 'Regeling bijgewerkt, maar de bandbreedte bijdrage kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
+    }
+
+    // "Beoordeeld" is een bevestiging, geen herclassificatie: data_tier/
+    // source_type gaan ongewijzigd (de bestaande waarden van deze regeling)
+    // mee, alleen de reviewed-vlag zelf wijzigt.
+    if (form.classificationReviewed !== !!row.classification_reviewed) {
+      const reviewRes = await classifySubsidieregeling(row.id, {
+        dataTier: row.data_tier,
+        sourceType: row.source_type,
+        reviewed: form.classificationReviewed,
+      });
+
+      if (reviewRes.error) {
+        notify('error', 'Regeling bijgewerkt, maar "beoordeeld" kon niet worden opgeslagen.');
         setEditingId(null);
         laad();
 
@@ -1024,8 +1046,9 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, d
 
       <SectieKop muted>Technische status</SectieKop>
       <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
-        Data tier, bron en beoordeeld-status worden beheerd via de Classification Workspace (Beheer →
-        Classificaties), niet hier.
+        Data tier en bron komen uit de oorspronkelijke classificatie van deze regeling en worden hier niet
+        gewijzigd. "Beoordeeld" bepaalt of het toegangsniveau hierboven leidend is voor wat leden te zien
+        krijgen — vink dit pas aan nadat u de gegevens van deze regeling heeft nagelopen.
       </p>
       <VeldGrid>
         <Veld label="Data tier">
@@ -1034,10 +1057,15 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, d
         <Veld label="Gescand door agent">
           <input style={inputStyle} value={row.discovered_by === 'agent' ? 'Ja' : 'Nee'} disabled />
         </Veld>
-        <Veld label="Beoordeeld">
-          <input style={inputStyle} value={row.classification_reviewed ? 'Ja' : 'Nee'} disabled />
-        </Veld>
       </VeldGrid>
+      <label style={css('display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; font-weight: 700; color: #2C4A5E;')}>
+        <input
+          type="checkbox"
+          checked={form.classificationReviewed}
+          onChange={(e) => setForm((f) => ({ ...f, classificationReviewed: e.target.checked }))}
+        />
+        Beoordeeld — toegangsniveau is leidend voor deze regeling
+      </label>
     </AdminEditModal>
   );
 }

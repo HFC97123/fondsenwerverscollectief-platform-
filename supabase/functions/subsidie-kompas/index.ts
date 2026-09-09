@@ -119,13 +119,208 @@ async function legVerbruikVast(admin: any, row: Record<string, unknown>) {
   }
 }
 
+// AI Fundraising Assistant, fase 1: de centrale, uitlegbare matchscore-engine.
+// Eén implementatie, hier - nooit in de frontend gedupliceerd (opdrachtpunt
+// 17: "geen duplicatie van business logic tussen frontend en backend"). De
+// frontend stuurt alleen de rauwe signalen mee (organisatieprofiel/project,
+// zie leesMatchSignalen hieronder); alle rekenwerk en de tekst die de AI
+// straks letterlijk overneemt, gebeurt uitsluitend hier.
+//
+// Bewuste keuzes:
+// - Alleen de vier onderdelen waarvoor de database al gestructureerde,
+//   betrouwbare data heeft (discipline/doelgroep/werkgebied/bedrag) worden
+//   automatisch gescoord. Zachte, tekstuele criteria (beoordelingscriteria,
+//   aanvraagcriteria) staan al als volledige tekst in subsidieregelingContext
+//   hierboven/hieronder - de AI weegt die zelf mee in het gesprek, in plaats
+//   van dat hier te laten doen alsof een tekstvergelijking een percentage
+//   zou opleveren. Dat zou valse precisie zijn (opdrachtpunt 4: "de score
+//   hoeft niet puur wiskundig te zijn, maar moet consistent en uitlegbaar
+//   zijn").
+// - Ontbreekt aan één kant de data voor een onderdeel (bijv. geen discipline
+//   in het profiel, of de regeling heeft geen gekoppelde doelgroep), dan telt
+//   dat onderdeel niet mee in het gewogen gemiddelde (de overige gewichten
+//   worden herschaald) en wordt het apart als "onbekend" gemeld - nooit
+//   geraden (opdrachtpunt 5: "als noodzakelijke informatie ontbreekt, mag de
+//   AI dit niet verzinnen").
+// - Een echt harde uitsluitingsgrond (bijv. "alleen ANBI-stichtingen") staat
+//   nog niet als apart databaseveld (zie architectuuroverzicht §3E, nog
+//   open); het enige harde signaal dat vandaag wél betrouwbaar uit de
+//   database te halen is, is een gevraagd bedrag boven het maximum van de
+//   regeling - dat wordt hier hard afgetopt (nooit "Goede match" bij een
+//   bedrag dat buiten de bandbreedte valt), maar dit is geen vervanging voor
+//   echte uitsluitingscriteria. Dat blijft een openstaand punt.
+const MATCH_GEWICHTEN = { discipline: 0.3, doelgroep: 0.3, werkgebied: 0.25, bedrag: 0.15 };
+
+function normaliseerTekst(t: unknown) {
+  return String(t || '').trim().toLowerCase();
+}
+
+// Zelfde fuzzy-overlapmaat als de bestaande kansrijkheid()-heuristiek aan de
+// frontend-kant (DeadlinesPage.jsx): substring beide kanten op, geen exacte
+// match vereist tussen bijv. "Jeugd" en "Jeugd en jongeren".
+function overlapt(a: string, b: string) {
+  if (!a || !b) return false;
+
+  return a.indexOf(b) !== -1 || b.indexOf(a) !== -1;
+}
+
+function scoreLijstOverlap(orgWaarden: string[], regelingWaarden: string[]) {
+  if (!orgWaarden?.length || !regelingWaarden?.length) {
+    return null;
+  }
+
+  const orgGenorm = orgWaarden.map(normaliseerTekst).filter(Boolean);
+  const regelingGenorm = regelingWaarden.map(normaliseerTekst).filter(Boolean);
+
+  if (!orgGenorm.length || !regelingGenorm.length) {
+    return null;
+  }
+
+  const aansluitend = regelingGenorm.filter((rw) => orgGenorm.some((ow) => overlapt(ow, rw)));
+
+  return { score: Math.round((aansluitend.length / regelingGenorm.length) * 100), aansluitend };
+}
+
+function scoreWerkgebied(orgWerkgebied: string, regelingWerkgebieden: string[]) {
+  const org = normaliseerTekst(orgWerkgebied);
+  const lijst = (regelingWerkgebieden || []).map(normaliseerTekst).filter(Boolean);
+
+  if (!org || !lijst.length) {
+    return null;
+  }
+
+  const landelijk = lijst.filter((w) => w === 'nederland' || w === 'landelijk');
+  const sluitAan = landelijk.length > 0 || lijst.some((w) => overlapt(org, w));
+
+  return { score: sluitAan ? 100 : 0, landelijk: landelijk.length > 0 };
+}
+
+function scoreBedrag(gevraagd: number | null, bedragMin: number | null, bedragMax: number | null) {
+  if (gevraagd == null || (bedragMin == null && bedragMax == null)) {
+    return null;
+  }
+
+  if (bedragMax != null && gevraagd > bedragMax) {
+    return { score: 20, hardeCap: true, reden: `het gevraagde bedrag (€ ${gevraagd.toLocaleString('nl-NL')}) ligt boven het maximum van deze regeling (€ ${bedragMax.toLocaleString('nl-NL')})` };
+  }
+
+  if (bedragMin != null && gevraagd < bedragMin) {
+    return { score: 60, hardeCap: false, reden: `het gevraagde bedrag (€ ${gevraagd.toLocaleString('nl-NL')}) ligt onder de gebruikelijke ondergrens van deze regeling (€ ${bedragMin.toLocaleString('nl-NL')}) - mogelijk nog steeds bespreekbaar` };
+  }
+
+  return { score: 100, hardeCap: false, reden: 'het gevraagde bedrag past binnen de gebruikelijke bandbreedte van deze regeling' };
+}
+
+// Geeft { totaal, onderdelen, sterkePunten, aandachtspunten, onzekereInfo }
+// terug, of { totaal: null, ... } als er over geen enkel onderdeel iets te
+// zeggen valt (bijv. een lid zonder ingevuld profiel).
+function berekenMatch(regeling: any, signalen: MatchSignalen) {
+  const onderdelen: { naam: string; gewicht: number; score: number; toelichting: string }[] = [];
+  const sterkePunten: string[] = [];
+  const aandachtspunten: string[] = [];
+  const onzekereInfo: string[] = [];
+  let hardeCap: number | null = null;
+
+  const discipline = scoreLijstOverlap(signalen.themas, regeling.themas_namen || []);
+
+  if (discipline) {
+    onderdelen.push({ naam: 'Discipline', gewicht: MATCH_GEWICHTEN.discipline, score: discipline.score, toelichting: discipline.aansluitend.length ? `sluit aan op ${discipline.aansluitend.join(', ')}` : 'sluit niet aan bij de disciplines in het profiel' });
+    (discipline.score >= 70 ? sterkePunten : aandachtspunten).push(discipline.score >= 70 ? `de discipline sluit aan (${discipline.aansluitend.join(', ')})` : 'de discipline van deze regeling sluit niet aan bij het profiel');
+  } else {
+    onzekereInfo.push('geen discipline bekend om te vergelijken (in het profiel of bij deze regeling)');
+  }
+
+  const doelgroep = scoreLijstOverlap(signalen.doelgroepen, regeling.doelgroepen_namen || []);
+
+  if (doelgroep) {
+    onderdelen.push({ naam: 'Doelgroep', gewicht: MATCH_GEWICHTEN.doelgroep, score: doelgroep.score, toelichting: doelgroep.aansluitend.length ? `sluit aan op ${doelgroep.aansluitend.join(', ')}` : 'sluit niet aan bij de doelgroepen in het profiel' });
+    (doelgroep.score >= 70 ? sterkePunten : aandachtspunten).push(doelgroep.score >= 70 ? `de doelgroep sluit aan (${doelgroep.aansluitend.join(', ')})` : 'de doelgroep van deze regeling sluit niet aan bij het profiel');
+  } else {
+    onzekereInfo.push('geen doelgroep bekend om te vergelijken (in het profiel of bij deze regeling)');
+  }
+
+  const werkgebied = scoreWerkgebied(signalen.werkgebied, regeling.werkgebieden_namen || []);
+
+  if (werkgebied) {
+    onderdelen.push({ naam: 'Werkgebied', gewicht: MATCH_GEWICHTEN.werkgebied, score: werkgebied.score, toelichting: werkgebied.score === 100 ? 'het werkgebied sluit aan' : 'het werkgebied van deze regeling wijkt af' });
+    (werkgebied.score === 100 ? sterkePunten : aandachtspunten).push(werkgebied.score === 100 ? 'het werkgebied sluit aan' : 'het werkgebied wijkt af van het profiel');
+  } else {
+    onzekereInfo.push('geen werkgebied bekend om te vergelijken');
+  }
+
+  const bedrag = scoreBedrag(signalen.gevraagdBedrag, regeling.bedrag_min ?? null, regeling.bedrag_max ?? null);
+
+  if (bedrag) {
+    onderdelen.push({ naam: 'Bedrag', gewicht: MATCH_GEWICHTEN.bedrag, score: bedrag.score, toelichting: bedrag.reden });
+    (bedrag.score >= 70 ? sterkePunten : aandachtspunten).push(bedrag.reden);
+
+    if (bedrag.hardeCap) {
+      hardeCap = 40;
+    }
+  } else {
+    onzekereInfo.push('geen gevraagd bedrag of financieringsbandbreedte bekend om te vergelijken');
+  }
+
+  if (!onderdelen.length) {
+    return { totaal: null, onderdelen: [], sterkePunten: [], aandachtspunten: [], onzekereInfo };
+  }
+
+  const totaalGewicht = onderdelen.reduce((t, o) => t + o.gewicht, 0);
+  let totaal = Math.round(onderdelen.reduce((t, o) => t + o.score * o.gewicht, 0) / totaalGewicht);
+
+  if (hardeCap != null && totaal > hardeCap) {
+    totaal = hardeCap;
+  }
+
+  return { totaal, onderdelen, sterkePunten, aandachtspunten, onzekereInfo };
+}
+
+type MatchSignalen = { themas: string[]; doelgroepen: string[]; werkgebied: string; gevraagdBedrag: number | null };
+
+// Leest en ontsmet body.matchSignalen (fase 1 van de AI Fundraising
+// Assistant). Alleen scalaire/array-van-tekst-velden, hard begrensd op
+// lengte/aantal - dit komt rechtstreeks van de client, dus nooit ongefilterd
+// doorzetten. Geeft null terug zolang er niets bruikbaars in zit, zodat de
+// aanroeper simpelweg geen matchscores berekent (het gesprek werkt dan zoals
+// voorheen, puur op de reguliere subsidieregelingContext hierboven).
+function leesMatchSignalen(body: any): MatchSignalen | null {
+  const ruw = body?.matchSignalen;
+
+  if (!ruw || typeof ruw !== 'object') {
+    return null;
+  }
+
+  const naarLijst = (v: unknown) =>
+    Array.isArray(v)
+      ? v.map((x) => String(x || '').slice(0, 100)).filter(Boolean).slice(0, 20)
+      : [];
+
+  const themas = naarLijst(ruw.themas);
+  const doelgroepen = naarLijst(ruw.doelgroepen);
+  const werkgebied = String(ruw.werkgebied || '').slice(0, 100);
+  const gevraagdBedragRuw = Number(ruw.gevraagdBedrag);
+  const gevraagdBedrag = Number.isFinite(gevraagdBedragRuw) && gevraagdBedragRuw > 0 ? gevraagdBedragRuw : null;
+
+  if (!themas.length && !doelgroepen.length && !werkgebied && gevraagdBedrag == null) {
+    return null;
+  }
+
+  return { themas, doelgroepen, werkgebied, gevraagdBedrag };
+}
+
 // "Volgende fase": de subsidieregelingen die dit lid, op basis van zijn eigen
 // abonnement, mag zien - via de RPC die exact dezelfde centrale regel
 // toepast als de Timeline (subsidie_zichtbaar_voor_tier). tier komt hierboven
 // al veilig uit profiles.subscription_tier, nooit van de client. Geeft een
 // kant-en-klaar systeembericht terug, of null als er niets te tonen is of de
 // aanroep mislukt (mag het gesprek zelf nooit blokkeren).
-async function subsidieregelingContext(admin: any, tier: string) {
+//
+// AI Fundraising Assistant, fase 1: geeft matchSignalen mee (optioneel, kan
+// null zijn), dan krijgt elke regeling er een uitlegbare matchscore bij
+// (berekenMatch hierboven) en worden de regelingen aflopend op matchscore
+// gesorteerd - zodat de sterkste kandidaten bovenaan staan en dus als eerste
+// binnen de 60000-tekens-afkap hieronder vallen.
+async function subsidieregelingContext(admin: any, tier: string, matchSignalen: MatchSignalen | null) {
   try {
     const { data, error } = await admin.rpc('kompas_subsidieregelingen_voor_tier', { p_tier: tier });
 
@@ -137,7 +332,16 @@ async function subsidieregelingContext(admin: any, tier: string) {
       return 'Er staan op dit moment geen subsidieregelingen in de database van Het Fondsenwervers Collectief die dit lid, op basis van zijn abonnement, mag zien. Verzin er zelf geen bij - zeg dat eerlijk en vraag zo nodig door naar wat het lid zoekt.';
     }
 
-    const perRegeling = data.map((r: any) => {
+    // AI Fundraising Assistant, fase 1: matchscore per regeling berekenen (als
+    // er signalen zijn) en de lijst daarop sorteren - de sterkste match komt
+    // bovenaan, in plaats van de bestaande status/deadline-volgorde uit de RPC.
+    const metMatch = data.map((r: any) => ({ r, match: matchSignalen ? berekenMatch(r, matchSignalen) : null }));
+
+    if (matchSignalen) {
+      metMatch.sort((a: any, b: any) => (b.match?.totaal ?? -1) - (a.match?.totaal ?? -1));
+    }
+
+    const perRegeling = metMatch.map(({ r, match }: any) => {
       const regelLijnen: string[] = [];
 
       regelLijnen.push(
@@ -147,6 +351,18 @@ async function subsidieregelingContext(admin: any, tier: string) {
       if (r.themas_namen?.length) regelLijnen.push(`  Disciplines: ${r.themas_namen.join(', ')}`);
       if (r.doelgroepen_namen?.length) regelLijnen.push(`  Doelgroepen: ${r.doelgroepen_namen.join(', ')}`);
       if (r.werkgebieden_namen?.length) regelLijnen.push(`  Werkgebied: ${r.werkgebieden_namen.join(', ')}`);
+
+      if (match && match.totaal != null) {
+        const onderdelenTekst = match.onderdelen.map((o: any) => `${o.naam} ${o.score}% (${o.toelichting})`).join('; ');
+
+        regelLijnen.push(`  Matchscore met dit lid: ${match.totaal}% — ${onderdelenTekst}.`);
+
+        if (match.sterkePunten.length) regelLijnen.push(`  Sterke punten van deze match: ${match.sterkePunten.join('; ')}.`);
+        if (match.aandachtspunten.length) regelLijnen.push(`  Aandachtspunten van deze match: ${match.aandachtspunten.join('; ')}.`);
+        if (match.onzekereInfo.length) regelLijnen.push(`  Niet mee te wegen (onbekend): ${match.onzekereInfo.join('; ')}.`);
+      } else if (match) {
+        regelLijnen.push('  Matchscore: kan niet worden berekend - onvoldoende profiel-/projectinformatie bekend.');
+      }
 
       const bijdrage = [
         r.bandbreedte_bijdrage_naam,
@@ -184,7 +400,11 @@ async function subsidieregelingContext(admin: any, tier: string) {
     });
 
     const kop =
-      'Hieronder staan de subsidieregelingen die dit lid, op basis van zijn abonnement, mag zien - rechtstreeks uit de database van Het Fondsenwervers Collectief (beheerd via Beheer -> Subsidieregelingen). Gebruik uitsluitend deze lijst voor concreet fondsadvies: verzin nooit een regeling, gever, bedrag, deadline of voorwaarde die hier niet in staat. Is er niets passends bij, zeg dat eerlijk in plaats van een regeling te verzinnen.\n\n';
+      'Hieronder staan de subsidieregelingen die dit lid, op basis van zijn abonnement, mag zien - rechtstreeks uit de database van Het Fondsenwervers Collectief (beheerd via Beheer -> Subsidieregelingen), aflopend gesorteerd op matchscore als die berekend kon worden. Gebruik uitsluitend deze lijst voor concreet fondsadvies: verzin nooit een regeling, gever, bedrag, deadline of voorwaarde die hier niet in staat. Is er niets passends bij, zeg dat eerlijk in plaats van een regeling te verzinnen.' +
+      (matchSignalen
+        ? ' Staat er een matchscore/percentage bij een regeling, gebruik dan uitsluitend dat getal en die toelichting als je een percentage of "sterke match"/"aandachtspunt" noemt - bereken of schat nooit zelf een eigen percentage. Staat een onderdeel onder "Niet mee te wegen (onbekend)", doe daar dan geen uitspraak over en verzin geen score - zeg desgewenst dat je dat niet kunt beoordelen en vraag er evt. naar.'
+        : '')
+      + '\n\n';
 
     return (kop + perRegeling.join('\n')).slice(0, 60000);
   } catch (_) {
@@ -579,7 +799,14 @@ Deno.serve(async (req) => {
   // "Volgende fase": de subsidieregelingen die dit lid mag zien, rechtstreeks
   // uit dezelfde database als Beheer/Timeline - server-side gefilterd op
   // tier, nooit op basis van iets dat de client meestuurt.
-  const subsidieContext = await subsidieregelingContext(admin, tier);
+  //
+  // AI Fundraising Assistant, fase 1: matchSignalen komt wel van de client
+  // (het organisatieprofiel/project van dit lid), maar bepaalt uitsluitend de
+  // sortering en de uitleg-tekst binnen de al tier-gefilterde lijst hierboven
+  // - het kan nooit een regeling zichtbaar maken die dit lid, op basis van
+  // zijn abonnement, sowieso al niet mag zien.
+  const matchSignalen = leesMatchSignalen(body);
+  const subsidieContext = await subsidieregelingContext(admin, tier, matchSignalen);
 
   // Fase 6, punt 1: actief leren tijdens gesprekken. Zelfde gate als
   // mode: 'extract'/'website' hierboven (geen Free-toegang), en alleen als

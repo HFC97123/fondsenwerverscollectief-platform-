@@ -149,3 +149,25 @@ export async function bulkSetAccessTier(tabel, ids, accessTier, reden = null) {
 
   return { count: res.data || 0, error: res.error };
 }
+
+// Markeert (of ontmarkeert) een funder als "beoordeeld" (classification_reviewed) —
+// dit is de schakelaar die bepaalt of het toegangsniveau (access_tier)
+// hierboven leidend is voor wat leden te zien krijgen, of dat de oudere
+// data_tier/source_type-heuristiek nog geldt (zie subsidie_zichtbaar_voor_tier
+// in het architectuuroverzicht). admin_classify_funder vereist ook data_tier
+// en source_type; hier worden bewust de bestaande waarden van deze funder
+// ongewijzigd meegestuurd — dit is een bevestiging dat de huidige
+// classificatie is nagelopen, geen herclassificatie.
+export async function classifyFunder(funderId, { dataTier, sourceType, reviewed, reden = null }) {
+  const res = await query((sb) =>
+    sb.rpc('admin_classify_funder', {
+      p_funder_id: funderId,
+      p_data_tier: dataTier,
+      p_source_type: sourceType,
+      p_reviewed: reviewed,
+      p_reden: reden,
+    }),
+  );
+
+  return { error: res.error };
+}

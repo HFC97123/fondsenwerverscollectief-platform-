@@ -107,6 +107,25 @@ export async function updateSubsidieregeling(regelingId, patch) {
   return { error: res.error };
 }
 
+// Markeert (of ontmarkeert) een subsidieregeling als "beoordeeld"
+// (classification_reviewed) — zelfde schakelaar en zelfde bevestigings-
+// patroon als classifyFunder() in adminFunders.js: de bestaande data_tier/
+// source_type van deze regeling gaan ongewijzigd mee, dit is geen
+// herclassificatie maar een bevestiging.
+export async function classifySubsidieregeling(regelingId, { dataTier, sourceType, reviewed, reden = null }) {
+  const res = await query((sb) =>
+    sb.rpc('admin_classify_subsidieregeling', {
+      p_regeling_id: regelingId,
+      p_data_tier: dataTier,
+      p_source_type: sourceType,
+      p_reviewed: reviewed,
+      p_reden: reden,
+    }),
+  );
+
+  return { error: res.error };
+}
+
 // Aanvraagrondes (meerdere sluitingsdata per subsidieregeling — "Volgende fase":
 // meerdere aanvraagrondes). Eén regeling heeft 0..n rondes. Zolang er 0 rondes
 // bestaan blijft de legacy deadline/deadlineDatum/deadlineOmschrijving hierboven
