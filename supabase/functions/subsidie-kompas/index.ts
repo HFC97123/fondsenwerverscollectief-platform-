@@ -425,6 +425,59 @@ function leesMatchSignalen(body: any): MatchSignalen | null {
   return { themas, doelgroepen, werkgebied, gevraagdBedrag };
 }
 
+// Deadline-architectuur, enkelvoudige koppeling: funder-brede datamomenten
+// (geen regelingkoppeling - subsidieregeling_id is null) via een eigen
+// sibling-RPC (kompas_funder_deadlines_voor_tier), met exact dezelfde
+// centrale tier-regel (subsidie_zichtbaar_voor_tier) als subsidieregelingContext
+// hieronder - geen tweede rechtenmodel. Los van kompas_subsidieregelingen_voor_tier
+// gehouden (niet die RPC's kolomvorm uitgebreid) omdat funder-brede data geen
+// regelingspecifieke velden heeft (begrotingseisen, aanvraagprocedure, etc.).
+// tier komt, net als hieronder, uitsluitend server-side uit profiles.subscription_tier.
+async function funderDeadlineContext(admin: any, tier: string) {
+  try {
+    const { data, error } = await admin.rpc('kompas_funder_deadlines_voor_tier', { p_tier: tier });
+
+    if (error || !Array.isArray(data) || !data.length) {
+      return null;
+    }
+
+    const regels = data.map((f: any) => {
+      const lijnen: string[] = [];
+
+      lijnen.push(
+        `- ${f.funder_naam}${f.type_gever ? ` (${f.type_gever})` : ''} — funder-brede deadline, sluit ${f.deadline_datum ?? 'onbekend'}${f.sluitingstijd ? ` om ${String(f.sluitingstijd).slice(0, 5)}` : ''}, toegangsniveau: ${f.access_tier || 'onbekend'}`,
+      );
+
+      if (f.datamoment_naam) lijnen.push(`  Naam: ${f.datamoment_naam}`);
+      if (f.themas_namen?.length) lijnen.push(`  Disciplines: ${f.themas_namen.join(', ')}`);
+      if (f.doelgroepen_namen?.length) lijnen.push(`  Doelgroepen: ${f.doelgroepen_namen.join(', ')}`);
+      if (f.werkgebieden_namen?.length) lijnen.push(`  Werkgebied: ${f.werkgebieden_namen.join(', ')}`);
+
+      const bijdrage = [
+        f.bandbreedte_bijdrage_naam,
+        f.bijdrage_min || f.bijdrage_max ? `(€ ${f.bijdrage_min ?? '?'} - € ${f.bijdrage_max ?? '?'})` : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      if (bijdrage) lijnen.push(`  Bijdrage: ${bijdrage}`);
+      if (f.toelichting) lijnen.push(`  Toelichting: ${f.toelichting}`);
+      if (f.funder_missie) lijnen.push(`  Missie: ${f.funder_missie}`);
+      if (f.funder_aanvraagcriteria) lijnen.push(`  Aanvraagcriteria (algemeen, geldt voor het hele fonds): ${f.funder_aanvraagcriteria}`);
+      if (f.funder_website) lijnen.push(`  Website: ${f.funder_website}`);
+
+      return lijnen.join('\n');
+    });
+
+    const kop =
+      'Hieronder staan funder-brede deadlines: deze gelden voor het hele fonds (niet voor één specifieke subsidieregeling uit de lijst hierboven of hieronder) en zijn, op basis van het abonnement van dit lid, zichtbaar. Verzin nooit een fonds, bedrag, deadline of voorwaarde die hier niet in staat. Noem bij advies duidelijk dat dit een deadline van het fonds zelf is, niet van één specifieke regeling.\n\n';
+
+    return (kop + regels.join('\n')).slice(0, 30000);
+  } catch (_) {
+    return null;
+  }
+}
+
 // "Volgende fase": de subsidieregelingen die dit lid, op basis van zijn eigen
 // abonnement, mag zien - via de RPC die exact dezelfde centrale regel
 // toepast als de Timeline (subsidie_zichtbaar_voor_tier). tier komt hierboven
@@ -924,6 +977,13 @@ Deno.serve(async (req) => {
   const matchSignalen = leesMatchSignalen(body);
   const subsidieContext = await subsidieregelingContext(admin, tier, matchSignalen);
 
+  // Deadline-architectuur, enkelvoudige koppeling, testpunt 9: filters/AI
+  // moeten zowel funder-brede als regeling-specifieke deadlines respecteren,
+  // met dezelfde Free/Pro/Premium-rechten. Regeling-specifieke deadlines
+  // zitten al in subsidieContext hierboven; funder-brede deadlines komen
+  // hier als apart systeembericht bij, uit dezelfde tier-gefilterde RPC-familie.
+  const funderDeadlineTekst = await funderDeadlineContext(admin, tier);
+
   // Fase 6, punt 1: actief leren tijdens gesprekken. Zelfde gate als
   // mode: 'extract'/'website' hierboven (geen Free-toegang), en alleen als
   // de frontend het huidige profiel meestuurt (alleen Pro/Premium doet dat -
@@ -956,6 +1016,7 @@ Deno.serve(async (req) => {
   const invoer = [
     { role: 'system', content: systeem },
     ...(subsidieContext ? [{ role: 'system', content: subsidieContext }] : []),
+    ...(funderDeadlineTekst ? [{ role: 'system', content: funderDeadlineTekst }] : []),
     ...(leerInstructie ? [{ role: 'system', content: leerInstructie }] : []),
     ...(projectInstructie ? [{ role: 'system', content: projectInstructie }] : []),
     ...(body.context ? [{ role: 'system', content: String(body.context).slice(0, 24000) }] : []),

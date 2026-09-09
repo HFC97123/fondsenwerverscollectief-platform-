@@ -235,23 +235,20 @@ export async function verwijderRonde(rondeId) {
 }
 
 // Datamomenten op funderniveau: dezelfde onderliggende rondes-tabel als
-// fetchRondes/upsertRonde hierboven, maar dan gegroepeerd per Funder in
-// plaats van per subsidieregeling, met expliciete koppeling aan 0..n
-// regelingen via subsidieregeling_ronde_koppelingen. Toevoegen/wijzigen/
-// verwijderen van een datamoment werkt automatisch door naar elke gekoppelde
-// subsidieregeling (subsidieregeling_volgende_ronde/ de deadlines-view lezen
-// dezelfde koppeltabel) — geen aparte synchronisatiestap nodig.
+// fetchRondes/upsertRonde hierboven, maar dan met subsidieregeling_id = null
+// (funder-breed, nooit aan een specifieke regeling gekoppeld — een
+// datamoment is óf funder-breed óf regeling-specifiek, nooit beide). Zo'n
+// funder-breed datamoment wordt automatisch meegenomen in het
+// Deadline-overzicht/de Timeline/AI (funder_deadlines-view resp.
+// kompas_funder_deadlines_voor_tier) zodra het een toekomstige, actieve datum
+// is — geen handmatige koppeling aan regelingen nodig of mogelijk.
 export async function fetchFunderDatamomenten(funderId) {
   const res = await query((sb) => sb.rpc('admin_list_funder_datamomenten', { p_funder_id: funderId }), []);
   return { rows: res.data || [], error: res.error };
 }
 
 // datamoment: { id (leeg = nieuw), funderId, type, naam, sluitingsdatum,
-//               sluitingstijd, status, toelichting, bronUrl, actief,
-//               regelingIds: string[] (welke subsidieregelingen van deze
-//               Funder dit datamoment delen — vervangt bij elke opslag de
-//               volledige koppeling, dus altijd de complete gewenste lijst
-//               meesturen, niet alleen de wijziging) }
+//               sluitingstijd, status, toelichting, bronUrl, actief }
 export async function upsertFunderDatamoment(datamoment) {
   const res = await query((sb) =>
     sb.rpc('admin_upsert_funder_datamoment', {
@@ -265,7 +262,6 @@ export async function upsertFunderDatamoment(datamoment) {
       p_toelichting: datamoment.toelichting || null,
       p_bron_url: datamoment.bronUrl || null,
       p_actief: datamoment.actief ?? true,
-      p_regeling_ids: datamoment.regelingIds && datamoment.regelingIds.length ? datamoment.regelingIds : null,
     }),
   );
   return { id: res.data || null, error: res.error };

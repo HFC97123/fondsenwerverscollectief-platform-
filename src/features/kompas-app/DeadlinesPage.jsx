@@ -7,6 +7,7 @@ import {
   PAGE_SIZE,
   buildDeadlineDisplayOrder,
   fetchDeadlines,
+  fetchFunderDeadlines,
   getDeadlineAccess,
   getDeadlineClickAction,
   watchDeadlines,
@@ -219,6 +220,10 @@ export default function DeadlinesPage() {
   const [addMsg, setAddMsg] = useState('');
 
   const [supaRows, setSupaRows] = useState([]);
+  // Funder-brede datamomenten (geen regelingkoppeling) — aparte feed, eigen
+  // toegangsregel op basis van de Funder zelf, maar door elkaar getoond met
+  // supaRows hierboven (zie de rows-samenvoeging verderop).
+  const [supaFunderRows, setSupaFunderRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
@@ -256,9 +261,18 @@ export default function DeadlinesPage() {
       // dezelfde archief-fetch nodig als bij het handmatige "Toon archief"-
       // vinkje, ongeacht of dat vinkje zelf aanstaat.
       const jaaroverzicht = deadline === 'heel_jaar';
-      const { rows, error: fout, offline } = await fetchDeadlines({ archief: archief || jaaroverzicht });
+      const [{ rows, error: fout, offline }, funderRes] = await Promise.all([
+        fetchDeadlines({ archief: archief || jaaroverzicht }),
+        // Funder-brede datamomenten kennen geen "gesloten"/archief-status
+        // zoals regelingen (funder_deadlines geeft altijd alleen de
+        // eerstvolgende, nog niet verstreken datum terug) — dus geen
+        // archief-parameter nodig, het archiefvinkje is hier niet van
+        // toepassing.
+        fetchFunderDeadlines(),
+      ]);
 
       setSupaRows(rows);
+      setSupaFunderRows(funderRes.rows || []);
       setLoading(false);
 
       // Zonder verbinding is er geen fout te melden: de pagina toont dan wat
@@ -283,11 +297,20 @@ export default function DeadlinesPage() {
     };
   }, [load]);
 
-  // Wat via Beheer is toegevoegd staat vooraan, daarna wat uit Supabase komt.
-  const rows = useMemo(
-    () => (store.deadlines || []).concat(supaRows.filter((r) => !(store.deadlines || []).some((d) => String(d.id) === String(r.id)))),
-    [store.deadlines, supaRows],
-  );
+  // Wat via Beheer is toegevoegd staat vooraan, daarna wat uit Supabase komt
+  // (regeling-specifieke deadlines), daarna de funder-brede datamomenten.
+  // Een datamoment is óf funder-breed óf regeling-specifiek (nooit beide),
+  // dus supaRows en supaFunderRows overlappen per constructie nooit — de
+  // dedupe-check hieronder is alleen een vangnet tegen id-botsingen met wat
+  // via Beheer is toegevoegd.
+  const rows = useMemo(() => {
+    const basis = store.deadlines || [];
+    const alBekend = (id) => basis.some((d) => String(d.id) === String(id)) || supaRows.some((d) => String(d.id) === String(id));
+
+    return basis
+      .concat(supaRows.filter((r) => !basis.some((d) => String(d.id) === String(r.id))))
+      .concat(supaFunderRows.filter((r) => !alBekend(r.id)));
+  }, [store.deadlines, supaRows, supaFunderRows]);
 
   const matches = useCallback(
     (row, skip) => {
@@ -1038,7 +1061,7 @@ export default function DeadlinesPage() {
             {detail.omschrijving && (
               <div style={css('margin-bottom: 16px;')}>
                 <div style={css('margin-bottom: 7px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.05em; color: #2C4A5E;')}>
-                  OVER DEZE REGELING
+                  {detail.bronType === 'funder' ? 'OVER DIT FONDS' : 'OVER DEZE REGELING'}
                 </div>
                 <div style={css('font-size: 15px; line-height: 1.7; color: #4B5C58; white-space: pre-wrap;')}>
                   {detail.omschrijving}
@@ -1049,7 +1072,7 @@ export default function DeadlinesPage() {
             {detail.voorwaarden && (
               <div style={css('margin-bottom: 16px;')}>
                 <div style={css('margin-bottom: 7px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.05em; color: #2C4A5E;')}>
-                  VOORWAARDEN
+                  {detail.bronType === 'funder' ? 'TOELICHTING' : 'VOORWAARDEN'}
                 </div>
                 <div style={css('font-size: 15px; line-height: 1.7; color: #4B5C58; white-space: pre-wrap;')}>
                   {detail.voorwaarden}
@@ -1059,7 +1082,9 @@ export default function DeadlinesPage() {
 
             {!detail.omschrijving && !detail.voorwaarden && (
               <div style={css('margin-bottom: 16px; padding: 14px 16px; border: 1px dashed #D5E0D9; border-radius: 14px; font-size: 14.5px; line-height: 1.65; color: #7B8985;')}>
-                Omschrijving en voorwaarden komen uit de database. Zodra deze regeling daar is aangevuld, staan ze hier.
+                {detail.bronType === 'funder'
+                  ? 'Omschrijving en toelichting komen uit de database. Zodra dit fonds daar is aangevuld, staan ze hier.'
+                  : 'Omschrijving en voorwaarden komen uit de database. Zodra deze regeling daar is aangevuld, staan ze hier.'}
               </div>
             )}
 
@@ -1076,6 +1101,12 @@ export default function DeadlinesPage() {
               );
             })()}
 
+            {/* Een funder-breed datamoment (bronType 'funder') heeft geen eigen
+                regeling om in een project op te nemen — dekkingsplannen zijn
+                gekoppeld aan een subsidieregeling, niet aan een fonds als
+                geheel. Voor deze kaarten blijft alleen de bronlink hieronder
+                over. */}
+            {detail.bronType !== 'funder' && (
             <div style={css('margin-bottom: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
               <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
                 Opnemen in een project
@@ -1180,6 +1211,7 @@ export default function DeadlinesPage() {
                 </div>
               )}
             </div>
+            )}
 
             {detail.url && (
               <a
