@@ -10,7 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
-import { useKompas } from './KompasStore.jsx';
+import { useKompas, DOC_SOORTEN } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import { askKompas, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
 import { extraheerTekst } from '../../data/services/documentExtractie.js';
@@ -42,6 +42,37 @@ const STARTERS = [
   'Help mij een projectplan opzetten',
   'Hoe onderbouw ik mijn begroting?',
 ];
+
+// Vervolgopdracht, prioriteit 7 (Export): kleine, gedempte actieknopjes
+// onder een AI-resultaat - bewust geen "pil" (die suggereert een filter/
+// keuze) en geen primaire knop (dit is een secundaire actie na het antwoord).
+const actieKnopStijl = css(`
+  cursor: pointer;
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid #D6E3E9;
+  background: #F7F9F8;
+  color: #2C4A5E;
+  font-size: 12.5px;
+  font-weight: 700;
+`);
+
+// Vervolgopdracht, prioriteit 4 (Contexttabs): alleen-lezen chip, bewust géén
+// cursor/hover-styling - dit zijn statusindicatoren, geen knoppen (in
+// tegenstelling tot actieKnopStijl hierboven, dat wél aanklikbare acties is).
+const contextChipStijl = css(`
+  box-sizing: border-box;
+  min-height: 26px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid #E4EAE8;
+  background: #FFFFFF;
+  color: #5B6E69;
+  font-size: 12.5px;
+  font-weight: 600;
+`);
 
 const pil = (actief) =>
   css(`
@@ -143,12 +174,31 @@ export default function KompasToolPage() {
   const gesprekken = store.conversations || [];
   const documenten = store.genDocs || [];
   const [actiefDoc, setActiefDoc] = useState(null);
+  // Vervolgopdracht, prioriteit 7 ("Later verder bewerken"): per AI-resultaat
+  // gekozen documentsoort (DOC_SOORTEN), en een korte bevestiging na
+  // kopiëren/opslaan/exporteren. Puur lokale UI-state, geen opslag.
+  const [resultaatSoort, setResultaatSoort] = useState({});
+  const [resultaatMelding, setResultaatMelding] = useState('');
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, loading]);
+
+  // Fixt een bestaande koppeling die tot nu toe niets deed: Documentatie's
+  // "openen in de chat" (DocumentatiePage.jsx, openInChat) zet al langer
+  // store.activeDoc, maar deze pagina las tot nu toe alleen zijn eigen,
+  // nooit bijgewerkte lokale actiefDoc-state. Nu overgenomen zodra het
+  // verandert, en meteen weer gewist uit de gedeelde store (dit is puur een
+  // eenmalig "startsein", geen blijvende gedeelde toestand).
+  useEffect(() => {
+    if (store.activeDoc) {
+      setActiefDoc(store.activeDoc);
+      setGekoppeldProjectId(store.activeDoc.projectId || null);
+      store.patch({ activeDoc: null });
+    }
+  }, [store.activeDoc]);
 
   const groeiMee = () => {
     const el = taRef.current;
@@ -332,6 +382,71 @@ export default function KompasToolPage() {
     }
   };
 
+  // Vervolgopdracht, prioriteit 7 (Export). Vier acties onder een "groot"
+  // AI-resultaat - hergebruikt bestaande mechanismen, geen nieuwe opslag:
+  // - Kopiëren: alleen het klembord.
+  // - Opslaan bij project: hangt de tekst als documenten aan het gekoppelde
+  //   project (addGeneratedDocToProject -> project.docs -> dezelfde
+  //   subsidie_kompas_knowledge_items-opslag als een geüpload document).
+  // - Exporteren naar Word: puur client-side, geen nieuwe bibliotheek - een
+  //   .doc-bestand is hier een HTML-document met de klassieke Word-headers,
+  //   dat Word/LibreOffice/Google Docs als Word-document herkent en opent.
+  // - Later verder bewerken: zet actiefDoc lokaal, zelfde vorm als
+  //   Documentatie's openInChat hierboven, zodat buildContext() dit gesprek
+  //   automatisch weer als "verder werken aan ..." aanmerkt.
+  const kopieerBericht = async (tekst) => {
+    try {
+      await navigator.clipboard.writeText(tekst);
+      setResultaatMelding('Gekopieerd naar het klembord.');
+    } catch (e) {
+      setResultaatMelding('Kopiëren is niet gelukt in deze browser.');
+    }
+  };
+
+  const exporteerAlsWord = (tekst, naam) => {
+    const veilig = (s) =>
+      String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    const alinea = tekst
+      .split('\n')
+      .map((regel) => `<p>${veilig(regel) || '&nbsp;'}</p>`)
+      .join('');
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${veilig(naam)}</title></head><body>${alinea}</body></html>`;
+    const blob = new Blob(['﻿', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.download = `${naam || 'Subsidie Kompas'}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setResultaatMelding('Word-bestand wordt gedownload.');
+  };
+
+  const bewaarBijProject = (tekst, soort) => {
+    if (!gekoppeldProjectId) {
+      setResultaatMelding('Koppel eerst een project aan dit gesprek om te kunnen opslaan.');
+
+      return;
+    }
+
+    const naam = `${soort} — concept van ${new Date().toLocaleDateString('nl-NL')}`;
+
+    store.addGeneratedDocToProject(gekoppeldProjectId, { naam, soort, grootte: '', tekst });
+    setResultaatMelding(`Opgeslagen als "${naam}" bij het project.`);
+  };
+
+  const bewerkVerder = (soort) => {
+    const naam = `${soort} — concept van ${new Date().toLocaleDateString('nl-NL')}`;
+
+    setActiefDoc({ id: null, naam, soort, projectId: gekoppeldProjectId || '' });
+    setResultaatMelding(`U werkt nu verder aan "${naam}".`);
+  };
+
   // Neemt de aangevinkte velden uit het gespreksvoorstel over in het profiel,
   // met herkomst 'gesprek' (zie organisatieprofiel.js's bronLabel) en het
   // gesprek zelf als referentie.
@@ -456,6 +571,25 @@ export default function KompasToolPage() {
             </>
           )}
         </div>
+
+        {/* Vervolgopdracht, prioriteit 4 (Contexttabs): compact, alleen-lezen
+            overzicht van welke context de AI op dit moment heeft - geen
+            groot paneel, alleen de chips die de opdracht zelf noemt en die
+            vandaag ook echt bepaald kunnen worden (Fonds/Regeling ontbreken
+            bewust: er bestaat nog geen fonds-/regelingselector in de chat -
+            zie het architectuuroverzicht). */}
+        {hasPlanTools && (
+          <div style={css('display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -6px 0 16px; font-size: 12.5px; color: #7B8985;')}>
+            <span style={css('font-weight: 700; color: #9CA9A5;')}>Context:</span>
+            <span style={contextChipStijl}>
+              Project: {(store.projects || []).find((p) => p.id === gekoppeldProjectId)?.naam || 'geen'}
+            </span>
+            <span style={contextChipStijl}>Organisatie: {store.orgProfile?.name || 'niet ingevuld'}</span>
+            <span style={contextChipStijl}>
+              Documenten: {((store.projects || []).find((p) => p.id === gekoppeldProjectId)?.docs || []).length}
+            </span>
+          </div>
+        )}
 
         {/* EERDERE GESPREKKEN */}
         {paneel === 'historie' && (
@@ -695,13 +829,57 @@ export default function KompasToolPage() {
                     {m.content}
                   </div>
                 ) : (
-                  <div
-                    key={i}
-                    style={css(
-                      'align-self: flex-start; max-width: 78%; padding: 20px 22px; border-radius: 24px 24px 24px 5px; background: #FFFFFF; color: #2E3A38; box-shadow: 0 2px 10px rgba(44,74,94,0.035); font-size: 15px; line-height: 1.68; white-space: pre-wrap;',
+                  <div key={i} style={css('align-self: flex-start; max-width: 78%; display: flex; flex-direction: column; gap: 8px;')}>
+                    <div
+                      style={css(
+                        'padding: 20px 22px; border-radius: 24px 24px 24px 5px; background: #FFFFFF; color: #2E3A38; box-shadow: 0 2px 10px rgba(44,74,94,0.035); font-size: 15px; line-height: 1.68; white-space: pre-wrap;',
+                      )}
+                    >
+                      {m.content}
+                    </div>
+
+                    {/* Vervolgopdracht, prioriteit 7 (Export): alleen onder een
+                        "groot" AI-resultaat, en alleen voor Pro/Premium/Admin -
+                        Free heeft toch geen projecten/documentatie om iets bij
+                        op te slaan. */}
+                    {hasPlanTools && m.content.length > 350 && (
+                      <div style={css('display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-left: 6px;')}>
+                        <button type="button" onClick={() => kopieerBericht(m.content)} style={actieKnopStijl}>
+                          Kopiëren
+                        </button>
+                        <select
+                          value={resultaatSoort[i] || DOC_SOORTEN[0]}
+                          onChange={(e) => setResultaatSoort((cur) => ({ ...cur, [i]: e.target.value }))}
+                          aria-label="Soort document"
+                          style={css(
+                            'cursor: pointer; box-sizing: border-box; min-height: 30px; padding: 4px 10px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-size: 12.5px; font-weight: 700;',
+                          )}
+                        >
+                          {DOC_SOORTEN.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => bewaarBijProject(m.content, resultaatSoort[i] || DOC_SOORTEN[0])}
+                          style={actieKnopStijl}
+                        >
+                          Opslaan bij project
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => exporteerAlsWord(m.content, resultaatSoort[i] || DOC_SOORTEN[0])}
+                          style={actieKnopStijl}
+                        >
+                          Exporteren naar Word
+                        </button>
+                        <button type="button" onClick={() => bewerkVerder(resultaatSoort[i] || DOC_SOORTEN[0])} style={actieKnopStijl}>
+                          Later verder bewerken
+                        </button>
+                      </div>
                     )}
-                  >
-                    {m.content}
                   </div>
                 ),
               )}
@@ -717,6 +895,19 @@ export default function KompasToolPage() {
           )}
 
           <div style={css('padding: 6px clamp(14px, 3vw, 28px) 30px;')}>
+            {/* Vervolgopdracht, prioriteit 7 (Export): korte bevestiging na
+                Kopiëren/Opslaan bij project/Exporteren/Later verder bewerken -
+                zelfde compacte, gedempte stijl als accountMsg hierboven. */}
+            {resultaatMelding && (
+              <div
+                style={css(
+                  'margin-bottom: 10px; padding: 10px 14px; border: 1px solid #BFD4C6; border-radius: 12px; background: #EAF4EE; font-size: 13px; font-weight: 700; color: #2F6D47;',
+                )}
+              >
+                {resultaatMelding}
+              </div>
+            )}
+
             {actiefDoc && (
               <div
                 style={css(

@@ -346,6 +346,48 @@ export function KompasProvider({ children }) {
         }
       },
 
+      // Vervolgopdracht, prioriteit 7 (Export - "Opslaan bij project"): voegt
+      // een door de AI opgesteld resultaat (projectplan, begroting, ...) toe
+      // aan de documenten van het gekoppelde project, en bewaart het project
+      // meteen - exact hetzelfde patroon als addRegelingToProject hierboven.
+      // Bewust GEEN gebruik van genDocs/de Documentatie-opslag: die loopt op
+      // tabellen (documentatie/documentatie_versies) die niet bestaan (zie
+      // workspace.js) en valt daardoor altijd terug op localStorage. Deze
+      // functie hergebruikt in plaats daarvan de al werkende opslag van
+      // projectdocumenten (project.docs -> subsidie_kompas_knowledge_items,
+      // zie projecten.js) - geen nieuwe opslagstructuur.
+      addGeneratedDocToProject: (projectId, doc) => {
+        let bijgewerkt = null;
+
+        setSt((cur) => {
+          const list = cur.projects.slice();
+          const i = list.findIndex((p) => p.id === projectId);
+
+          if (i === -1) {
+            return cur;
+          }
+
+          const bestaand = list[i].docs || [];
+
+          // Geen dubbele opslag: exact dezelfde tekst en soort niet nogmaals
+          // toevoegen (bijv. bij twee keer op "Opslaan bij project" klikken).
+          if (bestaand.some((d) => d.soort === doc.soort && d.tekst === doc.tekst)) {
+            bijgewerkt = list[i];
+
+            return cur;
+          }
+
+          list[i] = { ...list[i], docs: bestaand.concat([doc]) };
+          bijgewerkt = list[i];
+
+          return { ...cur, projects: list };
+        });
+
+        if (bijgewerkt && projectenBron.current === 'supabase') {
+          bewaarProject(bijgewerkt);
+        }
+      },
+
       setDocProject: (docId, projectId) =>
         setSt((cur) => ({
           ...cur,
