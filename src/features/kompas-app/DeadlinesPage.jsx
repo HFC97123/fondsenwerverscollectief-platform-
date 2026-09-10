@@ -170,7 +170,23 @@ function deadlinePredicate(value, statuses) {
     }
 
     if (value === 'binnenkort') {
-      return row.status === 'Binnenkort';
+      // Dynamisch: alle deadlines waarvan de indiendatum ligt tussen vandaag
+      // en 5 kalendermaanden vanaf vandaag — herberekend bij elke
+      // filterdoorloop op basis van de actuele datum (new Date()), dus geen
+      // vast aantal dagen en geen hardcoded datum. Regelingen zonder
+      // concrete deadline_datum (d == null) of met een datum in het
+      // verleden (d < 0) vallen hier per definitie buiten.
+      if (d == null || d < 0) {
+        return false;
+      }
+
+      const vandaag = new Date();
+      vandaag.setHours(0, 0, 0, 0);
+      const grens = new Date(vandaag);
+      grens.setMonth(grens.getMonth() + 5);
+      const dagenTotGrens = Math.round((grens - vandaag) / 86400000);
+
+      return d <= dagenTotGrens;
     }
 
     if (value === 'doorlopend') {
