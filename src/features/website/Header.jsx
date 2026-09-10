@@ -25,22 +25,35 @@ const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
 const menuItemStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: #2C4A5E; cursor: pointer;');
 const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 700; color: #B4453B; cursor: pointer;');
 
-// Accountbadge in de navigatie: zelfde badge-idee als daarvoor (pastelgroen
-// #A8D5BA-familie, los van het Kompas-actiegroen #4E9A6C), nu verfijnd naar
-// een rustiger, hoogwaardiger uitstraling:
-// - Typografie: font-family 'Newsreader' (serif) — exact dezelfde
-//   lettersoort als de "Het Fondsenwervers Collectief"-logotekst hierboven
-//   in deze header — in plaats van de vetgedrukte Mulish-stijl van een
-//   statuslabel als "Binnenkort". Newsreader is prima leesbaar op dit
-//   formaat, dus geen vervangend lettertype nodig.
-// - Gewicht/ruimte: minder vet (500 i.p.v. 700), iets meer horizontale
-//   witruimte, een zachtere vlaktint zonder harde rand.
-// - Hover: dezelfde zachte overgang die de rest van het platform al
-//   gebruikt voor toggles (transition: ... 0.2s ease, zie NetwerkPage.jsx/
-//   shared/ui/primitives.jsx), niet een abrupte kleurwissel.
-function accountBadgeStijl(compact, hover) {
+// Uitgelogd heet de trigger "Login Club": een tweede, bewust rustigere CTA
+// naast de solide groene "Probeer Subsidie Kompas"-pil, zodat de twee samen
+// een gebalanceerd paar vormen (gevuld + outline) in plaats van twee keer
+// dezelfde volle groene knop. Kleur is bewust exact #4E9A6C — hetzelfde
+// huisstijlgroen dat elders (o.a. HomePage.jsx) voor vetgedrukte
+// tekstlinks/CTA's wordt gebruikt — en de opmaak (padding/font-size) volgt
+// diezelfde clamp()-waarden als navKnop hierboven, voor gelijke hoogte en
+// verticale uitlijning. Ingelogd blijft de bestaande, rustigere
+// pastelgroen/Newsreader-badge ongewijzigd (buiten scope van deze wijziging).
+function accountBadgeStijl(compact, hover, loggedOut) {
+  if (loggedOut) {
+    return css(`
+      all: unset; box-sizing: border-box; cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      padding: 10px clamp(14px, 1.6vw, 20px); border-radius: 999px;
+      background: ${hover ? 'rgba(78,154,108,0.16)' : 'rgba(78,154,108,0.08)'};
+      border: 1.5px solid #4E9A6C;
+      font-size: ${compact ? '13.5px' : 'clamp(13.5px, 1.2vw, 15px)'};
+      font-weight: 700;
+      color: #4E9A6C;
+      white-space: nowrap;
+      text-align: center;
+      transition: background 0.2s ease;
+    `);
+  }
+
   return css(`
-    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    all: unset; box-sizing: border-box; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
     padding: 8px 18px; border-radius: 999px;
     background: ${hover ? 'rgba(168,213,186,0.32)' : 'rgba(168,213,186,0.18)'};
     border: 1px solid ${hover ? 'rgba(168,213,186,0.7)' : 'rgba(168,213,186,0.4)'};
@@ -53,12 +66,22 @@ function accountBadgeStijl(compact, hover) {
   `);
 }
 
-// Compacte accountbadge + menu, in dezelfde pilstijl als de bestaande
-// "Binnenkort"-badge, zonder avatar/icoon — alleen tekst. Ingelogd:
-// "Naam · Tier" met een menu (Mijn account / Mijn abonnement / Uitloggen).
-// Uitgelogd: "Account" met een menu (Inloggen / Gratis account maken) —
-// geen verplichting, Subsidie Kompas en het Collectief blijven zonder
-// account te gebruiken.
+// Twee echte knoppen voor de Login Club-uitklap (i.p.v. losse tekstlinks):
+// Inloggen gevuld (primair, meest gekozen actie), Aanmelden als outline
+// (secundair) — beide in het huisstijlgroen, met genoeg witruimte en een
+// duidelijke focusring voor toetsenbordgebruik.
+const loginClubKnopBasis =
+  'all: unset; box-sizing: border-box; display: block; width: 100%; text-align: center; cursor: pointer; padding: 11px 14px; border-radius: 10px; font-size: 14.5px; font-weight: 700;';
+const loginClubKnopPrimair = css(`${loginClubKnopBasis} background: #4E9A6C; color: #FFFFFF;`);
+const loginClubKnopSecundair = css(`${loginClubKnopBasis} background: transparent; color: #4E9A6C; border: 1.5px solid #4E9A6C;`);
+
+// Compacte accountbadge + menu, zonder avatar/icoon — alleen tekst. Ingelogd:
+// "Naam · Tier" met een menu (Mijn account / Mijn abonnement / Uitloggen),
+// ongewijzigd. Uitgelogd: "Login Club" met een uitklap met twee echte
+// knoppen (Inloggen / Aanmelden) — geen verplichting, Subsidie Kompas en het
+// Collectief blijven zonder account te gebruiken. Routes/acties (openLogin,
+// openRegister) zijn ongewijzigd; alleen label, opmaak en knop-vorm zijn
+// aangepast.
 function AccountMenu({ compact }) {
   const app = useApp();
   const authModal = useAuthModal();
@@ -66,27 +89,39 @@ function AccountMenu({ compact }) {
   const [hover, setHover] = React.useState(false);
 
   const tierLabel = app.isAdmin ? 'Admin' : TIER_LABEL[app.subscriptionTier] || 'Free';
-  const badgeLabel = app.isLoggedIn ? `${app.profileFullName} · ${tierLabel}` : 'Account';
+  const badgeLabel = app.isLoggedIn ? `${app.profileFullName} · ${tierLabel}` : 'Login Club';
 
   return (
-    <div style={css('position: relative;')}>
-      <div
+    <div
+      style={css('position: relative;')}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') setOpen(false);
+      }}
+    >
+      <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        role="button"
-        style={accountBadgeStijl(compact, hover)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        style={accountBadgeStijl(compact, hover, !app.isLoggedIn)}
       >
         <span>{badgeLabel}</span>
         <span style={css('font-size: 8px; opacity: 0.55;')}>▼</span>
-      </div>
+      </button>
 
       {open && (
         <React.Fragment>
           <div onClick={() => setOpen(false)} style={css('position: fixed; inset: 0; z-index: 59;')} />
           <div
+            role="menu"
             style={css(
-              'position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; min-width: 190px; background: #FFFFFF; border: 1px solid #E1EAE4; border-radius: 14px; box-shadow: 0 16px 40px rgba(44,74,94,0.18); padding: 6px; display: flex; flex-direction: column;',
+              `position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; min-width: ${
+                app.isLoggedIn ? '190px' : '210px'
+              }; background: #FFFFFF; border: 1px solid #E1EAE4; border-radius: 14px; box-shadow: 0 16px 40px rgba(44,74,94,0.18); padding: ${
+                app.isLoggedIn ? '6px' : '10px'
+              }; display: flex; flex-direction: column; gap: ${app.isLoggedIn ? '0' : '8px'};`,
             )}
           >
             {app.isLoggedIn ? (
@@ -124,26 +159,28 @@ function AccountMenu({ compact }) {
               </React.Fragment>
             ) : (
               <React.Fragment>
-                <div
-                  role="button"
-                  style={menuItemStijl}
+                <button
+                  type="button"
+                  role="menuitem"
+                  style={loginClubKnopPrimair}
                   onClick={() => {
                     setOpen(false);
                     authModal.openLogin();
                   }}
                 >
                   Inloggen
-                </div>
-                <div
-                  role="button"
-                  style={menuItemStijl}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  style={loginClubKnopSecundair}
                   onClick={() => {
                     setOpen(false);
                     authModal.openRegister();
                   }}
                 >
-                  Gratis account maken
-                </div>
+                  Aanmelden
+                </button>
               </React.Fragment>
             )}
           </div>
