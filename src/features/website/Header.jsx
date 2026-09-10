@@ -25,15 +25,19 @@ const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
 const menuItemStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: #2C4A5E; cursor: pointer;');
 const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 700; color: #B4453B; cursor: pointer;');
 
-// Uitgelogd heet de trigger "Login Club": een tweede, bewust rustigere CTA
-// naast de solide groene "Probeer Subsidie Kompas"-pil, zodat de twee samen
-// een gebalanceerd paar vormen (gevuld + outline) in plaats van twee keer
+// Uitgelogd heet de trigger "Login": een tweede, bewust rustigere CTA naast
+// de solide groene "Probeer Subsidie Kompas"-pil, zodat de twee samen een
+// gebalanceerd paar vormen (gevuld + outline) in plaats van twee keer
 // dezelfde volle groene knop. Kleur is bewust exact #4E9A6C — hetzelfde
 // huisstijlgroen dat elders (o.a. HomePage.jsx) voor vetgedrukte
 // tekstlinks/CTA's wordt gebruikt — en de opmaak (padding/font-size) volgt
 // diezelfde clamp()-waarden als navKnop hierboven, voor gelijke hoogte en
-// verticale uitlijning. Ingelogd blijft de bestaande, rustigere
-// pastelgroen/Newsreader-badge ongewijzigd (buiten scope van deze wijziging).
+// verticale uitlijning. Het woord "Login" zelf gebruikt het brandingslettertype
+// (Newsreader, zelfde als het logo "Het Fondsenwervers Collectief"); de
+// uitklap-dropdown (Inloggen/Aanmelden) gebruikt bewust géén font-family hier
+// en erft dus het standaard site-lettertype (Mulish), niet Newsreader. Ingelogd
+// blijft de bestaande, rustigere pastelgroen/Newsreader-badge ongewijzigd
+// (buiten scope van deze wijziging).
 function accountBadgeStijl(compact, hover, loggedOut) {
   if (loggedOut) {
     return css(`
@@ -42,6 +46,7 @@ function accountBadgeStijl(compact, hover, loggedOut) {
       padding: 10px clamp(14px, 1.6vw, 20px); border-radius: 999px;
       background: ${hover ? 'rgba(78,154,108,0.16)' : 'rgba(78,154,108,0.08)'};
       border: 1.5px solid #4E9A6C;
+      font-family: 'Newsreader', serif;
       font-size: ${compact ? '13.5px' : 'clamp(13.5px, 1.2vw, 15px)'};
       font-weight: 700;
       color: #4E9A6C;
@@ -66,7 +71,7 @@ function accountBadgeStijl(compact, hover, loggedOut) {
   `);
 }
 
-// Twee echte knoppen voor de Login Club-uitklap (i.p.v. losse tekstlinks):
+// Twee echte knoppen voor de Login-uitklap (i.p.v. losse tekstlinks):
 // Inloggen gevuld (primair, meest gekozen actie), Aanmelden als outline
 // (secundair) — beide in het huisstijlgroen, met genoeg witruimte en een
 // duidelijke focusring voor toetsenbordgebruik.
@@ -77,9 +82,10 @@ const loginClubKnopSecundair = css(`${loginClubKnopBasis} background: transparen
 
 // Compacte accountbadge + menu, zonder avatar/icoon — alleen tekst. Ingelogd:
 // "Naam · Tier" met een menu (Mijn account / Mijn abonnement / Uitloggen),
-// ongewijzigd. Uitgelogd: "Login Club" met een uitklap met twee echte
-// knoppen (Inloggen / Aanmelden) — geen verplichting, Subsidie Kompas en het
-// Collectief blijven zonder account te gebruiken. Routes/acties (openLogin,
+// ongewijzigd. Uitgelogd: "Login" (branding-lettertype, vetgedrukt) met een
+// uitklap met twee echte knoppen (Inloggen / Aanmelden, standaard
+// site-lettertype) — geen verplichting, Subsidie Kompas en het Collectief
+// blijven zonder account te gebruiken. Routes/acties (openLogin,
 // openRegister) zijn ongewijzigd; alleen label, opmaak en knop-vorm zijn
 // aangepast.
 function AccountMenu({ compact }) {
@@ -89,7 +95,7 @@ function AccountMenu({ compact }) {
   const [hover, setHover] = React.useState(false);
 
   const tierLabel = app.isAdmin ? 'Admin' : TIER_LABEL[app.subscriptionTier] || 'Free';
-  const badgeLabel = app.isLoggedIn ? `${app.profileFullName} · ${tierLabel}` : 'Login Club';
+  const badgeLabel = app.isLoggedIn ? `${app.profileFullName} · ${tierLabel}` : 'Login';
 
   return (
     <div
