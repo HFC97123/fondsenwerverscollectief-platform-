@@ -123,7 +123,10 @@ function AccountMenu({ compact }) {
         style={accountBadgeStijl(compact, hover, !app.isLoggedIn)}
       >
         <span>{badgeLabel}</span>
-        <span style={css('font-size: 8px; opacity: 0.55;')}>▼</span>
+        {/* Uitgelogde "Login"-knop toont bewust geen pijltje meer (op expliciet
+            verzoek) — klik/hover opent het uitklapmenu nog steeds hetzelfde.
+            De ingelogde naam/tier-badge behoudt het pijltje ongewijzigd. */}
+        {app.isLoggedIn && <span style={css('font-size: 8px; opacity: 0.55;')}>▼</span>}
       </button>
 
       {open && (

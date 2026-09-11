@@ -190,8 +190,12 @@ export async function fetchFunderDeadlines({ limit = 200 } = {}) {
 export const PAGE_SIZE = 12;
 
 // Hoeveel van de eerste plekken van elke pagina gereserveerd zijn voor
-// volledig zichtbare (gratis) regelingen.
-export const FREE_SLOTS_PER_PAGE = 3;
+// volledig zichtbare (gratis) regelingen. Op expliciet verzoek verhoogd van
+// 3 naar 5 (2026-09-11) — uitsluitend deze waarde wijzigt; het
+// windowing-mechanisme in buildDeadlineDisplayOrder() hieronder (en dus de
+// bestaande Free/Pro/Premium-toegangsregels, sortering en architectuur)
+// blijft ongewijzigd.
+export const FREE_SLOTS_PER_PAGE = 5;
 
 // 'free' als de huidige gebruiker deze regeling volledig mag zien (de view
 // heeft de velden al gevuld), anders 'premium'. Eén plek die dit onderscheid
