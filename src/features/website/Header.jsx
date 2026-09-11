@@ -33,11 +33,18 @@ const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font
 // tekstlinks/CTA's wordt gebruikt — en de opmaak (padding/font-size) volgt
 // diezelfde clamp()-waarden als navKnop hierboven, voor gelijke hoogte en
 // verticale uitlijning. Het woord "Login" zelf gebruikt het brandingslettertype
-// (Newsreader, zelfde als het logo "Het Fondsenwervers Collectief"); de
-// uitklap-dropdown (Inloggen/Aanmelden) gebruikt bewust géén font-family hier
-// en erft dus het standaard site-lettertype (Mulish), niet Newsreader. Ingelogd
-// blijft de bestaande, rustigere pastelgroen/Newsreader-badge ongewijzigd
-// (buiten scope van deze wijziging).
+// (Newsreader, zelfde als het logo "Het Fondsenwervers Collectief") op het
+// zwaarste écht geladen gewicht (600 — Google Fonts-import in app.html laadt
+// voor Newsreader alleen 400/500/600/500-italic; 700 bestaat daar niet en zou
+// door de browser als onechte/"faux" bold worden nagebootst, wat er minder
+// verzorgd uitziet). Een subtiele -webkit-text-stroke voegt net dat beetje
+// extra gewicht toe zodat het woord duidelijk dikker oogt dan gewone 600-tekst,
+// zonder een nieuwe fontgewicht te hoeven laden — bewust beperkt tot déze knop,
+// de rest van de site/het lettertype blijft ongemoeid. De uitklap-dropdown
+// (Inloggen/Aanmelden) gebruikt bewust géén font-family hier en erft dus het
+// standaard site-lettertype (Mulish), niet Newsreader. Ingelogd blijft de
+// bestaande, rustigere pastelgroen/Newsreader-badge ongewijzigd (buiten scope
+// van deze wijziging).
 function accountBadgeStijl(compact, hover, loggedOut) {
   if (loggedOut) {
     return css(`
@@ -48,7 +55,9 @@ function accountBadgeStijl(compact, hover, loggedOut) {
       border: 1.5px solid #4E9A6C;
       font-family: 'Newsreader', serif;
       font-size: ${compact ? '13.5px' : 'clamp(13.5px, 1.2vw, 15px)'};
-      font-weight: 700;
+      font-weight: 600;
+      -webkit-text-stroke: 0.4px currentColor;
+      letter-spacing: 0.1px;
       color: #4E9A6C;
       white-space: nowrap;
       text-align: center;
