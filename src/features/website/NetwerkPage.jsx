@@ -121,7 +121,6 @@ export default function NetwerkPage() {
     showLogin,
     showRegister,
     isLoggedIn,
-    hideContact,
     profileInitials,
     profileFullName,
     logout,
@@ -191,7 +190,6 @@ export default function NetwerkPage() {
     qDraftBody,
     setQDraftBody,
     submitQuestion,
-    members,
     vacancies,
     goVacatures,
     goKompas,
@@ -627,7 +625,9 @@ export default function NetwerkPage() {
 
           {ledenlijstEmpty && (
             <div style={css('padding: 26px 22px; border: 1px dashed #D5E0D9; border-radius: 18px; font-size: 15px; line-height: 1.65; color: #7B8985;')}>
-              Geen leden gevonden. Pas uw zoekopdracht aan.
+              {(ledenQuery || '').trim()
+                ? 'Geen leden gevonden. Pas uw zoekopdracht aan.'
+                : 'Nog geen leden zichtbaar. Zet uw profiel op zichtbaar om als eerste in deze lijst te verschijnen.'}
             </div>
           )}
         </div>
@@ -920,28 +920,12 @@ export default function NetwerkPage() {
             ))}
           </div>
         )}
-      </div>
 
-      {/* LEDEN & CONTACT */}
-      <div style={sectie}>
-        <div style={css("font-family: 'Newsreader', serif; font-size: clamp(23px, 3.2vw, 28px); font-weight: 600; color: #2C4A5E; margin-bottom: 32px;")}>
-          Leden &amp; contact
-        </div>
-        <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 20px;')}>
-          {(members || []).map((member, i) => (
-            <div key={i} style={css('background: #FFFFFF; border-radius: 18px; padding: 24px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px;')}>
-              <div style={css('width: 56px; height: 56px; border-radius: 50%; background: repeating-linear-gradient(135deg, #A9C9DE, #A9C9DE 6px, #C6DDEA 6px, #C6DDEA 12px);')} />
-              <div style={css('font-weight: 700; color: #2C4A5E; font-size: 15px;')}>{member.name}</div>
-              <div style={css('font-size: 13px; color: #4B5C58;')}>{member.role}</div>
-              {isLoggedIn && <div style={css('font-size: 12.5px; color: #4E9A6C; font-weight: 700;')}>{member.email}</div>}
-              {hideContact && (
-                <div onClick={requireLogin} style={css('cursor: pointer; font-size: 12.5px; color: #8FA09B;')}>
-                  Log in voor contact
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        {!hasQuestions && (
+          <div style={css('padding: 26px 22px; border: 1px dashed #D5E0D9; border-radius: 18px; font-size: 15px; line-height: 1.65; color: #7B8985;')}>
+            Nog geen vragen gesteld. Wees het eerste lid dat een vraag plaatst.
+          </div>
+        )}
       </div>
 
       {/* VACATURES */}

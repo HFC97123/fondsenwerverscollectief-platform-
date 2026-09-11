@@ -25,11 +25,8 @@ import {
   resources,
   sessions,
   blogPosts,
-  questions,
-  members,
   vacancies,
   newsItems,
-  testimonials,
   videos,
   CHAT_SYSTEM_PROMPT,
 } from './defaultContent.js';
@@ -778,47 +775,9 @@ export function WebsiteProvider({ children, route, param }) {
   const siteVacancies = fromDatabase('vacancies', vacancies);
 
   /* ---- Collectief: ledenlijst, bijeenkomsten, vraag & antwoord ----
-     Overgenomen uit het goedgekeurde ontwerp. Gepubliceerde inhoud uit
-     Supabase gaat voor; wat een lid zelf voorstelt of plaatst komt erbij. */
-
-  const LEDEN_DATA = [
-    {
-      naam: 'Sanne de Vries',
-      rol: 'Fondsenwerver · Stichting Buurtkracht',
-      bio: 'Werkt aan wijkinitiatieven en zoekt vooral bij vermogensfondsen en gemeenten.',
-      tags: ['Sociale cohesie', 'Utrecht'],
-    },
-    {
-      naam: 'Joost Verhoeven',
-      rol: 'Zelfstandig fondsenwerver',
-      bio: 'Begeleidt culturele organisaties bij meerjarige aanvragen en dekkingsplannen.',
-      tags: ['Cultuur', 'Meerjarig'],
-    },
-    {
-      naam: 'Fatima el Amrani',
-      rol: 'Coördinator · Jeugdwerk Oost',
-      bio: 'Zoekt financiering voor jongerenprogramma’s en talentontwikkeling.',
-      tags: ['Jeugd', 'Amsterdam'],
-    },
-    {
-      naam: 'Pieter Hoogland',
-      rol: 'Directeur · Zorgcoöperatie Noord',
-      bio: 'Combineert zorgsubsidies met particuliere fondsen voor ouderenprojecten.',
-      tags: ['Zorg en welzijn', 'Groningen'],
-    },
-    {
-      naam: 'Rianne Bakker',
-      rol: 'Fondsenwerver · Natuurpunt Gelderland',
-      bio: 'Ervaring met provinciale regelingen en Europese cofinanciering.',
-      tags: ['Natuur', 'Gelderland'],
-    },
-    {
-      naam: 'Ahmed Yildiz',
-      rol: 'Programmamanager · Stichting Meedoen',
-      bio: 'Werkt aan armoedebestrijding en schuldhulp, veel gemeentelijke trajecten.',
-      tags: ['Armoede en inclusie', 'Rotterdam'],
-    },
-  ];
+     Alleen echte leden: wie zelf zichtbaar staat via het profiel. Geen
+     voorbeeld-/demoleden meer — een lege lijst toont de lege staat
+     hieronder (ledenlijstEmpty) in plaats van verzonnen profielen. */
 
   const AVATAR_KLEUREN = ['#A8D5BA', '#A9C9DE', '#D9E7C9', '#CFE0EB', '#E4DDF0', '#F0E3C9'];
 
@@ -846,7 +805,6 @@ export function WebsiteProvider({ children, route, param }) {
     : [];
 
   const ledenGefilterd = eigenLid
-    .concat(LEDEN_DATA)
     .filter(
       (l) =>
         !ledenZoek ||
@@ -858,8 +816,10 @@ export function WebsiteProvider({ children, route, param }) {
     siteSessions.map((s) => ({ ...s, status: s.status || 'Geaccepteerd' })),
   );
 
-  // Vragen: gepubliceerd uit de database, plus wat een lid deze sessie plaatste.
-  const zichtbareVragen = st.memberQuestions.concat(questions).map((q, i) => {
+  // Vragen: alleen wat leden zelf plaatsen. Geen voorbeeldvragen meer —
+  // een lege lijst toont de lege staat (hasQuestions) in plaats van
+  // verzonnen forumvragen.
+  const zichtbareVragen = st.memberQuestions.map((q, i) => {
     const id = q.id || `q${i}`;
 
     return {
@@ -1696,7 +1656,6 @@ export function WebsiteProvider({ children, route, param }) {
     hasQuestions: zichtbareVragen.length > 0,
     experiences: siteExperiences,
     hasExperiences: siteExperiences.length > 0,
-    members,
     vacancies: siteVacancies,
 
     /* ---- Zichtbaarheid in de ledenlijst ---- */
@@ -1852,7 +1811,6 @@ export function WebsiteProvider({ children, route, param }) {
     masterclasses: siteMasterclasses,
     hasMasterclasses: siteMasterclasses.length > 0,
 
-    testimonials,
     videos: siteVideos,
 
     contentLoaded: st.contentLoaded,

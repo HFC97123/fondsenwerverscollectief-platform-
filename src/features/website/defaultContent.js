@@ -80,20 +80,6 @@ export const blogPosts = [
         { tag: 'Intervisie', title: 'Omgaan met een subsidie die net te laat kwam', excerpt: 'Hoe je een gemiste deadline ombuigt naar een sterkere aanvraag voor de volgende ronde.', author: 'Redactie', role: 'Het Fondsenwervers Collectief' }
       ];
 
-export const questions = [
-        { title: 'Hoe onderbouw je een meerjarige aanvraag bij een klein fonds?', author: 'Een lid', role: 'Fondsenwerver', answers: 6 },
-        { title: 'Wie heeft ervaring met co-financiering tussen gemeente en provincie?', author: 'Een lid', role: 'Zelfstandig fondsenwerver', answers: 3 },
-        { title: 'Beste aanpak voor een eerste kennismaking met een nieuw fonds?', author: 'Een lid', role: 'Fondsenwerver', answers: 9 },
-        { title: 'Hoe rapporteer je impact aan een fonds zonder overdreven data te verzamelen?', author: 'Een lid', role: 'Fondsenwerver', answers: 4 }
-      ];
-
-export const members = [
-        { name: 'Lid van het Collectief', role: 'Fondsenwerver', email: 'zichtbaar na registratie' },
-        { name: 'Lid van het Collectief', role: 'Zelfstandig fondsenwerver', email: 'zichtbaar na registratie' },
-        { name: 'Lid van het Collectief', role: 'Fondsenwerver', email: 'zichtbaar na registratie' },
-        { name: 'Lid van het Collectief', role: 'Fondsenwerver', email: 'zichtbaar na registratie' }
-      ];
-
 export const vacancies = [
         { title: 'Relatiemanager Fondsenwerving', org: 'Stichting AAP', location: 'Almere', type: 'Parttime', tags: ['Dierenwelzijn', 'Relatiebeheer'], url: 'https://www.aap.nl/vacatures-betaald-werken/vacature-relatiemanager-fondsenwerving/' },
         { title: 'Senior Relatiemanager & Fondsenwerver', org: 'De Natuur en Milieufederaties', location: 'Utrecht', type: 'Parttime', tags: ['Natuur & milieu', 'Major donors'], url: 'https://www.natuurenmilieufederaties.nl/vacature/de-natuur-en-milieufederaties-zoeken-een-commerciele-en-bevlogen-senior-relatiemanager-fondsenwerver/' },
@@ -107,11 +93,6 @@ export const newsItems = [
         { tag: 'Subsidies', date: '3 jul 2026', title: 'Nieuwe ronde Fonds voor Cultuurparticipatie geopend', excerpt: 'Culturele instellingen kunnen tot 1 oktober aanvragen indienen voor participatieprojecten in het onderwijs.' },
         { tag: 'Regelgeving', date: '28 jun 2026', title: 'Wat verandert er in de ANBI-regelgeving per 2027?', excerpt: 'Een overzicht van de belangrijkste wijzigingen en wat organisaties nu al kunnen voorbereiden.' },
         { tag: 'Vakkennis', date: '19 jun 2026', title: 'Vijf trends in fondsenwerving voor 2026', excerpt: 'Van AI-ondersteuning tot kortere aanvraagtermijnen: dit zien we terug in de sector dit jaar.' }
-      ];
-
-export const testimonials = [
-        { quote: 'Subsidie Kompas scheelde ons dagen zoekwerk. We vonden een fonds waar we nooit aan gedacht hadden.', name: 'Lid van het Collectief', role: 'Fondsenwerver' },
-        { quote: 'Als kleine stichting hebben we geen fondsenwerver in dienst. Dit platform gaf ons houvast waar we het zelf moesten doen.', name: 'Lid van het Collectief', role: 'Kleine organisatie' }
       ];
 
 export const videos = [
