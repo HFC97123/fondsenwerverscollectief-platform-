@@ -32,7 +32,11 @@ export const DATAMOMENT_STATUSSEN = [
 // params: { search, funderId, funderSearch, status, dataTier, sourceType,
 //           classificationReviewed, accessTier, bandbreedteBijdrageId, thema,
 //           doelgroep, regio, type, discoveredBy, sortColumn, sortDirection,
-//           page, pageSize }
+//           page, pageSize, regelingId }
+// regelingId: haalt (via dezelfde admin_list_subsidieregelingen) precies één
+// regeling op, met alle admin-velden — gebruikt door de inline admin-bewerk-
+// modus op de Deadlinespagina, die zo geen aparte "haal één regeling op"-RPC
+// nodig heeft (zelfde patroon als funderId bij fetchFunders()).
 export async function fetchSubsidieregelingen(params = {}) {
   const {
     search = null,
@@ -53,12 +57,13 @@ export async function fetchSubsidieregelingen(params = {}) {
     sortDirection = 'asc',
     page = 0,
     pageSize = 50,
+    regelingId = null,
   } = params;
 
   const res = await query(
     (sb) =>
       sb.rpc('admin_list_subsidieregelingen', {
-        p_regeling_id: null,
+        p_regeling_id: regelingId || null,
         p_funder_id: funderId || null,
         p_search: search || null,
         p_status: status || null,

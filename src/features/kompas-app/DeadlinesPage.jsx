@@ -16,6 +16,12 @@ import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
+// Admin Inline Edit Mode: uitsluitend zichtbaar/actief voor app.isAdmin (zie
+// verderop). Bestaande data-laadlogica hierboven (fetchDeadlines/
+// fetchFunderDeadlines/watchDeadlines) blijft voor alle gebruikers ongewijzigd
+// — dit component doet zijn eigen, aparte admin-only ophaal-/opslaanwerk pas
+// zodra een beheerder een kaart daadwerkelijk uitklapt.
+import AdminInlineEdit from './AdminInlineEdit.jsx';
 
 // Regelgebaseerde inschatting: discipline, werkgebied en omvang tegenover het profiel.
 // Geen score met valse precisie, alleen wat wel en niet aansluit.
@@ -255,6 +261,11 @@ export default function DeadlinesPage() {
   const [detailId, setDetailId] = useState(null);
   const [upgradeId, setUpgradeId] = useState(null);
   const [desktop, setDesktop] = useState(() => window.innerWidth >= 900);
+  // Admin Inline Edit Mode: welke ene kaart momenteel is uitgeklapt voor
+  // bewerken (nooit meer dan één tegelijk). Alleen gelezen/gezet wanneer
+  // app.isAdmin waar is — voor overige gebruikers blijft dit altijd null en
+  // heeft het geen enkel effect op wat zij zien of welke data wordt geladen.
+  const [expandedAdminId, setExpandedAdminId] = useState(null);
 
   useEffect(() => {
     const onResize = () => setDesktop(window.innerWidth >= 900);
@@ -805,9 +816,12 @@ export default function DeadlinesPage() {
                   const st = STATUS_STYLE[r.status] || STATUS_STYLE.Open;
                   const urgent = days != null && days >= 0 && days <= 14;
 
+                  const isAdmin = app.isAdmin;
+                  const adminExpanded = isAdmin && expandedAdminId === r.id;
+
                   return (
+                    <div key={r.id}>
                     <div
-                      key={r.id}
                       role="button"
                       tabIndex={0}
                       onClick={() => handleCardClick(r)}
@@ -829,6 +843,31 @@ export default function DeadlinesPage() {
                         align-items: center;
                       `)}
                     >
+                      {isAdmin && (
+                        <div
+                          style={css('display: flex; align-items: center; gap: 8px; flex-wrap: wrap;')}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setExpandedAdminId(adminExpanded ? null : r.id)}
+                            style={css(`
+                              cursor: pointer;
+                              padding: 5px 11px;
+                              border: 1px solid #BFD4C6;
+                              border-radius: 999px;
+                              background: ${adminExpanded ? '#EAF4EE' : '#FFFFFF'};
+                              color: #2C4A5E;
+                              font-size: 12px;
+                              font-weight: 800;
+                              white-space: nowrap;
+                            `)}
+                          >
+                            {adminExpanded ? '✕ Sluiten' : '✏️ Bewerken'}
+                          </button>
+                        </div>
+                      )}
+
                       <div style={css('min-width: 0;')}>
                         <div style={css('margin-bottom: 5px; font-size: 16px; font-weight: 800; color: #2C4A5E; text-wrap: pretty;')}>
                           {r.naam}
@@ -900,6 +939,17 @@ export default function DeadlinesPage() {
                           {r.status}
                         </span>
                       </div>
+                    </div>
+
+                    {adminExpanded && (
+                      <div style={css('margin-top: 10px;')}>
+                        <AdminInlineEdit
+                          row={r}
+                          onClose={() => setExpandedAdminId(null)}
+                          onSaved={() => load(true)}
+                        />
+                      </div>
+                    )}
                     </div>
                   );
                   });

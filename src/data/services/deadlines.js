@@ -125,6 +125,12 @@ export function normalizeFunderDeadline(row) {
   return {
     id: row.id,
     bronType: 'funder',
+    // Nodig voor de admin-inlinebewerkmodus op de Deadlinespagina: die moet
+    // weten welk fonds bij een funder-breed datamoment hoort om het via
+    // fetchFunders({ funderId }) op te kunnen halen. De onderliggende query
+    // (FUNDER_SELECT hierboven) haalt funder_id al op; alleen normalize()
+    // gaf dat tot nu toe niet door.
+    funderId: row.funder_id,
     naam: row.funder_naam || '—',
     funder: row.funder_naam || '—',
     funderType: row.funder_type || '',
