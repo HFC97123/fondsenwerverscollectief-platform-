@@ -324,10 +324,16 @@ Alle overige instructies uit kompas.system blijven volledig van toepassing.
 Gebruik alleen de daadwerkelijk server-side vastgestelde tier en modus.
 
 WEBSEARCH BESCHIKBAAR
-Je hebt een websearch-tool tot je beschikking voor actuele, publieke informatie (bijvoorbeeld actuele deadlines, bedragen, openstelling van een subsidieregeling, of aanvullende fondsen buiten deze database). Gebruik deze zelfstandig wanneer actuele externe informatie nodig is voor een goed antwoord; dit is geen verplichte stap bij iedere vraag.
+Je hebt een websearch-tool tot je beschikking voor actuele, publieke informatie (bijvoorbeeld actuele deadlines, bedragen, openstelling van een subsidieregeling, of aanvullende fondsen buiten deze database). Voor sommige vragen is de websearch-tool voor dit bericht verplicht gesteld (server-side bepaald, niet door het lid zelf af te dwingen) - gebruik hem dan ook daadwerkelijk. Is dat niet het geval, gebruik de tool dan zelfstandig wanneer actuele externe informatie nodig is voor een goed antwoord; dit is geen verplichte stap bij iedere vraag.
 Vind je via websearch geen betrouwbaar of eenduidig antwoord, of is een bron niet te raadplegen, verzin dan nooit een actueel feit: zeg expliciet tegen het lid dat dit niet kon worden bevestigd.
 Voor deadlines, bedragen en aanvraagvoorwaarden heeft de officiële website van de subsidieverstrekker of het fonds zelf de voorkeur boven secundaire bronnen.
-Websearch is aanvullende, externe research en verandert nooit welke gegevens hierboven al voor deze tier zichtbaar zijn - het maakt nooit afgeschermde databasegegevens van een hogere tier alsnog zichtbaar.`;
+Websearch is aanvullende, externe research en verandert nooit welke gegevens hierboven al voor deze tier zichtbaar zijn - het maakt nooit afgeschermde databasegegevens van een hogere tier alsnog zichtbaar.
+
+STAP 4B - GESPREKSGESCHIEDENIS
+Gebruik relevante feiten, keuzes en resultaten uit de meegegeven gespreksgeschiedenis bij vervolgvragen. Vraag informatie niet opnieuw als die al beschikbaar is, tenzij de gebruiker haar corrigeert of de informatie aantoonbaar ontbreekt.
+
+STAP 4B - DATABASE VERSUS ACTUELE OFFICIËLE BRON
+Voor tijdgevoelige gegevens zoals deadlines, openstelling, aanvraagbedragen en actuele voorwaarden is een actuele officiële bron leidend boven oudere opgeslagen database-informatie. Als beide van elkaar verschillen, benoem dat verschil expliciet.`;
 }
 
 async function legVerbruikVast(admin: any, row: Record<string, unknown>) {
@@ -970,6 +976,77 @@ function leesResponsesUitvoer(data: any): { tekst: string; bronnen: { title: str
   return { tekst, bronnen, websearchGebruikt };
 }
 
+// STAP 4B, fix 1 (websearch betrouwbaar maken): de acceptatietest van STAP 3
+// (claude/status-stap4a-acceptatietest.md) liet zien dat tool_choice: 'auto'
+// onvoldoende betrouwbaar is - bij meerdere vragen waarvoor kompas.system
+// expliciet actueel onderzoek voorschrijft (STAP 2 van de fondsenscan-
+// werkwijze: "voer eerst actueel online fondsenonderzoek uit", en de losse
+// regels over actuele deadlines/bedragen/openstelling) koos het model ervoor
+// niet te zoeken. Dit is bewust GEEN AI-classifier en GEEN tweede modelcall:
+// een klein, uitlegbaar regelsysteem dat alleen bepaalt of websearch dit ene
+// bericht verplicht is (tool_choice: 'required') of, zoals voorheen, aan het
+// model zelf overgelaten wordt (tool_choice: 'auto'). De classificatie
+// gebeurt uitsluitend server-side, op basis van de laatste vraag van het lid
+// en al bestaande server-side signalen (kompasMode, matchSignalen/project/
+// context) - een lid kan dit nooit zelf afdwingen door iets in de prompttekst
+// te zetten.
+//
+// Twee categorieën:
+//  A. Fondsen/financiers ZOEKEN of MATCHEN (fondsadvies, fondsenscan,
+//     aanvullende financier). kompas.system schrijft voor dat hiervoor altijd
+//     eerst actueel online onderzoek plaatsvindt ("ongeacht accountniveau"),
+//     maar ook dat er bij onvoldoende projectcontext eerst hooguit drie
+//     verduidelijkende vragen worden gesteld in plaats van meteen gezocht.
+//     Daarom alleen verplicht wanneer er al voldoende projectcontext is
+//     (matchSignalen, een gekoppeld project, een contextveld, of dit is al
+//     een vervolgvraag in hetzelfde gesprek) - anders blijft 'auto', zodat de
+//     contextcontrole/verduidelijkende vragen uit kompas.system intact blijft.
+//  B. Een concrete FEITELIJKE controle over een specifieke regeling/fonds
+//     (deadline, openstelling, aanvraagbedrag, voorwaarden, "nog open/
+//     beschikbaar/gesloten", verificatie). Dit is altijd verplicht, ongeacht
+//     projectcontext: het gaat om een extern, publiek feit, niet om de eigen
+//     projectmatching van het lid.
+const WEBSEARCH_FONDSENONDERZOEK_PATRONEN: RegExp[] = [
+  /\bfondsen?\b[\s\S]{0,40}\b(passen|zoeken|vinden|matchen)\b/i,
+  /\b(financiers?|geldschieters?)\b[\s\S]{0,40}\b(zoeken|vinden)\b/i,
+  /\baanvullend(e)?\b[\s\S]{0,40}\b(financier|fonds(en)?)\b/i,
+  /\b(nieuwe|extra|andere)\b[\s\S]{0,40}\b(financier|fonds(en)?)\b/i,
+  /\bfondsenscan\b/i,
+  /\bsubsidieregeling(en)?\b[\s\S]{0,40}\b(zoeken|vinden)\b/i,
+];
+
+const WEBSEARCH_FEITELIJKE_CONTROLE_PATRONEN: RegExp[] = [
+  /\bdeadline\b/i,
+  /\bopenstelling\b/i,
+  /\bnog\b[\s\S]{0,40}\b(indienen|aanvragen|open|beschikbaar|mogelijk)\b/i,
+  /\bgesloten\b/i,
+  /\b(maximale?|maximum|minimale?|minimum)\b[\s\S]{0,40}bedrag\b/i, // 'bedrag' zonder voorloop-\b: vangt ook samenstellingen als 'aanvraagbedrag'/'subsidiebedrag'
+  /\bhoeveel\b[\s\S]{0,40}\b(aanvragen|subsidie|bijdrage|krijgen)\b/i,
+  /\bactuele?\b[\s\S]{0,40}\b(voorwaarden|informatie|gegevens|status)\b/i,
+  /\bklopt\b[\s\S]{0,40}\bnog\b/i,
+  /\bverifi[eë]er/i,
+];
+
+function vereistWebsearch(berichten: any[], kompasMode: KompasMode, heeftProjectContext: boolean): boolean {
+  const gebruikersBerichten = berichten.filter((m) => m && m.role === 'user' && m.content);
+  const laatste = gebruikersBerichten.length ? String(gebruikersBerichten[gebruikersBerichten.length - 1].content) : '';
+
+  if (WEBSEARCH_FEITELIJKE_CONTROLE_PATRONEN.some((r) => r.test(laatste))) {
+    return true;
+  }
+
+  const ditIsFondsenonderzoek =
+    kompasMode === 'fondsadvies' || WEBSEARCH_FONDSENONDERZOEK_PATRONEN.some((r) => r.test(laatste));
+
+  if (!ditIsFondsenonderzoek) {
+    return false;
+  }
+
+  // Al voldoende context om echt te gaan matchen (in plaats van eerst
+  // verduidelijkende vragen te stellen, zoals kompas.system voorschrijft)?
+  return heeftProjectContext || gebruikersBerichten.length > 1;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS });
@@ -1244,6 +1321,11 @@ Deno.serve(async (req) => {
   // hier server-side gevalideerd/genormaliseerd vóór gebruik.
   const modus = resolveerModus(body.kompasMode);
 
+  // STAP 4B, fix 1: hergebruikt uitsluitend al bestaande, hierboven al
+  // berekende server-side signalen (matchSignalen, project, body.context) -
+  // geen nieuw clientveld, dus niets dat het lid zelf kan sturen.
+  const heeftProjectContext = Boolean(matchSignalen) || Boolean(project) || Boolean(String(body.context || '').trim());
+
   const invoer = [
     { role: 'system', content: systeem },
     { role: 'system', content: runtimeContextBericht(tier, modus) },
@@ -1275,6 +1357,18 @@ Deno.serve(async (req) => {
     content: m.content,
   }));
 
+  // STAP 4B, fix 1: officiële OpenAI-documentatie (developers.openai.com,
+  // web_search-gids, sectie Limitations, geraadpleegd 2026-09-13) noemt
+  // expliciet: "With tool_choice: 'auto', search is optional. Use
+  // tool_choice: 'required' [...] when search must run." 'required' is dus
+  // een gedocumenteerde, geen verzonnen waarde. Bewust NIET de object-vorm
+  // tool_choice: { type: 'web_search' } gebruikt om een specifieke tool af te
+  // dwingen: dat stuit in de praktijk op een gemelde OpenAI-bug rond interne
+  // aliassen (bijv. 'web_search' vs. 'web_search_preview'). Omdat hier maar
+  // één tool wordt aangeboden, dwingt de generieke waarde 'required' hetzelfde
+  // af (een verplichte aanroep van web_search) zonder dat risico.
+  const toolChoice = vereistWebsearch(berichten, modus, heeftProjectContext) ? 'required' : 'auto';
+
   const antwoord = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -1282,12 +1376,24 @@ Deno.serve(async (req) => {
       model: CHAT_MODEL,
       input: responsesInvoer,
       tools: [{ type: 'web_search' }],
-      tool_choice: 'auto',
+      tool_choice: toolChoice,
       // Geen temperature: gpt-5.5 is een redeneermodel en ondersteunt deze
-      // parameter niet (actuele documentatie). Bewust ruim max_output_tokens:
-      // bij redeneermodellen tellen onzichtbare redeneertokens ook mee in dit
-      // budget - te laag ingesteld geeft een leeg of afgekapt antwoord.
-      max_output_tokens: 4096,
+      // parameter niet (actuele documentatie).
+      //
+      // STAP 4B, fix 2: de acceptatietest liet een projectplan-antwoord
+      // midden in een zin afbreken. Oorzaak: bij redeneermodellen tellen
+      // onzichtbare redeneertokens ook mee in max_output_tokens, en 4096 was
+      // te krap voor een lang, meerdelig document (kompas.system's eigen
+      // projectplan-structuur heeft negen stappen). OpenAI's eigen
+      // documentatie over redeneermodellen (developers.openai.com,
+      // geraadpleegd 2026-09-13) noemt expliciet: "OpenAI recommends
+      // reserving at least 25,000 tokens for reasoning and outputs when you
+      // start experimenting with these models." 25000 is dus geen verzonnen
+      // of willekeurig extreem getal, maar exact deze aanbevolen startwaarde -
+      // ruim boven de lengte van zelfs het langste antwoord uit de
+      // acceptatietest (circa 6000 tokens geschat op basis van de ~19.000
+      // tekens vóór de afbreking).
+      max_output_tokens: 25000,
       reasoning: { effort: 'low' },
       // Bewust geen server-side bewaring bij OpenAI (default is 30 dagen):
       // dit gesprek kan persoonsgegevens en organisatie-/projectgegevens
@@ -1308,6 +1414,24 @@ Deno.serve(async (req) => {
 
     if (data.status === 'failed') {
       return json({ error: 'De assistent kon geen antwoord geven. Probeer het opnieuw.' }, 502);
+    }
+
+    // STAP 4B, fix 2: een 'incomplete' response (bijv. door
+    // incomplete_details.reason === 'max_output_tokens', ook na de verhoging
+    // hierboven nog denkbaar bij een zeer lang document) mag nooit stilzwijgend
+    // als een volledig, afgerond antwoord aan het lid worden getoond - dat zou
+    // een document midden in een zin kunnen afbreken zonder dat iemand dat
+    // merkt. Kleinste veilige route (geen automatische vervolgaanroep, geen
+    // hertoegevoegde tekst: dat risico op dubbele/overlappende tekst wordt
+    // hiermee bewust vermeden): de afgekapte tekst wordt niet getoond, het lid
+    // krijgt in plaats daarvan een eerlijke, duidelijke melding.
+    if (data.status === 'incomplete') {
+      return json({
+        answer:
+          'Dit antwoord kon niet volledig worden gegenereerd binnen de beschikbare ruimte. Vraag om een korter onderdeel (bijvoorbeeld eerst het projectdoel en de doelgroep, of alleen de begroting) zodat ik dit volledig kan uitwerken.',
+        sources: [],
+        veldVoorstellen: {},
+      });
     }
 
     const { tekst, bronnen } = leesResponsesUitvoer(data);
@@ -1430,6 +1554,23 @@ Deno.serve(async (req) => {
                 volledig += deel.delta;
                 stuur({ delta: deel.delta });
               } else if (deel.type === 'response.completed') {
+                // STAP 4B, fix 2: zelfde controle als bij het niet-streamende
+                // pad hierboven. In streaming-vorm zijn er mogelijk al losse
+                // delta-fragmenten naar de client gestuurd vóórdat bekend werd
+                // dat de response incompleet is; het uiteindelijke, opgeslagen
+                // antwoord (en wat legVerbruikVast() registreert) toont daarom
+                // nooit de afgekapte tekst als eindresultaat, maar altijd de
+                // eerlijke melding.
+                if (deel.response?.status === 'incomplete') {
+                  volledig =
+                    'Dit antwoord kon niet volledig worden gegenereerd binnen de beschikbare ruimte. Vraag om een korter onderdeel (bijvoorbeeld eerst het projectdoel en de doelgroep, of alleen de begroting) zodat ik dit volledig kan uitwerken.';
+                  bronnen = [];
+
+                  if (deel.response?.usage) usage = deel.response.usage;
+
+                  continue;
+                }
+
                 const gelezen = leesResponsesUitvoer(deel.response);
 
                 // Veiligheidsnet: normaal is volledig al via de delta-events
