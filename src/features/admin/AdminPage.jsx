@@ -501,7 +501,7 @@ export default function AdminPage() {
                 items: block.items,
               }))}
               title="AI-teksten"
-              intro="De systeemteksten die de assistent meekrijgt. Leeg laten betekent: de ingebouwde tekst blijft gelden."
+              intro="De systeemteksten die de assistent meekrijgt. Voor Subsidie Kompas geldt: er is geen ingebouwde reservetekst meer - staat 'Systeemtekst Subsidie Kompas' leeg, dan start de assistent geen gesprek en toont een foutmelding in plaats van een vervangende tekst. De aanvullingsvelden mogen wel leeg blijven; die worden dan simpelweg niet toegevoegd."
               user={user}
               notify={notify}
               clearMessages={clearMessages}
