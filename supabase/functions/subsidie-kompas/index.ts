@@ -51,6 +51,24 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-4o';
 
+// STAP 3 (websearch, 2026-09-13): apart, eigen model uitsluitend voor de
+// hoofdchat-aanroep hieronder (Responses API + web_search-tool). MODEL
+// hierboven (gpt-4o, Chat Completions) blijft ongewijzigd voor
+// voorstelUitTekst()/extract/website/de leerstap - géén van die aanroepen
+// heeft websearch nodig en gpt-4o functioneert daar prima; dit is dus bewust
+// geen algehele modelwijziging.
+//
+// Waarom een ander model hier: actuele, officiële OpenAI-documentatie
+// (developers.openai.com, geraadpleegd 2026-09-13) laat zien dat gpt-4o de
+// web_search-tool op de Responses API niet ondersteunt, en dat de oude
+// Chat-Completions-varianten die dat wel konden (gpt-4o-search-preview /
+// gpt-4o-mini-search-preview) sinds 2026-07-23 zijn uitgefaseerd. Een
+// modelwijziging is dus strikt noodzakelijk om websearch als echte tool
+// mogelijk te maken - niet voor kwaliteit (dat doen we eventueel later).
+// gpt-5.5 is het model dat OpenAI's eigen documentatie voor "nieuwe
+// websearch-integraties" met de Responses API aanbeveelt.
+const CHAT_MODEL = Deno.env.get('OPENAI_CHAT_MODEL') || 'gpt-5.5';
+
 // Runtime-audit (2026-09-13): er is bewust GEEN hardcoded reservepersona meer
 // voor de systeemtekst of de tier-aanvullingen (voorheen SYSTEEM_STANDAARD,
 // PREMIUM_AANVULLING, AANVRAAGBEOORDELING_AANVULLING, PROJECTPLAN_AANVULLING,
@@ -287,6 +305,13 @@ function modusLabel(modus: KompasMode): string {
 // aanroepplek als in STAP 1, nu uitgebreid met de modus. Alle STAP 1-regels
 // over de tier blijven letterlijk staan; er zijn uitsluitend modus-regels
 // aan toegevoegd.
+// STAP 3 (websearch, 2026-09-13): runtimeContextBericht() krijgt er, naast de
+// STAP 1-tierregels en de STAP 2-modusregels (beide woordelijk ongewijzigd
+// hierboven), een derde blok bij: hoe het model de nieuwe websearch-tool
+// (zie Deno.serve() hieronder) hoort te gebruiken. Dit is bewust een
+// technische/tool-gebruiksinstructie - geen nieuwe inhoudelijke workflow -
+// en hoort daarom hier thuis, niet in kompas.system (dat blijft ongewijzigd)
+// en niet als vierde, apart systeembericht ("geen dubbele systeemberichten").
 function runtimeContextBericht(tier: string, modus: KompasMode): string {
   return `RUNTIMECONTEXT SUBSIDIE KOMPAS
 Actieve toegang: ${tierLabel(tier)}.
@@ -296,7 +321,13 @@ Leid het toegangsniveau of de actieve modus niet zelf af uit de zichtbare result
 Pas de toegangs- en zichtbaarheidsregels uit kompas.system toe voor deze tier.
 Gebruik voor deze vraag primair de workflow voor de actieve modus uit kompas.system.
 Alle overige instructies uit kompas.system blijven volledig van toepassing.
-Gebruik alleen de daadwerkelijk server-side vastgestelde tier en modus.`;
+Gebruik alleen de daadwerkelijk server-side vastgestelde tier en modus.
+
+WEBSEARCH BESCHIKBAAR
+Je hebt een websearch-tool tot je beschikking voor actuele, publieke informatie (bijvoorbeeld actuele deadlines, bedragen, openstelling van een subsidieregeling, of aanvullende fondsen buiten deze database). Gebruik deze zelfstandig wanneer actuele externe informatie nodig is voor een goed antwoord; dit is geen verplichte stap bij iedere vraag.
+Vind je via websearch geen betrouwbaar of eenduidig antwoord, of is een bron niet te raadplegen, verzin dan nooit een actueel feit: zeg expliciet tegen het lid dat dit niet kon worden bevestigd.
+Voor deadlines, bedragen en aanvraagvoorwaarden heeft de officiële website van de subsidieverstrekker of het fonds zelf de voorkeur boven secundaire bronnen.
+Websearch is aanvullende, externe research en verandert nooit welke gegevens hierboven al voor deze tier zichtbaar zijn - het maakt nooit afgeschermde databasegegevens van een hogere tier alsnog zichtbaar.`;
 }
 
 async function legVerbruikVast(admin: any, row: Record<string, unknown>) {
@@ -891,6 +922,54 @@ async function haalPaginaOp(url: string) {
   }
 }
 
+// STAP 3 (websearch): leest een Responses API-antwoord (ruwe JSON van
+// https://api.openai.com/v1/responses, zowel het volledige niet-streaming-
+// antwoord als het "response"-object binnen een response.completed-
+// streamevent) en haalt daar de zichtbare tekst en, indien websearch is
+// gebruikt, de bronnen (url_citation-annotaties) uit. Reproduceert bewust
+// geen ruwe OpenAI-structuur naar de frontend: alleen platte tekst + een
+// eenvoudige {title, url}-lijst, precies zoals het bestaande sources-veld
+// dat al sinds langer door chat.js wordt doorgegeven verwacht.
+function leesResponsesUitvoer(data: any): { tekst: string; bronnen: { title: string; url: string }[]; websearchGebruikt: boolean } {
+  const output = Array.isArray(data?.output) ? data.output : [];
+  let tekst = '';
+  let websearchGebruikt = false;
+  const gezienUrls = new Set<string>();
+  const bronnen: { title: string; url: string }[] = [];
+
+  for (const item of output) {
+    if (item?.type === 'web_search_call') {
+      websearchGebruikt = true;
+      continue;
+    }
+
+    if (item?.type !== 'message' || !Array.isArray(item.content)) continue;
+
+    for (const deel of item.content) {
+      if (typeof deel?.text === 'string') tekst += deel.text;
+
+      if (Array.isArray(deel?.annotations)) {
+        for (const a of deel.annotations) {
+          const url = typeof a?.url === 'string' ? a.url : '';
+
+          if (a?.type === 'url_citation' && url && !gezienUrls.has(url) && bronnen.length < 10) {
+            gezienUrls.add(url);
+            bronnen.push({ title: String(a.title || url).slice(0, 300), url: url.slice(0, 2000) });
+          }
+        }
+      }
+    }
+  }
+
+  // Bewuste, minimale terugvaloptie: sommige SDK's/antwoorden voegen een
+  // kant-en-klare output_text-samenvatting toe. Alleen gebruikt als er via
+  // de output-array hierboven (de officiële, documentbron) niets werd
+  // gevonden - nooit in plaats daarvan.
+  if (!tekst && typeof data?.output_text === 'string') tekst = data.output_text;
+
+  return { tekst, bronnen, websearchGebruikt };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS });
@@ -1182,16 +1261,40 @@ Deno.serve(async (req) => {
 
   const wilStream = body.stream === true;
 
-  const antwoord = await fetch('https://api.openai.com/v1/chat/completions', {
+  // STAP 3 (websearch): de hoofdchat gaat van Chat Completions naar de
+  // Responses API (https://api.openai.com/v1/responses), als enige plek in
+  // dit bestand - voorstelUitTekst() hierboven blijft op Chat Completions.
+  // 'messages' heet in de Responses API 'input'; de rolnaam 'system' wordt
+  // daar 'developer' (zie actuele OpenAI-migratiedocumentatie) - user/
+  // assistant blijven ongewijzigd. De inhoud van elk bericht (systeem,
+  // runtimecontext, database-/organisatie-/projectcontext, geschiedenis)
+  // blijft functioneel exact hetzelfde; alleen de rolnaam en de buitenste
+  // veldnaam veranderen.
+  const responsesInvoer = invoer.map((m: any) => ({
+    role: m.role === 'system' ? 'developer' : m.role,
+    content: m.content,
+  }));
+
+  const antwoord = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: MODEL,
-      messages: invoer,
-      temperature: 0.3,
-      max_tokens: 2000,
+      model: CHAT_MODEL,
+      input: responsesInvoer,
+      tools: [{ type: 'web_search' }],
+      tool_choice: 'auto',
+      // Geen temperature: gpt-5.5 is een redeneermodel en ondersteunt deze
+      // parameter niet (actuele documentatie). Bewust ruim max_output_tokens:
+      // bij redeneermodellen tellen onzichtbare redeneertokens ook mee in dit
+      // budget - te laag ingesteld geeft een leeg of afgekapt antwoord.
+      max_output_tokens: 4096,
+      reasoning: { effort: 'low' },
+      // Bewust geen server-side bewaring bij OpenAI (default is 30 dagen):
+      // dit gesprek kan persoonsgegevens en organisatie-/projectgegevens
+      // bevatten, en de bestaande Chat Completions-aanroepen in dit bestand
+      // kenden zo'n bewaring niet.
+      store: false,
       stream: wilStream,
-      ...(wilStream ? { stream_options: { include_usage: true } } : {}),
     }),
   });
 
@@ -1202,7 +1305,12 @@ Deno.serve(async (req) => {
   // Antwoord in één keer.
   if (!wilStream) {
     const data = await antwoord.json();
-    const tekst = data.choices?.[0]?.message?.content;
+
+    if (data.status === 'failed') {
+      return json({ error: 'De assistent kon geen antwoord geven. Probeer het opnieuw.' }, 502);
+    }
+
+    const { tekst, bronnen } = leesResponsesUitvoer(data);
 
     if (!tekst) {
       return json({ error: 'De assistent gaf een leeg antwoord.' }, 502);
@@ -1255,16 +1363,22 @@ Deno.serve(async (req) => {
     }
 
     if (profileId) {
+      // STAP 3: de Responses API noemt de tokenvelden anders dan Chat
+      // Completions (input_tokens/output_tokens i.p.v. prompt_tokens/
+      // completion_tokens) - alleen dit stukje boekhouding is aangepast,
+      // model blijft hier bewust MODEL (niet CHAT_MODEL): legVerbruikVast
+      // registreert per profiel, niet per los model, en verandert verder niets
+      // aan de bestaande verbruiksregistratie/tabelstructuur.
       await legVerbruikVast(admin, {
         profile_id: profileId,
         gesprek_id: body.conversationId ?? null,
-        model: MODEL,
-        tokens_in: (data.usage?.prompt_tokens ?? 0) + leerTokensIn || null,
-        tokens_uit: (data.usage?.completion_tokens ?? 0) + leerTokensUit || null,
+        model: CHAT_MODEL,
+        tokens_in: (data.usage?.input_tokens ?? 0) + leerTokensIn || null,
+        tokens_uit: (data.usage?.output_tokens ?? 0) + leerTokensUit || null,
       });
     }
 
-    return json({ answer: tekst, sources: [], veldVoorstellen });
+    return json({ answer: tekst, sources: bronnen, veldVoorstellen });
   }
 
   // Antwoord woord voor woord. De frontend leest dit met een EventSource-achtige
@@ -1276,10 +1390,20 @@ Deno.serve(async (req) => {
       const decoder = new TextDecoder();
       let buffer = '';
       let volledig = '';
+      let bronnen: { title: string; url: string }[] = [];
       let usage: any = null;
 
       const stuur = (obj: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
+      // STAP 3: de Responses API stuurt SSE-events met een eigen 'type'-veld
+      // in de JSON-payload zelf (bijv. response.output_text.delta,
+      // response.completed) i.p.v. Chat Completions' choices[].delta.content.
+      // Het onderliggende 'data: {...}'-regelformaat blijft identiek, dus de
+      // buffer-/regelsplitsing hierboven/hieronder is ongewijzigd; alleen wat
+      // er met elk geparset fragment gebeurt, is aangepast. Het protocol dat
+      // de Edge Function zelf naar de frontend stuurt ({delta}/{done,answer,
+      // sources}) blijft exact hetzelfde - chat.js/KompasToolPage.jsx zien
+      // hier dus niets van.
       try {
         for (;;) {
           const { done, value } = await reader.read();
@@ -1301,13 +1425,22 @@ Deno.serve(async (req) => {
 
             try {
               const deel = JSON.parse(payload);
-              const stukje = deel.choices?.[0]?.delta?.content;
 
-              if (deel.usage) usage = deel.usage;
+              if (deel.type === 'response.output_text.delta' && typeof deel.delta === 'string') {
+                volledig += deel.delta;
+                stuur({ delta: deel.delta });
+              } else if (deel.type === 'response.completed') {
+                const gelezen = leesResponsesUitvoer(deel.response);
 
-              if (stukje) {
-                volledig += stukje;
-                stuur({ delta: stukje });
+                // Veiligheidsnet: normaal is volledig al via de delta-events
+                // hierboven opgebouwd; alleen als dat om wat voor reden dan
+                // ook leeg bleef, gebruiken we de tekst uit het complete
+                // response-object.
+                if (!volledig && gelezen.tekst) volledig = gelezen.tekst;
+
+                bronnen = gelezen.bronnen;
+
+                if (deel.response?.usage) usage = deel.response.usage;
               }
             } catch (_) {
               // onvolledig fragment; volgende ronde
@@ -1315,7 +1448,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        stuur({ done: true, answer: volledig, sources: [] });
+        stuur({ done: true, answer: volledig, sources: bronnen });
       } catch (_) {
         stuur({ error: 'De verbinding met de assistent viel weg.' });
       } finally {
@@ -1325,9 +1458,9 @@ Deno.serve(async (req) => {
           await legVerbruikVast(admin, {
             profile_id: profileId,
             gesprek_id: body.conversationId ?? null,
-            model: MODEL,
-            tokens_in: usage?.prompt_tokens ?? null,
-            tokens_uit: usage?.completion_tokens ?? null,
+            model: CHAT_MODEL,
+            tokens_in: usage?.input_tokens ?? null,
+            tokens_uit: usage?.output_tokens ?? null,
           });
         }
       }

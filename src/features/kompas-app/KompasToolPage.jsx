@@ -316,7 +316,11 @@ export default function KompasToolPage() {
       return;
     }
 
-    setMessages(nieuw.concat([{ role: 'assistant', content: res.answer, fromUser: false }]));
+    // STAP 3 (websearch): res.sources kwam al langer terug van askKompas()
+    // (chat.js gaf data.sources al door), maar werd tot nu toe nergens
+    // vastgehouden of getoond. Alleen meegeven aan het berichtobject hier -
+    // de weergave zelf staat verderop, direct onder de tekstballon.
+    setMessages(nieuw.concat([{ role: 'assistant', content: res.answer, sources: res.sources || [], fromUser: false }]));
 
     if (hasPlanTools && actiefGesprekId) {
       voegBerichtToe({ conversationId: actiefGesprekId, role: 'assistant', content: res.answer, projectId: gekoppeldProjectId });
@@ -837,6 +841,34 @@ export default function KompasToolPage() {
                     >
                       {m.content}
                     </div>
+
+                    {/* STAP 3 (websearch): alleen zichtbaar als het antwoord
+                        daadwerkelijk op websearch-bronnen steunt - geen
+                        nieuw scherm, alleen een compact lijstje onder de
+                        bestaande tekstballon. */}
+                    {Array.isArray(m.sources) && m.sources.length > 0 && (
+                      <div
+                        style={css(
+                          'padding-left: 6px; font-size: 12.5px; line-height: 1.6; color: #5B6D74;',
+                        )}
+                      >
+                        Bronnen:
+                        <ul style={css('margin: 4px 0 0; padding-left: 18px;')}>
+                          {m.sources.map((bron, j) => (
+                            <li key={j}>
+                              <a
+                                href={bron.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={css('color: #2C4A5E; text-decoration: underline;')}
+                              >
+                                {bron.title || bron.url}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
                     {/* Vervolgopdracht, prioriteit 7 (Export): alleen onder een
                         "groot" AI-resultaat, en alleen voor Pro/Premium/Admin -
