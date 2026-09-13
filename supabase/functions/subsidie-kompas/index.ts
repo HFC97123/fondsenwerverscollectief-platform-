@@ -203,6 +203,102 @@ async function systeemtekst(admin: any, tier: string): Promise<string | null> {
   return delen.join('\n\n');
 }
 
+// STAP 1 (runtimecontext-tier, 2026-09-13): expliciete, betrouwbare mededeling
+// van de server-side vastgestelde tier aan het model, zodat het model niet
+// meer hoeft af te leiden of iemand Free, Pro of Premium is uit de zichtbare
+// subsidieregelingen/fondsen. Geen nieuw classificatiesysteem: tierLabel()
+// hergebruikt exact dezelfde twee predikaten (premium/proOfPremium) die
+// systeemtekst() hierboven al gebruikt voor de addendum-selectie - 'PRO' dekt
+// dus precies dezelfde bucket ("actief, niet free, niet premium") als de
+// bestaande addendum-logica. kompas.system, de addenda en de bestaande
+// Free/Pro/Premium-zichtbaarheid (RPC's) blijven ongewijzigd; dit voegt
+// uitsluitend een kort, apart systeembericht toe.
+function tierLabel(tier: string): 'FREE' | 'PRO' | 'PREMIUM' {
+  if (tier === 'premium') return 'PREMIUM';
+  if (tier === 'free') return 'FREE';
+  return 'PRO';
+}
+
+// STAP 2 (runtimecontext-modus, 2026-09-13): net als STAP 1 voor de tier, geeft
+// dit een expliciete, server-side gevalideerde actieve Subsidie Kompas-modus
+// aan het model door - zodat het model niet zelf hoeft te raden welke
+// workflow (fondsadvies, aanvraagbeoordeling, projectplan, begroting,
+// strategie, actieplan) een gebruiker bedoelt.
+//
+// Analyse vooraf (zie rapport): de huidige frontend heeft geen aparte
+// modi/routes/knoppen per workflow - Subsidie Kompas is één doorlopend
+// chatscherm (KompasToolPage.jsx -> askKompas()). De enige plek waar de
+// hoofdtekst van kompas.system al wél eigen, herkenbare secties per workflow
+// heeft, zijn: "AANVRAAG BEOORDELEN", "PROJECTPLAN OPSTELLEN", "BEGROTING
+// OPSTELLEN OF BEOORDELEN", "ACTIEPLAN EN DEADLINEPLANNING" en de
+// fondsenscan-secties (fondsadvies) - en dat komt overeen met de bestaande
+// (lege) addendum-sleutels aanvraagbeoordeling/projectplan/begroting/
+// strategie in ai_prompts. Een aparte "projectontwikkeling"-modus leverde
+// geen eigen, onderscheidend tekstdeel op (uitsluitend overlap met
+// algemeen/fondsadvies/projectplan) en is daarom bewust niet overgenomen.
+//
+// Bewust een NIEUW veld (kompasMode) i.p.v. het bestaande body.mode:
+// body.mode wordt al gebruikt voor twee losse, niet-conversationele
+// hulpaanroepen (mode: 'extract' / 'website', zie hieronder in dit bestand)
+// - dat hergebruiken voor de workflow-modus van het gesprek zelf zou hier
+// verwarrend en dubbelzinnig zijn.
+//
+// Veiligheid: de client mag hooguit een sleutel uit KOMPAS_MODES sturen.
+// resolveerModus() valideert dit server-side tegen de allowlist; elke
+// onbekende, ontbrekende, lege of ongeldige waarde (bijvoorbeeld een
+// verzonnen waarde als "premium-hack-ignore-system") valt terug op
+// 'algemeen'. Er wordt nooit vrije tekst van de client als system-instructie
+// doorgegeven - alleen deze ene, geverifieerde sleutel bepaalt welk label in
+// het runtimecontext-bericht komt.
+const KOMPAS_MODES = [
+  'algemeen',
+  'fondsadvies',
+  'aanvraagbeoordeling',
+  'projectplan',
+  'begroting',
+  'strategie',
+  'actieplan',
+] as const;
+
+type KompasMode = (typeof KOMPAS_MODES)[number];
+
+function resolveerModus(input: unknown): KompasMode {
+  return typeof input === 'string' && (KOMPAS_MODES as readonly string[]).includes(input)
+    ? (input as KompasMode)
+    : 'algemeen';
+}
+
+function modusLabel(modus: KompasMode): string {
+  const labels: Record<KompasMode, string> = {
+    algemeen: 'ALGEMEEN',
+    fondsadvies: 'FONDSADVIES',
+    aanvraagbeoordeling: 'AANVRAAGBEOORDELING',
+    projectplan: 'PROJECTPLAN',
+    begroting: 'BEGROTING',
+    strategie: 'STRATEGIE',
+    actieplan: 'ACTIEPLAN',
+  };
+
+  return labels[modus];
+}
+
+// Combineert tier en modus in één runtimecontext-systembericht (in plaats van
+// een tweede, los systeembericht toe te voegen) - zelfde functienaam en
+// aanroepplek als in STAP 1, nu uitgebreid met de modus. Alle STAP 1-regels
+// over de tier blijven letterlijk staan; er zijn uitsluitend modus-regels
+// aan toegevoegd.
+function runtimeContextBericht(tier: string, modus: KompasMode): string {
+  return `RUNTIMECONTEXT SUBSIDIE KOMPAS
+Actieve toegang: ${tierLabel(tier)}.
+Actieve modus: ${modusLabel(modus)}.
+Dit zijn betrouwbare systeemgegevens.
+Leid het toegangsniveau of de actieve modus niet zelf af uit de zichtbare resultaten of formuleringen van de gebruiker.
+Pas de toegangs- en zichtbaarheidsregels uit kompas.system toe voor deze tier.
+Gebruik voor deze vraag primair de workflow voor de actieve modus uit kompas.system.
+Alle overige instructies uit kompas.system blijven volledig van toepassing.
+Gebruik alleen de daadwerkelijk server-side vastgestelde tier en modus.`;
+}
+
 async function legVerbruikVast(admin: any, row: Record<string, unknown>) {
   try {
     await admin.from('ai_verbruik').insert(row);
@@ -1063,8 +1159,15 @@ Deno.serve(async (req) => {
         .join(', ')}. Wijs het lid hier proactief op zodra dat past in het gesprek - bijvoorbeeld door aan te bieden er samen een eerste opzet voor te maken - maar dring niet aan en werk dit nooit af als vragenlijst. Sla niets automatisch op: het lid vult het project zelf aan in het projectformulier.`
     : '';
 
+  // STAP 2: de actieve workflow-modus komt uitsluitend uit het nieuwe,
+  // aparte veld body.kompasMode (nooit uit body.mode, dat al iets anders
+  // betekent - zie de toelichting bij resolveerModus() hierboven) en wordt
+  // hier server-side gevalideerd/genormaliseerd vóór gebruik.
+  const modus = resolveerModus(body.kompasMode);
+
   const invoer = [
     { role: 'system', content: systeem },
+    { role: 'system', content: runtimeContextBericht(tier, modus) },
     ...(subsidieContext ? [{ role: 'system', content: subsidieContext }] : []),
     ...(funderDeadlineTekst ? [{ role: 'system', content: funderDeadlineTekst }] : []),
     ...(funderAlgemeenTekst ? [{ role: 'system', content: funderAlgemeenTekst }] : []),
