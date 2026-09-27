@@ -71,15 +71,22 @@ export async function askKompas({ messages, tier, permissions, context, conversa
   Aanroep met streaming: het antwoord komt woord voor woord binnen.
   onDelta(stukje) wordt per fragment aangeroepen.
 
-  Geeft terug: { answer, sources, error }
+  Geeft terug: { answer, sources, veldVoorstellen, error, partial }
+
+  partial: true betekent dat de verbinding onderweg is weggevallen (bijv. een
+  platform-timeout bij een zeer zwaar verzoek) - answer bevat dan alsnog de
+  tekst die al binnenkwam vóór het wegvallen, in plaats van dat deze wordt
+  weggegooid. Dit is bewust géén gewone succesvolle afronding: de aanroeper
+  moet dit onderscheiden kunnen tonen (STAP 5 - nooit een afgebroken antwoord
+  ongemarkeerd als volledig antwoord tonen).
 
   Antwoordt de Edge Function niet met text/event-stream — bijvoorbeeld omdat de
   oude versie nog draait — dan valt deze functie terug op askKompas(), zodat de
   gebruiker altijd een antwoord krijgt.
 */
-export async function askKompasStream({ messages, tier, permissions, context, conversationId, onDelta }) {
+export async function askKompasStream({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, onDelta }) {
   if (!supabase) {
-    return { answer: null, sources: [], error: GEEN_VERBINDING };
+    return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
   }
 
   try {
@@ -100,6 +107,9 @@ export async function askKompasStream({ messages, tier, permissions, context, co
         permissions: permissions || {},
         context: context || null,
         conversationId: conversationId ?? null,
+        orgProfile: orgProfile || null,
+        project: project || null,
+        matchSignalen: matchSignalen || null,
         stream: true,
       }),
     });
@@ -108,7 +118,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
 
     // Geen stream: de functie ondersteunt het nog niet.
     if (!res.ok || soort.indexOf('text/event-stream') === -1) {
-      return askKompas({ messages, tier, permissions, context, conversationId });
+      return askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen });
     }
 
     const reader = res.body.getReader();
@@ -116,53 +126,101 @@ export async function askKompasStream({ messages, tier, permissions, context, co
     let buffer = '';
     let volledig = '';
     let sources = [];
+    let veldVoorstellen = {};
+    let serverFout = null;
+    // STAP 5 (gevonden tijdens de belastingstest met het zwaarste testgeval):
+    // een verbroken verbinding gooit niet altijd een leesfout - bij een
+    // platform-timeout tijdens het genereren kan de stream ook gewoon *netjes*
+    // eindigen (reader.read() geeft done:true) zonder dat er ooit een 'done'-
+    // of 'error'-bericht van de server is binnengekomen. Zonder deze vlag zou
+    // de reeds binnengekomen (afgekapte) tekst hieronder stilzwijgend als
+    // volledig antwoord worden teruggegeven - precies wat STAP 5 verbiedt.
+    let kreegDone = false;
 
-    for (;;) {
-      const { done, value } = await reader.read();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
 
-      if (done) break;
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const regels = buffer.split('\n');
-      buffer = regels.pop() || '';
+        buffer += decoder.decode(value, { stream: true });
+        const regels = buffer.split('\n');
+        buffer = regels.pop() || '';
 
-      for (const regel of regels) {
-        const t = regel.trim();
+        for (const regel of regels) {
+          const t = regel.trim();
 
-        if (!t.startsWith('data:')) continue;
+          if (!t.startsWith('data:')) continue;
 
-        try {
-          const deel = JSON.parse(t.slice(5).trim());
+          try {
+            const deel = JSON.parse(t.slice(5).trim());
 
-          if (deel.error) {
-            throw new Error(deel.error);
-          }
+            if (deel.error) {
+              // Een expliciete foutmelding van de Edge Function zelf (bijv.
+              // de model gaf 'response.failed') - dit is geen wegvallende
+              // verbinding, dus hier blijft de bestaande, nette foutmelding
+              // leidend en wordt eventuele losse deltatekst niet als
+              // (mogelijk onbetrouwbaar) antwoord getoond.
+              serverFout = deel.error;
 
-          if (deel.delta) {
-            volledig += deel.delta;
+              continue;
+            }
 
-            if (onDelta) onDelta(deel.delta);
-          }
+            if (deel.delta) {
+              volledig += deel.delta;
 
-          if (deel.done) {
-            volledig = deel.answer || volledig;
-            sources = deel.sources || [];
-          }
-        } catch (e) {
-          if (e && e.message && e.message !== 'Unexpected end of JSON input') {
-            throw e;
+              if (onDelta) onDelta(deel.delta);
+            }
+
+            if (deel.done) {
+              kreegDone = true;
+              volledig = deel.answer || volledig;
+              sources = deel.sources || [];
+              veldVoorstellen = deel.veldVoorstellen || {};
+            }
+          } catch (e) {
+            // onvolledig JSON-fragment (regel liep over twee chunks) - de
+            // volgende regel maakt dit compleet, dus dit is geen echte fout.
           }
         }
       }
+    } catch (leesFout) {
+      // STAP 5: de verbinding viel onderweg weg (bijv. de platform-timeout
+      // bij een zeer zwaar verzoek). Wat al binnenkwam via onDelta() staat al
+      // op het scherm bij het lid - dat nu weggooien en een generieke
+      // foutmelding tonen zou erger zijn dan het te laten staan. Er al wél
+      // tekst is: toon die, duidelijk gemarkeerd als afgebroken (partial),
+      // nooit ongemarkeerd als volledig antwoord.
+      if (volledig) {
+        return { answer: volledig, sources: [], veldVoorstellen: {}, error: null, partial: true };
+      }
+
+      return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
+    }
+
+    if (serverFout) {
+      return { answer: null, sources: [], veldVoorstellen: {}, error: serverFout };
+    }
+
+    if (!kreegDone) {
+      // De verbinding is netjes gesloten, maar de server heeft nooit een
+      // afrondend signaal gestuurd (zie toelichting bij kreegDone hierboven).
+      // Zelfde behandeling als een leesfout: toon wat er al was, duidelijk
+      // gemarkeerd als afgebroken, nooit ongemarkeerd als volledig antwoord.
+      if (volledig) {
+        return { answer: volledig, sources: [], veldVoorstellen: {}, error: null, partial: true };
+      }
+
+      return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
     }
 
     if (!volledig) {
       throw new Error('Leeg antwoord.');
     }
 
-    return { answer: volledig, sources, error: null };
+    return { answer: volledig, sources, veldVoorstellen, error: null };
   } catch (e) {
-    return { answer: null, sources: [], error: GEEN_VERBINDING };
+    return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
   }
 }
 

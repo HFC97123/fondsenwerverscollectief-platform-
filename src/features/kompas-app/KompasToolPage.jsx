@@ -12,7 +12,7 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas, DOC_SOORTEN } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
-import { askKompas, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
+import { askKompasStream, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
 import { extraheerTekst } from '../../data/services/documentExtractie.js';
 import {
   haalBerichtenOp,
@@ -180,11 +180,16 @@ export default function KompasToolPage() {
   const [resultaatSoort, setResultaatSoort] = useState({});
   const [resultaatMelding, setResultaatMelding] = useState('');
 
+  // STAP 5 (streaming): houdt de nog in opbouw zijnde tekst van het lopende
+  // antwoord vast. Blijft leeg totdat de eerste delta binnenkomt, zodat het
+  // bestaande DenkKompas-laadicoon gewoon zichtbaar blijft tot er echt tekst is.
+  const [streamingAntwoord, setStreamingAntwoord] = useState('');
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, loading]);
+  }, [messages, loading, streamingAntwoord]);
 
   // Fixt een bestaande koppeling die tot nu toe niets deed: Documentatie's
   // "openen in de chat" (DocumentatiePage.jsx, openInChat) zet al langer
@@ -258,6 +263,7 @@ export default function KompasToolPage() {
     setDraft('');
     setError('');
     setLoading(true);
+    setStreamingAntwoord('');
 
     if (taRef.current) taRef.current.style.height = '48px';
 
@@ -284,7 +290,7 @@ export default function KompasToolPage() {
       }
     }
 
-    const res = await askKompas({
+    const res = await askKompasStream({
       messages: nieuw,
       tier,
       permissions: {
@@ -306,9 +312,14 @@ export default function KompasToolPage() {
       matchSignalen: hasPlanTools
         ? buildMatchSignalen({ orgProfile: store.orgProfile, projects: store.projects, linkedProjectId: gekoppeldProjectId })
         : null,
+      // STAP 5 (streaming): elk woord/fragment dat binnenkomt direct tonen,
+      // zodat het lid niet naar een leeg scherm hoeft te staren tijdens een
+      // lang antwoord.
+      onDelta: (stukje) => setStreamingAntwoord((huidig) => huidig + stukje),
     });
 
     setLoading(false);
+    setStreamingAntwoord('');
 
     if (res.error) {
       setError(res.error);
@@ -316,14 +327,23 @@ export default function KompasToolPage() {
       return;
     }
 
+    // STAP 5: bij partial (de verbinding viel onderweg weg, bijv. door een
+    // platform-timeout bij een zeer zwaar verzoek) is res.answer de tekst die
+    // al binnenkwam vóórdat het misging - nooit stilzwijgend als volledig
+    // antwoord tonen, altijd duidelijk gemarkeerd, zowel op het scherm als in
+    // de bewaarde gespreksgeschiedenis.
+    const inhoud = res.partial
+      ? `${res.answer}\n\n_Dit antwoord werd onderbroken door een verbindings- of tijdslimietprobleem. Stel gerust een vervolgvraag om verder te gaan._`
+      : res.answer;
+
     // STAP 3 (websearch): res.sources kwam al langer terug van askKompas()
     // (chat.js gaf data.sources al door), maar werd tot nu toe nergens
     // vastgehouden of getoond. Alleen meegeven aan het berichtobject hier -
     // de weergave zelf staat verderop, direct onder de tekstballon.
-    setMessages(nieuw.concat([{ role: 'assistant', content: res.answer, sources: res.sources || [], fromUser: false }]));
+    setMessages(nieuw.concat([{ role: 'assistant', content: inhoud, sources: res.sources || [], fromUser: false }]));
 
     if (hasPlanTools && actiefGesprekId) {
-      voegBerichtToe({ conversationId: actiefGesprekId, role: 'assistant', content: res.answer, projectId: gekoppeldProjectId });
+      voegBerichtToe({ conversationId: actiefGesprekId, role: 'assistant', content: inhoud, projectId: gekoppeldProjectId });
       store.upsertGesprekInLijst({ id: actiefGesprekId, tijd: new Date().toISOString() });
     }
 
@@ -916,7 +936,19 @@ export default function KompasToolPage() {
                 ),
               )}
 
-              {loading && <DenkKompas />}
+              {loading && (streamingAntwoord ? (
+                <div style={css('align-self: flex-start; max-width: 78%; display: flex; flex-direction: column; gap: 8px;')}>
+                  <div
+                    style={css(
+                      'padding: 20px 22px; border-radius: 24px 24px 24px 5px; background: #FFFFFF; color: #2E3A38; box-shadow: 0 2px 10px rgba(44,74,94,0.035); font-size: 15px; line-height: 1.68; white-space: pre-wrap;',
+                    )}
+                  >
+                    {streamingAntwoord}
+                  </div>
+                </div>
+              ) : (
+                <DenkKompas />
+              ))}
             </div>
           )}
 

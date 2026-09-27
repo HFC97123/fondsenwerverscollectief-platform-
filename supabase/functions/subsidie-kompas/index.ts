@@ -1516,6 +1516,20 @@ Deno.serve(async (req) => {
       let volledig = '';
       let bronnen: { title: string; url: string }[] = [];
       let usage: any = null;
+      // STAP 5: 'response.completed', 'response.incomplete' en
+      // 'response.failed' zijn drie afzonderlijke SSE-event-types in de
+      // Responses API (elk met een eigen 'type'-waarde, niet één
+      // 'response.completed' met een wisselende status erin - actuele
+      // OpenAI-documentatie, geraadpleegd 2026-09-14). De vorige versie van
+      // deze streaminglus herkende alleen 'response.completed' en controleerde
+      // daar 'response.status === incomplete' binnenin - dat tak-punt werd in
+      // de praktijk dus nooit bereikt bij een echt afgekapt antwoord, en zonder
+      // deze fix zou een incomplete stream-response stilzwijgend als volledig
+      // antwoord zijn getoond zodra streaming daadwerkelijk in gebruik komt.
+      // Dit herstelt exact de STAP 4B-garantie ("nooit stilzwijgend afkappen")
+      // voor het streaming-pad.
+      let afgerond = false;
+      let serverFout: string | null = null;
 
       const stuur = (obj: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
@@ -1553,24 +1567,24 @@ Deno.serve(async (req) => {
               if (deel.type === 'response.output_text.delta' && typeof deel.delta === 'string') {
                 volledig += deel.delta;
                 stuur({ delta: deel.delta });
+              } else if (deel.type === 'response.incomplete') {
+                // STAP 4B, fix 2, nu ook correct in het streaming-pad: een
+                // afgekapt antwoord wordt nooit als eindresultaat getoond,
+                // ook al zijn er al delta-fragmenten naar de client gestuurd.
+                // 'afgerond' blijft bewust false: het niet-streamende pad
+                // hierboven doet bij status 'incomplete' ook geen
+                // voorstellenlogica en geen verbruiksregistratie (vroegtijdige
+                // return, vóór die stappen) - dit houdt hetzelfde gedrag aan.
+                volledig =
+                  'Dit antwoord kon niet volledig worden gegenereerd binnen de beschikbare ruimte. Vraag om een korter onderdeel (bijvoorbeeld eerst het projectdoel en de doelgroep, of alleen de begroting) zodat ik dit volledig kan uitwerken.';
+                bronnen = [];
+              } else if (deel.type === 'response.failed') {
+                // Voorheen onbehandeld: viel stilzwijgend door tot het einde
+                // van de stream, waarna een leeg of onvolledig antwoord alsnog
+                // als 'done' werd verzonden. Nu hetzelfde nette gedrag als het
+                // niet-streamende pad bij data.status === 'failed'.
+                serverFout = 'De assistent kon geen antwoord geven. Probeer het opnieuw.';
               } else if (deel.type === 'response.completed') {
-                // STAP 4B, fix 2: zelfde controle als bij het niet-streamende
-                // pad hierboven. In streaming-vorm zijn er mogelijk al losse
-                // delta-fragmenten naar de client gestuurd vóórdat bekend werd
-                // dat de response incompleet is; het uiteindelijke, opgeslagen
-                // antwoord (en wat legVerbruikVast() registreert) toont daarom
-                // nooit de afgekapte tekst als eindresultaat, maar altijd de
-                // eerlijke melding.
-                if (deel.response?.status === 'incomplete') {
-                  volledig =
-                    'Dit antwoord kon niet volledig worden gegenereerd binnen de beschikbare ruimte. Vraag om een korter onderdeel (bijvoorbeeld eerst het projectdoel en de doelgroep, of alleen de begroting) zodat ik dit volledig kan uitwerken.';
-                  bronnen = [];
-
-                  if (deel.response?.usage) usage = deel.response.usage;
-
-                  continue;
-                }
-
                 const gelezen = leesResponsesUitvoer(deel.response);
 
                 // Veiligheidsnet: normaal is volledig al via de delta-events
@@ -1580,6 +1594,7 @@ Deno.serve(async (req) => {
                 if (!volledig && gelezen.tekst) volledig = gelezen.tekst;
 
                 bronnen = gelezen.bronnen;
+                afgerond = true;
 
                 if (deel.response?.usage) usage = deel.response.usage;
               }
@@ -1589,21 +1604,80 @@ Deno.serve(async (req) => {
           }
         }
 
-        stuur({ done: true, answer: volledig, sources: bronnen });
+        if (serverFout) {
+          stuur({ error: serverFout });
+        } else {
+          // Fase 6, punt 1 (vervolg), nu ook in het streaming-pad: dezelfde
+          // voorstellenlogica als het niet-streamende pad hierboven, woordelijk
+          // ongewijzigd - alleen hier uitgevoerd ná afloop van de stream, zodat
+          // de tokens/kosten hiervan hetzelfde blijven meetellen in
+          // legVerbruikVast() als voorheen. Wordt bewust overgeslagen als de
+          // response niet normaal is afgerond (incomplete/failed/verbinding
+          // weggevallen) - exact zoals het niet-streamende pad hierboven ook
+          // vóór deze stap al terugkeert bij 'incomplete'.
+          let veldVoorstellen: Record<string, string> = {};
+          let leerTokensIn = 0;
+          let leerTokensUit = 0;
+
+          if (afgerond) {
+            const laatsteLidBericht = berichten
+              .slice()
+              .reverse()
+              .find((m: any) => m && m.role === 'user' && m.content);
+            const bevatMogelijkNieuweInfo = !!laatsteLidBericht && String(laatsteLidBericht.content).trim().length >= 8;
+
+            if (magOrganisatiegeheugen && ontbrekend.length && bevatMogelijkNieuweInfo) {
+              try {
+                const fragment = berichten
+                  .slice(-6)
+                  .map((m: any) => `${m.role === 'user' ? 'Lid' : 'Subsidie Kompas'}: ${String(m.content || '').slice(0, 2000)}`)
+                  .join('\n');
+
+                const { voorstel, usage: leerUsage, mislukt } = await voorstelUitTekst(
+                  apiKey,
+                  MODEL,
+                  fragment,
+                  'een lopend gesprek met dit lid in Subsidie Kompas - haal alleen gegevens eruit die het lid zelf expliciet heeft genoemd, nooit afgeleid of aangenomen',
+                );
+
+                if (!mislukt && voorstel) {
+                  Object.entries(voorstel).forEach(([k, v]) => {
+                    const huidig = orgProfile ? String(orgProfile[k] || '').trim() : '';
+
+                    if (!huidig || huidig !== String(v).trim()) {
+                      veldVoorstellen[k] = v;
+                    }
+                  });
+
+                  leerTokensIn = leerUsage?.prompt_tokens ?? 0;
+                  leerTokensUit = leerUsage?.completion_tokens ?? 0;
+                }
+              } catch (_) {
+                // voorstellen ophalen mag het antwoord zelf nooit blokkeren
+              }
+            }
+          }
+
+          stuur({ done: true, answer: volledig, sources: bronnen, veldVoorstellen });
+
+          // Zelfde voorwaarde als het niet-streamende pad hierboven: dat pad
+          // registreert verbruik alleen op de volledige-succespad (nooit bij
+          // 'incomplete' of 'failed', die keren daarvoor al terug) - hier dus
+          // ook alleen bij 'afgerond' (echte response.completed).
+          if (profileId && afgerond) {
+            await legVerbruikVast(admin, {
+              profile_id: profileId,
+              gesprek_id: body.conversationId ?? null,
+              model: CHAT_MODEL,
+              tokens_in: (usage?.input_tokens ?? 0) + leerTokensIn || null,
+              tokens_uit: (usage?.output_tokens ?? 0) + leerTokensUit || null,
+            });
+          }
+        }
       } catch (_) {
         stuur({ error: 'De verbinding met de assistent viel weg.' });
       } finally {
         controller.close();
-
-        if (profileId) {
-          await legVerbruikVast(admin, {
-            profile_id: profileId,
-            gesprek_id: body.conversationId ?? null,
-            model: CHAT_MODEL,
-            tokens_in: usage?.input_tokens ?? null,
-            tokens_uit: usage?.output_tokens ?? null,
-          });
-        }
       }
     },
   });
