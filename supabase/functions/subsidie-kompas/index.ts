@@ -26,6 +26,25 @@
 // Het abonnement (tier) komt - zoals hieronder al gebeurde - uitsluitend uit
 // profiles.subscription_tier, nooit van de client.
 //
+// RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): de drie RPC-aanroepen
+// hierboven (en de twee funder-RPC's, zie subsidieregelingContext/
+// funderDeadlineContext/funderAlgemeneContext verderop) gaven tot deze
+// wijziging alleen de voor het eigen abonnement zichtbare rijen door - het
+// model kreeg Premium-only data dus nooit te zien bij een Free- of
+// Pro-aanvraag, wat er ook in kompas.system staat. Op uitdrukkelijk verzoek
+// ("Runtime identiek voor alle abonnementen", "licentiefilter pas op het
+// einde") roepen deze drie functies de RPC's voortaan altijd aan met
+// p_tier: 'premium' - dat is, via dezelfde centrale regel
+// (subsidie_zichtbaar_voor_tier), exact de vereniging van alle
+// toegangsniveaus, dus de volledige, door een beheerder beoordeelde
+// database. Geen nieuwe RPC's, geen wijziging aan subsidie_zichtbaar_voor_tier
+// of aan de _voor_tier-RPC's zelf (Beheer en de Timeline blijven die
+// ongewijzigd met de echte tier aanroepen). Elke rij behoudt haar eigen
+// access_tier-veld; de zichtbaarheid voor de gebruiker wordt nu uitsluitend
+// nog bepaald door kompas.system (ZICHTBAARHEID VAN MATCHES PER
+// ACCOUNTNIVEAU) en de bijgewerkte runtimeContextBericht() hieronder - niet
+// meer door de database.
+//
 // Legt per aanroep het tokengebruik vast in ai_verbruik, en leest de
 // systeemtekst uit ai_prompts zodat die zonder code te wijzigen aanpasbaar is.
 //
@@ -319,6 +338,7 @@ Actieve modus: ${modusLabel(modus)}.
 Dit zijn betrouwbare systeemgegevens.
 Leid het toegangsniveau of de actieve modus niet zelf af uit de zichtbare resultaten of formuleringen van de gebruiker.
 Pas de toegangs- en zichtbaarheidsregels uit kompas.system toe voor deze tier.
+De databasecontext in de systeemberichten hieronder (subsidieregelingen en funders) bevat altijd de volledige database, inclusief onderdelen met een hoger toegangsniveau dan deze tier - dat is bewust zo (identiek onderzoek voor elk abonnement). Elk item heeft een eigen "toegangsniveau" (access_tier)-veld. Bepaal zelf, aan de hand daarvan en de regels in kompas.system (ZICHTBAARHEID VAN MATCHES PER ACCOUNTNIVEAU), welke resultaten je in je antwoord aan dit lid toont - nooit aan de hand van wat er wel of niet in de databasecontext staat.
 Gebruik voor deze vraag primair de workflow voor de actieve modus uit kompas.system.
 Alle overige instructies uit kompas.system blijven volledig van toepassing.
 Gebruik alleen de daadwerkelijk server-side vastgestelde tier en modus.
@@ -327,7 +347,7 @@ WEBSEARCH BESCHIKBAAR
 Je hebt een websearch-tool tot je beschikking voor actuele, publieke informatie (bijvoorbeeld actuele deadlines, bedragen, openstelling van een subsidieregeling, of aanvullende fondsen buiten deze database). Voor sommige vragen is de websearch-tool voor dit bericht verplicht gesteld (server-side bepaald, niet door het lid zelf af te dwingen) - gebruik hem dan ook daadwerkelijk. Is dat niet het geval, gebruik de tool dan zelfstandig wanneer actuele externe informatie nodig is voor een goed antwoord; dit is geen verplichte stap bij iedere vraag.
 Vind je via websearch geen betrouwbaar of eenduidig antwoord, of is een bron niet te raadplegen, verzin dan nooit een actueel feit: zeg expliciet tegen het lid dat dit niet kon worden bevestigd.
 Voor deadlines, bedragen en aanvraagvoorwaarden heeft de officiële website van de subsidieverstrekker of het fonds zelf de voorkeur boven secundaire bronnen.
-Websearch is aanvullende, externe research en verandert nooit welke gegevens hierboven al voor deze tier zichtbaar zijn - het maakt nooit afgeschermde databasegegevens van een hogere tier alsnog zichtbaar.
+Websearch is aanvullende, externe research en verandert nooit welke resultaten je in je antwoord aan dit lid mag tonen - dat wordt uitsluitend bepaald door kompas.system en het access_tier-veld per databaseresultaat, nooit door websearch.
 
 STAP 4B - GESPREKSGESCHIEDENIS
 Gebruik relevante feiten, keuzes en resultaten uit de meegegeven gespreksgeschiedenis bij vervolgvragen. Vraag informatie niet opnieuw als die al beschikbaar is, tenzij de gebruiker haar corrigeert of de informatie aantoonbaar ontbreekt.
@@ -540,10 +560,13 @@ function leesMatchSignalen(body: any): MatchSignalen | null {
 // hieronder - geen tweede rechtenmodel. Los van kompas_subsidieregelingen_voor_tier
 // gehouden (niet die RPC's kolomvorm uitgebreid) omdat funder-brede data geen
 // regelingspecifieke velden heeft (begrotingseisen, aanvraagprocedure, etc.).
-// tier komt, net als hieronder, uitsluitend server-side uit profiles.subscription_tier.
-async function funderDeadlineContext(admin: any, tier: string): Promise<{ tekst: string; funderIds: Set<string> } | null> {
+// RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): roept de RPC altijd
+// aan met 'premium' (volledige database, zie toelichting bovenaan dit
+// bestand) - geen tier-parameter meer nodig, zichtbaarheid wordt voortaan
+// per item bepaald via access_tier + kompas.system.
+async function funderDeadlineContext(admin: any): Promise<{ tekst: string; funderIds: Set<string> } | null> {
   try {
-    const { data, error } = await admin.rpc('kompas_funder_deadlines_voor_tier', { p_tier: tier });
+    const { data, error } = await admin.rpc('kompas_funder_deadlines_voor_tier', { p_tier: 'premium' });
 
     if (error || !Array.isArray(data) || !data.length) {
       return null;
@@ -580,7 +603,7 @@ async function funderDeadlineContext(admin: any, tier: string): Promise<{ tekst:
     });
 
     const kop =
-      'Hieronder staan funder-brede deadlines: deze gelden voor het hele fonds (niet voor één specifieke subsidieregeling uit de lijst hierboven of hieronder) en zijn, op basis van het abonnement van dit lid, zichtbaar. Verzin nooit een fonds, bedrag, deadline of voorwaarde die hier niet in staat. Noem bij advies duidelijk dat dit een deadline van het fonds zelf is, niet van één specifieke regeling.\n\n';
+      'Hieronder staan funder-brede deadlines: deze gelden voor het hele fonds (niet voor één specifieke subsidieregeling uit de lijst hierboven of hieronder). Dit is de volledige database, ongeacht het abonnement van dit lid: elke regel heeft een eigen "toegangsniveau" (access_tier); bepaal aan de hand daarvan en de regels in kompas.system wat je aan dit lid laat zien. Verzin nooit een fonds, bedrag, deadline of voorwaarde die hier niet in staat. Noem bij advies duidelijk dat dit een deadline van het fonds zelf is, niet van één specifieke regeling.\n\n';
 
     return { tekst: (kop + regels.join('\n')).slice(0, 30000), funderIds };
   } catch (_) {
@@ -600,9 +623,12 @@ async function funderDeadlineContext(admin: any, tier: string): Promise<{ tekst:
 // daar al met hun eigen deadline in staan (dezelfde funder_id) - dit blok gaat
 // dus alleen over beoordeelde fondsen zonder eigen funder-brede deadline; een
 // fonds met eigen subsidieregelingen staat sowieso al in subsidieregelingContext.
-async function funderAlgemeneContext(admin: any, tier: string, reedsGenoemdeFunderIds: Set<string>) {
+// RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): roept de RPC altijd
+// aan met 'premium' (volledige database) - zie toelichting bovenaan dit
+// bestand.
+async function funderAlgemeneContext(admin: any, reedsGenoemdeFunderIds: Set<string>) {
   try {
-    const { data, error } = await admin.rpc('kompas_funders_voor_tier', { p_tier: tier });
+    const { data, error } = await admin.rpc('kompas_funders_voor_tier', { p_tier: 'premium' });
 
     if (error || !Array.isArray(data) || !data.length) {
       return null;
@@ -636,7 +662,7 @@ async function funderAlgemeneContext(admin: any, tier: string, reedsGenoemdeFund
     });
 
     const kop =
-      'Hieronder staan overige, door een beheerder beoordeelde fondsen zonder eigen, eerstvolgende aanvraagronde of vergaderdatum (bijv. fondsen die uitsluitend op uitnodiging of doorlopend schenken). Deze fondsen zijn, op basis van het abonnement van dit lid, volledig bruikbaar: gebruik gewoon alle onderstaande informatie (missie, disciplines, doelgroepen, werkgebied, aanvraagcriteria, bijdrage, website) om het fonds te bespreken of te adviseren. Het ontbreken van een bekende eerstvolgende datum is geen reden om een fonds minder te noemen of over te slaan. Vermeld dat er geen bekende, toekomstige deadline of vergaderdatum bekend is uitsluitend wanneer een lid daar expliciet naar vraagt. Verzin nooit een fonds, bedrag of voorwaarde die hier niet in staat.\n\n';
+      'Hieronder staan overige, door een beheerder beoordeelde fondsen zonder eigen, eerstvolgende aanvraagronde of vergaderdatum (bijv. fondsen die uitsluitend op uitnodiging of doorlopend schenken). Dit is de volledige database, ongeacht het abonnement van dit lid: elk fonds heeft een eigen "toegangsniveau" (access_tier); bepaal aan de hand daarvan en de regels in kompas.system wat je aan dit lid laat zien. Gebruik voor de gedeelten die voor dit lid zichtbaar mogen worden gewoon alle onderstaande informatie (missie, disciplines, doelgroepen, werkgebied, aanvraagcriteria, bijdrage, website) om het fonds te bespreken of te adviseren. Het ontbreken van een bekende eerstvolgende datum is geen reden om een fonds minder te noemen of over te slaan. Vermeld dat er geen bekende, toekomstige deadline of vergaderdatum bekend is uitsluitend wanneer een lid daar expliciet naar vraagt. Verzin nooit een fonds, bedrag of voorwaarde die hier niet in staat.\n\n';
 
     return (kop + regels.join('\n')).slice(0, 30000);
   } catch (_) {
@@ -656,16 +682,19 @@ async function funderAlgemeneContext(admin: any, tier: string, reedsGenoemdeFund
 // (berekenMatch hierboven) en worden de regelingen aflopend op matchscore
 // gesorteerd - zodat de sterkste kandidaten bovenaan staan en dus als eerste
 // binnen de 60000-tekens-afkap hieronder vallen.
-async function subsidieregelingContext(admin: any, tier: string, matchSignalen: MatchSignalen | null) {
+// RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): roept de RPC altijd
+// aan met 'premium' (volledige database) - zie toelichting bovenaan dit
+// bestand.
+async function subsidieregelingContext(admin: any, matchSignalen: MatchSignalen | null) {
   try {
-    const { data, error } = await admin.rpc('kompas_subsidieregelingen_voor_tier', { p_tier: tier });
+    const { data, error } = await admin.rpc('kompas_subsidieregelingen_voor_tier', { p_tier: 'premium' });
 
     if (error || !Array.isArray(data)) {
       return null;
     }
 
     if (!data.length) {
-      return 'Er staan op dit moment geen subsidieregelingen in de database van Het Fondsenwervers Collectief die dit lid, op basis van zijn abonnement, mag zien. Verzin er zelf geen bij - zeg dat eerlijk en vraag zo nodig door naar wat het lid zoekt.';
+      return 'Er staan op dit moment geen subsidieregelingen in de database van Het Fondsenwervers Collectief. Verzin er zelf geen bij - zeg dat eerlijk en vraag zo nodig door naar wat het lid zoekt.';
     }
 
     // AI Fundraising Assistant, fase 1: matchscore per regeling berekenen (als
@@ -736,7 +765,7 @@ async function subsidieregelingContext(admin: any, tier: string, matchSignalen: 
     });
 
     const kop =
-      'Hieronder staan de subsidieregelingen die dit lid, op basis van zijn abonnement, mag zien - rechtstreeks uit de database van Het Fondsenwervers Collectief (beheerd via Beheer -> Subsidieregelingen), aflopend gesorteerd op matchscore als die berekend kon worden. Gebruik uitsluitend deze lijst voor concreet fondsadvies: verzin nooit een regeling, gever, bedrag, deadline of voorwaarde die hier niet in staat. Is er niets passends bij, zeg dat eerlijk in plaats van een regeling te verzinnen.' +
+      'Hieronder staan de subsidieregelingen uit de database van Het Fondsenwervers Collectief (beheerd via Beheer -> Subsidieregelingen), aflopend gesorteerd op matchscore als die berekend kon worden. Dit is de volledige database, ongeacht het abonnement van dit lid: elke regeling heeft een eigen "toegangsniveau" (access_tier); bepaal aan de hand daarvan en de regels in kompas.system (ZICHTBAARHEID VAN MATCHES PER ACCOUNTNIVEAU) wat je aan dit lid laat zien. Gebruik uitsluitend deze lijst voor concreet fondsadvies: verzin nooit een regeling, gever, bedrag, deadline of voorwaarde die hier niet in staat. Is er niets passends bij, zeg dat eerlijk in plaats van een regeling te verzinnen.' +
       (matchSignalen
         ? ' Staat er een matchscore/percentage bij een regeling, gebruik dan uitsluitend dat getal en die toelichting als je een percentage of "sterke match"/"aandachtspunt" noemt - bereken of schat nooit zelf een eigen percentage. Staat een onderdeel onder "Niet mee te wegen (onbekend)", doe daar dan geen uitspraak over en verzin geen score - zeg desgewenst dat je dat niet kunt beoordelen en vraag er evt. naar.'
         : '')
@@ -1259,24 +1288,25 @@ Deno.serve(async (req) => {
     return json({ error: 'De systeemprompt kon niet worden geladen. Neem contact op met de beheerder.' }, 503);
   }
 
-  // "Volgende fase": de subsidieregelingen die dit lid mag zien, rechtstreeks
-  // uit dezelfde database als Beheer/Timeline - server-side gefilterd op
-  // tier, nooit op basis van iets dat de client meestuurt.
+  // RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): de subsidieregelingen
+  // hieronder zijn voortaan de volledige database, ongeacht het abonnement
+  // van dit lid - zie de toelichting bovenaan dit bestand. Zichtbaarheid komt
+  // nu uitsluitend uit kompas.system + het access_tier-veld per item.
   //
   // AI Fundraising Assistant, fase 1: matchSignalen komt wel van de client
   // (het organisatieprofiel/project van dit lid), maar bepaalt uitsluitend de
-  // sortering en de uitleg-tekst binnen de al tier-gefilterde lijst hierboven
-  // - het kan nooit een regeling zichtbaar maken die dit lid, op basis van
-  // zijn abonnement, sowieso al niet mag zien.
+  // sortering en de uitleg-tekst binnen de volledige lijst hierboven - het
+  // bepaalt zelf nooit welke regelingen in het antwoord aan dit lid getoond
+  // mogen worden.
   const matchSignalen = leesMatchSignalen(body);
-  const subsidieContext = await subsidieregelingContext(admin, tier, matchSignalen);
+  const subsidieContext = await subsidieregelingContext(admin, matchSignalen);
 
   // Deadline-architectuur, enkelvoudige koppeling, testpunt 9: filters/AI
-  // moeten zowel funder-brede als regeling-specifieke deadlines respecteren,
-  // met dezelfde Free/Pro/Premium-rechten. Regeling-specifieke deadlines
-  // zitten al in subsidieContext hierboven; funder-brede deadlines komen
-  // hier als apart systeembericht bij, uit dezelfde tier-gefilterde RPC-familie.
-  const funderDeadlineResultaat = await funderDeadlineContext(admin, tier);
+  // moeten zowel funder-brede als regeling-specifieke deadlines respecteren.
+  // Regeling-specifieke deadlines zitten al in subsidieContext hierboven;
+  // funder-brede deadlines komen hier als apart systeembericht bij, uit
+  // dezelfde RPC-familie (nu ook altijd de volledige database, zie hierboven).
+  const funderDeadlineResultaat = await funderDeadlineContext(admin);
   const funderDeadlineTekst = funderDeadlineResultaat?.tekst ?? null;
 
   // Architectuurregel "Reviewed bepaalt opname in de centrale dataset": ook
@@ -1284,7 +1314,7 @@ Deno.serve(async (req) => {
   // uitgelezen kunnen worden (missie, criteria, classificaties, bandbreedte).
   // Fondsen die hierboven al met hun eigen deadline zijn genoemd, worden hier
   // overgeslagen om dubbele vermelding te voorkomen.
-  const funderAlgemeenTekst = await funderAlgemeneContext(admin, tier, funderDeadlineResultaat?.funderIds ?? new Set<string>());
+  const funderAlgemeenTekst = await funderAlgemeneContext(admin, funderDeadlineResultaat?.funderIds ?? new Set<string>());
 
   // Fase 6, punt 1: actief leren tijdens gesprekken. Zelfde gate als
   // mode: 'extract'/'website' hierboven (geen Free-toegang), en alleen als
