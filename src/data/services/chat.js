@@ -29,10 +29,17 @@ const GEEN_VERBINDING =
                hieronder. Alleen ruwe data, geen berekening: het scoren zelf
                gebeurt uitsluitend server-side in de Edge Function, zodat er
                geen matchlogica dubbel bestaat in frontend én backend.
+  kompasMode   optioneel: welke Subsidie Kompas-workflow actief is
+               ('algemeen' | 'fondsadvies' | 'aanvraagbeoordeling' |
+               'projectplan' | 'begroting' | 'strategie' | 'actieplan'). De
+               Edge Function valideert dit zelf server-side tegen een
+               vaste lijst (KOMPAS_MODES) en valt bij een ontbrekende of
+               onbekende waarde terug op 'algemeen' - hier dus geen nieuwe
+               validatie nodig, gewoon doorgeven.
 
   Geeft terug: { answer, sources, veldVoorstellen, error }
 */
-export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen }) {
+export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode }) {
   if (!supabase) {
     return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
   }
@@ -50,6 +57,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
         orgProfile: orgProfile || null,
         project: project || null,
         matchSignalen: matchSignalen || null,
+        kompasMode: kompasMode || null,
       },
     });
 
@@ -84,7 +92,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
   oude versie nog draait — dan valt deze functie terug op askKompas(), zodat de
   gebruiker altijd een antwoord krijgt.
 */
-export async function askKompasStream({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, onDelta }) {
+export async function askKompasStream({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode, onDelta }) {
   if (!supabase) {
     return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
   }
@@ -110,6 +118,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
         orgProfile: orgProfile || null,
         project: project || null,
         matchSignalen: matchSignalen || null,
+        kompasMode: kompasMode || null,
         stream: true,
       }),
     });
@@ -118,7 +127,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
 
     // Geen stream: de functie ondersteunt het nog niet.
     if (!res.ok || soort.indexOf('text/event-stream') === -1) {
-      return askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen });
+      return askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode });
     }
 
     const reader = res.body.getReader();

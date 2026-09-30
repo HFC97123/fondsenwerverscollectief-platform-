@@ -153,6 +153,13 @@ export default function KompasToolPage() {
   // gesprek wordt pas aangemaakt bij het eerste bericht (zie verstuur()).
   const [conversationId, setConversationId] = useState(null);
   const [gekoppeldProjectId, setGekoppeldProjectId] = useState(null);
+  // Verbetering Projectplan-workflow: welke Subsidie Kompas-modus dit gesprek
+  // gebruikt (zie KOMPAS_MODES/resolveerModus() in de Edge Function - dat
+  // mechanisme bestond al langer, maar werd tot nu toe nooit vanuit de
+  // frontend gevuld). Bewust minimaal gehouden: alleen de projectplan-
+  // starterchip hieronder zet dit expliciet op 'projectplan'; voor elk ander
+  // gesprek blijft dit 'algemeen', exact het bestaande gedrag.
+  const [kompasMode, setKompasMode] = useState('algemeen');
   const [historieLaadId, setHistorieLaadId] = useState(null);
   // Fase 6: voorstel dat uit het lopende gesprek zelf naar voren kwam (nooit
   // automatisch opgeslagen - zelfde goedkeurpatroon als document-/website-
@@ -252,10 +259,19 @@ export default function KompasToolPage() {
   // lege gesprekken ontstaan; alleen voor wie de "Eerdere gesprekken"-lijst
   // ook ziet (hasPlanTools) - voor Free blijft een gesprek puur lokaal, zoals
   // voorheen.
-  const verstuur = async (tekst) => {
+  const verstuur = async (tekst, modusOverride) => {
     const vraag = (tekst != null ? tekst : draft).trim();
 
     if (!vraag || loading) return;
+
+    // Verbetering Projectplan-workflow: modusOverride komt van de
+    // projectplan-starterchip hieronder. React's setKompasMode() hierbeneden
+    // is asynchroon, dus deze aanroep van askKompasStream() verderop mag niet
+    // op de (nog niet bijgewerkte) kompasMode-state uit de closure vertrouwen
+    // - vandaar deze losse, direct beschikbare waarde.
+    const actieveModus = modusOverride || kompasMode;
+
+    if (modusOverride) setKompasMode(modusOverride);
 
     const nieuw = messages.concat([{ role: 'user', content: vraag, fromUser: true }]);
 
@@ -312,6 +328,10 @@ export default function KompasToolPage() {
       matchSignalen: hasPlanTools
         ? buildMatchSignalen({ orgProfile: store.orgProfile, projects: store.projects, linkedProjectId: gekoppeldProjectId })
         : null,
+      // Verbetering Projectplan-workflow: geeft de Edge Function eindelijk
+      // een betrouwbare, server-side gevalideerde modus door (zie toelichting
+      // bij de kompasMode-state hierboven).
+      kompasMode: actieveModus,
       // STAP 5 (streaming): elk woord/fragment dat binnenkomt direct tonen,
       // zodat het lid niet naar een leeg scherm hoeft te staren tijdens een
       // lang antwoord.
@@ -367,6 +387,7 @@ export default function KompasToolPage() {
     setConversationId(null);
     setGekoppeldProjectId(null);
     setChatVoorstel(null);
+    setKompasMode('algemeen');
   };
 
   // Haalt de berichten van een eerder gesprek op (lazy - de lijst zelf bevat
@@ -822,7 +843,13 @@ export default function KompasToolPage() {
                 {STARTERS.map((s) => (
                   <div
                     key={s}
-                    onClick={() => verstuur(s)}
+                    onClick={() => {
+                      // Verbetering Projectplan-workflow: alleen deze ene
+                      // starter geeft een modus mee - de andere drie
+                      // starters/vrije berichten blijven ongewijzigd op
+                      // 'algemeen', zoals nu al het geval is.
+                      verstuur(s, s === 'Help mij een projectplan opzetten' ? 'projectplan' : undefined);
+                    }}
                     style={css(
                       'cursor: pointer; min-height: 78px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid #D7E2DC; border-radius: 18px; background: #FFFFFF; color: #2C4A5E; font-size: 14.5px; font-weight: 700; line-height: 1.4;',
                     )}
