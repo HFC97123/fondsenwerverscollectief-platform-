@@ -78,7 +78,14 @@ export async function haalBerichtenOp(conversationId) {
 // Maakt een nieuw gesprek aan - gebeurt op het eerste bericht van een nieuwe
 // chat, niet vooraf, zodat er geen lege gesprekken ontstaan die het lid nooit
 // echt is begonnen.
-export async function maakGesprekAan({ titel, projectId }) {
+//
+// Verstevigen Projectplan-runtime, punt 1: kompasMode wordt vanaf het eerste
+// bericht al bij het gesprek opgeslagen, zodat een later heropend gesprek
+// (zie haalGesprekModusEnDossier hieronder) niet ongemerkt terugvalt op
+// 'algemeen'. Optioneel: bestaande aanroepen zonder kompasMode blijven
+// werken zoals voorheen (kolom blijft dan null, wat de Edge Function toch al
+// als 'algemeen' leest).
+export async function maakGesprekAan({ titel, projectId, kompasMode }) {
   const userId = await huidigeGebruiker();
 
   if (!userId || !supabase) {
@@ -91,11 +98,55 @@ export async function maakGesprekAan({ titel, projectId }) {
       user_id: userId,
       title: (titel || 'Gesprek').slice(0, 120),
       active_program_id: projectId || null,
+      kompas_mode: kompasMode || null,
     })
     .select('id')
     .single();
 
   return { id: error ? null : data.id, error: error ? error.message : null };
+}
+
+// Verstevigen Projectplan-runtime, punten 1 + 2/3: haalt de laatst bekende
+// modus en het compacte Projectdossier van één gesprek op - los van
+// haalBerichtenOp() hierboven, zodat het heropenen van een gesprek (zie
+// openGesprek() in KompasToolPage.jsx) zowel de berichten als deze twee
+// stukjes runtimestaat herstelt. Geeft neutrale standaardwaarden terug
+// zonder sessie/database, zodat de aanroeper nooit apart hoeft te checken.
+export async function haalGesprekModusEnDossier(conversationId) {
+  if (!supabase || !conversationId) {
+    return { kompasMode: 'algemeen', projectDossier: null };
+  }
+
+  const { data, error } = await supabase
+    .from('subsidie_kompas_conversations')
+    .select('kompas_mode, project_dossier')
+    .eq('id', conversationId)
+    .single();
+
+  if (error || !data) {
+    return { kompasMode: 'algemeen', projectDossier: null };
+  }
+
+  return { kompasMode: data.kompas_mode || 'algemeen', projectDossier: data.project_dossier || null };
+}
+
+// Verstevigen Projectplan-runtime, punten 1 + 2/3: slaat de bijgewerkte modus
+// en/of het bijgewerkte Projectdossier op bij een bestaand gesprek. Best
+// effort, net als voegBerichtToe() hierboven - mag nooit de rest van
+// verstuur() blokkeren als dit faalt.
+export async function bijwerkenGesprekModusEnDossier({ conversationId, kompasMode, projectDossier }) {
+  if (!supabase || !conversationId) {
+    return false;
+  }
+
+  const patch = { updated_at: new Date().toISOString() };
+
+  if (kompasMode) patch.kompas_mode = kompasMode;
+  if (projectDossier) patch.project_dossier = projectDossier;
+
+  const { error } = await supabase.from('subsidie_kompas_conversations').update(patch).eq('id', conversationId);
+
+  return !error;
 }
 
 // Koppelt (of ontkoppelt met null) een gesprek aan een project - punt 6/7 uit

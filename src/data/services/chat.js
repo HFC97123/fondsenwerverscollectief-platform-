@@ -36,12 +36,19 @@ const GEEN_VERBINDING =
                vaste lijst (KOMPAS_MODES) en valt bij een ontbrekende of
                onbekende waarde terug op 'algemeen' - hier dus geen nieuwe
                validatie nodig, gewoon doorgeven.
+  projectDossier  optioneel (verstevigen Projectplan-runtime, punten 2/3): het
+               compacte, intern bijgehouden Projectdossier zoals dat na het
+               vorige antwoord is teruggekomen - puur doorgeven, nooit hier
+               zelf aanpassen. De Edge Function stuurt in de respons een
+               bijgewerkte versie terug (alleen relevant/gevuld wanneer
+               kompasMode 'projectplan' is); ontbreekt die, dan blijft de
+               vorige waarde gewoon gelden (zie KompasToolPage.jsx).
 
-  Geeft terug: { answer, sources, veldVoorstellen, error }
+  Geeft terug: { answer, sources, veldVoorstellen, projectDossier, error }
 */
-export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode }) {
+export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode, projectDossier }) {
   if (!supabase) {
-    return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
+    return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
 
   try {
@@ -58,6 +65,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
         project: project || null,
         matchSignalen: matchSignalen || null,
         kompasMode: kompasMode || null,
+        projectDossier: projectDossier || null,
       },
     });
 
@@ -69,9 +77,15 @@ export async function askKompas({ messages, tier, permissions, context, conversa
       throw new Error('Geen antwoord ontvangen.');
     }
 
-    return { answer: data.answer, sources: data.sources || [], veldVoorstellen: data.veldVoorstellen || {}, error: null };
+    return {
+      answer: data.answer,
+      sources: data.sources || [],
+      veldVoorstellen: data.veldVoorstellen || {},
+      projectDossier: data.projectDossier || null,
+      error: null,
+    };
   } catch (e) {
-    return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
+    return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
 }
 
@@ -92,9 +106,9 @@ export async function askKompas({ messages, tier, permissions, context, conversa
   oude versie nog draait — dan valt deze functie terug op askKompas(), zodat de
   gebruiker altijd een antwoord krijgt.
 */
-export async function askKompasStream({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode, onDelta }) {
+export async function askKompasStream({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode, projectDossier, onDelta }) {
   if (!supabase) {
-    return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
+    return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
 
   try {
@@ -119,6 +133,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
         project: project || null,
         matchSignalen: matchSignalen || null,
         kompasMode: kompasMode || null,
+        projectDossier: projectDossier || null,
         stream: true,
       }),
     });
@@ -127,7 +142,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
 
     // Geen stream: de functie ondersteunt het nog niet.
     if (!res.ok || soort.indexOf('text/event-stream') === -1) {
-      return askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode });
+      return askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode, projectDossier });
     }
 
     const reader = res.body.getReader();
@@ -136,6 +151,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
     let volledig = '';
     let sources = [];
     let veldVoorstellen = {};
+    let projectDossierUit = null;
     let serverFout = null;
     // STAP 5 (gevonden tijdens de belastingstest met het zwaarste testgeval):
     // een verbroken verbinding gooit niet altijd een leesfout - bij een
@@ -186,6 +202,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
               volledig = deel.answer || volledig;
               sources = deel.sources || [];
               veldVoorstellen = deel.veldVoorstellen || {};
+              projectDossierUit = deel.projectDossier || null;
             }
           } catch (e) {
             // onvolledig JSON-fragment (regel liep over twee chunks) - de
@@ -201,14 +218,14 @@ export async function askKompasStream({ messages, tier, permissions, context, co
       // tekst is: toon die, duidelijk gemarkeerd als afgebroken (partial),
       // nooit ongemarkeerd als volledig antwoord.
       if (volledig) {
-        return { answer: volledig, sources: [], veldVoorstellen: {}, error: null, partial: true };
+        return { answer: volledig, sources: [], veldVoorstellen: {}, projectDossier: null, error: null, partial: true };
       }
 
-      return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
+      return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
     }
 
     if (serverFout) {
-      return { answer: null, sources: [], veldVoorstellen: {}, error: serverFout };
+      return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: serverFout };
     }
 
     if (!kreegDone) {
@@ -217,19 +234,19 @@ export async function askKompasStream({ messages, tier, permissions, context, co
       // Zelfde behandeling als een leesfout: toon wat er al was, duidelijk
       // gemarkeerd als afgebroken, nooit ongemarkeerd als volledig antwoord.
       if (volledig) {
-        return { answer: volledig, sources: [], veldVoorstellen: {}, error: null, partial: true };
+        return { answer: volledig, sources: [], veldVoorstellen: {}, projectDossier: null, error: null, partial: true };
       }
 
-      return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
+      return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
     }
 
     if (!volledig) {
       throw new Error('Leeg antwoord.');
     }
 
-    return { answer: volledig, sources, veldVoorstellen, error: null };
+    return { answer: volledig, sources, veldVoorstellen, projectDossier: projectDossierUit, error: null };
   } catch (e) {
-    return { answer: null, sources: [], veldVoorstellen: {}, error: GEEN_VERBINDING };
+    return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
 }
 

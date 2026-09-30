@@ -15,7 +15,9 @@ import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import { askKompasStream, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
 import { extraheerTekst } from '../../data/services/documentExtractie.js';
 import {
+  bijwerkenGesprekModusEnDossier,
   haalBerichtenOp,
+  haalGesprekModusEnDossier,
   koppelGesprekAanProject,
   maakGesprekAan,
   voegBerichtToe,
@@ -160,6 +162,17 @@ export default function KompasToolPage() {
   // starterchip hieronder zet dit expliciet op 'projectplan'; voor elk ander
   // gesprek blijft dit 'algemeen', exact het bestaande gedrag.
   const [kompasMode, setKompasMode] = useState('algemeen');
+  // Verstevigen Projectplan-runtime, punten 1 + 2/3: kompasMode hierboven
+  // leefde tot nu toe alleen in het geheugen van deze paginasessie - bij het
+  // heropenen van een eerder gesprek (openGesprek() hieronder) werd hij nooit
+  // hersteld, waardoor een Projectplan-gesprek ongemerkt terugviel op
+  // 'algemeen'. projectDossier is nieuw: een compact, intern bijgehouden
+  // overzicht (nooit aan de gebruiker getoond) dat de Edge Function na elk
+  // antwoord bijwerkt zodat belangrijke projectinformatie niet verloren gaat
+  // wanneer het gesprek langer wordt dan het berichtenvenster dat naar het
+  // model gaat. Beide worden nu, samen met de berichten, bij het gesprek
+  // opgeslagen (zie gesprekken.js) en bij het heropenen hersteld.
+  const [projectDossier, setProjectDossier] = useState(null);
   const [historieLaadId, setHistorieLaadId] = useState(null);
   // Fase 6: voorstel dat uit het lopende gesprek zelf naar voren kwam (nooit
   // automatisch opgeslagen - zelfde goedkeurpatroon als document-/website-
@@ -287,7 +300,14 @@ export default function KompasToolPage() {
 
     if (hasPlanTools) {
       if (!actiefGesprekId) {
-        const aangemaakt = await maakGesprekAan({ titel: vraag.slice(0, 60), projectId: gekoppeldProjectId });
+        const aangemaakt = await maakGesprekAan({
+          titel: vraag.slice(0, 60),
+          projectId: gekoppeldProjectId,
+          // Verstevigen Projectplan-runtime, punt 1: modus meteen vanaf het
+          // eerste bericht vastleggen, zodat een later heropend gesprek hem
+          // kan herstellen (zie openGesprek() hieronder).
+          kompasMode: actieveModus,
+        });
 
         if (aangemaakt.id) {
           actiefGesprekId = aangemaakt.id;
@@ -332,6 +352,10 @@ export default function KompasToolPage() {
       // een betrouwbare, server-side gevalideerde modus door (zie toelichting
       // bij de kompasMode-state hierboven).
       kompasMode: actieveModus,
+      // Verstevigen Projectplan-runtime, punten 2/3: het laatst bekende
+      // Projectdossier meesturen zodat de Edge Function het kan aanvullen/
+      // corrigeren in plaats van het steeds opnieuw te moeten afleiden.
+      projectDossier,
       // STAP 5 (streaming): elk woord/fragment dat binnenkomt direct tonen,
       // zodat het lid niet naar een leeg scherm hoeft te staren tijdens een
       // lang antwoord.
@@ -362,9 +386,29 @@ export default function KompasToolPage() {
     // de weergave zelf staat verderop, direct onder de tekstballon.
     setMessages(nieuw.concat([{ role: 'assistant', content: inhoud, sources: res.sources || [], fromUser: false }]));
 
+    // Verstevigen Projectplan-runtime, punten 2/3: alleen wanneer de Edge
+    // Function daadwerkelijk een (nieuw of bijgewerkt) Projectdossier
+    // teruggaf - ontbreekt dat (bijv. andere modus, of de extractie leverde
+    // niets op), dan blijft het vorige dossier gewoon staan in plaats van dat
+    // het hier wordt leeggemaakt.
+    if (res.projectDossier) {
+      setProjectDossier(res.projectDossier);
+    }
+
     if (hasPlanTools && actiefGesprekId) {
       voegBerichtToe({ conversationId: actiefGesprekId, role: 'assistant', content: inhoud, projectId: gekoppeldProjectId });
       store.upsertGesprekInLijst({ id: actiefGesprekId, tijd: new Date().toISOString() });
+
+      // Verstevigen Projectplan-runtime, punten 1 + 2/3: modus en (indien
+      // bijgewerkt) Projectdossier samen met het gesprek opslaan, zodat een
+      // latere heropening (openGesprek() hieronder) ze kan herstellen. Best
+      // effort, net als de berichten hierboven - mag dit gesprek nooit
+      // blokkeren.
+      bijwerkenGesprekModusEnDossier({
+        conversationId: actiefGesprekId,
+        kompasMode: actieveModus,
+        projectDossier: res.projectDossier || null,
+      });
     }
 
     // Fase 6: kwam er tijdens dit gesprek een voorstel uit voort (het lid
@@ -388,6 +432,10 @@ export default function KompasToolPage() {
     setGekoppeldProjectId(null);
     setChatVoorstel(null);
     setKompasMode('algemeen');
+    // Verstevigen Projectplan-runtime, punten 2/3: een nieuw gesprek begint
+    // met een leeg Projectdossier - anders zou het dossier van het vorige
+    // gesprek onbedoeld blijven meelopen.
+    setProjectDossier(null);
   };
 
   // Haalt de berichten van een eerder gesprek op (lazy - de lijst zelf bevat
@@ -399,10 +447,19 @@ export default function KompasToolPage() {
     setHistorieLaadId(h.id);
 
     const berichten = await haalBerichtenOp(h.id);
+    // Verstevigen Projectplan-runtime, punt 1 (het eigenlijke lek): tot nu
+    // toe herstelde het heropenen van een gesprek alleen de berichten, nooit
+    // de modus - een Projectplan-gesprek viel zo ongemerkt terug op
+    // 'algemeen' zodra het lid het later weer opende. Nu wordt, samen met de
+    // berichten, ook de laatst opgeslagen modus en het Projectdossier
+    // hersteld (zie gesprekken.js).
+    const { kompasMode: opgeslagenModus, projectDossier: opgeslagenDossier } = await haalGesprekModusEnDossier(h.id);
 
     setMessages(berichten);
     setConversationId(h.id);
     setGekoppeldProjectId(h.projectId || null);
+    setKompasMode(opgeslagenModus);
+    setProjectDossier(opgeslagenDossier);
     setDraft('');
     setError('');
     setChatVoorstel(null);
