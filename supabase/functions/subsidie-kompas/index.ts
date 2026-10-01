@@ -1428,6 +1428,58 @@ function vraagtOmDocumentGeneratie(tekst: string): boolean {
   return DOCUMENTGENERATIE_PATRONEN.some((r) => r.test(tekst));
 }
 
+// RC1-acceptatietest, bevinding K3 (2026-10-01): de frontend stuurde
+// body.kompasMode = 'projectplan' tot nu toe uitsluitend wanneer het lid de
+// ene starterchip "Help mij een projectplan opzetten" gebruikte (zie
+// KompasToolPage.jsx). Elke andere formulering ("Kun je mij helpen met een
+// projectplan?", "Werk dit project uit tot een projectplan") kwam hier aan
+// als 'algemeen', waardoor het Projectdossier-verificatiemechanisme
+// hieronder (modus === 'projectplan') nooit werd geactiveerd. De frontend
+// herkent dezelfde formuleringen inmiddels ook zelf (detecteerProjectplan-
+// Intentie() in KompasToolPage.jsx, bewust dezelfde regels maar in een los
+// JS-bestand dat deze Deno-functie niet kan importeren - houd beide bij
+// wijziging synchroon), maar de server blijft hier, zoals bij
+// vraagtOmDocumentGeneratie()/vereistWebsearch() hierboven, de uiteindelijke
+// vangnet-controle: een lid kan dit nooit omzeilen door iets anders te
+// typen, en een frontend die om wat voor reden dan ook toch 'algemeen'
+// stuurt wordt hier alsnog gecorrigeerd. Geen extra taalmodel-aanroep.
+//
+// Bewust terughoudend, exact dezelfde regels als de frontend: een kale
+// vermelding van het woord "project" (bijv. "Welke fondsen passen bij mijn
+// project?", "Maak een begroting voor mijn project") activeert dit NOOIT -
+// alleen het woord "projectplan" zelf in combinatie met een duidelijke
+// vraag/actie, of een expliciete "project (verder) uitwerken/beschrijven
+// voor een aanvraag"-formulering.
+const PROJECTPLAN_ACTIECUE_PATROON =
+  /\b(help|helpt|helpen|hulp|wil|wilt|graag|kun je|kan je|kunt u|maak|gemaakt|schrijf|schrijven|zet[\s\S]{0,10}om|omzetten|opzetten|opstellen|opstel|verbeter|verbeteren|werk[\s\S]{0,40}uit|uitwerken|aanvullen|uitbreiden)\b/i;
+
+const PROJECTPLAN_WOORD_PATROON = /project\s*plan/i;
+
+const PROJECTPLAN_UITWERKEN_PATRONEN: RegExp[] = [
+  /\bproject(?:idee)?\b[\s\S]{0,50}\b(?:uit\s*te\s*werken|uitwerken|uit\s*werken)\b/i,
+  /\b(?:uit\s*te\s*werken|uitwerken|uit\s*werken)\b[\s\S]{0,50}\bproject(?:idee)?\b/i,
+];
+
+const PROJECTPLAN_BESCHRIJVEN_PATRONEN: RegExp[] = [
+  /\bproject\b[\s\S]{0,60}\bbeschrijven\b[\s\S]{0,40}\b(?:subsidie)?aanvraag\b/i,
+  /\b(?:subsidie)?aanvraag\b[\s\S]{0,40}\bproject\b[\s\S]{0,60}\bbeschrijven\b/i,
+];
+
+function vraagtOmProjectplan(tekst: string): boolean {
+  if (!tekst) {
+    return false;
+  }
+
+  if (PROJECTPLAN_WOORD_PATROON.test(tekst) && PROJECTPLAN_ACTIECUE_PATROON.test(tekst)) {
+    return true;
+  }
+
+  return (
+    PROJECTPLAN_UITWERKEN_PATRONEN.some((r) => r.test(tekst)) ||
+    PROJECTPLAN_BESCHRIJVEN_PATRONEN.some((r) => r.test(tekst))
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS });
@@ -1694,7 +1746,22 @@ Deno.serve(async (req) => {
   // verplaatst (stond voorheen pas vlak vóór de invoer-opbouw) omdat
   // systeemtekst() hieronder nu ook de modus nodig heeft voor de
   // addendum-selectie. Functioneel ongewijzigd - alleen eerder berekend.
-  const modus = resolveerModus(body.kompasMode);
+  //
+  // RC1-acceptatietest, bevinding K3 (2026-10-01): basisModus komt, zoals
+  // voorheen, uitsluitend uit body.kompasMode. Stuurt de frontend 'algemeen'
+  // terwijl het laatste bericht van het lid zelf een duidelijke
+  // projectplanintentie bevat (vraagtOmProjectplan() hierboven), dan wordt
+  // dat hier alsnog gecorrigeerd naar 'projectplan' - vóórdat systeemtekst()
+  // en het Projectdossier-mechanisme verderop de modus gebruiken. Is de
+  // frontend al expliciet met een andere, geldige modus gekomen (bijv.
+  // 'projectplan' via de starterchip, of een eventuele toekomstige modus),
+  // dan verandert hier niets: dit is uitsluitend een vangnet vóór
+  // 'algemeen', nooit een overschrijving van een al gekozen modus.
+  const basisModus = resolveerModus(body.kompasMode);
+  const modus: KompasMode =
+    basisModus === 'algemeen' && laatsteGebruikersBericht && vraagtOmProjectplan(String(laatsteGebruikersBericht.content))
+      ? 'projectplan'
+      : basisModus;
 
   // Het abonnement komt uit het profiel, niet uit de aanvraag. De browser kan
   // dit dus niet ophogen.

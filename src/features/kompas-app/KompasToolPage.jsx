@@ -27,6 +27,59 @@ import ProjectenPage from './ProjectenPage.jsx';
 import DocumentatiePage from './DocumentatiePage.jsx';
 import KompasContextDrawer from './KompasContextDrawer.jsx';
 
+// RC1-acceptatietest, bevinding K3 (2026-10-01): vóór deze aanpassing
+// activeerde de frontend de 'projectplan'-modus (en daarmee het
+// Projectdossier-verificatiemechanisme in de Edge Function) uitsluitend via
+// de ene starterchip "Help mij een projectplan opzetten" (zie verstuur()
+// hieronder). Een lid dat zelf typt - "Kun je mij helpen met een
+// projectplan?", "Werk dit project uit tot een projectplan" - bleef in
+// 'algemeen' hangen, waardoor het Projectdossier nooit werd opgebouwd.
+//
+// Dit is een klein, deterministisch regelsysteem (geen extra taalmodel-
+// aanroep) dat herkent of het lid daadwerkelijk om een projectplan vraagt.
+// Bewust terughoudend: een kale vermelding van het woord "project" (bijv.
+// "Welke fondsen passen bij mijn project?", "Maak een begroting voor mijn
+// project") mag dit NOOIT activeren - alleen het woord "projectplan" zelf in
+// combinatie met een duidelijke vraag/actie, of een expliciete "project
+// (verder) uitwerken/beschrijven voor een aanvraag"-formulering.
+//
+// De Edge Function herkent dezelfde intentie server-side nogmaals als
+// vangnet (zie vraagtOmProjectplan() in
+// supabase/functions/subsidie-kompas/index.ts, bewust dezelfde regels maar
+// in een los TypeScript/Deno-bestand dat niet door deze frontend kan worden
+// geïmporteerd) - deze front-end-detectie is uitsluitend voor snellere/
+// correcte UX (runtimecontext al vanaf het eerste bericht correct), de
+// backend blijft altijd leidend. Houd beide bij wijziging synchroon.
+const PROJECTPLAN_ACTIECUE_PATROON =
+  /\b(help|helpt|helpen|hulp|wil|wilt|graag|kun je|kan je|kunt u|maak|gemaakt|schrijf|schrijven|zet[\s\S]{0,10}om|omzetten|opzetten|opstellen|opstel|verbeter|verbeteren|werk[\s\S]{0,40}uit|uitwerken|aanvullen|uitbreiden)\b/i;
+
+const PROJECTPLAN_WOORD_PATROON = /project\s*plan/i;
+
+const PROJECTPLAN_UITWERKEN_PATRONEN = [
+  /\bproject(?:idee)?\b[\s\S]{0,50}\b(?:uit\s*te\s*werken|uitwerken|uit\s*werken)\b/i,
+  /\b(?:uit\s*te\s*werken|uitwerken|uit\s*werken)\b[\s\S]{0,50}\bproject(?:idee)?\b/i,
+];
+
+const PROJECTPLAN_BESCHRIJVEN_PATRONEN = [
+  /\bproject\b[\s\S]{0,60}\bbeschrijven\b[\s\S]{0,40}\b(?:subsidie)?aanvraag\b/i,
+  /\b(?:subsidie)?aanvraag\b[\s\S]{0,40}\bproject\b[\s\S]{0,60}\bbeschrijven\b/i,
+];
+
+function detecteerProjectplanIntentie(tekst) {
+  if (!tekst) {
+    return false;
+  }
+
+  if (PROJECTPLAN_WOORD_PATROON.test(tekst) && PROJECTPLAN_ACTIECUE_PATROON.test(tekst)) {
+    return true;
+  }
+
+  return (
+    PROJECTPLAN_UITWERKEN_PATRONEN.some((r) => r.test(tekst)) ||
+    PROJECTPLAN_BESCHRIJVEN_PATRONEN.some((r) => r.test(tekst))
+  );
+}
+
 function formatDatum(iso) {
   if (!iso) {
     return '';
@@ -283,9 +336,21 @@ export default function KompasToolPage() {
     // is asynchroon, dus deze aanroep van askKompasStream() verderop mag niet
     // op de (nog niet bijgewerkte) kompasMode-state uit de closure vertrouwen
     // - vandaar deze losse, direct beschikbare waarde.
-    const actieveModus = modusOverride || kompasMode;
+    //
+    // RC1-acceptatietest, bevinding K3 (2026-10-01): naast de starterchip
+    // (modusOverride) herkent detecteerProjectplanIntentie() hierboven ook
+    // vrij getypte projectplanverzoeken. Dit geldt alleen zolang het gesprek
+    // nog in 'algemeen' staat (kompasMode === 'algemeen') - zodra de modus
+    // al 'projectplan' is, via de chip of een eerdere detectie verderop in
+    // hetzelfde gesprek, blijft dat vanzelf zo voor elk vervolgbericht, ook
+    // als dat zelf niet meer het woord "projectplan" bevat (bijv. "De
+    // doelgroep bestaat uit jongeren tussen 12 en 18 jaar."), omdat dan
+    // alleen de bestaande kompasMode-state wordt gebruikt en er geen nieuwe
+    // detectie meer plaatsvindt.
+    const autoModus = kompasMode === 'algemeen' && detecteerProjectplanIntentie(vraag) ? 'projectplan' : null;
+    const actieveModus = modusOverride || autoModus || kompasMode;
 
-    if (modusOverride) setKompasMode(modusOverride);
+    if (modusOverride || autoModus) setKompasMode(actieveModus);
 
     const nieuw = messages.concat([{ role: 'user', content: vraag, fromUser: true }]);
 
