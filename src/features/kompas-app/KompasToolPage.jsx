@@ -25,6 +25,7 @@ import {
 import OrganisatieprofielPage, { VELDEN } from './OrganisatieprofielPage.jsx';
 import ProjectenPage from './ProjectenPage.jsx';
 import DocumentatiePage from './DocumentatiePage.jsx';
+import KompasContextDrawer from './KompasContextDrawer.jsx';
 
 function formatDatum(iso) {
   if (!iso) {
@@ -702,130 +703,136 @@ export default function KompasToolPage() {
           </div>
         )}
 
-        {/* EERDERE GESPREKKEN */}
-        {paneel === 'historie' && (
-          <div style={css('margin-bottom: 16px; padding: clamp(20px, 3vw, 28px); border: 1px solid #D6E3E9; border-radius: 24px; background: #FFFFFF;')}>
-            <div style={css("margin-bottom: 18px; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
-              Eerdere gesprekken
-            </div>
+        {/* CONTEXTPANEEL (Organisatie/Projecten/Documenten/Context): Vervolgopdracht
+            "Verbeter UX contextpanelen rondom Subsidie Kompas chat" (2026-10-01).
+            De vier vroegere losse, boven de chat gerenderde blokken (Eerdere
+            gesprekken, Documentatie, Projecten, Organisatie) zijn hier
+            samengevoegd tot één compact, uitschuifbaar paneel met tabbladen
+            (KompasContextDrawer), zodat de chat altijd direct zichtbaar blijft
+            en niet meer naar beneden wordt geduwd. De inhoud van elk tabblad
+            is ongewijzigd - dezelfde componenten, dezelfde state, dezelfde
+            data - alleen de lay-out eromheen is veranderd. */}
+        {hasPlanTools && (
+          <KompasContextDrawer
+            active={paneel}
+            onSelect={setPaneel}
+            onClose={() => setPaneel(null)}
+            tabs={{
+              org: { label: 'Organisatie', content: <OrganisatieprofielPage /> },
+              proj: { label: 'Projecten', content: <ProjectenPage /> },
+              doc: { label: 'Documenten', badge: documenten.length, content: <DocumentatiePage /> },
+              historie: {
+                label: 'Context',
+                content: (
+                  <>
+                    <div style={css("margin-bottom: 18px; font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E;")}>
+                      Eerdere gesprekken
+                    </div>
 
-            <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-              {gesprekken.map((h) => (
-                <div
-                  key={h.id}
-                  style={css(
-                    'display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; min-height: 44px; padding: 13px 16px; border: 1px solid #E1EAE4; border-radius: 14px;',
-                  )}
-                >
-                  <span
-                    onClick={() => openGesprek(h)}
-                    role="button"
-                    tabIndex={0}
-                    style={css('cursor: pointer; flex: 1 1 220px; min-width: 0; color: #2C4A5E; font-size: 14.5px; font-weight: 700;')}
-                  >
-                    {h.titel}
-                  </span>
-                  <span style={css('display: flex; align-items: center; gap: 16px;')}>
-                    <span style={css('color: #7B8985; font-size: 13px;')}>{historieLaadId === h.id ? 'Laden…' : formatDatum(h.tijd)}</span>
-                    <span
-                      onClick={() => {
-                        store.deleteConversation(h.id);
+                    <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
+                      {gesprekken.map((h) => (
+                        <div
+                          key={h.id}
+                          style={css(
+                            'display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; min-height: 44px; padding: 13px 16px; border: 1px solid #E1EAE4; border-radius: 14px;',
+                          )}
+                        >
+                          <span
+                            onClick={() => openGesprek(h)}
+                            role="button"
+                            tabIndex={0}
+                            style={css('cursor: pointer; flex: 1 1 220px; min-width: 0; color: #2C4A5E; font-size: 14.5px; font-weight: 700;')}
+                          >
+                            {h.titel}
+                          </span>
+                          <span style={css('display: flex; align-items: center; gap: 16px;')}>
+                            <span style={css('color: #7B8985; font-size: 13px;')}>{historieLaadId === h.id ? 'Laden…' : formatDatum(h.tijd)}</span>
+                            <span
+                              onClick={() => {
+                                store.deleteConversation(h.id);
 
-                        if (h.id === conversationId) {
-                          nieuweChat();
-                        }
-                      }}
-                      role="button"
-                      tabIndex={0}
-                      style={css('cursor: pointer; min-height: 44px; display: flex; align-items: center; color: #9E3B2C; font-size: 13px; font-weight: 700;')}
-                    >
-                      Verwijderen
-                    </span>
-                  </span>
-                </div>
-              ))}
+                                if (h.id === conversationId) {
+                                  nieuweChat();
+                                }
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              style={css('cursor: pointer; min-height: 44px; display: flex; align-items: center; color: #9E3B2C; font-size: 13px; font-weight: 700;')}
+                            >
+                              Verwijderen
+                            </span>
+                          </span>
+                        </div>
+                      ))}
 
-              {gesprekken.length === 0 && (
-                <div style={css('padding: 20px 16px; border: 1px dashed #D5E0D9; border-radius: 14px; font-size: 14.5px; line-height: 1.6; color: #7B8985;')}>
-                  Nog geen bewaarde gesprekken. Zodra u een vraag stelt, bewaart Subsidie Kompas het gesprek hier zodat
-                  u er later op terug kunt komen.
-                </div>
-              )}
+                      {gesprekken.length === 0 && (
+                        <div style={css('padding: 20px 16px; border: 1px dashed #D5E0D9; border-radius: 14px; font-size: 14.5px; line-height: 1.6; color: #7B8985;')}>
+                          Nog geen bewaarde gesprekken. Zodra u een vraag stelt, bewaart Subsidie Kompas het gesprek hier zodat
+                          u er later op terug kunt komen.
+                        </div>
+                      )}
 
-              <div
-                onClick={nieuweChat}
-                role="button"
-                tabIndex={0}
-                style={css(
-                  'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #D6E3E9; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 800;',
-                )}
-              >
-                + Nieuw gesprek
-              </div>
-            </div>
+                      <div
+                        onClick={nieuweChat}
+                        role="button"
+                        tabIndex={0}
+                        style={css(
+                          'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #D6E3E9; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 800;',
+                        )}
+                      >
+                        + Nieuw gesprek
+                      </div>
+                    </div>
 
-            <div style={css('margin-top: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
-              <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>Gegevens verwijderen</div>
-              <div style={css('margin-bottom: 16px; max-width: 620px; font-size: 14px; line-height: 1.65; color: #536460;')}>
-                U bepaalt zelf wat Subsidie Kompas van u bewaart. Verwijderen kan niet worden teruggedraaid; wat u
-                weghaalt gebruikt Subsidie Kompas niet meer in adviezen en aanvragen.
-              </div>
-              <div style={css('display: flex; gap: 10px; flex-wrap: wrap;')}>
-                <div
-                  onClick={() => {
-                    store.clearConversations();
-                    nieuweChat();
-                    setAccountMsg('Alle gesprekken zijn verwijderd.');
-                  }}
-                  role="button"
-                  style={css(
-                    'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #E1D3D0; border-radius: 999px; background: #FFFFFF; color: #9E3B2C; font-size: 14px; font-weight: 700;',
-                  )}
-                >
-                  Alle gesprekken verwijderen
-                </div>
-                <div
-                  onClick={() => {
-                    store.clearOrgProfile();
-                    setAccountMsg('De informatie over uw organisatie is verwijderd.');
-                  }}
-                  role="button"
-                  style={css(
-                    'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #E1D3D0; border-radius: 999px; background: #FFFFFF; color: #9E3B2C; font-size: 14px; font-weight: 700;',
-                  )}
-                >
-                  Informatie over mijn organisatie verwijderen
-                </div>
-              </div>
+                    <div style={css('margin-top: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
+                      <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>Gegevens verwijderen</div>
+                      <div style={css('margin-bottom: 16px; font-size: 14px; line-height: 1.65; color: #536460;')}>
+                        U bepaalt zelf wat Subsidie Kompas van u bewaart. Verwijderen kan niet worden teruggedraaid; wat u
+                        weghaalt gebruikt Subsidie Kompas niet meer in adviezen en aanvragen.
+                      </div>
+                      <div style={css('display: flex; gap: 10px; flex-wrap: wrap;')}>
+                        <div
+                          onClick={() => {
+                            store.clearConversations();
+                            nieuweChat();
+                            setAccountMsg('Alle gesprekken zijn verwijderd.');
+                          }}
+                          role="button"
+                          style={css(
+                            'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #E1D3D0; border-radius: 999px; background: #FFFFFF; color: #9E3B2C; font-size: 14px; font-weight: 700;',
+                          )}
+                        >
+                          Alle gesprekken verwijderen
+                        </div>
+                        <div
+                          onClick={() => {
+                            store.clearOrgProfile();
+                            setAccountMsg('De informatie over uw organisatie is verwijderd.');
+                          }}
+                          role="button"
+                          style={css(
+                            'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #E1D3D0; border-radius: 999px; background: #FFFFFF; color: #9E3B2C; font-size: 14px; font-weight: 700;',
+                          )}
+                        >
+                          Informatie over mijn organisatie verwijderen
+                        </div>
+                      </div>
 
-              {accountMsg && (
-                <div
-                  style={css(
-                    'margin-top: 16px; padding: 13px 16px; border: 1px solid #BFD4C6; border-radius: 12px; background: #EAF4EE; font-size: 14.5px; font-weight: 700; color: #2F6D47;',
-                  )}
-                >
-                  {accountMsg}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* PANELEN: documentatie, projecten, organisatie */}
-        {paneel === 'doc' && (
-          <div style={css('margin-bottom: 16px;')}>
-            <DocumentatiePage />
-          </div>
-        )}
-        {paneel === 'proj' && (
-          <div style={css('margin-bottom: 16px;')}>
-            <ProjectenPage />
-          </div>
-        )}
-        {paneel === 'org' && (
-          <div style={css('margin-bottom: 16px;')}>
-            <OrganisatieprofielPage />
-          </div>
+                      {accountMsg && (
+                        <div
+                          style={css(
+                            'margin-top: 16px; padding: 13px 16px; border: 1px solid #BFD4C6; border-radius: 12px; background: #EAF4EE; font-size: 14.5px; font-weight: 700; color: #2F6D47;',
+                          )}
+                        >
+                          {accountMsg}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ),
+              },
+            }}
+          />
         )}
 
         {/* UPGRADE */}
