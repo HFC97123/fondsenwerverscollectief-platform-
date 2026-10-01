@@ -1401,6 +1401,33 @@ function vereistWebsearch(berichten: any[], kompasMode: KompasMode, heeftProject
   return heeftProjectContext || gebruikersBerichten.length > 1;
 }
 
+// Verbeterpunten Projectplan + Free/Pro/Premium, punt 5 (2026-10-01): een
+// klein, uitlegbaar regelsysteem - zelfde stijl als de WEBSEARCH_*_PATRONEN
+// hierboven - dat herkent of het lid in het gesprek zelf vraagt om een
+// Word-, Excel- of PDF-document (of anderszins een exporteerbaar bestand).
+// Bewust ruim geformuleerd (meerdere, elkaar overlappende patronen) zodat
+// uiteenlopende formuleringen ("maak hier een Word-document van", "kun je
+// dit exporteren naar PDF", "ik wil dit als Excel-bestand downloaden")
+// allemaal worden herkend; een enkel gemist, ongebruikelijk geformuleerd
+// verzoek leidt hooguit tot een gewoon chatantwoord in plaats van de
+// upgrademelding, nooit tot een alsnog gegenereerd bestand (zie
+// DOCUMENTGENERATIE hieronder: documenten worden sowieso nergens in dit
+// bestand daadwerkelijk aangemaakt - dat gebeurt uitsluitend aan de
+// frontend-kant, via de voor Free al verborgen exportknop).
+const DOCUMENTGENERATIE_PATRONEN: RegExp[] = [
+  /\b(maak|genereer|exporteer|stel op|schrijf|converteer)\b[\s\S]{0,40}(?:\b(?:word|pdf|excel)\b|\.docx|\.xlsx|\.pdf)/i,
+  /\bzet\b[\s\S]{0,30}\bom\b[\s\S]{0,20}(?:\b(?:word|pdf|excel)\b|\.docx|\.xlsx|\.pdf)/i,
+  /\b(word|pdf|excel)[-\s]?(bestand|document)\b/i,
+  /\bdocument(en)?\b[\s\S]{0,30}\b(genereren|exporteren|downloaden|maken|aanmaken)\b/i,
+  /\b(genereren|exporteren|downloaden|aanmaken)\b[\s\S]{0,30}\b(document|bestand|word|pdf|excel)\b/i,
+  /\bdownload(en)?\b[\s\S]{0,20}\b(als|naar)?\s*(word|pdf|excel)\b/i,
+  /\b(zet|maak)\b[\s\S]{0,20}\bhiervan\b[\s\S]{0,20}\been\b[\s\S]{0,20}\b(word|pdf|excel)\b/i,
+];
+
+function vraagtOmDocumentGeneratie(tekst: string): boolean {
+  return DOCUMENTGENERATIE_PATRONEN.some((r) => r.test(tekst));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS });
@@ -1600,6 +1627,64 @@ Deno.serve(async (req) => {
     return json({ error: 'Geen vraag ontvangen.' }, 400);
   }
 
+  // Verbeterpunten Projectplan + Free/Pro/Premium (2026-10-01): het
+  // abonnement bepaalt, net als tier hierboven, uitsluitend uit het profiel -
+  // nooit van de client. Naar hier naar boven gehaald (stond voorheen pas
+  // vlak vóór de invoer-opbouw) zodat zowel de documentgeneratie-blokkade
+  // hieronder als matchSignalen/context verderop dezelfde, ene gate
+  // gebruiken. Functioneel ongewijzigd voor wat al bestond - alleen eerder
+  // berekend en op meer plekken toegepast.
+  const magOrganisatiegeheugen = tier !== 'free';
+
+  // Verbeterpunten Projectplan + Free/Pro/Premium, punt 5 (2026-10-01):
+  // documentgeneratie (Word/Excel/PDF) is een Pro- en Premium-functie. Dit
+  // werd tot nu toe uitsluitend afgedwongen door de exportknop in de
+  // frontend te verbergen voor Free (KompasToolPage.jsx) - vraagt een
+  // Free-gebruiker er in het gesprek zelf om, dan hing het antwoord af van
+  // of het taalmodel kompas.system's instructie daarover goed volgde, zonder
+  // enige server-side controle. Zelfde beredenering als vereistWebsearch()
+  // verderop in dit bestand: een klein, uitlegbaar, server-side regelsysteem
+  // dat de gebruiker nooit zelf kan omzeilen door iets anders te typen, en
+  // dat de aanroep naar het taalmodel hier helemaal overslaat (dus ook geen
+  // onnodige kosten of risico dat het model het toch camoufleert).
+  const laatsteGebruikersBericht = berichten
+    .slice()
+    .reverse()
+    .find((m: any) => m && m.role === 'user' && m.content);
+
+  if (!magOrganisatiegeheugen && laatsteGebruikersBericht && vraagtOmDocumentGeneratie(String(laatsteGebruikersBericht.content))) {
+    const upgradeMelding =
+      'Documentexport is beschikbaar binnen Pro en Premium.\n\nMet Pro en Premium kunt u projectplannen, fondsenscans, strategieën en andere documenten automatisch laten genereren in de Subsidie Kompas-huisstijl.\n\nWilt u hier meer over weten? Bekijk de mogelijkheden van Pro en Premium.';
+    const dossierOngewijzigd = leesProjectDossier(body);
+
+    if (body.stream === true) {
+      const stream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                done: true,
+                answer: upgradeMelding,
+                sources: [],
+                veldVoorstellen: {},
+                projectDossier: dossierOngewijzigd,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        headers: { ...CORS, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+      });
+    }
+
+    return json({ answer: upgradeMelding, sources: [], veldVoorstellen: {}, projectDossier: dossierOngewijzigd });
+  }
+
   // STAP 2: de actieve workflow-modus komt uitsluitend uit het nieuwe,
   // aparte veld body.kompasMode (nooit uit body.mode, dat al iets anders
   // betekent - zie de toelichting bij resolveerModus() hierboven) en wordt
@@ -1634,7 +1719,12 @@ Deno.serve(async (req) => {
   // sortering en de uitleg-tekst binnen de volledige lijst hierboven - het
   // bepaalt zelf nooit welke regelingen in het antwoord aan dit lid getoond
   // mogen worden.
-  const matchSignalen = leesMatchSignalen(body);
+  // Verbeterpunten Projectplan + Free/Pro/Premium, punt 1 (2026-10-01):
+  // matchSignalen is afgeleid van het organisatieprofiel/project van dit lid
+  // en telt dus mee als "organisatiecontext" - zelfde gate als orgProfile/
+  // project/context hieronder, in plaats van dit (zoals voorheen)
+  // ongefilterd van de client over te nemen.
+  const matchSignalen = magOrganisatiegeheugen ? leesMatchSignalen(body) : null;
   const subsidieContext = await subsidieregelingContext(admin, matchSignalen);
 
   // Deadline-architectuur, enkelvoudige koppeling, testpunt 9: filters/AI
@@ -1657,7 +1747,6 @@ Deno.serve(async (req) => {
   // de frontend het huidige profiel meestuurt (alleen Pro/Premium doet dat -
   // zie chat.js). orgProfile bevat alleen de scalaire velden uit
   // EXTRACTIE_VELDEN; ontbrekend is wat daarvan nog leeg is.
-  const magOrganisatiegeheugen = tier !== 'free';
   const orgProfile = magOrganisatiegeheugen && body.orgProfile && typeof body.orgProfile === 'object' ? body.orgProfile : null;
   const ontbrekend = orgProfile ? EXTRACTIE_VELDEN.filter((v) => !String(orgProfile[v.n] || '').trim()) : [];
 
@@ -1697,10 +1786,23 @@ Deno.serve(async (req) => {
         )}. Gebruik dit als vertrekpunt: vul aan of corrigeer op basis van dit gesprek, en vraag niet opnieuw naar wat hier al in staat.`
       : '';
 
+  // Verbeterpunten Projectplan + Free/Pro/Premium, punt 1 (2026-10-01): dit
+  // vrije-tekst contextveld (buildContext() in chat.js) bevat het
+  // organisatieprofiel, de projectenlijst en het actieve document van dit
+  // lid - exact het soort "verborgen organisatiecontext" dat Free nooit mag
+  // meekrijgen. Tot nu toe werd dit veld, in tegenstelling tot orgProfile/
+  // project/matchSignalen hierboven, ongeacht de tier altijd meegestuurd
+  // naar het model - dát was de daadwerkelijke oorzaak van het gevonden
+  // risico (zie het bijbehorende rapport). Dezelfde magOrganisatiegeheugen-
+  // gate als hierboven, nu ook hier toegepast, en dat ongeacht wat de
+  // frontend meestuurt: ook een verouderde client of een debug-aanroep kan
+  // dit niet meer omzeilen.
+  const contextTekst = magOrganisatiegeheugen && body.context ? String(body.context).slice(0, 24000) : null;
+
   // STAP 4B, fix 1: hergebruikt uitsluitend al bestaande, hierboven al
-  // berekende server-side signalen (matchSignalen, project, body.context) -
+  // berekende server-side signalen (matchSignalen, project, contextTekst) -
   // geen nieuw clientveld, dus niets dat het lid zelf kan sturen.
-  const heeftProjectContext = Boolean(matchSignalen) || Boolean(project) || Boolean(String(body.context || '').trim());
+  const heeftProjectContext = Boolean(matchSignalen) || Boolean(project) || Boolean(contextTekst);
 
   const invoer = [
     { role: 'system', content: systeem },
@@ -1711,7 +1813,7 @@ Deno.serve(async (req) => {
     ...(leerInstructie ? [{ role: 'system', content: leerInstructie }] : []),
     ...(dossierInstructie ? [{ role: 'system', content: dossierInstructie }] : []),
     ...(projectInstructie ? [{ role: 'system', content: projectInstructie }] : []),
-    ...(body.context ? [{ role: 'system', content: String(body.context).slice(0, 24000) }] : []),
+    ...(contextTekst ? [{ role: 'system', content: contextTekst }] : []),
     ...berichten
       .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && m.content)
       .slice(-20)

@@ -335,7 +335,16 @@ export default function KompasToolPage() {
         canUseFundDatabase: app.canUsePrivateDatabase,
         canUseOrganizationMemory: app.canUseOrganizationMemory,
       },
-      context: buildContext ? buildContext({ ...store, activeDoc: actiefDoc, linkedProjectId: gekoppeldProjectId }) : null,
+      // Verbeterpunten Projectplan + Free/Pro/Premium, punt 1 (2026-10-01):
+      // buildContext() bevat het organisatieprofiel, de projectenlijst en het
+      // actieve document van dit lid - exact de "verborgen organisatiecontext"
+      // die Free nooit mag meekrijgen (zie orgProfile/project/matchSignalen
+      // hieronder, die al wel op hasPlanTools gated waren). Dit veld was tot nu
+      // toe de enige uitzondering: ongeacht tier altijd meegestuurd. De Edge
+      // Function negeert body.context voor Free inmiddels ook zelf (server-side,
+      // onomzeilbaar), maar deze front-end-gate voorkomt bovendien dat het veld
+      // voor Free hier al onnodig wordt opgebouwd en verstuurd.
+      context: hasPlanTools && buildContext ? buildContext({ ...store, activeDoc: actiefDoc, linkedProjectId: gekoppeldProjectId }) : null,
       conversationId: actiefGesprekId,
       orgProfile: hasPlanTools ? store.orgProfile || null : null,
       // Vervolgopdracht, prioriteit 6: het gekoppelde project zelf meesturen
