@@ -124,6 +124,58 @@ function leegVeld(v: unknown) {
   return Array.isArray(v) ? v.length === 0 : !String(v ?? '').trim();
 }
 
+// Verstevigen Projectplan-runtime, punten 2/3 (2026-09-30): het compacte,
+// intern bijgehouden Projectdossier - los van PROJECT_VELDEN hierboven, dat
+// over het opgeslagen, formele Project-record gaat (alleen aanwezig als er
+// een project gekoppeld is). Dit dossier bestaat wél voor élk Projectplan-
+// gesprek (ook zonder gekoppeld project, en ook voor Free binnen de lopende
+// sessie) en wordt uitsluitend uit het gesprek zelf gedestilleerd - zie
+// projectdossierUitGesprek() verderop. Bewust een eigen, kleine allowlist in
+// plaats van PROJECT_VELDEN hergebruiken: de velden komen deels overeen,
+// maar dit dossier dekt ook zaken die geen projectveld zijn (schrijfstijl,
+// fonds/generiek-keuze) en gebruikt de exacte namen uit de opdracht.
+const DOSSIER_VELDEN = [
+  'projectnaam',
+  'doelgroep',
+  'probleem',
+  'doel',
+  'activiteiten',
+  'locatie',
+  'planning',
+  'resultaten',
+  'impact',
+  'partners',
+  'begroting',
+  'schrijfstijl',
+  'fondsKeuze',
+] as const;
+
+// Leest en saniteert een door de client meegestuurd Projectdossier (het
+// vorige antwoord van de Edge Function zelf, puur doorgegeven - zie
+// chat.js). Zelfde voorzichtigheidsprincipe als leesMatchSignalen elders in
+// dit bestand: alleen bekende veldnamen, alleen tekst, met een lengteplafond
+// per veld, zodat een gemanipuleerd of kapot object nooit ongefilterd in de
+// modelcontext terechtkomt.
+function leesProjectDossier(body: any): Record<string, string> | null {
+  const ruw = body?.projectDossier;
+
+  if (!ruw || typeof ruw !== 'object') {
+    return null;
+  }
+
+  const schoon: Record<string, string> = {};
+
+  DOSSIER_VELDEN.forEach((veld) => {
+    const w = (ruw as Record<string, unknown>)[veld];
+
+    if (w != null && String(w).trim()) {
+      schoon[veld] = String(w).slice(0, 800);
+    }
+  });
+
+  return Object.keys(schoon).length ? schoon : null;
+}
+
 // Velden die uit een geüpload document mogen worden voorgesteld (mode:
 // 'extract'). Bewust beperkt tot losse tekst/getal/tekstblok-velden - de
 // veldnamen komen overeen met organisatieprofiel.js aan de frontend-kant.
@@ -172,7 +224,18 @@ function json(body: unknown, status = 200) {
 // inhoud. Een *_addendum-sleutel die ontbreekt of leeg/alleen-witruimte is,
 // levert gewoonweg geen extra tekstblok op voor die tier - ook hier geen
 // impliciete oude aanvullingstekst.
-async function systeemtekst(admin: any, tier: string): Promise<string | null> {
+// Verstevigen Projectplan-runtime, punt 4 (2026-09-30): modus als derde,
+// optionele parameter - alleen gebruikt om kompas.projectplan_addendum
+// specifiek te vernauwen (zie hieronder). Alle overige addenda blijven
+// bewust tier-only: 'projectplan' is de enige modus die de frontend
+// betrouwbaar stuurt (KompasToolPage.jsx); de andere workflow-modi
+// (begroting, strategie, aanvraagbeoordeling) worden nooit vanuit de
+// frontend gezet, dus hun addenda daaraan koppelen zou ze - zodra ze ooit
+// gevuld worden - stilzwijgend altijd uitschakelen, ook voor de bestaande,
+// modus-onafhankelijke vrije-tekst-paden (bijv. de BEGROTING-sectie in
+// kompas.system zelf). Vandaag heeft dit geen zichtbaar effect: alle vijf
+// addenda staan nog op exact één spatie (leeg).
+async function systeemtekst(admin: any, tier: string, modus: string): Promise<string | null> {
   const premium = tier === 'premium';
   const proOfPremium = tier !== 'free';
 
@@ -225,8 +288,11 @@ async function systeemtekst(admin: any, tier: string): Promise<string | null> {
   const delen = [basis as string];
 
   // Pro + Premium: projectplan-generator en begrotingsondersteuning.
+  // projectplan_addendum is vanaf nu ook modus-gestuurd (zie toelichting bij
+  // de functiesignatuur hierboven); begroting_addendum blijft bewust
+  // tier-only.
   if (proOfPremium) {
-    if (projectplan) delen.push(projectplan);
+    if (projectplan && modus === 'projectplan') delen.push(projectplan);
     if (begroting) delen.push(begroting);
   }
 
@@ -830,6 +896,265 @@ Antwoord uitsluitend met geldige JSON in de vorm {"velden": {"veldnaam": "waarde
   return { voorstel, usage: data.usage, mislukt: false };
 }
 
+// Projectdossier - alleen betrouwbare feiten (2026-10-01): kleine
+// tekstbewerkingen die nodig zijn om een "bron" voor een dossierveld te
+// kunnen verifiëren, los van hoofdlettergebruik, leestekens en diakrieten
+// (zodat "Scholen." en "scholen" als hetzelfde citaat tellen).
+function normaliseerVoorVergelijking(tekst: string): string {
+  return String(tekst || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{Mn}/gu, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Komt `citaat` (genormaliseerd) daadwerkelijk voor in `bronTekst`
+// (genormaliseerd)? Een te kort citaat (< 2 tekens na normalisatie) wordt
+// nooit als bewijs geaccepteerd - dat zou te triviaal te vervalsen zijn.
+function citaatKomtVoorIn(citaat: string, bronTekst: string): boolean {
+  const schoonCitaat = normaliseerVoorVergelijking(citaat);
+
+  if (schoonCitaat.length < 2 || !bronTekst) {
+    return false;
+  }
+
+  return normaliseerVoorVergelijking(bronTekst).includes(schoonCitaat);
+}
+
+// Herkenbaar bevestigende toon (Nederlands, bewust ruim) - een "bevestigd"
+// dossierveld mag alleen landen wanneer het citaat van het lid hier ook
+// daadwerkelijk op lijkt, niet op elke willekeurige reactie.
+const BEVESTIGING_PATROON =
+  /\b(ja+|jazeker|yes|klopt|correct|precies|inderdaad|akkoord|mee eens|eens|prima|top|oke|ok|oké|goed zo|dat is zo|dat is juist|dat klopt|doen we|nemen we (mee|over)|gaan we (doen|zo doen)|dat doen we|graag|zeker weten|helemaal mee eens)\b/i;
+
+function isBevestiging(tekst: string): boolean {
+  return BEVESTIGING_PATROON.test(String(tekst || ''));
+}
+
+// Zet het al opgeslagen organisatieprofiel en/of gekoppelde project om naar
+// één leesbare tekst - zowel om in de prompt aan het model te tonen (als
+// toegestane bron "profiel") als om een door het model opgegeven "profiel"-
+// citaat tegen te verifiëren. Dezelfde EXTRACTIE_VELDEN/PROJECT_VELDEN-
+// labels als elders in dit bestand, geen nieuwe veldenlijst.
+function betrouwbareContextTekst(
+  orgProfile: Record<string, unknown> | null,
+  project: Record<string, unknown> | null,
+): { weergave: string } | null {
+  const orgRegels = orgProfile
+    ? EXTRACTIE_VELDEN.filter((v) => !leegVeld((orgProfile as Record<string, unknown>)[v.n])).map(
+        (v) => `${v.l}: ${String((orgProfile as Record<string, unknown>)[v.n])}`,
+      )
+    : [];
+  const projectRegels = project
+    ? PROJECT_VELDEN.filter((v) => !leegVeld((project as Record<string, unknown>)[v.n])).map(
+        (v) => `${v.l}: ${String((project as Record<string, unknown>)[v.n])}`,
+      )
+    : [];
+
+  if (!orgRegels.length && !projectRegels.length) {
+    return null;
+  }
+
+  const weergave = [
+    orgRegels.length ? `Organisatieprofiel - ${orgRegels.join('; ')}` : '',
+    projectRegels.length ? `Gekoppeld project - ${projectRegels.join('; ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return { weergave };
+}
+
+// Verifieert, server-side (dus zonder het model opnieuw te hoeven
+// vertrouwen), of een door het model opgegeven bron voor één dossierveld
+// daadwerkelijk klopt met wat er echt in het gesprek/profiel staat:
+//   - "lid": het citaat moet woordelijk voorkomen in de LID-berichten zelf.
+//   - "profiel": het citaat moet woordelijk voorkomen in het al opgeslagen
+//     organisatieprofiel/project.
+//   - "bevestigd": het `voorstelCitaat` moet woordelijk voorkomen in de
+//     eerdere berichten van Subsidie Kompas zelf (er is dus echt iets
+//     voorgesteld), ÉN het `citaat` moet woordelijk voorkomen in de
+//     LID-berichten ÉN er herkenbaar bevestigend uitzien - anders is er
+//     niets geldigs bevestigd.
+// Alles wat niet aan één van deze drie gevallen voldoet, wordt afgewezen:
+// het veld wordt dan genegeerd (de vorige waarde blijft staan) in plaats van
+// het dossier te vervuilen met een voorstel dat nooit is bevestigd.
+function valideerDossierBron(
+  bronInfo: any,
+  lidTekst: string,
+  assistentTekst: string,
+  profielTekst: string,
+): boolean {
+  if (!bronInfo || typeof bronInfo !== 'object') {
+    return false;
+  }
+
+  const citaat = String(bronInfo.citaat || '').trim();
+
+  if (!citaat) {
+    return false;
+  }
+
+  if (bronInfo.type === 'lid') {
+    return citaatKomtVoorIn(citaat, lidTekst);
+  }
+
+  if (bronInfo.type === 'profiel') {
+    return Boolean(profielTekst) && citaatKomtVoorIn(citaat, profielTekst);
+  }
+
+  if (bronInfo.type === 'bevestigd') {
+    const voorstelCitaat = String(bronInfo.voorstelCitaat || '').trim();
+
+    return (
+      Boolean(voorstelCitaat) &&
+      citaatKomtVoorIn(voorstelCitaat, assistentTekst) &&
+      citaatKomtVoorIn(citaat, lidTekst) &&
+      isBevestiging(citaat)
+    );
+  }
+
+  return false;
+}
+
+// Projectdossier - alleen betrouwbare feiten (2026-10-01): oorzaak van het
+// in de acceptatietest gevonden risico was dat deze functie het volledige,
+// afgewisselde Lid/Subsidie Kompas-transcript als gelijkwaardige invoer aan
+// het model gaf en uitsluitend op de promptinstructie ("haal er uitsluitend
+// informatie uit die het lid zelf expliciet heeft genoemd") vertrouwde om
+// een eigen suggestie van de assistent zelf niet over te nemen - zonder
+// enige server-side controle. Dat is gebleken onvoldoende betrouwbaar.
+//
+// Nieuwe aanpak: de assistent-berichten blijven IN het transcript staan
+// (ze zijn nodig om te snappen waar een kort "ja, dat klopt" van het lid
+// naar verwijst), maar worden nooit meer zelf vertrouwd. Het model moet nu
+// per veld ook een "bron" opgeven (lid/profiel/bevestigd, met citaten), en
+// valideerDossierBron() hierboven controleert die bron mechanisch tegen de
+// echte tekst - een veld zonder geverifieerde bron wordt genegeerd. Zie ook
+// de toelichting bij betrouwbareContextTekst() voor de nieuwe, derde
+// toegestane bron (al opgeslagen organisatie-/projectgegevens).
+async function projectdossierUitGesprek(
+  apiKey: string,
+  model: string,
+  berichten: any[],
+  bestaand: Record<string, string> | null,
+  orgProfile: Record<string, unknown> | null,
+  project: Record<string, unknown> | null,
+) {
+  const veldenLijst = DOSSIER_VELDEN.join(', ');
+
+  const recent = berichten
+    .slice(-16)
+    .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && m.content);
+
+  const fragment = recent
+    .map((m: any) => `${m.role === 'user' ? 'Lid' : 'Subsidie Kompas'}: ${String(m.content || '').slice(0, 2000)}`)
+    .join('\n');
+
+  // Alleen voor de server-side verificatie hieronder - tellen NOOIT mee als
+  // bron, ook al staan ze (voor het begrijpen van een bevestiging) wél in
+  // `fragment` hierboven.
+  const lidTekst = recent
+    .filter((m: any) => m.role === 'user')
+    .map((m: any) => String(m.content || ''))
+    .join('\n');
+  const assistentTekst = recent
+    .filter((m: any) => m.role === 'assistant')
+    .map((m: any) => String(m.content || ''))
+    .join('\n');
+
+  const betrouwbareContext = betrouwbareContextTekst(orgProfile, project);
+
+  const bestaandTekst =
+    bestaand && Object.keys(bestaand).length
+      ? `Dit is het al bekende Projectdossier (bijgewerkt tot en met het vorige bericht): ${JSON.stringify(
+          bestaand,
+        )}. Vul dit aan of corrigeer het op basis van het gesprek hieronder - geef altijd het volledige, bijgewerkte dossier terug (dus ook de velden die niet zijn veranderd), niet alleen wat er is toegevoegd.`
+      : 'Er is nog geen eerder Projectdossier - stel het voor het eerst samen op basis van het gesprek hieronder.';
+
+  const systeemExtractie = `Je houdt, uitsluitend voor intern gebruik, een compact Projectdossier bij voor een projectplan-gesprek in Subsidie Kompas. ${bestaandTekst}
+
+BELANGRIJKSTE REGEL: het Projectdossier mag uitsluitend bestaan uit betrouwbare feiten. Een nieuw of gewijzigd veld mag UITSLUITEND worden opgenomen wanneer de waarde rechtstreeks komt uit een van deze drie bronnen:
+1. Een expliciete uitspraak van het lid zelf in dit gesprek (bron "lid").
+2. De hieronder meegegeven, al opgeslagen organisatie- of projectgegevens (bron "profiel").
+3. Een eigen voorstel van Subsidie Kompas, maar ALLEEN wanneer het lid dat in dit gesprek expliciet en ondubbelzinnig heeft bevestigd (bron "bevestigd") - nooit alleen omdat Subsidie Kompas het heeft voorgesteld.
+
+Een voorstel, suggestie, voorbeeld, aanname of automatische uitbreiding van Subsidie Kompas zelf is GEEN toegestane bron, zolang het lid dat niet expliciet heeft bevestigd. Bijvoorbeeld:
+- Lid: "Ons project heet Buurtmoestuin Noord." -> WEL opslaan (bron "lid").
+- Lid: "De doelgroep bestaat uit jongeren met een lichte verstandelijke beperking." -> WEL opslaan (bron "lid").
+- Subsidie Kompas: "U zou kunnen samenwerken met scholen en welzijnsorganisaties." (het lid gaat hier niet expliciet mee akkoord) -> NIET opslaan.
+- Subsidie Kompas: "Een mogelijke activiteit is een wekelijkse workshop." (geen bevestiging van het lid) -> NIET opslaan.
+- Subsidie Kompas: "U zou kunnen samenwerken met scholen." gevolgd door Lid: "Ja, dat klopt." -> NU WEL opslaan (bron "bevestigd"), met de waarde uit het voorstel van Subsidie Kompas.
+
+Het gesprek hieronder staat chronologisch, "Lid" en "Subsidie Kompas" afgewisseld. Gebruik de berichten van Subsidie Kompas zelf uitsluitend om te begrijpen waarnaar een kort bevestigend bericht van het lid verwijst - nooit als zelfstandige bron voor een nieuw feit.
+${betrouwbareContext ? `\nAL OPGESLAGEN, BETROUWBARE GEGEVENS (mag gebruikt worden als bron "profiel"):\n${betrouwbareContext.weergave}\n` : ''}
+Noemt het lid een eerder genoemd gegeven opnieuw, maar dan anders, dan vervangt die nieuwe waarde de oude.
+
+De toegestane velden zijn uitsluitend: ${veldenLijst}.
+
+Antwoord uitsluitend met geldige JSON in de vorm {"dossier": {"veldnaam": "waarde"}, "bronnen": {"veldnaam": {"type": "lid"|"profiel"|"bevestigd", "citaat": "korte, zo letterlijk mogelijke tekst uit een LID-bericht die deze waarde rechtvaardigt (bij 'profiel' in plaats daarvan een letterlijk citaat uit de hierboven genoemde opgeslagen gegevens)", "voorstelCitaat": "alleen bij type 'bevestigd': het letterlijke eerdere voorstel van Subsidie Kompas dat hiermee bevestigd wordt"}}}. Geef voor ELK veld in "dossier" ook het bijpassende veld in "bronnen" mee - een veld zonder geldige, controleerbare bron wordt genegeerd. Neem alleen velden op waarover je zeker bent, en uitsluitend de hierboven genoemde veldnamen. Houd elke waarde compact (één tot enkele zinnen, geen volledige lopende tekst).`;
+
+  const antwoord = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systeemExtractie },
+        { role: 'user', content: fragment },
+      ],
+      temperature: 0.1,
+      max_tokens: 1600,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!antwoord.ok) {
+    return { dossier: bestaand, usage: null as any, mislukt: true };
+  }
+
+  const data = await antwoord.json();
+  const ruw = data.choices?.[0]?.message?.content;
+  const toegestaan = new Set<string>(DOSSIER_VELDEN as readonly string[]);
+  const dossier: Record<string, string> = { ...(bestaand || {}) };
+
+  try {
+    const parsed = JSON.parse(ruw || '{}');
+    const velden = parsed?.dossier && typeof parsed.dossier === 'object' ? parsed.dossier : {};
+    const bronnen = parsed?.bronnen && typeof parsed.bronnen === 'object' ? parsed.bronnen : {};
+
+    Object.entries(velden).forEach(([k, v]) => {
+      if (!toegestaan.has(k) || v == null || !String(v).trim()) {
+        return;
+      }
+
+      const geldig = valideerDossierBron(
+        (bronnen as Record<string, unknown>)[k],
+        lidTekst,
+        assistentTekst,
+        betrouwbareContext?.weergave || '',
+      );
+
+      if (geldig) {
+        dossier[k] = String(v).slice(0, 800);
+      }
+      // Geen geldige, verifieerbare bron: het veld wordt genegeerd en de
+      // vorige waarde (indien aanwezig) blijft gewoon staan. Dit is exact de
+      // fix voor het in de acceptatietest gevonden risico: een voorstel van
+      // de assistent zelf, zonder expliciete en verifieerbare bevestiging
+      // door het lid, bereikt het Projectdossier nu nooit meer.
+    });
+  } catch (_) {
+    // mislukte parse: het bestaande dossier blijft ongewijzigd staan, net als
+    // voorstelUitTekst() hierboven bij een mislukte parse een leeg voorstel
+    // teruggeeft in plaats van te falen.
+  }
+
+  return { dossier: Object.keys(dossier).length ? dossier : null, usage: data.usage, mislukt: false };
+}
+
 // Zelfde patroon als aan de frontend-kant (organisatieprofiel.js/projecten.js):
 // een lid kan een document of website laten analyseren vóórdat er een
 // organisatieprofiel is ingevuld, dus wordt er dan een naamloze organisatie
@@ -1275,9 +1600,20 @@ Deno.serve(async (req) => {
     return json({ error: 'Geen vraag ontvangen.' }, 400);
   }
 
+  // STAP 2: de actieve workflow-modus komt uitsluitend uit het nieuwe,
+  // aparte veld body.kompasMode (nooit uit body.mode, dat al iets anders
+  // betekent - zie de toelichting bij resolveerModus() hierboven) en wordt
+  // hier server-side gevalideerd/genormaliseerd vóór gebruik.
+  //
+  // Verstevigen Projectplan-runtime, punt 4 (2026-09-30): naar hierboven
+  // verplaatst (stond voorheen pas vlak vóór de invoer-opbouw) omdat
+  // systeemtekst() hieronder nu ook de modus nodig heeft voor de
+  // addendum-selectie. Functioneel ongewijzigd - alleen eerder berekend.
+  const modus = resolveerModus(body.kompasMode);
+
   // Het abonnement komt uit het profiel, niet uit de aanvraag. De browser kan
   // dit dus niet ophogen.
-  const systeem = await systeemtekst(admin, tier);
+  const systeem = await systeemtekst(admin, tier, modus);
 
   // Runtime-audit (2026-09-13): geen enkele hardcoded reservepersona meer als
   // kompas.system ontbreekt/leeg is of ai_prompts niet gelezen kon worden -
@@ -1345,11 +1681,21 @@ Deno.serve(async (req) => {
         .join(', ')}. Wijs het lid hier proactief op zodra dat past in het gesprek - bijvoorbeeld door aan te bieden er samen een eerste opzet voor te maken - maar dring niet aan en werk dit nooit af als vragenlijst. Sla niets automatisch op: het lid vult het project zelf aan in het projectformulier.`
     : '';
 
-  // STAP 2: de actieve workflow-modus komt uitsluitend uit het nieuwe,
-  // aparte veld body.kompasMode (nooit uit body.mode, dat al iets anders
-  // betekent - zie de toelichting bij resolveerModus() hierboven) en wordt
-  // hier server-side gevalideerd/genormaliseerd vóór gebruik.
-  const modus = resolveerModus(body.kompasMode);
+  // Verstevigen Projectplan-runtime, punten 2/3 (2026-09-30): het door de
+  // client meegestuurde, vorige Projectdossier (gesaniteerd, zie
+  // leesProjectDossier hierboven). Alleen daadwerkelijk als contextbericht
+  // meegegeven bij modus 'projectplan' - in elke andere modus is dit dossier
+  // niet relevant en wordt het overgeslagen (het blijft dan gewoon staan aan
+  // de clientkant, klaar voor de volgende keer dat de modus weer projectplan
+  // is).
+  const dossierBestaand = leesProjectDossier(body);
+
+  const dossierInstructie =
+    modus === 'projectplan' && dossierBestaand
+      ? `HUIDIG PROJECTDOSSIER (bijgewerkt tot en met het vorige bericht in dit gesprek, uitsluitend voor jouw eigen interne gebruik - noem dit nooit aan de gebruiker en toon het nooit): ${JSON.stringify(
+          dossierBestaand,
+        )}. Gebruik dit als vertrekpunt: vul aan of corrigeer op basis van dit gesprek, en vraag niet opnieuw naar wat hier al in staat.`
+      : '';
 
   // STAP 4B, fix 1: hergebruikt uitsluitend al bestaande, hierboven al
   // berekende server-side signalen (matchSignalen, project, body.context) -
@@ -1363,6 +1709,7 @@ Deno.serve(async (req) => {
     ...(funderDeadlineTekst ? [{ role: 'system', content: funderDeadlineTekst }] : []),
     ...(funderAlgemeenTekst ? [{ role: 'system', content: funderAlgemeenTekst }] : []),
     ...(leerInstructie ? [{ role: 'system', content: leerInstructie }] : []),
+    ...(dossierInstructie ? [{ role: 'system', content: dossierInstructie }] : []),
     ...(projectInstructie ? [{ role: 'system', content: projectInstructie }] : []),
     ...(body.context ? [{ role: 'system', content: String(body.context).slice(0, 24000) }] : []),
     ...berichten
@@ -1516,6 +1863,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Verstevigen Projectplan-runtime, punten 2/3 (2026-09-30): zelfde
+    // voorzichtige aanpak als de voorstellenlogica hierboven (geïsoleerd,
+    // mag het antwoord nooit blokkeren), maar uitsluitend voor modus
+    // 'projectplan' en losgekoppeld van magOrganisatiegeheugen/ontbrekend -
+    // dit dossier is ook voor Free (binnen de lopende sessie) en voor een
+    // volledig ingevuld organisatieprofiel nog steeds nuttig, want het gaat
+    // over het project/gesprek, niet over het organisatieprofiel.
+    let projectDossier: Record<string, string> | null = dossierBestaand;
+
+    if (modus === 'projectplan' && bevatMogelijkNieuweInfo) {
+      try {
+        const { dossier, usage: dossierUsage, mislukt: dossierMislukt } = await projectdossierUitGesprek(
+          apiKey,
+          MODEL,
+          berichten,
+          dossierBestaand,
+          orgProfile,
+          project,
+        );
+
+        if (!dossierMislukt) {
+          projectDossier = dossier;
+          leerTokensIn += dossierUsage?.prompt_tokens ?? 0;
+          leerTokensUit += dossierUsage?.completion_tokens ?? 0;
+        }
+      } catch (_) {
+        // dossierupdate mag het antwoord zelf nooit blokkeren
+      }
+    }
+
     if (profileId) {
       // STAP 3: de Responses API noemt de tokenvelden anders dan Chat
       // Completions (input_tokens/output_tokens i.p.v. prompt_tokens/
@@ -1532,7 +1909,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ answer: tekst, sources: bronnen, veldVoorstellen });
+    return json({ answer: tekst, sources: bronnen, veldVoorstellen, projectDossier });
   }
 
   // Antwoord woord voor woord. De frontend leest dit met een EventSource-achtige
@@ -1648,6 +2025,12 @@ Deno.serve(async (req) => {
           let veldVoorstellen: Record<string, string> = {};
           let leerTokensIn = 0;
           let leerTokensUit = 0;
+          // Verstevigen Projectplan-runtime, punten 2/3 (2026-09-30): zelfde
+          // dossierlogica als het niet-streamende pad hierboven - zie de
+          // toelichting daar. dossierBestaand is de gesaniteerde invoerwaarde
+          // (buiten deze stream-closure berekend); blijft ongewijzigd
+          // teruggegeven wanneer de extractie hieronder niet draait of faalt.
+          let projectDossier: Record<string, string> | null = dossierBestaand;
 
           if (afgerond) {
             const laatsteLidBericht = berichten
@@ -1686,9 +2069,27 @@ Deno.serve(async (req) => {
                 // voorstellen ophalen mag het antwoord zelf nooit blokkeren
               }
             }
+
+            if (modus === 'projectplan' && bevatMogelijkNieuweInfo) {
+              try {
+                const {
+                  dossier,
+                  usage: dossierUsage,
+                  mislukt: dossierMislukt,
+                } = await projectdossierUitGesprek(apiKey, MODEL, berichten, dossierBestaand, orgProfile, project);
+
+                if (!dossierMislukt) {
+                  projectDossier = dossier;
+                  leerTokensIn += dossierUsage?.prompt_tokens ?? 0;
+                  leerTokensUit += dossierUsage?.completion_tokens ?? 0;
+                }
+              } catch (_) {
+                // dossierupdate mag het antwoord zelf nooit blokkeren
+              }
+            }
           }
 
-          stuur({ done: true, answer: volledig, sources: bronnen, veldVoorstellen });
+          stuur({ done: true, answer: volledig, sources: bronnen, veldVoorstellen, projectDossier });
 
           // Zelfde voorwaarde als het niet-streamende pad hierboven: dat pad
           // registreert verbruik alleen op de volledige-succespad (nooit bij
