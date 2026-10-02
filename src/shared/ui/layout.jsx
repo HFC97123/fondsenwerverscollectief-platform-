@@ -67,7 +67,18 @@ export function Card({ children, tone = 'wit', pad, style }) {
 }
 
 // Paneel van de Kompas-werkomgeving: volledige pagina met één witte kaart.
-export function Panel({ children }) {
+// Vervolgopdracht "Implementeer de gevonden drawer-fix" (2026-10-02): met
+// embedded=true (uitsluitend gebruikt binnen KompasContextDrawer) vervalt de
+// volle-paginalaag (min-height: 100vh, paginapadding, witte kaart), omdat de
+// drawer zelf al de omlijsting en scroll-container levert. Standaardgedrag
+// (embedded weggelaten of false) blijft exact gelijk aan voorheen - alle
+// bestaande gebruikers van Panel (AccountPage, WachtwoordInstellenPage, en de
+// drie pagina's hieronder buiten de drawer) zijn hierdoor niet aangetast.
+export function Panel({ children, embedded = false }) {
+  if (embedded) {
+    return <div>{children}</div>;
+  }
+
   return (
     <div style={css(`min-height: 100vh; background: ${color.achtergrond};`)}>
       <Container style={css('padding-top: clamp(20px, 3.2vw, 40px); padding-bottom: clamp(32px, 5vw, 64px);')}>

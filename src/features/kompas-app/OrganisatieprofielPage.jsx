@@ -113,7 +113,7 @@ function Herkomst({ bron, onWis }) {
   );
 }
 
-export default function OrganisatieprofielPage() {
+export default function OrganisatieprofielPage({ embedded = false } = {}) {
   const app = useApp();
   const store = useKompas();
   const paid = ['pro', 'premium'].indexOf(app.subscriptionTier || 'free') !== -1;
@@ -157,10 +157,12 @@ export default function OrganisatieprofielPage() {
 
   if (!paid) {
     return (
-      <Panel>
-        <PanelHeader title="Organisatie"
-          intro="Met Pro en Premium legt u uw organisatieprofiel vast, of laat u het opbouwen uit uw website. Subsidie Kompas gebruikt het daarna bij fondsselecties en aanvragen."
-        />
+      <Panel embedded={embedded}>
+        {!embedded && (
+          <PanelHeader title="Organisatie"
+            intro="Met Pro en Premium legt u uw organisatieprofiel vast, of laat u het opbouwen uit uw website. Subsidie Kompas gebruikt het daarna bij fondsselecties en aanvragen."
+          />
+        )}
         <Button variant="dark" onClick={app.goAbonnementen}>
           Bekijk de abonnementen
         </Button>
@@ -318,10 +320,12 @@ export default function OrganisatieprofielPage() {
   };
 
   return (
-    <Panel>
-      <PanelHeader title="Organisatie"
-        intro="Dit profiel is optioneel. Hoe meer u invult, hoe gerichter Subsidie Kompas adviseert over passende fondsen en hoe beter aanvragen in uw eigen toon worden geschreven."
-      />
+    <Panel embedded={embedded}>
+      {!embedded && (
+        <PanelHeader title="Organisatie"
+          intro="Dit profiel is optioneel. Hoe meer u invult, hoe gerichter Subsidie Kompas adviseert over passende fondsen en hoe beter aanvragen in uw eigen toon worden geschreven."
+        />
+      )}
 
       {isLeeg && (
         <div style={css('margin-bottom: 18px; padding: clamp(16px, 2.4vw, 26px); border: 1px solid #D5E6DB; border-radius: 24px; background: #EAF4EE;')}>

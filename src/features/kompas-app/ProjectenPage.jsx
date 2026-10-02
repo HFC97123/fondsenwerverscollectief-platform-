@@ -54,7 +54,7 @@ const VELDEN = [
   { n: 'eigenBijdrage', l: 'Eigen bijdrage', p: '€ 7.500' },
 ];
 
-export default function ProjectenPage() {
+export default function ProjectenPage({ embedded = false } = {}) {
   const app = useApp();
   const store = useKompas();
   const paid = ['pro', 'premium'].indexOf(app.subscriptionTier || 'free') !== -1;
@@ -106,10 +106,12 @@ export default function ProjectenPage() {
 
   if (!paid) {
     return (
-      <Panel>
-        <PanelHeader title="Projecten"
-          intro="Met Pro en Premium legt u per project de looptijd, begroting, eerdere aanvragen en co-financiers vast, en neemt u regelingen op in uw dekkingsplan."
-        />
+      <Panel embedded={embedded}>
+        {!embedded && (
+          <PanelHeader title="Projecten"
+            intro="Met Pro en Premium legt u per project de looptijd, begroting, eerdere aanvragen en co-financiers vast, en neemt u regelingen op in uw dekkingsplan."
+          />
+        )}
         <Button variant="dark" onClick={app.goAbonnementen}>
           Bekijk de abonnementen
         </Button>
@@ -217,10 +219,12 @@ export default function ProjectenPage() {
   const verwijderStyle = css('cursor: pointer; min-height: 44px; display: flex; align-items: center; padding: 0 6px; border: none; background: none; color: #9E3B2C; font-size: 13.5px; font-weight: 700;');
 
   return (
-    <Panel>
-      <PanelHeader title="Projecten"
-        intro="Werft u per project of programma? Leg hier per project de looptijd, begroting, eerdere aanvragen en co-financiers vast. Subsidie Kompas gebruikt dit naast uw organisatieprofiel bij fondsselecties en aanvragen."
-      />
+    <Panel embedded={embedded}>
+      {!embedded && (
+        <PanelHeader title="Projecten"
+          intro="Werft u per project of programma? Leg hier per project de looptijd, begroting, eerdere aanvragen en co-financiers vast. Subsidie Kompas gebruikt dit naast uw organisatieprofiel bij fondsselecties en aanvragen."
+        />
+      )}
 
       {komende.length > 0 && (
         <div style={css('margin-bottom: 16px; padding: 14px 18px; border: 1px solid #D6E3E9; border-radius: 20px; background: #EAF1F6;')}>

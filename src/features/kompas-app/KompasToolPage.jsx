@@ -12,7 +12,20 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas, DOC_SOORTEN } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
-import { askKompasStream, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
+import { askKompasStream, buildContext, buildMatchSignalen, haalBudgetUitTekst } from '../../data/services/chat.js';
+// RC1 stap 3B (2026-10-01): echte .docx-generatie voor "Exporteren naar
+// Word", via de bestaande Document Theme Engine (src/shared/document-theme/) -
+// geen tweede huisstijl-/opmaaksysteem, uitsluitend deze twee, daarvoor
+// gebouwde functies hergebruikt.
+import { normalizeDocumentContent } from '../../shared/document-theme/normalizeDocumentContent.js';
+import { generateWordDocument } from '../../shared/document-theme/generateWordDocument.js';
+// RC1 stap 3D-4 (2026-10-01): echte .xlsx-generatie voor "Exporteren naar
+// Excel" in de begrotingsworkflow - zelfde architectuur als Word hierboven.
+// berekenBudget() is de enige rekenkundige waarheid (RC1 stap 3D);
+// generateExcelDocument() ontvangt uitsluitend het al berekende resultaat en
+// doet zelf geen AI-aanroep en geen eigen rekenwerk.
+import { berekenBudget } from '../../shared/budget/berekenBudget.js';
+import { generateExcelDocument, bepaalExcelBestandsnaam } from '../../shared/budget/generateExcelDocument.js';
 import { extraheerTekst } from '../../data/services/documentExtractie.js';
 import {
   bijwerkenGesprekModusEnDossier,
@@ -80,6 +93,50 @@ function detecteerProjectplanIntentie(tekst) {
   );
 }
 
+// RC1 stap 3D (2026-10-01): zelfde architectuurpatroon als
+// detecteerProjectplanIntentie() hierboven, voor begroting - bewust geen
+// nieuwe, algemene intent-engine, maar een eigen, even kleine en
+// deterministische regelset. Ook hier: de Edge Function herkent dezelfde
+// intentie server-side nogmaals als vangnet (vraagtOmBegroting() in
+// supabase/functions/subsidie-kompas/index.ts, bewust dezelfde regels maar in
+// een los TypeScript/Deno-bestand) - deze front-end-detectie is uitsluitend
+// voor snellere/correcte UX, de backend blijft leidend. Houd beide bij
+// wijziging synchroon.
+//
+// Bewust terughoudend: het woord "begroting"/"budget" alleen is niet
+// voldoende (dat zou "Wat is de maximale begroting van dit fonds?" ten
+// onrechte activeren) - er moet ook een duidelijke actie-/hulpcue bij staan.
+// Daarnaast een kleine, expliciete uitzonderingslijst voor de evidente
+// false-positives uit de opdracht: een VRAAG over de begroting(sgrens) van
+// een fonds/regeling is nooit een verzoek om zelf een begroting op te
+// stellen, ook niet als er toevallig een actiecue in dezelfde zin staat.
+const BEGROTING_WOORD_PATROON = /begroting|budget/i;
+
+const BEGROTING_ACTIECUE_PATROON =
+  /\b(help|helpt|helpen|hulp|wil|wilt|graag|kun je|kan je|kunt u|maak|gemaakt|schrijf|schrijven|opstel|opstellen|stel[\s\S]{0,10}op|werk[\s\S]{0,40}uit|uitwerken|aanvullen|uitbreiden|controleer|controleren|check|checken|doorreken|doorrekenen|onderbouw|onderbouwen)\b/i;
+
+// Evidente false-positives (vragen OVER een begroting, geen verzoek om er
+// zelf een op te stellen) - exact de drie voorbeelden uit de opdracht plus
+// de meest voor de hand liggende variaties daarop.
+const BEGROTING_FONDS_VRAAG_PATRONEN = [
+  /\b(maximale|maximum)\s+begroting\b/i,
+  /\bpercentage\b[\s\S]{0,40}\bbegroting\b/i,
+  /\bbegroting\b[\s\S]{0,20}\btot\b[\s\S]{0,10}(€|\d)/i,
+  /\bbegroting\b[\s\S]{0,40}\b(van|die|dat)\b[\s\S]{0,25}\b(dit|het|deze|die)\s+(fonds|regeling)\b/i,
+];
+
+function detecteerBegrotingIntentie(tekst) {
+  if (!tekst) {
+    return false;
+  }
+
+  if (BEGROTING_FONDS_VRAAG_PATRONEN.some((r) => r.test(tekst))) {
+    return false;
+  }
+
+  return BEGROTING_WOORD_PATROON.test(tekst) && BEGROTING_ACTIECUE_PATROON.test(tekst);
+}
+
 function formatDatum(iso) {
   if (!iso) {
     return '';
@@ -143,6 +200,7 @@ const pil = (actief) =>
     border: 1px solid ${actief ? '#BFD4C6' : '#D6E3E9'};
     background: ${actief ? '#EAF4EE' : '#FFFFFF'};
     color: ${actief ? '#2F6D47' : '#2C4A5E'};
+    font-family: 'Mulish', sans-serif;
     font-size: 13.5px;
     font-weight: 800;
   `);
@@ -246,7 +304,12 @@ export default function KompasToolPage() {
   const taRef = useRef(null);
 
   const gesprekken = store.conversations || [];
-  const documenten = store.genDocs || [];
+  // RC1 stap 3C (2026-10-01): niet langer store.genDocs (altijd leeg, zie
+  // DocumentatiePage.jsx) - dezelfde telling als die pagina nu zelf gebruikt:
+  // echte, bewaarde projectdocumenten met daadwerkelijke inhoud.
+  const documenten = (store.projects || []).flatMap((p) =>
+    (p.docs || []).filter((d) => d.tekst && String(d.tekst).trim().length > 0),
+  );
   const [actiefDoc, setActiefDoc] = useState(null);
   // Vervolgopdracht, prioriteit 7 ("Later verder bewerken"): per AI-resultaat
   // gekozen documentsoort (DOC_SOORTEN), en een korte bevestiging na
@@ -347,7 +410,24 @@ export default function KompasToolPage() {
     // doelgroep bestaat uit jongeren tussen 12 en 18 jaar."), omdat dan
     // alleen de bestaande kompasMode-state wordt gebruikt en er geen nieuwe
     // detectie meer plaatsvindt.
-    const autoModus = kompasMode === 'algemeen' && detecteerProjectplanIntentie(vraag) ? 'projectplan' : null;
+    // RC1 stap 3D (2026-10-01): begroting krijgt dezelfde sticky-architectuur
+    // als projectplan hierboven - detectie vindt alleen plaats zolang het
+    // gesprek nog in 'algemeen' staat; zodra de modus eenmaal 'begroting' is
+    // (via detectie hier of de bestaande backend-fallback), blijft die zo
+    // voor elk vervolgbericht in hetzelfde gesprek, ook voor berichten die
+    // zelf geen "begroting"/"budget" meer bevatten (bijv. "Voeg €2.000
+    // communicatiekosten toe."), omdat dan alleen de bestaande kompasMode-
+    // state wordt gebruikt en er geen nieuwe detectie meer plaatsvindt.
+    // Projectplan-detectie gaat voor bij een zin die toevallig aan beide
+    // zou voldoen (geen van de aangeleverde testzinnen doet dat).
+    const autoModus =
+      kompasMode === 'algemeen'
+        ? detecteerProjectplanIntentie(vraag)
+          ? 'projectplan'
+          : detecteerBegrotingIntentie(vraag)
+            ? 'begroting'
+            : null
+        : null;
     const actieveModus = modusOverride || autoModus || kompasMode;
 
     if (modusOverride || autoModus) setKompasMode(actieveModus);
@@ -580,28 +660,108 @@ export default function KompasToolPage() {
     }
   };
 
-  const exporteerAlsWord = (tekst, naam) => {
-    const veilig = (s) =>
-      String(s || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    const alinea = tekst
-      .split('\n')
-      .map((regel) => `<p>${veilig(regel) || '&nbsp;'}</p>`)
-      .join('');
-    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${veilig(naam)}</title></head><body>${alinea}</body></html>`;
-    const blob = new Blob(['﻿', html], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+  // RC1 stap 3B (2026-10-01): vervangt de vorige HTML-als-".doc"-truc door een
+  // echte .docx (OOXML), opgebouwd via de bestaande Document Theme Engine.
+  // Knop, zichtbaarheid (hasPlanTools) en de aanroep hiervan blijven exact
+  // ongewijzigd - uitsluitend de implementatie van deze ene functie verandert.
+  // Bevat UITSLUITEND de tekst van het aangeklikte chatbericht (`tekst`, exact
+  // zoals het lid dat al zag) plus, indien beschikbaar, de organisatienaam uit
+  // het al bestaande organisatieprofiel (`store.orgProfile?.name`, dezelfde
+  // bron als de contextchip "Organisatie: ..." verderop op deze pagina) - geen
+  // system prompt, runtimecontext, Projectdossier-bronnen, matchscores of
+  // andere interne/server-side gegevens worden hier ooit aan meegegeven.
+  const exporteerAlsWord = async (tekst, naam) => {
+    try {
+      const organisatieNaam = store.orgProfile?.name || null;
+      const content = normalizeDocumentContent(tekst);
+      const blob = await generateWordDocument({
+        title: naam || 'Subsidie Kompas',
+        documentType: naam || undefined,
+        organizationName: organisatieNaam,
+        content,
+      });
 
-    a.href = url;
-    a.download = `${naam || 'Subsidie Kompas'}.doc`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setResultaatMelding('Word-bestand wordt gedownload.');
+      const veiligeBestandsnaam = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').trim();
+      const documentNaam = veiligeBestandsnaam(naam) || 'Projectplan';
+      const bestandsnaam = organisatieNaam
+        ? `${documentNaam} - ${veiligeBestandsnaam(organisatieNaam)}.docx`
+        : `Subsidie Kompas - ${documentNaam}.docx`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+
+      a.href = url;
+      a.download = bestandsnaam;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setResultaatMelding('Word-bestand wordt gedownload.');
+    } catch (e) {
+      // Geen stille failure: de gebruiker krijgt dezelfde zichtbare melding
+      // als bij de andere export-/opslagacties op deze pagina (zie
+      // kopieerBericht hierboven) in plaats van dat er niets gebeurt.
+      setResultaatMelding('Het genereren van het Word-bestand is niet gelukt. Probeer het opnieuw.');
+    }
+  };
+
+  // RC1 stap 3D-4 (2026-10-01): "Exporteren naar Excel" - uitsluitend
+  // zichtbaar tijdens een echte begrotingsworkflow (zie de knop verderop,
+  // additioneel gated op kompasMode === 'begroting'). Flow exact zoals
+  // opgedragen: begrotingstekst -> haalBudgetUitTekst() (Edge Function, pure
+  // transcriptie, geen rekenwerk) -> berekenBudget() (hier, client-side, de
+  // enige rekenkundige waarheid) -> bij een blokkerende fout (geen bruikbare
+  // kostenregels) een duidelijke melding en GEEN leeg/fictief Excelbestand;
+  // anders een echte .xlsx-download, ook wanneer de begroting nog niet
+  // sluit (dat verschil wordt dan juist expliciet getoond, nooit verborgen).
+  // Geen tweede validator: berekenBudget() en de eigen defensieve controle
+  // in generateExcelDocument() gebruiken hetzelfde waarschuwingen-resultaat.
+  const exporteerAlsExcel = async (tekst) => {
+    setResultaatMelding('Begroting wordt geanalyseerd...');
+
+    try {
+      const { budget: ruwBudget, error: extractieFout } = await haalBudgetUitTekst({ tekst });
+
+      if (extractieFout || !ruwBudget) {
+        setResultaatMelding(extractieFout || 'De begroting kon niet worden geanalyseerd. Probeer het opnieuw.');
+
+        return;
+      }
+
+      const project = (store.projects || []).find((p) => p.id === gekoppeldProjectId) || null;
+      const budget = berekenBudget(ruwBudget.expenseLines, project, ruwBudget.meta);
+      const bruikbareRegels = budget.expenseLines.filter((r) => r.bedrag != null).length;
+
+      if (bruikbareRegels === 0) {
+        setResultaatMelding(
+          'Er is geen enkele bruikbare kostenregel gevonden in deze begroting. Werk de begroting verder uit in het gesprek en probeer het daarna opnieuw.',
+        );
+
+        return;
+      }
+
+      const organisatieNaam = store.orgProfile?.name || null;
+      const blob = await generateExcelDocument({ budget, project, organizationName: organisatieNaam });
+      const bestandsnaam = bepaalExcelBestandsnaam({ project, organizationName: organisatieNaam });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+
+      a.href = url;
+      a.download = bestandsnaam;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setResultaatMelding(
+        budget.totals.isSluitend
+          ? 'Excel-bestand wordt gedownload.'
+          : 'Excel-bestand wordt gedownload. Let op: deze begroting is nog niet sluitend - het verschil staat duidelijk op het tabblad Dekkingsplan.',
+      );
+    } catch (e) {
+      setResultaatMelding('Het genereren van het Excel-bestand is niet gelukt. Probeer het opnieuw.');
+    }
   };
 
   const bewaarBijProject = (tekst, soort) => {
@@ -711,22 +871,22 @@ export default function KompasToolPage() {
         <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;')}>
           {hasPlanTools && (
             <>
-              <div onClick={nieuweChat} role="button" style={pil(false)}>
+              <button type="button" onClick={nieuweChat} style={pil(false)}>
                 + Nieuwe chat
-              </div>
-              <div onClick={togglePaneel('historie')} role="button" style={pil(paneel === 'historie')}>
+              </button>
+              <button type="button" onClick={togglePaneel('historie')} style={pil(paneel === 'historie')}>
                 Eerdere gesprekken ({gesprekken.length})
-              </div>
-              <div onClick={togglePaneel('org')} role="button" style={pil(paneel === 'org')}>
+              </button>
+              <button type="button" onClick={togglePaneel('org')} style={pil(paneel === 'org')}>
                 Organisatie
-              </div>
-              <div onClick={togglePaneel('proj')} role="button" tabIndex={0} style={pil(paneel === 'proj')}>
+              </button>
+              <button type="button" onClick={togglePaneel('proj')} style={pil(paneel === 'proj')}>
                 Projecten
-              </div>
-              <div onClick={togglePaneel('doc')} role="button" tabIndex={0} style={{ ...pil(paneel === 'doc'), gap: '8px' }}>
-                Documentatie
+              </button>
+              <button type="button" onClick={togglePaneel('doc')} style={{ ...pil(paneel === 'doc'), gap: '8px' }}>
+                Documenten
                 <span style={css('font-size: 12px; font-weight: 700; opacity: 0.7;')}>{documenten.length}</span>
-              </div>
+              </button>
 
               {(store.projects || []).length > 0 && (
                 <select
@@ -783,9 +943,9 @@ export default function KompasToolPage() {
             onSelect={setPaneel}
             onClose={() => setPaneel(null)}
             tabs={{
-              org: { label: 'Organisatie', content: <OrganisatieprofielPage /> },
-              proj: { label: 'Projecten', content: <ProjectenPage /> },
-              doc: { label: 'Documenten', badge: documenten.length, content: <DocumentatiePage /> },
+              org: { label: 'Organisatie', content: <OrganisatieprofielPage embedded /> },
+              proj: { label: 'Projecten', content: <ProjectenPage embedded /> },
+              doc: { label: 'Documenten', badge: documenten.length, content: <DocumentatiePage embedded /> },
               historie: {
                 label: 'Context',
                 content: (
@@ -1092,6 +1252,11 @@ export default function KompasToolPage() {
                         >
                           Exporteren naar Word
                         </button>
+                        {kompasMode === 'begroting' && (
+                          <button type="button" onClick={() => exporteerAlsExcel(m.content)} style={actieKnopStijl}>
+                            Exporteren naar Excel
+                          </button>
+                        )}
                         <button type="button" onClick={() => bewerkVerder(resultaatSoort[i] || DOC_SOORTEN[0])} style={actieKnopStijl}>
                           Later verder bewerken
                         </button>

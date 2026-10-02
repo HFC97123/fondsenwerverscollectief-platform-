@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 
 // Vervolgopdracht "Verbeter UX contextpanelen rondom Subsidie Kompas chat"
@@ -39,9 +39,60 @@ export default function KompasContextDrawer({ active, onSelect, onClose, tabs })
   const beschikbareTabs = TAB_VOLGORDE.filter((naam) => tabs && tabs[naam]);
   const open = active != null && !!(tabs && tabs[active]);
 
+  const drawerRef = useRef(null);
+  const vorigeFocusRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    vorigeFocusRef.current = document.activeElement;
+    drawerRef.current?.focus();
+
+    return () => {
+      const vorigElement = vorigeFocusRef.current;
+
+      if (vorigElement && typeof vorigElement.focus === 'function' && document.contains(vorigElement)) {
+        vorigElement.focus();
+      }
+    };
+  }, [open]);
+
   if (!open || beschikbareTabs.length === 0) {
     return null;
   }
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+
+    if (event.key !== 'Tab' || !drawerRef.current) {
+      return;
+    }
+
+    const focusbareElementen = drawerRef.current.querySelectorAll(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+
+    if (focusbareElementen.length === 0) {
+      return;
+    }
+
+    const eerste = focusbareElementen[0];
+    const laatste = focusbareElementen[focusbareElementen.length - 1];
+
+    if (event.shiftKey && document.activeElement === eerste) {
+      event.preventDefault();
+      laatste.focus();
+    } else if (!event.shiftKey && document.activeElement === laatste) {
+      event.preventDefault();
+      eerste.focus();
+    }
+  };
 
   const tabKnop = (naam) => (
     <button
@@ -104,6 +155,11 @@ export default function KompasContextDrawer({ active, onSelect, onClose, tabs })
   if (desktop) {
     return (
       <div
+        ref={drawerRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        onKeyDown={handleKeyDown}
         style={css(`
           position: fixed;
           top: 0;
@@ -128,6 +184,11 @@ export default function KompasContextDrawer({ active, onSelect, onClose, tabs })
   return (
     <div style={css('position: fixed; inset: 0; z-index: 120; background: rgba(44,74,94,0.32); display: flex; align-items: flex-end;')}>
       <div
+        ref={drawerRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        onKeyDown={handleKeyDown}
         style={css(`
           width: 100%;
           max-height: 86vh;
