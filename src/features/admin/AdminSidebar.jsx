@@ -37,7 +37,15 @@ export default function AdminSidebar({
     {
       title: 'Community',
       items: [
-        { key: 'applications', label: 'Aanvragen', count: applicationsCount },
+        // RC1 stap 5 (K5/F3): de "Aanvragen" (pending/approve/afwijzen)-tab is
+        // hier verwijderd. Sinds de migratie "account directe toegang"
+        // (2026-09-01) krijgen nieuwe registraties altijd automatisch status
+        // 'approved' - er bestaat geen enkele weg meer waarop een profiel op
+        // 'pending' terechtkomt (geverifieerd: 0 profielen met status
+        // 'pending' of 'rejected'), dus deze tab was dood. De onderliggende
+        // functionaliteit (ApplicationsSection, reviewApplication,
+        // admin_set_status) in AdminPage.jsx is bewust ongewijzigd gelaten -
+        // uitsluitend deze navigatie-ingang is weggehaald.
         { key: 'members', label: 'Leden', count: membersCount },
         { key: 'abonnementen', label: 'Abonnementen' },
       ],

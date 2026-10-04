@@ -277,6 +277,35 @@ export async function extractOrganisatieVelden({ text, fileName }) {
 }
 
 /*
+  RC1 stap 3D-4 (2026-10-01): laat een al in de chat opgestelde begrotingstekst
+  structureren (mode: 'budget'), voor de "Exporteren naar Excel"-knop in de
+  begrotingsworkflow (KompasToolPage.jsx). Geeft { budget, error } terug -
+  'budget' is hier UITSLUITEND de letterlijk uit de tekst getranscribeerde
+  vorm ({ expenseLines, meta }, zie budgetUitTekst() in de Edge Function);
+  alle rekenwerk en validatie gebeurt pas daarna, client-side, in
+  berekenBudget() - nooit hier en nooit server-side.
+*/
+export async function haalBudgetUitTekst({ tekst }) {
+  if (!supabase) {
+    return { budget: null, error: GEEN_VERBINDING };
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke(CHAT_FUNCTION, {
+      body: { mode: 'budget', text: tekst },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return { budget: (data && data.budget) || null, error: null };
+  } catch (e) {
+    return { budget: null, error: 'De begroting kon niet worden geanalyseerd. Probeer het opnieuw.' };
+  }
+}
+
+/*
   Laat de eigen website analyseren (fase 4). Geeft { velden, paginas, error }
   terug - net als extractOrganisatieVelden() hierboven wordt niets vanzelf
   opgeslagen; de pagina toont dit altijd eerst ter goedkeuring. 'paginas' is

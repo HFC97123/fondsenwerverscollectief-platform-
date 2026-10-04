@@ -88,6 +88,70 @@ const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-4o';
 // websearch-integraties" met de Responses API aanbeveelt.
 const CHAT_MODEL = Deno.env.get('OPENAI_CHAT_MODEL') || 'gpt-5.5';
 
+// RC1 stap 7 (7B - BE1, runtime hardening): expliciete timeouts voor elke
+// rechtstreekse OpenAI-aanroep in dit bestand - vóór deze stap had geen van
+// de vier aanroepen enige timeout/AbortController/retry (RC1-bevinding
+// BE1). Beide waarden blijven ruim onder de Supabase Edge Function
+// "Request idle timeout" van 150s (geldt ongeacht plan - geverifieerd via
+// de actuele Supabase-documentatie vóór implementatie, zie rapportage RC1
+// stap 7). KORTE_CALL_TIMEOUT_MS geldt voor de drie kleinere
+// extractie-/structureeraanroepen (voorstelUitTekst/budgetUitTekst/
+// projectdossierUitGesprek); HOOFDCHAT_TIMEOUT_MS voor de hoofdchat
+// (/v1/responses, soms gestreamd).
+const KORTE_CALL_TIMEOUT_MS = 45_000;
+const HOOFDCHAT_TIMEOUT_MS = 120_000;
+
+// RC1 stap 7 (7C - BE2, runtime hardening): minimale rate-limitregel - zie
+// kompas_check_rate_limit() (databasefunctie, migratie
+// 20261003175209_kompas_rate_limit_minimal.sql) voor de atomische
+// handhaving zelf. Bewust ruim genoeg om normaal gesprekgebruik nooit te
+// hinderen, strak genoeg om herhaald, geautomatiseerd misbruik duidelijk af
+// te remmen. Geen per-tier verschil (zie rapportage): dit is
+// misbruikbeveiliging, geen abonnementsfeature.
+const RATE_LIMIT_MAX_REQUESTS = 20;
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+
+// RC1 stap 7 (7B - BE1): kleine, gedeelde helper die elke rechtstreekse
+// OpenAI-aanroep hieronder een expliciete timeout geeft en een eventuele
+// timeout/netwerkfout al hier onderscheidt van een geslaagde aanroep -
+// vóór verdere verwerking (JSON parsen, non-2xx-afhandeling, etc.). Bewust
+// GEEN automatische retry: een OpenAI-aanroep kan al kosten/verwerking
+// hebben veroorzaakt vóórdat een netwerkfout zichtbaar wordt, en opnieuw
+// proberen zou dat risico verdubbelen in plaats van oplossen - het lid kan
+// zelf opnieuw vragen.
+//
+// AbortSignal.timeout(ms) is een standaard Web-API (ook in Deno): het geeft
+// fetch() een signal dat na `ms` milliseconden afgaat. Dat signal blijft,
+// volgens de fetch-specificatie, gekoppeld aan de VOLLEDIGE aanroep - dus
+// niet alleen aan het ontvangen van de response-headers, maar ook aan het
+// nog moeten uitlezen van een streaming response.body hierna. Voor de
+// hoofdchat-aanroep (die hierna soms als stream wordt uitgelezen, zie
+// Deno.serve() verderop) is dit dus geen schijnzekerheid die alleen de
+// verbindingsopbouw beschermt: dezelfde timer blijft actief tot de hele
+// aanroep (inclusief het uitlezen van de stream) is afgerond. Dit gedrag is
+// voorafgaand aan implementatie expliciet empirisch geverifieerd (zie
+// testrapportage RC1 stap 7) - niet alleen aangenomen op basis van de
+// specificatie.
+type OpenAiFetchUitkomst =
+  | { ok: true; response: Response }
+  | { ok: false; soort: 'timeout' | 'netwerk'; fout: unknown };
+
+async function fetchOpenAiMetTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<OpenAiFetchUitkomst> {
+  try {
+    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+
+    return { ok: true, response };
+  } catch (fout: any) {
+    // AbortSignal.timeout() laat fetch() falen met een fout waarvan
+    // `name === 'TimeoutError'` (standaard Web-API-gedrag) - dat
+    // onderscheiden we hier van elke andere netwerkfout (DNS, geweigerde
+    // verbinding, verbroken verbinding), die een andere `name` heeft.
+    const soort: 'timeout' | 'netwerk' = fout?.name === 'TimeoutError' ? 'timeout' : 'netwerk';
+
+    return { ok: false, soort, fout };
+  }
+}
+
 // Runtime-audit (2026-09-13): er is bewust GEEN hardcoded reservepersona meer
 // voor de systeemtekst of de tier-aanvullingen (voorheen SYSTEEM_STANDAARD,
 // PREMIUM_AANVULLING, AANVRAAGBEOORDELING_AANVULLING, PROJECTPLAN_AANVULLING,
@@ -208,10 +272,10 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-function json(body: unknown, status = 200) {
+function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
+    headers: { ...CORS, 'Content-Type': 'application/json', ...extraHeaders },
   });
 }
 
@@ -619,6 +683,97 @@ function leesMatchSignalen(body: any): MatchSignalen | null {
   return { themas, doelgroepen, werkgebied, gevraagdBedrag };
 }
 
+// RC1 stap 2, productbeslissing (2026-10-01): vóór deze wijziging bestond er
+// geen enkel server-side filter tussen de (bewust altijd volledige, zie
+// "RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN" bovenaan dit bestand)
+// kandidaatset/matching en de uiteindelijke OpenAI-tekst: elk record ging
+// altijd met volledige naam/criteria/bedrag/deadline de prompt in, voor elke
+// tier, met uitsluitend kompas.system als (niet-technische) rem. Deze
+// functie is die ontbrekende laag: ze bepaalt, per record en vlak vóór de
+// tekstopbouw in funderDeadlineContext/funderAlgemeneContext/
+// subsidieregelingContext hieronder, of een record VOLUIT getoond mag
+// worden. Ze spiegelt bewust de reviewed-tak van de databasefunctie
+// subsidie_zichtbaar_voor_tier() (zelfde free/pro/premium-logica op basis
+// van access_tier), met één toevoeging: isAdmin (server-side bepaald uit
+// profiles.role, zie de tier-bepaling verderop) overstijgt access_tier
+// volledig - dit lost RC1-bevinding F5 op (admin kreeg voorheen een
+// gedegradeerde AI-context wanneer er geen actief betaald abonnement was).
+// Een onbekende/ontbrekende access_tier-waarde wordt bewust NOOIT als
+// zichtbaar beschouwd (fail closed), in plaats van zoals voorheen impliciet
+// het geval was: gewoon volledig getoond.
+//
+// Verandert NIETS aan de candidate pool of de matching/ranking: de RPC's
+// hieronder blijven zelf ongewijzigd altijd met p_tier: 'premium'
+// aangeroepen, en berekenMatch() hierboven blijft ongewijzigd. Dit is
+// uitsluitend de allerlaatste stap, ná sortering/scoring, vóórdat tekst
+// wordt opgebouwd.
+function isZichtbaarVoorTier(accessTier: unknown, tier: string, isAdmin: boolean): boolean {
+  if (isAdmin) {
+    return true;
+  }
+
+  switch (accessTier) {
+    case 'free':
+      return true;
+    case 'pro':
+      return tier === 'pro' || tier === 'premium';
+    case 'premium':
+      return tier === 'premium';
+    default:
+      return false;
+  }
+}
+
+// RC1 stap 2, correctie (2026-10-02): de Free-cap van maximaal 3 volledige
+// matches werd tot nu toe puur sequentieel verdeeld (subsidieregelingen
+// eerst, dan funder-deadlines, dan overige fondsen) - een technisch toeval
+// van aanroepvolgorde, geen businessregel. Vandaag heeft alléén een
+// subsidieregeling met een daadwerkelijk door berekenMatch() berekende
+// score (match.totaal != null) een inhoudelijk onderbouwde voorrang op de
+// quota; fondsen worden niet gescoord (zie subsidieregelingKandidaten
+// hieronder - geen nieuwe matchscore voor fondsen, berekenMatch() blijft
+// ongewijzigd) en een subsidieregeling zonder bruikbare score heeft dus net
+// zo min onderbouwde voorrang als een fonds.
+//
+// Deze functie verdeelt de gedeelde quota daarom expliciet over "lanes" in
+// plaats van impliciet via de aanroepvolgorde: de lane op
+// prioriteitLaneIndex (indien opgegeven) claimt plekken eerst, op volgorde
+// van haar eigen, al-bestaande ranking (de gescoorde subsidieregelingen).
+// Alle overige lanes (ongescoorde subsidieregelingen, funder-deadlines,
+// overige fondsen) delen het restant vervolgens round-robin - telkens één
+// plek per lane per ronde, in elke lane's eigen bestaande volgorde - zodat
+// geen van die lanes de volledige resterende quota kan opeisen puur omdat
+// ze toevallig als eerste aan de beurt zou zijn.
+function verdeelQuotaOverLanes(laneGroottes: number[], prioriteitLaneIndex: number | null, totaalQuota: number): number[] {
+  const toegekend = laneGroottes.map(() => 0);
+  let resterend = totaalQuota;
+
+  if (prioriteitLaneIndex != null) {
+    const nemen = Math.min(laneGroottes[prioriteitLaneIndex], resterend);
+    toegekend[prioriteitLaneIndex] = nemen;
+    resterend -= nemen;
+  }
+
+  let vooruitgang = true;
+
+  while (resterend > 0 && vooruitgang) {
+    vooruitgang = false;
+
+    for (let i = 0; i < laneGroottes.length; i++) {
+      if (resterend <= 0) break;
+      if (i === prioriteitLaneIndex) continue;
+
+      if (toegekend[i] < laneGroottes[i]) {
+        toegekend[i]++;
+        resterend--;
+        vooruitgang = true;
+      }
+    }
+  }
+
+  return toegekend;
+}
+
 // Deadline-architectuur, enkelvoudige koppeling: funder-brede datamomenten
 // (geen regelingkoppeling - subsidieregeling_id is null) via een eigen
 // sibling-RPC (kompas_funder_deadlines_voor_tier), met exact dezelfde
@@ -626,11 +781,19 @@ function leesMatchSignalen(body: any): MatchSignalen | null {
 // hieronder - geen tweede rechtenmodel. Los van kompas_subsidieregelingen_voor_tier
 // gehouden (niet die RPC's kolomvorm uitgebreid) omdat funder-brede data geen
 // regelingspecifieke velden heeft (begrotingseisen, aanvraagprocedure, etc.).
-// RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): roept de RPC altijd
-// aan met 'premium' (volledige database, zie toelichting bovenaan dit
-// bestand) - geen tier-parameter meer nodig, zichtbaarheid wordt voortaan
-// per item bepaald via access_tier + kompas.system.
-async function funderDeadlineContext(admin: any): Promise<{ tekst: string; funderIds: Set<string> } | null> {
+// RC1 stap 2, productbeslissing (2026-10-01): de RPC-aanroep hieronder
+// blijft ongewijzigd altijd met 'premium' (volledige database/candidate
+// pool, zie toelichting bovenaan dit bestand) - dat blijft bewust zo, zodat
+// elke tier exact dezelfde, volledige set funder-deadlines onderzoekt.
+// RC1 stap 2, correctie (2026-10-02): opgesplitst in een ophaal-/
+// filterfunctie (deze) en een aparte tekstopbouwfunctie
+// (bouwFunderDeadlineTekst hieronder). Reden: de Free-quota moet nu, over
+// alle drie contextbronnen heen, EXPLICIET verdeeld worden (zie
+// verdeelQuotaOverLanes hierboven) in plaats van sequentieel per functie te
+// worden verbruikt - dat kan pas ná het ophalen van alle drie bronnen (zie
+// de aanroepvolgorde in Deno.serve), dus de tekstopbouw moet apart van het
+// ophalen/filteren staan.
+async function funderDeadlineKandidaten(admin: any, tier: string, isAdmin: boolean) {
   try {
     const { data, error } = await admin.rpc('kompas_funder_deadlines_voor_tier', { p_tier: 'premium' });
 
@@ -640,41 +803,85 @@ async function funderDeadlineContext(admin: any): Promise<{ tekst: string; funde
 
     const funderIds = new Set<string>(data.map((f: any) => String(f.funder_id)));
 
-    const regels = data.map((f: any) => {
-      const lijnen: string[] = [];
+    const toegankelijk: any[] = [];
+    const ontoegankelijk: any[] = [];
 
-      lijnen.push(
-        `- ${f.funder_naam}${f.type_gever ? ` (${f.type_gever})` : ''} — funder-brede deadline, sluit ${f.deadline_datum ?? 'onbekend'}${f.sluitingstijd ? ` om ${String(f.sluitingstijd).slice(0, 5)}` : ''}, toegangsniveau: ${f.access_tier || 'onbekend'}`,
-      );
+    for (const f of data) {
+      if (isZichtbaarVoorTier(f.access_tier, tier, isAdmin)) {
+        toegankelijk.push(f);
+      } else {
+        ontoegankelijk.push(f);
+      }
+    }
 
-      if (f.datamoment_naam) lijnen.push(`  Naam: ${f.datamoment_naam}`);
-      if (f.themas_namen?.length) lijnen.push(`  Disciplines: ${f.themas_namen.join(', ')}`);
-      if (f.doelgroepen_namen?.length) lijnen.push(`  Doelgroepen: ${f.doelgroepen_namen.join(', ')}`);
-      if (f.werkgebieden_namen?.length) lijnen.push(`  Werkgebied: ${f.werkgebieden_namen.join(', ')}`);
-
-      const bijdrage = [
-        f.bandbreedte_bijdrage_naam,
-        f.bijdrage_min || f.bijdrage_max ? `(€ ${f.bijdrage_min ?? '?'} - € ${f.bijdrage_max ?? '?'})` : null,
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      if (bijdrage) lijnen.push(`  Bijdrage: ${bijdrage}`);
-      if (f.toelichting) lijnen.push(`  Toelichting: ${f.toelichting}`);
-      if (f.funder_missie) lijnen.push(`  Missie: ${f.funder_missie}`);
-      if (f.funder_aanvraagcriteria) lijnen.push(`  Aanvraagcriteria (algemeen, geldt voor het hele fonds): ${f.funder_aanvraagcriteria}`);
-      if (f.funder_website) lijnen.push(`  Website: ${f.funder_website}`);
-
-      return lijnen.join('\n');
-    });
-
-    const kop =
-      'Hieronder staan funder-brede deadlines: deze gelden voor het hele fonds (niet voor één specifieke subsidieregeling uit de lijst hierboven of hieronder). Dit is de volledige database, ongeacht het abonnement van dit lid: elke regel heeft een eigen "toegangsniveau" (access_tier); bepaal aan de hand daarvan en de regels in kompas.system wat je aan dit lid laat zien. Verzin nooit een fonds, bedrag, deadline of voorwaarde die hier niet in staat. Noem bij advies duidelijk dat dit een deadline van het fonds zelf is, niet van één specifieke regeling.\n\n';
-
-    return { tekst: (kop + regels.join('\n')).slice(0, 30000), funderIds };
+    return {
+      toegankelijk,
+      ontoegankelijkAantal: ontoegankelijk.length,
+      ontoegankelijkPremiumAantal: ontoegankelijk.filter((f: any) => f.access_tier === 'premium').length,
+      funderIds,
+    };
   } catch (_) {
     return null;
   }
+}
+
+function bouwFunderDeadlineTekst(
+  kandidaten: { toegankelijk: any[]; ontoegankelijkAantal: number; ontoegankelijkPremiumAantal: number } | null,
+  aantalVolledig: number,
+): string | null {
+  if (!kandidaten) {
+    return null;
+  }
+
+  const zichtbaar = kandidaten.toegankelijk.slice(0, aantalVolledig);
+  const quotaVerborgenAantal = kandidaten.toegankelijk.length - zichtbaar.length;
+
+  const regels = zichtbaar.map((f: any) => {
+    const lijnen: string[] = [];
+
+    lijnen.push(
+      `- ${f.funder_naam}${f.type_gever ? ` (${f.type_gever})` : ''} — funder-brede deadline, sluit ${f.deadline_datum ?? 'onbekend'}${f.sluitingstijd ? ` om ${String(f.sluitingstijd).slice(0, 5)}` : ''}, toegangsniveau: ${f.access_tier || 'onbekend'}`,
+    );
+
+    if (f.datamoment_naam) lijnen.push(`  Naam: ${f.datamoment_naam}`);
+    if (f.themas_namen?.length) lijnen.push(`  Disciplines: ${f.themas_namen.join(', ')}`);
+    if (f.doelgroepen_namen?.length) lijnen.push(`  Doelgroepen: ${f.doelgroepen_namen.join(', ')}`);
+    if (f.werkgebieden_namen?.length) lijnen.push(`  Werkgebied: ${f.werkgebieden_namen.join(', ')}`);
+
+    const bijdrage = [
+      f.bandbreedte_bijdrage_naam,
+      f.bijdrage_min || f.bijdrage_max ? `(€ ${f.bijdrage_min ?? '?'} - € ${f.bijdrage_max ?? '?'})` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    if (bijdrage) lijnen.push(`  Bijdrage: ${bijdrage}`);
+    if (f.toelichting) lijnen.push(`  Toelichting: ${f.toelichting}`);
+    if (f.funder_missie) lijnen.push(`  Missie: ${f.funder_missie}`);
+    if (f.funder_aanvraagcriteria) lijnen.push(`  Aanvraagcriteria (algemeen, geldt voor het hele fonds): ${f.funder_aanvraagcriteria}`);
+    if (f.funder_website) lijnen.push(`  Website: ${f.funder_website}`);
+
+    return lijnen.join('\n');
+  });
+
+  // Fondsen die uitsluitend door de Free-quota (niet door access_tier) zijn
+  // weggelaten, hebben altijd access_tier === 'free' (zie isZichtbaarVoorTier
+  // hierboven - alleen 'free'-rijen bereiken deze tak bij tier 'free') en
+  // tellen dus nooit mee in het Premium-subtotaal.
+  const verborgenTotaal = quotaVerborgenAantal + kandidaten.ontoegankelijkAantal;
+  const verborgenPremium = kandidaten.ontoegankelijkPremiumAantal;
+  const aggregaatRegel = verborgenTotaal
+    ? `\n\nAanvullende, voor dit lid niet volledig zichtbare fondsen met een eigen eerstvolgende deadline: ${verborgenTotaal} in totaal, waarvan ${verborgenPremium} uitsluitend beschikbaar binnen Premium. Noem hierover uitsluitend deze aantallen - nooit een naam, website, criterium, bedrag of andere inhoudelijke informatie.`
+    : '';
+
+  const kop =
+    'Hieronder staan funder-brede deadlines waartoe dit lid, op basis van zijn abonnement, daadwerkelijk toegang heeft: deze gelden voor het hele fonds (niet voor één specifieke subsidieregeling uit de lijst hierboven of hieronder). Dit is NIET meer de volledige database: fondsen waar dit lid geen toegang toe heeft staan hier bewust niet (meer) in - zie in plaats daarvan de aparte aantallen onderaan. Verzin nooit een fonds, bedrag, deadline of voorwaarde die hier niet in staat. Noem bij advies duidelijk dat dit een deadline van het fonds zelf is, niet van één specifieke regeling.\n\n';
+
+  const inhoud = regels.length
+    ? regels.join('\n')
+    : 'Er zijn voor dit lid op dit moment geen fondsen met een eigen, volledig zichtbare eerstvolgende deadline.';
+
+  return (kop + inhoud + aggregaatRegel).slice(0, 30000);
 }
 
 // Architectuurregel "Reviewed bepaalt opname in de centrale dataset": de AI moet
@@ -689,10 +896,13 @@ async function funderDeadlineContext(admin: any): Promise<{ tekst: string; funde
 // daar al met hun eigen deadline in staan (dezelfde funder_id) - dit blok gaat
 // dus alleen over beoordeelde fondsen zonder eigen funder-brede deadline; een
 // fonds met eigen subsidieregelingen staat sowieso al in subsidieregelingContext.
-// RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): roept de RPC altijd
-// aan met 'premium' (volledige database) - zie toelichting bovenaan dit
-// bestand.
-async function funderAlgemeneContext(admin: any, reedsGenoemdeFunderIds: Set<string>) {
+// RC1 stap 2, productbeslissing (2026-10-01): zelfde aanpak als
+// funderDeadlineKandidaten hierboven - de RPC-aanroep blijft ongewijzigd
+// altijd met 'premium' (volledige candidate pool).
+// RC1 stap 2, correctie (2026-10-02): zelfde opsplitsing in ophalen/
+// filteren (deze functie) versus tekstopbouw (bouwFunderAlgemeneTekst
+// hieronder) als bij funderDeadlineKandidaten - zie de toelichting daar.
+async function funderAlgemeneKandidaten(admin: any, reedsGenoemdeFunderIds: Set<string>, tier: string, isAdmin: boolean) {
   try {
     const { data, error } = await admin.rpc('kompas_funders_voor_tier', { p_tier: 'premium' });
 
@@ -703,144 +913,258 @@ async function funderAlgemeneContext(admin: any, reedsGenoemdeFunderIds: Set<str
     const overige = data.filter((f: any) => !reedsGenoemdeFunderIds.has(String(f.funder_id)));
     if (!overige.length) return null;
 
-    const regels = overige.map((f: any) => {
-      const lijnen: string[] = [];
+    const toegankelijk: any[] = [];
+    const ontoegankelijk: any[] = [];
 
-      lijnen.push(`- ${f.funder_naam}${f.funder_type ? ` (${f.funder_type})` : ''} — toegangsniveau: ${f.access_tier || 'onbekend'}`);
+    for (const f of overige) {
+      if (isZichtbaarVoorTier(f.access_tier, tier, isAdmin)) {
+        toegankelijk.push(f);
+      } else {
+        ontoegankelijk.push(f);
+      }
+    }
 
-      if (f.themas_namen?.length) lijnen.push(`  Disciplines: ${f.themas_namen.join(', ')}`);
-      if (f.doelgroepen_namen?.length) lijnen.push(`  Doelgroepen: ${f.doelgroepen_namen.join(', ')}`);
-      if (f.werkgebieden_namen?.length) lijnen.push(`  Werkgebied: ${f.werkgebieden_namen.join(', ')}`);
-
-      const bijdrage = [
-        f.bandbreedte_bijdrage_naam,
-        f.bijdrage_min || f.bijdrage_max ? `(€ ${f.bijdrage_min ?? '?'} - € ${f.bijdrage_max ?? '?'})` : null,
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      if (bijdrage) lijnen.push(`  Bijdrage: ${bijdrage}`);
-      if (f.missie) lijnen.push(`  Missie: ${f.missie}`);
-      if (f.aanvraagcriteria) lijnen.push(`  Aanvraagcriteria: ${f.aanvraagcriteria}`);
-      if (f.funder_website) lijnen.push(`  Website: ${f.funder_website}`);
-
-      return lijnen.join('\n');
-    });
-
-    const kop =
-      'Hieronder staan overige, door een beheerder beoordeelde fondsen zonder eigen, eerstvolgende aanvraagronde of vergaderdatum (bijv. fondsen die uitsluitend op uitnodiging of doorlopend schenken). Dit is de volledige database, ongeacht het abonnement van dit lid: elk fonds heeft een eigen "toegangsniveau" (access_tier); bepaal aan de hand daarvan en de regels in kompas.system wat je aan dit lid laat zien. Gebruik voor de gedeelten die voor dit lid zichtbaar mogen worden gewoon alle onderstaande informatie (missie, disciplines, doelgroepen, werkgebied, aanvraagcriteria, bijdrage, website) om het fonds te bespreken of te adviseren. Het ontbreken van een bekende eerstvolgende datum is geen reden om een fonds minder te noemen of over te slaan. Vermeld dat er geen bekende, toekomstige deadline of vergaderdatum bekend is uitsluitend wanneer een lid daar expliciet naar vraagt. Verzin nooit een fonds, bedrag of voorwaarde die hier niet in staat.\n\n';
-
-    return (kop + regels.join('\n')).slice(0, 30000);
+    return {
+      toegankelijk,
+      ontoegankelijkAantal: ontoegankelijk.length,
+      ontoegankelijkPremiumAantal: ontoegankelijk.filter((f: any) => f.access_tier === 'premium').length,
+    };
   } catch (_) {
     return null;
   }
 }
 
+function bouwFunderAlgemeneTekst(
+  kandidaten: { toegankelijk: any[]; ontoegankelijkAantal: number; ontoegankelijkPremiumAantal: number } | null,
+  aantalVolledig: number,
+): string | null {
+  if (!kandidaten) {
+    return null;
+  }
+
+  const zichtbaar = kandidaten.toegankelijk.slice(0, aantalVolledig);
+  const quotaVerborgenAantal = kandidaten.toegankelijk.length - zichtbaar.length;
+
+  const regels = zichtbaar.map((f: any) => {
+    const lijnen: string[] = [];
+
+    lijnen.push(`- ${f.funder_naam}${f.funder_type ? ` (${f.funder_type})` : ''} — toegangsniveau: ${f.access_tier || 'onbekend'}`);
+
+    if (f.themas_namen?.length) lijnen.push(`  Disciplines: ${f.themas_namen.join(', ')}`);
+    if (f.doelgroepen_namen?.length) lijnen.push(`  Doelgroepen: ${f.doelgroepen_namen.join(', ')}`);
+    if (f.werkgebieden_namen?.length) lijnen.push(`  Werkgebied: ${f.werkgebieden_namen.join(', ')}`);
+
+    const bijdrage = [
+      f.bandbreedte_bijdrage_naam,
+      f.bijdrage_min || f.bijdrage_max ? `(€ ${f.bijdrage_min ?? '?'} - € ${f.bijdrage_max ?? '?'})` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    if (bijdrage) lijnen.push(`  Bijdrage: ${bijdrage}`);
+    if (f.missie) lijnen.push(`  Missie: ${f.missie}`);
+    if (f.aanvraagcriteria) lijnen.push(`  Aanvraagcriteria: ${f.aanvraagcriteria}`);
+    if (f.funder_website) lijnen.push(`  Website: ${f.funder_website}`);
+
+    return lijnen.join('\n');
+  });
+
+  const verborgenTotaal = quotaVerborgenAantal + kandidaten.ontoegankelijkAantal;
+  const verborgenPremium = kandidaten.ontoegankelijkPremiumAantal;
+  const aggregaatRegel = verborgenTotaal
+    ? `\n\nAanvullende, voor dit lid niet volledig zichtbare fondsen zonder eigen eerstvolgende aanvraagronde of vergaderdatum: ${verborgenTotaal} in totaal, waarvan ${verborgenPremium} uitsluitend beschikbaar binnen Premium. Noem hierover uitsluitend deze aantallen - nooit een naam, website, criterium, bedrag of andere inhoudelijke informatie.`
+    : '';
+
+  const kop =
+    'Hieronder staan overige, door een beheerder beoordeelde fondsen waartoe dit lid, op basis van zijn abonnement, daadwerkelijk toegang heeft, zonder eigen eerstvolgende aanvraagronde of vergaderdatum (bijv. fondsen die uitsluitend op uitnodiging of doorlopend schenken). Dit is NIET meer de volledige database: fondsen waar dit lid geen toegang toe heeft staan hier bewust niet (meer) in - zie in plaats daarvan de aparte aantallen onderaan. Gebruik voor de onderstaande fondsen gewoon alle informatie (missie, disciplines, doelgroepen, werkgebied, aanvraagcriteria, bijdrage, website) om het fonds te bespreken of te adviseren. Het ontbreken van een bekende eerstvolgende datum is geen reden om een fonds minder te noemen of over te slaan. Vermeld dat er geen bekende, toekomstige deadline of vergaderdatum bekend is uitsluitend wanneer een lid daar expliciet naar vraagt. Verzin nooit een fonds, bedrag of voorwaarde die hier niet in staat.\n\n';
+
+  const inhoud = regels.length
+    ? regels.join('\n')
+    : 'Er zijn voor dit lid op dit moment geen overige fondsen die met volledige details getoond mogen worden.';
+
+  return (kop + inhoud + aggregaatRegel).slice(0, 30000);
+}
+
 // "Volgende fase": de subsidieregelingen die dit lid, op basis van zijn eigen
-// abonnement, mag zien - via de RPC die exact dezelfde centrale regel
-// toepast als de Timeline (subsidie_zichtbaar_voor_tier). tier komt hierboven
-// al veilig uit profiles.subscription_tier, nooit van de client. Geeft een
-// kant-en-klaar systeembericht terug, of null als er niets te tonen is of de
-// aanroep mislukt (mag het gesprek zelf nooit blokkeren).
+// abonnement, mag zien.
 //
 // AI Fundraising Assistant, fase 1: geeft matchSignalen mee (optioneel, kan
 // null zijn), dan krijgt elke regeling er een uitlegbare matchscore bij
 // (berekenMatch hierboven) en worden de regelingen aflopend op matchscore
-// gesorteerd - zodat de sterkste kandidaten bovenaan staan en dus als eerste
-// binnen de 60000-tekens-afkap hieronder vallen.
-// RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): roept de RPC altijd
-// aan met 'premium' (volledige database) - zie toelichting bovenaan dit
-// bestand.
-async function subsidieregelingContext(admin: any, matchSignalen: MatchSignalen | null) {
+// gesorteerd - zodat de sterkste kandidaten bovenaan staan.
+// RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): de RPC-aanroep
+// hieronder blijft ongewijzigd altijd met 'premium' (volledige candidate
+// pool, zie toelichting bovenaan dit bestand) - de sortering hierboven
+// gebeurt dus nog steeds over de volledige, tier-onafhankelijke set.
+// RC1 stap 2, correctie (2026-10-02): opgesplitst in ophalen/scoren/
+// sorteren/tier-filteren (deze functie) en tekstopbouw
+// (bouwSubsidieregelingTekst hieronder). Reden: de Free-quota kan pas
+// eerlijk verdeeld worden (zie verdeelQuotaOverLanes in Deno.serve) als ook
+// bekend is hoeveel van de hier toegankelijke regelingen een daadwerkelijk
+// berekende matchscore hebben (aantalGescoord) - en dat is pas ná het
+// ophalen en scoren bekend, dus vóórdat de uiteindelijke quota verdeeld kan
+// worden. Geen nieuwe matchscore, geen wijziging aan berekenMatch() zelf -
+// uitsluitend tellen hoeveel van de AL berekende scores bruikbaar zijn.
+async function subsidieregelingKandidaten(admin: any, matchSignalen: MatchSignalen | null, tier: string, isAdmin: boolean) {
   try {
     const { data, error } = await admin.rpc('kompas_subsidieregelingen_voor_tier', { p_tier: 'premium' });
 
     if (error || !Array.isArray(data)) {
-      return null;
+      return { toegankelijk: [] as any[], aantalGescoord: 0, ontoegankelijkAantal: 0, ontoegankelijkPremiumAantal: 0, legeDatabaseTekst: null as string | null };
     }
 
     if (!data.length) {
-      return 'Er staan op dit moment geen subsidieregelingen in de database van Het Fondsenwervers Collectief. Verzin er zelf geen bij - zeg dat eerlijk en vraag zo nodig door naar wat het lid zoekt.';
+      return {
+        toegankelijk: [] as any[],
+        aantalGescoord: 0,
+        ontoegankelijkAantal: 0,
+        ontoegankelijkPremiumAantal: 0,
+        legeDatabaseTekst:
+          'Er staan op dit moment geen subsidieregelingen in de database van Het Fondsenwervers Collectief. Verzin er zelf geen bij - zeg dat eerlijk en vraag zo nodig door naar wat het lid zoekt.',
+      };
     }
 
     // AI Fundraising Assistant, fase 1: matchscore per regeling berekenen (als
     // er signalen zijn) en de lijst daarop sorteren - de sterkste match komt
-    // bovenaan, in plaats van de bestaande status/deadline-volgorde uit de RPC.
+    // bovenaan. Dit blijft ongewijzigd volledig en tier-onafhankelijk: de
+    // tier-filter hieronder werkt op de ALLANG gesorteerde lijst, niet andersom.
     const metMatch = data.map((r: any) => ({ r, match: matchSignalen ? berekenMatch(r, matchSignalen) : null }));
 
     if (matchSignalen) {
       metMatch.sort((a: any, b: any) => (b.match?.totaal ?? -1) - (a.match?.totaal ?? -1));
     }
 
-    const perRegeling = metMatch.map(({ r, match }: any) => {
-      const regelLijnen: string[] = [];
+    const toegankelijk: typeof metMatch = [];
+    const ontoegankelijk: typeof metMatch = [];
 
-      regelLijnen.push(
-        `- ${r.naam}${r.status ? ` (${r.status}${r.deadline_datum ? `, deadline ${r.deadline_datum}${r.sluitingstijd ? ` om ${String(r.sluitingstijd).slice(0, 5)}` : ''}` : ''})` : ''} — gever: ${r.funder_naam || 'onbekend'} (${r.type_gever || 'onbekend type'}), toegangsniveau: ${r.access_tier || 'onbekend'}`,
-      );
-
-      if (r.themas_namen?.length) regelLijnen.push(`  Disciplines: ${r.themas_namen.join(', ')}`);
-      if (r.doelgroepen_namen?.length) regelLijnen.push(`  Doelgroepen: ${r.doelgroepen_namen.join(', ')}`);
-      if (r.werkgebieden_namen?.length) regelLijnen.push(`  Werkgebied: ${r.werkgebieden_namen.join(', ')}`);
-
-      if (match && match.totaal != null) {
-        const onderdelenTekst = match.onderdelen.map((o: any) => `${o.naam} ${o.score}% (${o.toelichting})`).join('; ');
-
-        regelLijnen.push(`  Matchscore met dit lid: ${match.totaal}% — ${onderdelenTekst}.`);
-
-        if (match.sterkePunten.length) regelLijnen.push(`  Sterke punten van deze match: ${match.sterkePunten.join('; ')}.`);
-        if (match.aandachtspunten.length) regelLijnen.push(`  Aandachtspunten van deze match: ${match.aandachtspunten.join('; ')}.`);
-        if (match.onzekereInfo.length) regelLijnen.push(`  Niet mee te wegen (onbekend): ${match.onzekereInfo.join('; ')}.`);
-      } else if (match) {
-        regelLijnen.push('  Matchscore: kan niet worden berekend - onvoldoende profiel-/projectinformatie bekend.');
+    for (const item of metMatch) {
+      if (isZichtbaarVoorTier(item.r.access_tier, tier, isAdmin)) {
+        toegankelijk.push(item);
+      } else {
+        ontoegankelijk.push(item);
       }
+    }
 
-      const bijdrage = [
-        r.bandbreedte_bijdrage_naam,
-        r.bedrag_min || r.bedrag_max ? `(€ ${r.bedrag_min ?? '?'} - € ${r.bedrag_max ?? '?'})` : null,
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      if (bijdrage) regelLijnen.push(`  Bijdrage: ${bijdrage}`);
-      if (r.deadline_omschrijving) regelLijnen.push(`  Openstelling/deadline: ${r.deadline_omschrijving}`);
-      // Meerdere aanvraagrondes: eerstvolgende ronde komt uit dezelfde centrale
-      // rondelogica als de Timeline (subsidieregeling_volgende_ronde). deadline_datum
-      // hierboven is al ronde-aware; deze regel voegt alleen de beoordelingsinfo
-      // en het totaal aantal (huidige + historische) rondes toe.
-      if ((r.rondes_aantal ?? 0) > 0) {
-        const beoordeling = r.beoordelingsdatum || r.beoordelingsperiode_ronde;
-        regelLijnen.push(
-          `  Eerstvolgende aanvraagronde: sluit ${r.deadline_datum ?? 'onbekend'}${r.sluitingstijd ? ` om ${String(r.sluitingstijd).slice(0, 5)}` : ''}${beoordeling ? `; beoordeling ${r.beoordelingsdatum ? `op ${r.beoordelingsdatum}` : r.beoordelingsperiode_ronde}` : ''} (in totaal ${r.rondes_aantal} aanvraagronde${r.rondes_aantal === 1 ? '' : 's'} voor deze regeling, inclusief eventuele afgelopen rondes).`,
-        );
+    // Omdat metMatch hierboven al aflopend op match.totaal is gesorteerd
+    // (ontbrekende/onberekenbare scores tellen daarbij als -1, dus altijd
+    // achteraan), vormen de items mét een daadwerkelijk berekende score
+    // (match.totaal != null) altijd een aaneengesloten voorvoegsel van
+    // 'toegankelijk' - alleen die voorste reeks tellen volstaat dus, zonder
+    // opnieuw te hoeven filteren of sorteren.
+    let aantalGescoord = 0;
+    for (const item of toegankelijk) {
+      if (item.match && item.match.totaal != null) {
+        aantalGescoord++;
+      } else {
+        break;
       }
-      if (r.aanvraagcriteria) regelLijnen.push(`  Aanvraagcriteria (regeling): ${r.aanvraagcriteria}`);
-      if (r.beoordelingscriteria) regelLijnen.push(`  Beoordelingscriteria: ${r.beoordelingscriteria}`);
-      if (r.type_projecten) regelLijnen.push(`  Type projecten: ${r.type_projecten}`);
-      if (r.begrotingseisen) regelLijnen.push(`  Begrotingseisen: ${r.begrotingseisen}`);
-      if (r.eigen_bijdrage) regelLijnen.push(`  Eigen bijdrage: ${r.eigen_bijdrage}`);
-      if (r.cofinanciering) regelLijnen.push(`  Cofinanciering: ${r.cofinanciering}`);
-      if (r.behandeltermijn) regelLijnen.push(`  Behandeltermijn: ${r.behandeltermijn}`);
-      if (r.aanvraagprocedure) regelLijnen.push(`  Aanvraagprocedure: ${r.aanvraagprocedure}`);
-      if (r.aanvraaglink) regelLijnen.push(`  Aanvraaglink: ${r.aanvraaglink}`);
-      if (r.funder_missie) regelLijnen.push(`  Missie gever: ${r.funder_missie}`);
-      if (r.funder_aanvraagcriteria) regelLijnen.push(`  Aanvraagcriteria (gever, algemeen): ${r.funder_aanvraagcriteria}`);
-      if (r.funder_website) regelLijnen.push(`  Website gever: ${r.funder_website}`);
+    }
 
-      return regelLijnen.join('\n');
-    });
-
-    const kop =
-      'Hieronder staan de subsidieregelingen uit de database van Het Fondsenwervers Collectief (beheerd via Beheer -> Subsidieregelingen), aflopend gesorteerd op matchscore als die berekend kon worden. Dit is de volledige database, ongeacht het abonnement van dit lid: elke regeling heeft een eigen "toegangsniveau" (access_tier); bepaal aan de hand daarvan en de regels in kompas.system (ZICHTBAARHEID VAN MATCHES PER ACCOUNTNIVEAU) wat je aan dit lid laat zien. Gebruik uitsluitend deze lijst voor concreet fondsadvies: verzin nooit een regeling, gever, bedrag, deadline of voorwaarde die hier niet in staat. Is er niets passends bij, zeg dat eerlijk in plaats van een regeling te verzinnen.' +
-      (matchSignalen
-        ? ' Staat er een matchscore/percentage bij een regeling, gebruik dan uitsluitend dat getal en die toelichting als je een percentage of "sterke match"/"aandachtspunt" noemt - bereken of schat nooit zelf een eigen percentage. Staat een onderdeel onder "Niet mee te wegen (onbekend)", doe daar dan geen uitspraak over en verzin geen score - zeg desgewenst dat je dat niet kunt beoordelen en vraag er evt. naar.'
-        : '')
-      + '\n\n';
-
-    return (kop + perRegeling.join('\n')).slice(0, 60000);
+    return {
+      toegankelijk,
+      aantalGescoord,
+      ontoegankelijkAantal: ontoegankelijk.length,
+      ontoegankelijkPremiumAantal: ontoegankelijk.filter((item: any) => item.r.access_tier === 'premium').length,
+      legeDatabaseTekst: null as string | null,
+    };
   } catch (_) {
-    return null;
+    return { toegankelijk: [] as any[], aantalGescoord: 0, ontoegankelijkAantal: 0, ontoegankelijkPremiumAantal: 0, legeDatabaseTekst: null as string | null };
   }
+}
+
+function bouwSubsidieregelingTekst(
+  kandidaten: {
+    toegankelijk: { r: any; match: any }[];
+    ontoegankelijkAantal: number;
+    ontoegankelijkPremiumAantal: number;
+    legeDatabaseTekst: string | null;
+  },
+  aantalVolledig: number,
+  matchSignalen: MatchSignalen | null,
+): string | null {
+  if (kandidaten.legeDatabaseTekst) {
+    return kandidaten.legeDatabaseTekst;
+  }
+
+  const zichtbaar = kandidaten.toegankelijk.slice(0, aantalVolledig);
+  const quotaVerborgenAantal = kandidaten.toegankelijk.length - zichtbaar.length;
+
+  const perRegeling = zichtbaar.map(({ r, match }: any) => {
+    const regelLijnen: string[] = [];
+
+    regelLijnen.push(
+      `- ${r.naam}${r.status ? ` (${r.status}${r.deadline_datum ? `, deadline ${r.deadline_datum}${r.sluitingstijd ? ` om ${String(r.sluitingstijd).slice(0, 5)}` : ''}` : ''})` : ''} — gever: ${r.funder_naam || 'onbekend'} (${r.type_gever || 'onbekend type'}), toegangsniveau: ${r.access_tier || 'onbekend'}`,
+    );
+
+    if (r.themas_namen?.length) regelLijnen.push(`  Disciplines: ${r.themas_namen.join(', ')}`);
+    if (r.doelgroepen_namen?.length) regelLijnen.push(`  Doelgroepen: ${r.doelgroepen_namen.join(', ')}`);
+    if (r.werkgebieden_namen?.length) regelLijnen.push(`  Werkgebied: ${r.werkgebieden_namen.join(', ')}`);
+
+    if (match && match.totaal != null) {
+      const onderdelenTekst = match.onderdelen.map((o: any) => `${o.naam} ${o.score}% (${o.toelichting})`).join('; ');
+
+      regelLijnen.push(`  Matchscore met dit lid: ${match.totaal}% — ${onderdelenTekst}.`);
+
+      if (match.sterkePunten.length) regelLijnen.push(`  Sterke punten van deze match: ${match.sterkePunten.join('; ')}.`);
+      if (match.aandachtspunten.length) regelLijnen.push(`  Aandachtspunten van deze match: ${match.aandachtspunten.join('; ')}.`);
+      if (match.onzekereInfo.length) regelLijnen.push(`  Niet mee te wegen (onbekend): ${match.onzekereInfo.join('; ')}.`);
+    } else if (match) {
+      regelLijnen.push('  Matchscore: kan niet worden berekend - onvoldoende profiel-/projectinformatie bekend.');
+    }
+
+    const bijdrage = [
+      r.bandbreedte_bijdrage_naam,
+      r.bedrag_min || r.bedrag_max ? `(€ ${r.bedrag_min ?? '?'} - € ${r.bedrag_max ?? '?'})` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    if (bijdrage) regelLijnen.push(`  Bijdrage: ${bijdrage}`);
+    if (r.deadline_omschrijving) regelLijnen.push(`  Openstelling/deadline: ${r.deadline_omschrijving}`);
+    // Meerdere aanvraagrondes: eerstvolgende ronde komt uit dezelfde centrale
+    // rondelogica als de Timeline (subsidieregeling_volgende_ronde). deadline_datum
+    // hierboven is al ronde-aware; deze regel voegt alleen de beoordelingsinfo
+    // en het totaal aantal (huidige + historische) rondes toe.
+    if ((r.rondes_aantal ?? 0) > 0) {
+      const beoordeling = r.beoordelingsdatum || r.beoordelingsperiode_ronde;
+      regelLijnen.push(
+        `  Eerstvolgende aanvraagronde: sluit ${r.deadline_datum ?? 'onbekend'}${r.sluitingstijd ? ` om ${String(r.sluitingstijd).slice(0, 5)}` : ''}${beoordeling ? `; beoordeling ${r.beoordelingsdatum ? `op ${r.beoordelingsdatum}` : r.beoordelingsperiode_ronde}` : ''} (in totaal ${r.rondes_aantal} aanvraagronde${r.rondes_aantal === 1 ? '' : 's'} voor deze regeling, inclusief eventuele afgelopen rondes).`,
+      );
+    }
+    if (r.aanvraagcriteria) regelLijnen.push(`  Aanvraagcriteria (regeling): ${r.aanvraagcriteria}`);
+    if (r.beoordelingscriteria) regelLijnen.push(`  Beoordelingscriteria: ${r.beoordelingscriteria}`);
+    if (r.type_projecten) regelLijnen.push(`  Type projecten: ${r.type_projecten}`);
+    if (r.begrotingseisen) regelLijnen.push(`  Begrotingseisen: ${r.begrotingseisen}`);
+    if (r.eigen_bijdrage) regelLijnen.push(`  Eigen bijdrage: ${r.eigen_bijdrage}`);
+    if (r.cofinanciering) regelLijnen.push(`  Cofinanciering: ${r.cofinanciering}`);
+    if (r.behandeltermijn) regelLijnen.push(`  Behandeltermijn: ${r.behandeltermijn}`);
+    if (r.aanvraagprocedure) regelLijnen.push(`  Aanvraagprocedure: ${r.aanvraagprocedure}`);
+    if (r.aanvraaglink) regelLijnen.push(`  Aanvraaglink: ${r.aanvraaglink}`);
+    if (r.funder_missie) regelLijnen.push(`  Missie gever: ${r.funder_missie}`);
+    if (r.funder_aanvraagcriteria) regelLijnen.push(`  Aanvraagcriteria (gever, algemeen): ${r.funder_aanvraagcriteria}`);
+    if (r.funder_website) regelLijnen.push(`  Website gever: ${r.funder_website}`);
+
+    return regelLijnen.join('\n');
+  });
+
+  const verborgenTotaal = quotaVerborgenAantal + kandidaten.ontoegankelijkAantal;
+  const verborgenPremium = kandidaten.ontoegankelijkPremiumAantal;
+  const aggregaatRegel = verborgenTotaal
+    ? `\n\nAanvullende, voor dit lid niet volledig zichtbare subsidieregelingen: ${verborgenTotaal} in totaal, waarvan ${verborgenPremium} uitsluitend beschikbaar binnen Premium. Noem hierover uitsluitend deze aantallen - nooit een naam, gever, bedrag, deadline of andere inhoudelijke informatie.`
+    : '';
+
+  const kop =
+    'Hieronder staan de subsidieregelingen uit de database van Het Fondsenwervers Collectief (beheerd via Beheer -> Subsidieregelingen) waartoe dit lid, op basis van zijn abonnement, daadwerkelijk toegang heeft, aflopend gesorteerd op matchscore als die berekend kon worden. Dit is NIET meer de volledige database: regelingen waar dit lid geen toegang toe heeft staan hier bewust niet (meer) in - zie in plaats daarvan de aparte aantallen onderaan. Gebruik uitsluitend deze lijst voor concreet fondsadvies: verzin nooit een regeling, gever, bedrag, deadline of voorwaarde die hier niet in staat. Is er niets passends bij, zeg dat eerlijk in plaats van een regeling te verzinnen.' +
+    (matchSignalen
+      ? ' Staat er een matchscore/percentage bij een regeling, gebruik dan uitsluitend dat getal en die toelichting als je een percentage of "sterke match"/"aandachtspunt" noemt - bereken of schat nooit zelf een eigen percentage. Staat een onderdeel onder "Niet mee te wegen (onbekend)", doe daar dan geen uitspraak over en verzin geen score - zeg desgewenst dat je dat niet kunt beoordelen en vraag er evt. naar.'
+      : '')
+    + '\n\n';
+
+  const inhoud = perRegeling.length
+    ? perRegeling.join('\n')
+    : 'Er zijn voor dit lid op dit moment geen subsidieregelingen die met volledige details getoond mogen worden.';
+
+  return (kop + inhoud + aggregaatRegel).slice(0, 60000);
 }
 
 // Gedeeld door mode: 'extract' (fase 3) en mode: 'website' (fase 4): dezelfde
@@ -856,7 +1180,7 @@ De toegestane velden zijn: ${veldenLijst}.
 
 Antwoord uitsluitend met geldige JSON in de vorm {"velden": {"veldnaam": "waarde"}}, met alleen de velden waarover je zeker bent en uitsluitend de hierboven genoemde veldnamen.`;
 
-  const antwoord = await fetch('https://api.openai.com/v1/chat/completions', {
+  const uitkomst = await fetchOpenAiMetTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -869,7 +1193,14 @@ Antwoord uitsluitend met geldige JSON in de vorm {"velden": {"veldnaam": "waarde
       max_tokens: 1500,
       response_format: { type: 'json_object' },
     }),
-  });
+  }, KORTE_CALL_TIMEOUT_MS);
+
+  if (!uitkomst.ok) {
+    console.error(`[subsidie-kompas] voorstelUitTekst_${uitkomst.soort}`);
+    return { voorstel: null as Record<string, string> | null, usage: null as any, mislukt: true };
+  }
+
+  const antwoord = uitkomst.response;
 
   if (!antwoord.ok) {
     return { voorstel: null as Record<string, string> | null, usage: null as any, mislukt: true };
@@ -894,6 +1225,151 @@ Antwoord uitsluitend met geldige JSON in de vorm {"velden": {"veldnaam": "waarde
   }
 
   return { voorstel, usage: data.usage, mislukt: false };
+}
+
+// RC1 stap 3D (2026-10-01): voorbereiding Excel-export voor begrotingen (zie
+// claude/rc1-stap3-analyse-begrotingsflow-excel.md, optie C). GEEN Excel in
+// deze stap - alleen de betrouwbare tussenlaag: bestaande, definitieve
+// begrotingstekst uit de chat -> canonical, machineleesbare Budget.
+//
+// Zelfde architectuurpatroon als voorstelUitTekst() hierboven: een eigen,
+// losse OpenAI-call (dus NIET bij elk chatbericht - alleen wanneer dit
+// functioneel nodig is, bijv. straks vanuit een Excel-exportactie),
+// temperature 0.1, response_format json_object, een harde toegestane-
+// veldenstructuur, en defensieve JSON-parsing die nooit een onverwachte
+// vorm laat doorsijpelen.
+//
+// VEILIGHEID (opdrachtpunt "Veiligheid extraction"): er wordt UITSLUITEND de
+// begrotingstekst zelf meegestuurd - geen system prompt, geen Premium-
+// database, geen verborgen funders, geen runtimecontext, geen Projectdossier-
+// bronmetadata, geen persoonsgegevens, geen debugdata. De bestaande,
+// structured projectfinanciering (budget_total/requested_amount/
+// own_contribution/cofinanciers) wordt HIER NIET aan het taalmodel gevraagd -
+// die bestaat al als echte getallen in de database en wordt pas later, in
+// code (zie berekenBudget() in src/shared/budget/berekenBudget.js), met het
+// resultaat van deze functie samengevoegd. Dat voorkomt een overbodige
+// OpenAI-aanroep voor iets dat al structured data is.
+//
+// REKENWERK (opdrachtpunten "Rekenwerk niet vertrouwen op AI" /
+// "Extraction ≠ rekenmachine"): deze functie berekent zelf NOOIT een bedrag.
+// Ze leest per kostenregel hooguit drie losse, letterlijke gegevens -
+// aantal, eenheidsprijs, en (indien de brontekst zelf al een totaal/subtotaal
+// voor die regel noemt) het door de brontekst genoemde bedrag - en laat de
+// vermenigvuldiging/validatie volledig aan berekenBudget() over. Zo kan een
+// eventuele rekenfout van het taalmodel in de chattekst zelf (bijv. "10 x
+// €250 = €3.000") achteraf in code worden gedetecteerd in plaats van stil te
+// worden overgenomen.
+const BUDGET_CATEGORIEEN = [
+  'personeel',
+  'inhuur',
+  'activiteiten',
+  'materialen',
+  'locatie',
+  'reiskosten',
+  'communicatie',
+  'vrijwilligers',
+  'monitoring en evaluatie',
+  'projectmanagement',
+  'overhead',
+  'onvoorzien',
+  'overig',
+];
+
+async function budgetUitTekst(apiKey: string, model: string, begrotingTekst: string) {
+  const categorieenLijst = BUDGET_CATEGORIEEN.join(', ');
+
+  const systeemExtractie = `Je zet een al bestaande, definitieve begroting uit Subsidie Kompas om in een strikt gestructureerde vorm, voor intern gebruik (geen nieuwe begroting opstellen - uitsluitend de tekst hieronder structureren).
+
+BELANGRIJKSTE REGEL: je bent een transcribent, geen rekenmachine en geen begrotingsopsteller.
+- Lees per kostenpost UITSLUITEND wat letterlijk in de tekst staat: aantal, eenheidsprijs/tarief, en - als de tekst zelf al een bedrag of subtotaal voor die post noemt - dat genoemde bedrag.
+- Vermenigvuldig, oftel of herbereken ZELF NOOIT. Geef aantal en eenheidsprijs apart door; het bedrag dat je meegeeft (statedAmount) is uitsluitend het bedrag dat de tekst zelf al noemt, nooit een eigen berekening.
+- Verzin nooit een aantal of eenheidsprijs wanneer de tekst alleen een vast totaalbedrag voor een post noemt (bijv. "Vergunningen: €750") - laat quantity/unitPrice dan gewoon leeg (null) en geef alleen statedAmount door.
+- Verzin nooit een kostenpost, categorie of bedrag die niet in de tekst voorkomt.
+- Ontbreekt een bedrag/aantal/tarief voor een post, geef dan null door - vul nooit zelf aan.
+
+Gebruik voor "category" uitsluitend een van: ${categorieenLijst}. Kies "overig" als niets anders past.
+
+Antwoord uitsluitend met geldige JSON in exact deze vorm:
+{"expenseLines": [{"category": "...", "description": "...", "notes": "..."|null, "quantity": number|null, "unitPrice": number|null, "statedAmount": number|null}], "meta": {"totalCostsStated": number|null, "requestedAmountStated": number|null, "isConceptStated": boolean}}
+
+"meta.totalCostsStated" is uitsluitend het totaalbedrag dat de tekst zelf als einduitkomst noemt (voor latere controle - niet zelf berekenen). "meta.requestedAmountStated" is het bedrag dat expliciet als aangevraagd/gevraagd bedrag wordt genoemd, indien aanwezig. "meta.isConceptStated" is true wanneer de tekst zelf aangeeft een conceptscenario/niet-sluitende versie te zijn, anders false.`;
+
+  const uitkomst = await fetchOpenAiMetTimeout('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systeemExtractie },
+        { role: 'user', content: String(begrotingTekst || '').slice(0, 20000) },
+      ],
+      temperature: 0.1,
+      max_tokens: 2000,
+      response_format: { type: 'json_object' },
+    }),
+  }, KORTE_CALL_TIMEOUT_MS);
+
+  if (!uitkomst.ok) {
+    console.error(`[subsidie-kompas] budgetUitTekst_${uitkomst.soort}`);
+    return { budget: null as { expenseLines: any[]; meta: Record<string, unknown> } | null, usage: null as any, mislukt: true };
+  }
+
+  const antwoord = uitkomst.response;
+
+  if (!antwoord.ok) {
+    return { budget: null as { expenseLines: any[]; meta: Record<string, unknown> } | null, usage: null as any, mislukt: true };
+  }
+
+  const data = await antwoord.json();
+  const ruw = data.choices?.[0]?.message?.content;
+  const toegestaneCategorieen = new Set(BUDGET_CATEGORIEEN);
+  const expenseLines: Array<Record<string, unknown>> = [];
+  let meta: Record<string, unknown> = { totalCostsStated: null, requestedAmountStated: null, isConceptStated: false };
+
+  // Alleen eindige getallen of null worden doorgelaten - een door het model
+  // teruggegeven string, NaN of ander onverwacht type wordt hier al
+  // genegeerd (null), niet pas verderop in de deterministische validator.
+  const getalOfNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+  try {
+    const parsed = JSON.parse(ruw || '{}');
+    const regels = Array.isArray(parsed?.expenseLines) ? parsed.expenseLines : [];
+
+    regels.forEach((r: any) => {
+      if (!r || typeof r !== 'object') {
+        return;
+      }
+
+      const category = toegestaneCategorieen.has(String(r.category)) ? String(r.category) : 'overig';
+      const description = typeof r.description === 'string' ? r.description.slice(0, 300) : '';
+
+      if (!description) {
+        return;
+      }
+
+      expenseLines.push({
+        category,
+        description,
+        notes: typeof r.notes === 'string' && r.notes.trim() ? r.notes.slice(0, 300) : null,
+        quantity: getalOfNull(r.quantity),
+        unitPrice: getalOfNull(r.unitPrice),
+        statedAmount: getalOfNull(r.statedAmount),
+      });
+    });
+
+    if (parsed?.meta && typeof parsed.meta === 'object') {
+      meta = {
+        totalCostsStated: getalOfNull(parsed.meta.totalCostsStated),
+        requestedAmountStated: getalOfNull(parsed.meta.requestedAmountStated),
+        isConceptStated: parsed.meta.isConceptStated === true,
+      };
+    }
+  } catch (_) {
+    // laat expenseLines leeg; de aanroeper behandelt dit als "niets
+    // betrouwbaars gevonden", nooit als een gevulde, mogelijk verzonnen lijst
+  }
+
+  return { budget: { expenseLines, meta }, usage: data.usage, mislukt: false };
 }
 
 // Projectdossier - alleen betrouwbare feiten (2026-10-01): kleine
@@ -1096,7 +1572,7 @@ De toegestane velden zijn uitsluitend: ${veldenLijst}.
 
 Antwoord uitsluitend met geldige JSON in de vorm {"dossier": {"veldnaam": "waarde"}, "bronnen": {"veldnaam": {"type": "lid"|"profiel"|"bevestigd", "citaat": "korte, zo letterlijk mogelijke tekst uit een LID-bericht die deze waarde rechtvaardigt (bij 'profiel' in plaats daarvan een letterlijk citaat uit de hierboven genoemde opgeslagen gegevens)", "voorstelCitaat": "alleen bij type 'bevestigd': het letterlijke eerdere voorstel van Subsidie Kompas dat hiermee bevestigd wordt"}}}. Geef voor ELK veld in "dossier" ook het bijpassende veld in "bronnen" mee - een veld zonder geldige, controleerbare bron wordt genegeerd. Neem alleen velden op waarover je zeker bent, en uitsluitend de hierboven genoemde veldnamen. Houd elke waarde compact (één tot enkele zinnen, geen volledige lopende tekst).`;
 
-  const antwoord = await fetch('https://api.openai.com/v1/chat/completions', {
+  const uitkomst = await fetchOpenAiMetTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1109,7 +1585,14 @@ Antwoord uitsluitend met geldige JSON in de vorm {"dossier": {"veldnaam": "waard
       max_tokens: 1600,
       response_format: { type: 'json_object' },
     }),
-  });
+  }, KORTE_CALL_TIMEOUT_MS);
+
+  if (!uitkomst.ok) {
+    console.error(`[subsidie-kompas] projectdossierUitGesprek_${uitkomst.soort}`);
+    return { dossier: bestaand, usage: null as any, mislukt: true };
+  }
+
+  const antwoord = uitkomst.response;
 
   if (!antwoord.ok) {
     return { dossier: bestaand, usage: null as any, mislukt: true };
@@ -1480,6 +1963,42 @@ function vraagtOmProjectplan(tekst: string): boolean {
   );
 }
 
+// RC1 stap 3D (2026-10-01): zelfde vangnet-architectuur als
+// vraagtOmProjectplan() hierboven, voor begroting. Bewust dezelfde regels als
+// detecteerBegrotingIntentie() in KompasToolPage.jsx (los bestand, kan hier
+// niet geïmporteerd worden) - houd beide bij wijziging synchroon. Geen
+// nieuwe, algemene intent-engine: een eigen, even kleine regelset.
+//
+// Bewust terughoudend, zelfde reden als vraagtOmProjectplan(): het woord
+// "begroting"/"budget" alleen activeert dit nooit - er moet een duidelijke
+// actie-/hulpcue bij staan, en een expliciete vraag OVER de begroting(sgrens)
+// van een fonds/regeling (bijv. "Wat is de maximale begroting van dit
+// fonds?") activeert dit nooit, ook niet als toevallig een actiecue in
+// dezelfde zin staat.
+const BEGROTING_WOORD_PATROON = /begroting|budget/i;
+
+const BEGROTING_ACTIECUE_PATROON =
+  /\b(help|helpt|helpen|hulp|wil|wilt|graag|kun je|kan je|kunt u|maak|gemaakt|schrijf|schrijven|opstel|opstellen|stel[\s\S]{0,10}op|werk[\s\S]{0,40}uit|uitwerken|aanvullen|uitbreiden|controleer|controleren|check|checken|doorreken|doorrekenen|onderbouw|onderbouwen)\b/i;
+
+const BEGROTING_FONDS_VRAAG_PATRONEN: RegExp[] = [
+  /\b(maximale|maximum)\s+begroting\b/i,
+  /\bpercentage\b[\s\S]{0,40}\bbegroting\b/i,
+  /\bbegroting\b[\s\S]{0,20}\btot\b[\s\S]{0,10}(€|\d)/i,
+  /\bbegroting\b[\s\S]{0,40}\b(van|die|dat)\b[\s\S]{0,25}\b(dit|het|deze|die)\s+(fonds|regeling)\b/i,
+];
+
+function vraagtOmBegroting(tekst: string): boolean {
+  if (!tekst) {
+    return false;
+  }
+
+  if (BEGROTING_FONDS_VRAAG_PATRONEN.some((r) => r.test(tekst))) {
+    return false;
+  }
+
+  return BEGROTING_WOORD_PATROON.test(tekst) && BEGROTING_ACTIECUE_PATROON.test(tekst);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS });
@@ -1499,6 +2018,18 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization') || '';
   let profileId: string | null = null;
   let tier = 'free';
+  // RC1 stap 2, productbeslissing (2026-10-01): server-side admin-detectie,
+  // los van subscription_tier/subscription_active. Voorheen bepaalde dit
+  // blok uitsluitend het abonnementsniveau; een admin-account zonder actief
+  // betaald abonnement werd daardoor - in tegenspraak met kompas.system, dat
+  // Admin volledige toegang belooft (RC1-bevinding F5) - feitelijk als Free
+  // behandeld. isAdmin wordt uitsluitend gebruikt in isZichtbaarVoorTier()
+  // hierboven; de bestaande tier-variabele en de rest van de
+  // abonnementslogica (o.a. runtimeContextBericht, huisstijlgates) blijven
+  // ongewijzigd op het echte abonnement gebaseerd. Komt, net als
+  // subscription_tier hierboven, uitsluitend uit profiles.role - nooit van
+  // de client.
+  let isAdmin = false;
 
   if (authHeader.startsWith('Bearer ')) {
     const { data: userData } = await admin.auth.getUser(authHeader.replace('Bearer ', ''));
@@ -1509,13 +2040,54 @@ Deno.serve(async (req) => {
 
       const { data: profiel } = await admin
         .from('profiles')
-        .select('subscription_tier, subscription_active')
+        .select('subscription_tier, subscription_active, role')
         .eq('id', user.id)
         .single();
 
       if (profiel?.subscription_active && profiel.subscription_tier) {
         tier = profiel.subscription_tier;
       }
+
+      isAdmin = profiel?.role === 'admin';
+    }
+  }
+
+  // RC1 stap 7 (7C - BE2, runtime hardening): minimale, atomische
+  // server-side rate limiter, vóór elke verdere verwerking (RPC's,
+  // websearch, OpenAI-aanroepen) en vóór de mode-routing hieronder - dekt
+  // zo chat/budget/extract/website uniform, zodat een andere body.mode geen
+  // manier is om de limiter te omzeilen. Uitsluitend voor ingelogde
+  // gebruikers (profileId hierboven al server-side vastgesteld, nooit uit
+  // de client): voor niet-ingelogde Free-aanvragen (profileId === null) is
+  // dit BEWUST nog niet geïmplementeerd. Er is, vóór implementatie,
+  // expliciet geverifieerd of een betrouwbare, niet-spoofbare
+  // client-identificatie (bijv. een proxy-IP-header) beschikbaar is voor
+  // Supabase Edge Functions op het hosted platform - dat kon niet met
+  // voldoende zekerheid worden vastgesteld (zie rapportage RC1 stap 7), dus
+  // is dat deel van BE2, zoals vooraf afgesproken, hier NIET geïmplementeerd
+  // in plaats van met een onbetrouwbare, spoofbare constructie.
+  if (profileId) {
+    const { data: binnenLimiet, error: limietFout } = await admin.rpc('kompas_check_rate_limit', {
+      p_profile_id: profileId,
+      p_max_requests: RATE_LIMIT_MAX_REQUESTS,
+      p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+    });
+
+    // Kan de limiet zelf niet gecontroleerd worden (bijv. een tijdelijke
+    // databasestoring), dan blokkeert dat de aanvraag NIET: rate limiting is
+    // misbruikbeveiliging, geen kernfunctionaliteit, en mag een normaal
+    // gesprek nooit breken (zelfde principe als legVerbruikVast() elders in
+    // dit bestand).
+    if (limietFout) {
+      console.error('[subsidie-kompas] rate_limit_controle_mislukt');
+    } else if (binnenLimiet === false) {
+      console.error('[subsidie-kompas] rate_limit_overschreden');
+
+      return json(
+        { error: 'U verstuurt te veel verzoeken kort achter elkaar. Wacht even en probeer het opnieuw.' },
+        429,
+        { 'Retry-After': String(RATE_LIMIT_WINDOW_SECONDS) },
+      );
     }
   }
 
@@ -1525,6 +2097,43 @@ Deno.serve(async (req) => {
     body = await req.json();
   } catch (_) {
     return json({ error: 'Ongeldige aanvraag.' }, 400);
+  }
+
+  // RC1 stap 3D-4 (2026-10-01): begroting -> gestructureerde Budget, voor de
+  // Excel-export in de begrotingschat. Roept uitsluitend de al bestaande,
+  // ongewijzigde budgetUitTekst() aan (RC1 stap 3D, hierboven) - geen nieuwe
+  // extractielogica. budgetUitTekst() is zelf al een pure "transcribent"
+  // (nooit een rekenmachine); al het rekenwerk en alle validatie gebeuren
+  // uitsluitend client-side in berekenBudget() (src/shared/budget/
+  // berekenBudget.js), nooit hier.
+  if (body.mode === 'budget') {
+    if (tier === 'free') {
+      return json({ error: 'Begrotingen laten structureren is een Pro- en Premium-functie.' }, 403);
+    }
+
+    const begrotingTekst = String(body.text || '').slice(0, 20000);
+
+    if (!begrotingTekst.trim()) {
+      return json({ error: 'Geen begrotingstekst ontvangen om te structureren.' }, 400);
+    }
+
+    const { budget, usage, mislukt } = await budgetUitTekst(apiKey, MODEL, begrotingTekst);
+
+    if (mislukt || !budget) {
+      return json({ error: 'De begroting kon niet worden gestructureerd. Probeer het opnieuw.' }, 502);
+    }
+
+    if (profileId) {
+      await legVerbruikVast(admin, {
+        profile_id: profileId,
+        gesprek_id: null,
+        model: MODEL,
+        tokens_in: usage?.prompt_tokens ?? null,
+        tokens_uit: usage?.completion_tokens ?? null,
+      });
+    }
+
+    return json({ budget });
   }
 
   // Documentanalyse voor het organisatieprofiel (fase 3). Los van het
@@ -1679,6 +2288,19 @@ Deno.serve(async (req) => {
     return json({ error: 'Geen vraag ontvangen.' }, 400);
   }
 
+  // RC1 stap 7 (7D - C1, runtime hardening): bovengrens op het AANTAL
+  // berichten, los van de al bestaande lengtebeperking per bericht/de
+  // laatste-20-selectie verderop (gesprekshistorie in `invoer`). Zonder deze
+  // grens zou een verzoek met duizenden berichten nog altijd volledig
+  // ingelezen/doorlopen worden (o.a. de .reverse()/.find()-scans hieronder)
+  // vóórdat alleen de laatste 20 daadwerkelijk in de prompt belanden. Ruim
+  // boven elk normaal gesprek.
+  const MAX_BERICHTEN = 500;
+
+  if (berichten.length > MAX_BERICHTEN) {
+    return json({ error: 'Dit gesprek is te lang geworden om in één keer te verwerken.' }, 400);
+  }
+
   // Verbeterpunten Projectplan + Free/Pro/Premium (2026-10-01): het
   // abonnement bepaalt, net als tier hierboven, uitsluitend uit het profiel -
   // nooit van de client. Naar hier naar boven gehaald (stond voorheen pas
@@ -1758,10 +2380,22 @@ Deno.serve(async (req) => {
   // dan verandert hier niets: dit is uitsluitend een vangnet vóór
   // 'algemeen', nooit een overschrijving van een al gekozen modus.
   const basisModus = resolveerModus(body.kompasMode);
+  // RC1 stap 3D (2026-10-01): begroting krijgt hetzelfde vangnet als
+  // projectplan hierboven - stuurt de frontend 'algemeen' terwijl het
+  // laatste bericht van het lid ondubbelzinnig om een begroting vraagt, dan
+  // wordt dat hier alsnog gecorrigeerd. Is de frontend al met een andere,
+  // geldige modus gekomen (ook 'begroting' zelf, via de eigen frontend-
+  // detectie), dan verandert hier niets - dit is uitsluitend een vangnet
+  // vóór 'algemeen'. Projectplan-detectie gaat voor bij een zin die
+  // toevallig aan beide zou voldoen (geen van de aangeleverde testzinnen
+  // doet dat).
+  const laatsteGebruikersTekst = laatsteGebruikersBericht ? String(laatsteGebruikersBericht.content) : '';
   const modus: KompasMode =
-    basisModus === 'algemeen' && laatsteGebruikersBericht && vraagtOmProjectplan(String(laatsteGebruikersBericht.content))
+    basisModus === 'algemeen' && laatsteGebruikersBericht && vraagtOmProjectplan(laatsteGebruikersTekst)
       ? 'projectplan'
-      : basisModus;
+      : basisModus === 'algemeen' && laatsteGebruikersBericht && vraagtOmBegroting(laatsteGebruikersTekst)
+        ? 'begroting'
+        : basisModus;
 
   // Het abonnement komt uit het profiel, niet uit de aanvraag. De browser kan
   // dit dus niet ophogen.
@@ -1776,38 +2410,96 @@ Deno.serve(async (req) => {
     return json({ error: 'De systeemprompt kon niet worden geladen. Neem contact op met de beheerder.' }, 503);
   }
 
-  // RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): de subsidieregelingen
-  // hieronder zijn voortaan de volledige database, ongeacht het abonnement
-  // van dit lid - zie de toelichting bovenaan dit bestand. Zichtbaarheid komt
-  // nu uitsluitend uit kompas.system + het access_tier-veld per item.
+  // RUNTIME IDENTIEK VOOR ALLE ABONNEMENTEN (2026-09-28): de RPC-aanroepen
+  // in subsidieregelingKandidaten/funderDeadlineKandidaten/
+  // funderAlgemeneKandidaten hieronder blijven zelf ongewijzigd altijd de
+  // volledige database ophalen, ongeacht het abonnement van dit lid - zie de
+  // toelichting bovenaan dit bestand. Dat waarborgt dat matching/onderzoek
+  // voor elke tier identiek en volledig blijft.
+  // RC1 stap 2, productbeslissing (2026-10-01) + correctie (2026-10-02):
+  // zichtbaarheid van de UITKOMST wordt niet langer alleen aan
+  // kompas.system overgelaten - isZichtbaarVoorTier() filtert per record op
+  // access_tier, en de gedeelde Free-cap van maximaal 3 volledige matches
+  // wordt hieronder EXPLICIET verdeeld (verdeelQuotaOverLanes hierboven), in
+  // plaats van impliciet via de toevallige aanroepvolgorde: alleen
+  // subsidieregelingen met een daadwerkelijk berekende matchscore
+  // (match.totaal != null) krijgen voorrang op basis van hun bestaande
+  // ranking; alle overige toegankelijke kandidaten (ongescoorde regelingen,
+  // funder-deadlines, overige fondsen) delen de resterende quota
+  // round-robin, zodat geen enkele categorie de volledige quota kan opeisen
+  // puur door call-order. Voor elke andere tier dan Free heeft dit geen
+  // effect (daar bepaalt uitsluitend access_tier wat volledig getoond
+  // wordt, zonder aantalslimiet).
   //
   // AI Fundraising Assistant, fase 1: matchSignalen komt wel van de client
   // (het organisatieprofiel/project van dit lid), maar bepaalt uitsluitend de
   // sortering en de uitleg-tekst binnen de volledige lijst hierboven - het
   // bepaalt zelf nooit welke regelingen in het antwoord aan dit lid getoond
-  // mogen worden.
+  // mogen worden (dat doet uitsluitend isZichtbaarVoorTier()/de Free-cap
+  // hieronder).
   // Verbeterpunten Projectplan + Free/Pro/Premium, punt 1 (2026-10-01):
   // matchSignalen is afgeleid van het organisatieprofiel/project van dit lid
   // en telt dus mee als "organisatiecontext" - zelfde gate als orgProfile/
   // project/context hieronder, in plaats van dit (zoals voorheen)
   // ongefilterd van de client over te nemen.
   const matchSignalen = magOrganisatiegeheugen ? leesMatchSignalen(body) : null;
-  const subsidieContext = await subsidieregelingContext(admin, matchSignalen);
+
+  const VRIJE_TIER_MAX_VOLLEDIG = 3;
+
+  const subsidieKandidaten = await subsidieregelingKandidaten(admin, matchSignalen, tier, isAdmin);
 
   // Deadline-architectuur, enkelvoudige koppeling, testpunt 9: filters/AI
   // moeten zowel funder-brede als regeling-specifieke deadlines respecteren.
-  // Regeling-specifieke deadlines zitten al in subsidieContext hierboven;
+  // Regeling-specifieke deadlines zitten al in subsidieKandidaten hierboven;
   // funder-brede deadlines komen hier als apart systeembericht bij, uit
-  // dezelfde RPC-familie (nu ook altijd de volledige database, zie hierboven).
-  const funderDeadlineResultaat = await funderDeadlineContext(admin);
-  const funderDeadlineTekst = funderDeadlineResultaat?.tekst ?? null;
+  // dezelfde RPC-familie (nog steeds altijd de volledige database bij het
+  // ophalen, zie hierboven).
+  const funderDeadlineKand = await funderDeadlineKandidaten(admin, tier, isAdmin);
 
   // Architectuurregel "Reviewed bepaalt opname in de centrale dataset": ook
   // beoordeelde fondsen zonder eigen funder-brede deadline moeten door de AI
   // uitgelezen kunnen worden (missie, criteria, classificaties, bandbreedte).
   // Fondsen die hierboven al met hun eigen deadline zijn genoemd, worden hier
   // overgeslagen om dubbele vermelding te voorkomen.
-  const funderAlgemeenTekst = await funderAlgemeneContext(admin, funderDeadlineResultaat?.funderIds ?? new Set<string>());
+  const funderAlgemeenKand = await funderAlgemeneKandidaten(admin, funderDeadlineKand?.funderIds ?? new Set<string>(), tier, isAdmin);
+
+  // RC1 stap 2, correctie (2026-10-02): expliciete quotaverdeling, nu dat
+  // alle drie bronnen bekend zijn. Lane 0 = subsidieregelingen MET een
+  // daadwerkelijk berekende matchscore (prioriteit, op basis van hun eigen
+  // bestaande ranking - zie subsidieregelingKandidaten hierboven); lane 1 =
+  // subsidieregelingen ZONDER bruikbare score; lane 2 = funder-deadlines;
+  // lane 3 = overige fondsen. Voor elke tier behalve Free blijft dit zonder
+  // effect: aantalVolledig wordt dan simpelweg "alles wat toegankelijk is"
+  // (geen cap) - exact zoals vóór deze correctie.
+  const aantalToegankelijkRegelingen = subsidieKandidaten.toegankelijk.length;
+  const aantalGescoordeRegelingen = subsidieKandidaten.aantalGescoord;
+  const aantalOngescoordeRegelingen = aantalToegankelijkRegelingen - aantalGescoordeRegelingen;
+  const aantalToegankelijkFunderDeadlines = funderDeadlineKand?.toegankelijk.length ?? 0;
+  const aantalToegankelijkOverigeFunders = funderAlgemeenKand?.toegankelijk.length ?? 0;
+
+  let aantalVolledigRegelingen: number;
+  let aantalVolledigFunderDeadlines: number;
+  let aantalVolledigOverigeFunders: number;
+
+  if (!isAdmin && tier === 'free') {
+    const toegekend = verdeelQuotaOverLanes(
+      [aantalGescoordeRegelingen, aantalOngescoordeRegelingen, aantalToegankelijkFunderDeadlines, aantalToegankelijkOverigeFunders],
+      0,
+      VRIJE_TIER_MAX_VOLLEDIG,
+    );
+
+    aantalVolledigRegelingen = toegekend[0] + toegekend[1];
+    aantalVolledigFunderDeadlines = toegekend[2];
+    aantalVolledigOverigeFunders = toegekend[3];
+  } else {
+    aantalVolledigRegelingen = aantalToegankelijkRegelingen;
+    aantalVolledigFunderDeadlines = aantalToegankelijkFunderDeadlines;
+    aantalVolledigOverigeFunders = aantalToegankelijkOverigeFunders;
+  }
+
+  const subsidieContext = bouwSubsidieregelingTekst(subsidieKandidaten, aantalVolledigRegelingen, matchSignalen);
+  const funderDeadlineTekst = bouwFunderDeadlineTekst(funderDeadlineKand, aantalVolledigFunderDeadlines);
+  const funderAlgemeenTekst = bouwFunderAlgemeneTekst(funderAlgemeenKand, aantalVolledigOverigeFunders);
 
   // Fase 6, punt 1: actief leren tijdens gesprekken. Zelfde gate als
   // mode: 'extract'/'website' hierboven (geen Free-toegang), en alleen als
@@ -1915,7 +2607,7 @@ Deno.serve(async (req) => {
   // af (een verplichte aanroep van web_search) zonder dat risico.
   const toolChoice = vereistWebsearch(berichten, modus, heeftProjectContext) ? 'required' : 'auto';
 
-  const antwoord = await fetch('https://api.openai.com/v1/responses', {
+  const hoofdchatUitkomst = await fetchOpenAiMetTimeout('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1948,7 +2640,26 @@ Deno.serve(async (req) => {
       store: false,
       stream: wilStream,
     }),
-  });
+  }, HOOFDCHAT_TIMEOUT_MS);
+
+  // RC1 stap 7 (7B - BE1): timeout en netwerkfout expliciet onderscheiden
+  // van elkaar en van een non-2xx OpenAI-respons (hieronder, ongewijzigd).
+  // Dit dekt het opzetten van de aanroep/ontvangen van de response-headers;
+  // een timeout die pas tijdens het uitlezen van de stream afgaat, wordt
+  // verderop opgevangen door de al bestaande try/catch rond de leeslus (zie
+  // toelichting daar) - dezelfde AbortSignal blijft voor de volledige
+  // aanroep actief (zie toelichting bij fetchOpenAiMetTimeout hierboven).
+  if (!hoofdchatUitkomst.ok) {
+    console.error(`[subsidie-kompas] hoofdchat_${hoofdchatUitkomst.soort}`);
+
+    if (hoofdchatUitkomst.soort === 'timeout') {
+      return json({ error: 'De assistent deed er te lang over om te antwoorden. Probeer het opnieuw.' }, 504);
+    }
+
+    return json({ error: 'De assistent is tijdelijk niet bereikbaar. Probeer het over een moment opnieuw.' }, 502);
+  }
+
+  const antwoord = hoofdchatUitkomst.response;
 
   if (!antwoord.ok) {
     return json({ error: 'De assistent kon geen antwoord geven. Probeer het opnieuw.' }, 502);
@@ -2274,7 +2985,13 @@ Deno.serve(async (req) => {
             });
           }
         }
-      } catch (_) {
+      } catch (fout: any) {
+        // RC1 stap 7 (7D - C2): technische identificatie loggen (nooit
+        // berichtinhoud) - dit is ook het pad waarlangs een timeout die
+        // tijdens het uitlezen van de stream afgaat terechtkomt (de
+        // AbortSignal van fetchOpenAiMetTimeout() blijft hier actief, zie
+        // toelichting daar).
+        console.error(`[subsidie-kompas] stream_afgebroken_${fout?.name || 'onbekend'}`);
         stuur({ error: 'De verbinding met de assistent viel weg.' });
       } finally {
         controller.close();

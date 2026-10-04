@@ -422,9 +422,15 @@ function AuthModalOverlay({
                   />
                 </Field>
                 <Field label="Wat hoopt u te bereiken met Subsidie Kompas?">
+                  {/* RC1 stap 5 (K5/F3): dit antwoord gaat zowel naar
+                      profile_onboarding.doel (onboarding/personalisatie,
+                      ongewijzigd) als naar motivation (profiles.motivation,
+                      zichtbaar in de admin-ledenbeoordeling) - één vraag, één
+                      invoer, twee al bestaande bestemmingen. Geen nieuw veld,
+                      geen nieuwe databasecall. */}
                   <Textarea
                     value={registerForm.doel}
-                    onChange={(e) => veld({ doel: e.target.value })}
+                    onChange={(e) => veld({ doel: e.target.value, motivation: e.target.value })}
                     rows={3}
                   />
                 </Field>

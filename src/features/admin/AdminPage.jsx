@@ -620,7 +620,6 @@ function DashboardSection({
           number={applications}
           label="Open aanvragen"
           helper="Nog te beoordelen"
-          onClick={() => setActiveTab('applications')}
         />
 
         <DashboardCard
@@ -1835,6 +1834,10 @@ function MembersSection({
                   <div style={css(`color: #536460; font-size: 14px; margin-top: 3px;`)}>
                     {member.email} · {formatMemberType(member.member_type)}
                     {isAdminMember ? ' · beheerder' : ''}
+                  </div>
+
+                  <div style={css(`color: #7B8985; font-size: 13.5px; margin-top: 6px; max-width: 520px;`)}>
+                    {member.motivation || 'Geen motivatie ingevuld.'}
                   </div>
                 </div>
 
