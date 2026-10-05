@@ -370,6 +370,28 @@ async function systeemtekst(admin: any, tier: string, modus: string): Promise<st
   return delen.join('\n\n');
 }
 
+// Effectieve tier uit een profielrij: 'pro'/'premium' alleen bij een actief
+// betaald abonnement of een nog lopende proefperiode, anders 'free'. Onbekende
+// of ontbrekende tierwaarden vallen altijd terug op 'free'. Beheerders worden
+// los hiervan afgehandeld (isAdmin, uitsluitend uit profiles.role).
+function effectieveTier(
+  profiel: { subscription_tier?: unknown; subscription_active?: unknown; trial_ends_at?: unknown } | null | undefined,
+): 'free' | 'pro' | 'premium' {
+  const ruw = profiel?.subscription_tier;
+
+  if (ruw !== 'pro' && ruw !== 'premium') {
+    return 'free';
+  }
+
+  if (profiel?.subscription_active === true) {
+    return ruw;
+  }
+
+  const eind = typeof profiel?.trial_ends_at === 'string' ? Date.parse(profiel.trial_ends_at) : NaN;
+
+  return Number.isFinite(eind) && eind > Date.now() ? ruw : 'free';
+}
+
 // STAP 1 (runtimecontext-tier, 2026-09-13): expliciete, betrouwbare mededeling
 // van de server-side vastgestelde tier aan het model, zodat het model niet
 // meer hoeft af te leiden of iemand Free, Pro of Premium is uit de zichtbare
@@ -2040,13 +2062,19 @@ Deno.serve(async (req) => {
 
       const { data: profiel } = await admin
         .from('profiles')
-        .select('subscription_tier, subscription_active, role')
+        .select('subscription_tier, subscription_active, trial_ends_at, role')
         .eq('id', user.id)
         .single();
 
-      if (profiel?.subscription_active && profiel.subscription_tier) {
-        tier = profiel.subscription_tier;
-      }
+      // Effectieve tier, uitsluitend server-side uit het profiel (nooit van de
+      // client): actief betaald abonnement OF een nog lopende proefperiode.
+      // Zelfde regel als tierVan() in de frontend en
+      // current_user_has_pro_access()/current_user_has_premium_access() in de
+      // database. Voorheen telde hier alleen subscription_active, waardoor
+      // een gebruiker met een geldige Pro-/Premium-trial server-side als Free
+      // werd behandeld terwijl frontend en database hem al als Pro/Premium
+      // zagen. Een verlopen trial zonder actief abonnement blijft Free.
+      tier = effectieveTier(profiel);
 
       isAdmin = profiel?.role === 'admin';
     }
