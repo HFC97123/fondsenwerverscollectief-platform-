@@ -6,3 +6,4 @@ dist/
 .DS_Store
 **/_to_delete_*
 vite.config.*.timestamp-*.mjs
+_to_delete/
