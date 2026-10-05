@@ -2,7 +2,7 @@
 // geheime sleutels horen daar niet.
 //
 // Verwachte functies (nog te zetten):
-//   stripe-checkout  { tier } -> { url }        afrekenpagina openen
+//   create-checkout-session  { tier } -> { url }  afrekenpagina openen
 //   stripe-portal    {}       -> { url }        abonnement beheren of opzeggen
 //
 // Bestaat een functie nog niet, dan komt er een nette melding terug en gebeurt
@@ -36,7 +36,7 @@ async function roepAan(functie, body) {
 
 // Start het afrekenen voor Pro of Premium.
 export async function startCheckout(tier) {
-  const res = await roepAan('stripe-checkout', { tier });
+  const res = await roepAan('create-checkout-session', { tier });
 
   if (res.url) {
     window.location.href = res.url;
@@ -54,4 +54,48 @@ export async function openBeheerportaal() {
   }
 
   return res;
+}
+
+// Uitkomst van de Stripe-terugkeer (success_url/cancel_url bevatten
+// ?checkout=success of ?checkout=cancelled na de hash-route). Dit is uitsluitend
+// een melding aan de gebruiker: de terugkeer bewijst NIETS over de betaling en
+// wijzigt nooit tier of toegang. Alleen die twee waarden worden herkend.
+export function leesCheckoutResultaat() {
+  try {
+    const hash = window.location.hash || '';
+    const q = hash.indexOf('?');
+
+    if (q === -1) {
+      return null;
+    }
+
+    const waarde = new URLSearchParams(hash.slice(q + 1)).get('checkout');
+
+    return waarde === 'success' || waarde === 'cancelled' ? waarde : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Haalt de checkout-parameter uit de adresbalk, zodat een refresh de melding
+// niet opnieuw toont. Gebruikt replaceState: geen navigatie, geen hashchange.
+export function wisCheckoutResultaat() {
+  try {
+    const hash = window.location.hash || '';
+    const q = hash.indexOf('?');
+
+    if (q === -1) {
+      return;
+    }
+
+    const params = new URLSearchParams(hash.slice(q + 1));
+    params.delete('checkout');
+
+    const rest = params.toString();
+    const nieuweHash = hash.slice(0, q) + (rest ? `?${rest}` : '');
+
+    window.history.replaceState(null, '', window.location.pathname + window.location.search + nieuweHash);
+  } catch (e) {
+    // melding blijft hooguit zichtbaar bij een refresh; geen verdere gevolgen
+  }
 }

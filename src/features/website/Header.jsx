@@ -90,7 +90,7 @@ const loginClubKnopPrimair = css(`${loginClubKnopBasis} background: #4E9A6C; col
 const loginClubKnopSecundair = css(`${loginClubKnopBasis} background: transparent; color: #4E9A6C; border: 1.5px solid #4E9A6C;`);
 
 // Compacte accountbadge + menu, zonder avatar/icoon — alleen tekst. Ingelogd:
-// "Naam · Tier" met een menu (Mijn account / Mijn abonnement / Uitloggen),
+// "Naam · Tier" met een menu (Mijn account / Mijn membership / Uitloggen),
 // ongewijzigd. Uitgelogd: "Login" (branding-lettertype, vetgedrukt) met een
 // uitklap met twee echte knoppen (Inloggen / Aanmelden, standaard
 // site-lettertype) — geen verplichting, Subsidie Kompas en het Collectief
@@ -162,7 +162,7 @@ function AccountMenu({ compact }) {
                     naar('/hoe-het-werkt');
                   }}
                 >
-                  Mijn abonnement
+                  Mijn membership
                 </div>
                 <div
                   role="button"
@@ -197,7 +197,7 @@ function AccountMenu({ compact }) {
                     authModal.openRegister();
                   }}
                 >
-                  Aanmelden
+                  Account aanmaken
                 </button>
               </React.Fragment>
             )}
@@ -346,7 +346,7 @@ export default function Header() {
                       onClick={() => naar('/hoe-het-werkt')}
                       style={css('cursor: pointer; padding: 13px 4px; font-size: 16px; font-weight: 600; color: #2C4A5E;')}
                     >
-                      Mijn abonnement
+                      Mijn membership
                     </div>
                     <div
                       onClick={logout}

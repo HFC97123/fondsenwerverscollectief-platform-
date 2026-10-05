@@ -10,15 +10,14 @@ import { supabase } from '../../data/client.js';
 import {
   PLAN_PERMISSIONS,
   haalProfiel,
-  inloggen,
   proefActiefVan,
   startProefperiode as startProefperiodeService,
   tierVan,
   uitloggen,
-  verstuurResetmail,
 } from '../../data/services/profile.js';
 import { collections, siteTextBlocks } from '../../data/collections.js';
 import { naar } from '../../app/routes.js';
+import { useAuthModal } from '../../app/providers/AuthModalProvider.jsx';
 
 import {
   allNewsItems,
@@ -37,20 +36,6 @@ const CHAT_MAX_MESSAGES = 40;
 
 const INITIAL_BOT_MSG =
   'Hoi! Ik ben Collie, de assistent van Het Fondsenwervers Collectief. Ik help je graag verder met vragen over het Collectief of over Subsidie Kompas. Waar kan ik je mee helpen?';
-
-const INITIAL_REGISTER_FORM = {
-  firstName: '',
-  lastName: '',
-  email: '',
-  password: '',
-  type: '',
-  motivation: '',
-};
-
-const INITIAL_LOGIN_FORM = {
-  email: '',
-  password: '',
-};
 
 const INITIAL_CONTACT_FORM = {
   name: '',
@@ -110,66 +95,6 @@ function getInitials(name) {
     .toUpperCase();
 }
 
-function getAuthErrorMessage(error, action = 'login') {
-  const message = error?.message?.toLowerCase() || '';
-
-  if (
-    message.includes('invalid login credentials') ||
-    message.includes('invalid credentials')
-  ) {
-    return 'Het e-mailadres of wachtwoord is niet juist.';
-  }
-
-  if (
-    message.includes('email not confirmed') ||
-    message.includes('email_not_confirmed')
-  ) {
-    return 'Bevestig eerst uw e-mailadres via de e-mail die wij hebben verstuurd.';
-  }
-
-  if (
-    message.includes('user already registered') ||
-    message.includes('already been registered')
-  ) {
-    return 'Er bestaat al een account met dit e-mailadres. Probeer in te loggen.';
-  }
-
-  if (
-    message.includes('password should be at least') ||
-    message.includes('weak password')
-  ) {
-    return 'Kies een sterker wachtwoord van minimaal 8 tekens.';
-  }
-
-  if (
-    message.includes('unable to validate email') ||
-    message.includes('invalid email')
-  ) {
-    return 'Vul een geldig e-mailadres in.';
-  }
-
-  if (
-    message.includes('rate limit') ||
-    message.includes('too many requests')
-  ) {
-    return 'Er zijn te veel pogingen gedaan. Wacht even en probeer het daarna opnieuw.';
-  }
-
-  if (message.includes('network') || message.includes('failed to fetch')) {
-    return 'Er kon geen verbinding worden gemaakt. Controleer uw internetverbinding.';
-  }
-
-  if (action === 'register') {
-    return 'De aanvraag kon niet worden verstuurd. Probeer het later opnieuw.';
-  }
-
-  if (action === 'logout') {
-    return 'Uitloggen is niet gelukt. Probeer het opnieuw.';
-  }
-
-  return 'Inloggen is niet gelukt. Controleer uw gegevens en probeer het opnieuw.';
-}
-
 // Koppelt een routepad (uit src/app/routes.js) aan de interne paginanaam
 // van dit gebied. Alleen paden met een eigen, eenduidige pagina staan hier;
 // /beheer hoort bij een ander gebied, en 'fellow'/'org' delen bewust het
@@ -194,6 +119,10 @@ const PAD_TO_PAGE = {
 };
 
 export function WebsiteProvider({ children, route, param }) {
+  // Eén centrale login/registratie van Het Fondsenwervers Collectief
+  // (AuthModalProvider). Deze provider heeft zelf geen aanmeld- of
+  // registratieformulieren meer.
+  const authModal = useAuthModal();
   const initialPad = route && route.pad;
   const initialPage = (initialPad && PAD_TO_PAGE[initialPad]) || 'home';
 
@@ -213,15 +142,6 @@ export function WebsiteProvider({ children, route, param }) {
     profileLoading: false,
     profileError: '',
 
-    loginForm: INITIAL_LOGIN_FORM,
-    loginLoading: false,
-    loginError: '',
-
-    regForm: INITIAL_REGISTER_FORM,
-    applicationSent: false,
-    applicationLoading: false,
-    applicationError: '',
-
     contactForm: INITIAL_CONTACT_FORM,
     contactSent: false,
 
@@ -231,9 +151,6 @@ export function WebsiteProvider({ children, route, param }) {
     // Namen en gedrag overgenomen uit het goedgekeurde ontwerp.
     memberVisible: true,
     ledenQuery: '',
-    resetSent: false,
-    resetLoading: false,
-    resetError: '',
     sessionDraftOpen: false,
     sessionDraft: { title: '', day: '', month: '', time: '', mode: 'Online', note: '' },
     sessionProposed: false,
@@ -609,7 +526,6 @@ export function WebsiteProvider({ children, route, param }) {
         user: session?.user || null,
         memberName: getMemberName(session?.user),
         authLoading: false,
-        loginLoading: false,
       });
 
       if (session?.user?.id) {
@@ -846,7 +762,7 @@ export function WebsiteProvider({ children, route, param }) {
   // Alleen leden mogen plaatsen; anders naar het inlogscherm.
   const vereistLid = (fn) => () => {
     if (!stRef.current.user) {
-      update({ authView: 'login' });
+      authModal.openLogin();
 
       return;
     }
@@ -856,7 +772,7 @@ export function WebsiteProvider({ children, route, param }) {
 
   function submitReply(id) {
     if (!stRef.current.user) {
-      update({ authView: 'login' });
+      authModal.openLogin();
 
       return;
     }
@@ -1144,100 +1060,14 @@ export function WebsiteProvider({ children, route, param }) {
     showAuthCta:
       !isLoggedIn && !st.authLoading && st.authView === 'buttons',
 
-    isAuthLogin:
-      !isLoggedIn && !st.authLoading && st.authView === 'login',
-
-    isAuthRegister:
-      !isLoggedIn && !st.authLoading && st.authView === 'register',
-
+    // Aanmelden en account aanmaken gebruiken de centrale overlay van Het
+    // Fondsenwervers Collectief; er is geen tweede formulier of signUp meer.
     showLogin: () => {
-      update({
-        authView: 'login',
-        loginError: '',
-        applicationError: '',
-      });
+      authModal.openLogin();
     },
 
     showRegister: () => {
-      update({
-        authView: 'register',
-        loginError: '',
-        applicationError: '',
-        applicationSent: false,
-      });
-    },
-
-    loginForm: st.loginForm,
-    loginLoading: st.loginLoading,
-    loginError: st.loginError,
-
-    onLoginEmail: (event) => {
-      update((previousState) => ({
-        loginForm: {
-          ...previousState.loginForm,
-          email: event.target.value,
-        },
-        loginError: '',
-      }));
-    },
-
-    onLoginPassword: (event) => {
-      update((previousState) => ({
-        loginForm: {
-          ...previousState.loginForm,
-          password: event.target.value,
-        },
-        loginError: '',
-      }));
-    },
-
-    login: async () => {
-      const form = stRef.current.loginForm;
-      const email = form.email.trim().toLowerCase();
-      const password = form.password;
-
-      if (!email || !password) {
-        update({
-          loginError: 'Vul uw e-mailadres en wachtwoord in.',
-        });
-        return;
-      }
-
-      update({
-        loginLoading: true,
-        loginError: '',
-      });
-
-      // Eén implementatie, in data/services/profile.js.
-      const { data, fout } = await inloggen(email, password);
-
-      if (fout) {
-        update({ loginLoading: false, loginError: fout });
-
-        return;
-      }
-
-      try {
-
-        update({
-          session: data.session,
-          user: data.user,
-          memberName: getMemberName(data.user),
-          loginForm: INITIAL_LOGIN_FORM,
-          loginLoading: false,
-          loginError: '',
-          authView: 'buttons',
-        });
-
-        await loadProfile(data.user.id);
-      } catch (error) {
-        console.error('Inloggen is mislukt:', error);
-
-        update({
-          loginLoading: false,
-          loginError: getAuthErrorMessage(error, 'login'),
-        });
-      }
+      authModal.openRegister();
     },
 
     logout: async () => {
@@ -1253,24 +1083,15 @@ export function WebsiteProvider({ children, route, param }) {
           profileError: '',
           memberName: '',
           authView: 'buttons',
-          loginForm: INITIAL_LOGIN_FORM,
-          loginError: '',
         });
       } catch (error) {
         console.error('Uitloggen is mislukt:', error);
-
-        update({
-          loginError: getAuthErrorMessage(error, 'logout'),
-        });
       }
     },
 
     requireLogin: () => {
       if (!stRef.current.user) {
-        update({
-          authView: 'login',
-          loginError: 'Log eerst in om dit onderdeel te bekijken.',
-        });
+        authModal.openLogin('Log eerst in om dit onderdeel te bekijken.');
       }
     },
 
@@ -1288,160 +1109,6 @@ export function WebsiteProvider({ children, route, param }) {
       await loadProfile(stRef.current.user && stRef.current.user.id);
 
       return { fout: null };
-    },
-
-    regForm: st.regForm,
-    applicationSent: st.applicationSent,
-    applicationOpen: !st.applicationSent,
-    applicationLoading: st.applicationLoading,
-    applicationError: st.applicationError,
-
-    onRegFirstName: (event) => {
-      update((previousState) => ({
-        regForm: {
-          ...previousState.regForm,
-          firstName: event.target.value,
-        },
-        applicationError: '',
-      }));
-    },
-
-    onRegLastName: (event) => {
-      update((previousState) => ({
-        regForm: {
-          ...previousState.regForm,
-          lastName: event.target.value,
-        },
-        applicationError: '',
-      }));
-    },
-
-    onRegEmail: (event) => {
-      update((previousState) => ({
-        regForm: {
-          ...previousState.regForm,
-          email: event.target.value,
-        },
-        applicationError: '',
-      }));
-    },
-
-    onRegPassword: (event) => {
-      update((previousState) => ({
-        regForm: {
-          ...previousState.regForm,
-          password: event.target.value,
-        },
-        applicationError: '',
-      }));
-    },
-
-    onRegType: (event) => {
-      update((previousState) => ({
-        regForm: {
-          ...previousState.regForm,
-          type: event.target.value,
-        },
-        applicationError: '',
-      }));
-    },
-
-    onRegMotivation: (event) => {
-      update((previousState) => ({
-        regForm: {
-          ...previousState.regForm,
-          motivation: event.target.value,
-        },
-        applicationError: '',
-      }));
-    },
-
-    typeZzp: st.regForm.type === 'zzp',
-    typeOrg: st.regForm.type === 'org',
-    typeOrient: st.regForm.type === 'orient',
-
-    submitApplication: async () => {
-      const form = stRef.current.regForm;
-
-      const firstName = form.firstName.trim();
-      const lastName = form.lastName.trim();
-      const email = form.email.trim().toLowerCase();
-      const password = form.password;
-      const memberType = form.type;
-      const motivation = form.motivation.trim();
-
-      if (
-        !firstName ||
-        !lastName ||
-        !email ||
-        !password ||
-        !memberType ||
-        !motivation
-      ) {
-        update({
-          applicationError: 'Vul eerst alle velden in.',
-        });
-        return;
-      }
-
-      if (password.length < 8) {
-        update({
-          applicationError: 'Kies een wachtwoord van minimaal 8 tekens.',
-        });
-        return;
-      }
-
-      update({
-        applicationLoading: true,
-        applicationError: '',
-      });
-
-      if (!supabase) {
-        return { error: 'Aanmelden is nu niet beschikbaar.' };
-      }
-
-      try {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: window.location.origin,
-            data: {
-              first_name: firstName,
-              last_name: lastName,
-              full_name: `${firstName} ${lastName}`,
-              member_type: memberType,
-              motivation,
-            },
-          },
-        });
-
-        if (error) throw error;
-
-        update({
-          applicationSent: true,
-          applicationLoading: false,
-          applicationError: '',
-          regForm: INITIAL_REGISTER_FORM,
-        });
-
-        if (data.session && data.user) {
-          update({
-            session: data.session,
-            user: data.user,
-            memberName: getMemberName(data.user),
-          });
-
-          await loadProfile(data.user.id);
-        }
-      } catch (error) {
-        console.error('Lidmaatschapsaanvraag is mislukt:', error);
-
-        update({
-          applicationLoading: false,
-          applicationError: getAuthErrorMessage(error, 'register'),
-        });
-      }
     },
 
     contactForm: st.contactForm,
@@ -1692,34 +1359,6 @@ export function WebsiteProvider({ children, route, param }) {
       ledenZoek ? ' voor deze zoekopdracht' : '. Leden bepalen zelf of zij in deze lijst staan.'
     }`,
     ledenHidden: !st.memberVisible,
-
-    /* ---- Wachtwoord vergeten ----
-       Gebruikt hetzelfde e-mailveld als het inlogformulier (loginForm.email)
-       en dezelfde profielservice als AuthProvider/WachtwoordInstellenPage. */
-    resetSent: Boolean(st.resetSent),
-    resetLoading: Boolean(st.resetLoading),
-    resetError: st.resetError,
-    forgotPassword: async () => {
-      const email = stRef.current.loginForm.email.trim().toLowerCase();
-
-      if (!email) {
-        update({ resetError: 'Vul eerst uw e-mailadres in.' });
-
-        return;
-      }
-
-      update({ resetLoading: true, resetError: '' });
-
-      const { fout } = await verstuurResetmail(email);
-
-      if (fout) {
-        update({ resetLoading: false, resetError: fout });
-
-        return;
-      }
-
-      update({ resetLoading: false, resetSent: true });
-    },
 
     /* ---- Bijeenkomst voorstellen ---- */
     sessionDraftOpen: st.sessionDraftOpen,

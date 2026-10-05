@@ -5,7 +5,12 @@ import { css } from '../../shared/lib/css.js';
 import { useKompas } from './KompasStore.jsx';
 import { Button, Field, Input, Notice, Panel, PanelHeader } from '../../shared/ui/index.js';
 import { useApp } from './useKompasApp.js';
-import { TIER_LABEL, openBeheerportaal } from '../../data/services/billing.js';
+import {
+  TIER_LABEL,
+  leesCheckoutResultaat,
+  openBeheerportaal,
+  wisCheckoutResultaat,
+} from '../../data/services/billing.js';
 import { bewaarOnboarding, haalAankopen, haalOnboarding } from '../../data/services/onboarding.js';
 
 const AANKOOP_LABEL = { cursus: 'Cursus', template: 'Template', download: 'Download', overig: 'Overig' };
@@ -27,6 +32,17 @@ export default function AccountPage() {
   const app = useApp();
   const [melding, setMelding] = useState('');
   const [fout, setFout] = useState('');
+
+  // Terugkeer uit Stripe Checkout: alleen een neutrale melding. De redirect
+  // geeft zelf nooit toegang; het betaalde membership wordt pas bijgewerkt
+  // nadat de betaling server-side door Stripe is bevestigd.
+  const [checkoutResultaat] = useState(() => leesCheckoutResultaat());
+
+  useEffect(() => {
+    if (checkoutResultaat) {
+      wisCheckoutResultaat();
+    }
+  }, []);
 
   const gesprekken = store.conversations || [];
   const tier = app.subscriptionTier || 'free';
@@ -105,9 +121,20 @@ export default function AccountPage() {
 
   return (
     <Panel>
-      <PanelHeader title="Uw account"
-        intro="Hier staan uw abonnement en uw bewaarde gesprekken, en bepaalt u wat Subsidie Kompas van u bewaart."
+      <PanelHeader title="Mijn account"
+        intro="Uw account bij Het Fondsenwervers Collectief. Hier staan uw membership en uw bewaarde gesprekken, en bepaalt u wat Subsidie Kompas van u bewaart."
       />
+
+      {checkoutResultaat === 'success' && (
+        <Notice tone="info">
+          Betaling ontvangen. Uw membership wordt bijgewerkt zodra de betaling door Stripe is bevestigd.
+        </Notice>
+      )}
+      {checkoutResultaat === 'cancelled' && (
+        <Notice tone="info">
+          De betaling is niet afgerond. Er is niets in rekening gebracht en uw membership is niet gewijzigd.
+        </Notice>
+      )}
 
       <div style={css('margin-bottom: 14px; padding: 14px 18px; border: 1px solid #E1EAE4; border-radius: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;')}>
         <div>
@@ -142,7 +169,7 @@ export default function AccountPage() {
       <div style={css('margin-bottom: 14px; padding: 14px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #F7F9F8; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;')}>
         <span style={css('min-width: 0;')}>
           <span style={css('display: block; margin-bottom: 3px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; color: #9AA6A2;')}>
-            ABONNEMENT
+            MEMBERSHIP
           </span>
           <span style={css('font-size: 15.5px; font-weight: 800; color: #2C4A5E;')}>
             {app.isAdmin ? 'Admin' : (TIER_LABEL[tier] || 'Free')}

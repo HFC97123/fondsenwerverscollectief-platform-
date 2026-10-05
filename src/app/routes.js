@@ -22,8 +22,8 @@ export const routes = [
   { pad: '/voorwaarden', area: AREA.website, titel: 'Algemene voorwaarden', toegang: 'publiek' },
 
   // Bewust 'publiek', ondanks de titel: deze pagina bevat zelf de publieke
-  // hero, de 'Word lid'-CTA en het login/registratieformulier voor nieuwe
-  // bezoekers (zie NetwerkPage.jsx / WebsiteProvider.showAuthCta). Het
+  // hero en de 'Inloggen'/'Word lid'-knoppen voor nieuwe bezoekers (die de
+  // centrale login/registratie-overlay openen, zie WebsiteProvider.showAuthCta). Het
   // werkelijke ledengedeelte daaronder is al zelf afgeschermd met
   // isLoggedIn. Zou dit hier 'lid' zijn, dan blokkeert de Poort-route-gate
   // de pagina al voordat iemand het registratieformulier ooit te zien

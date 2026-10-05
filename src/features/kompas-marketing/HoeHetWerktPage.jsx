@@ -5,6 +5,7 @@ import { useApp } from '../kompas-app/useKompasApp.js';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { Notice } from '../../shared/ui/index.js';
+import { bewaarKoopintentie, wisKoopintentie } from '../../data/services/koopintentie.js';
 import { useStappen } from './useMarketingContent.js';
 
 const WAT_HET_DOET = [
@@ -128,7 +129,15 @@ export default function HoeHetWerktPage() {
   // en voert deze actie na een geslaagde login/registratie alsnog uit — de
   // bezoeker blijft op deze pagina en hoeft niets opnieuw te doen.
   const kiesPlan = (plan) => {
+    // Alleen UX: onthoud de gekozen plan (pro/premium) tijdelijk als eerst
+    // inloggen of een account aanmaken nodig is, zodat de bezoeker na
+    // e-mailbevestiging niet opnieuw hoeft te zoeken. Geen entitlement.
+    if (!app.isLoggedIn) {
+      bewaarKoopintentie(plan.tier);
+    }
+
     app.requireAuth(async () => {
+      wisKoopintentie();
       setProefFout('');
       setProefBezig(plan.tier);
       const { fout } = await app.startProefperiode(plan.tier);

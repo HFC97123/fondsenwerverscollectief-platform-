@@ -12,9 +12,6 @@ import { useApp } from './WebsiteProvider.jsx';
 const sectie = css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 72px;');
 const sectieKop = css("font-family: 'Newsreader', serif; font-size: clamp(23px, 3.2vw, 28px); font-weight: 600; color: #2C4A5E;");
 const sectieSub = css('font-size: 15px; color: #4B5C58; margin-top: 6px;');
-const invoer = css(
-  "padding: 12px 16px; border-radius: 12px; border: 1.5px solid #E1EAE4; font-size: 14.5px; font-family: 'Mulish', sans-serif; outline: none;",
-);
 const veldGroot = css(
   "width: 100%; box-sizing: border-box; min-height: 46px; padding: 13px 15px; border: 1px solid #D5E0D9; border-radius: 12px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 15px; color: #2E3A38; outline: none;",
 );
@@ -132,33 +129,6 @@ export default function NetwerkPage() {
     visLabel,
     visLabelColor,
     toggleMemberVisible,
-    isAuthLogin,
-    loginForm,
-    onLoginEmail,
-    onLoginPassword,
-    login,
-    loginLoading,
-    loginError,
-    forgotPassword,
-    resetSent,
-    resetLoading,
-    resetError,
-    isAuthRegister,
-    applicationOpen,
-    applicationSent,
-    applicationLoading,
-    applicationError,
-    regForm,
-    onRegFirstName,
-    onRegLastName,
-    onRegEmail,
-    onRegPassword,
-    typeZzp,
-    typeOrg,
-    typeOrient,
-    onRegType,
-    onRegMotivation,
-    submitApplication,
     ledenlijst,
     ledenlijstCount,
     ledenlijstEmpty,
@@ -194,8 +164,6 @@ export default function NetwerkPage() {
     goVacatures,
     goKompas,
   } = app;
-
-  const reg = regForm || {};
 
   return (
     <div data-screen-label="Collectief">
@@ -360,206 +328,6 @@ export default function NetwerkPage() {
           </div>
         )}
 
-        {isAuthLogin && (
-          <div
-            style={css(
-              'background: #FFFFFF; border-radius: 24px; padding: clamp(22px, 3.5vw, 40px); display: grid; grid-template-columns: repeat(auto-fit, minmax(256px, 1fr)); gap: 40px; align-items: center;',
-            )}
-          >
-            <div>
-              <div style={css("font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E; margin-bottom: 10px;")}>
-                Inloggen
-              </div>
-              <div style={css('font-size: 15px; line-height: 1.6; color: #4B5C58;')}>
-                Log in om vragen te stellen, kennis te delen, uw profiel te beheren en toegang te krijgen tot alle
-                ledencontent. Zonder account kunt u meelezen.
-              </div>
-            </div>
-
-            <div style={css('display: flex; flex-direction: column; gap: 12px;')}>
-              <input
-                type="email"
-                placeholder="E-mailadres"
-                value={loginForm.email || ''}
-                onChange={onLoginEmail}
-                style={invoer}
-              />
-              <input
-                type="password"
-                placeholder="Wachtwoord"
-                value={loginForm.password || ''}
-                onChange={onLoginPassword}
-                style={invoer}
-              />
-              {loginError && (
-                <div
-                  style={css(
-                    'padding: 11px 14px; border-radius: 12px; background: #FDF6F5; color: #9E3B2C; border: 1.5px solid #EDD3CE; font-size: 13.5px; line-height: 1.5; text-align: center;',
-                  )}
-                >
-                  {loginError}
-                </div>
-              )}
-              <div
-                onClick={loginLoading ? undefined : login}
-                role="button"
-                style={css(
-                  `cursor: ${loginLoading ? 'default' : 'pointer'}; text-align: center; padding: 13px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 15px; opacity: ${loginLoading ? 0.7 : 1};`,
-                )}
-              >
-                {loginLoading ? 'Bezig…' : 'Inloggen'}
-              </div>
-              <div style={css('display: flex; justify-content: center;')}>
-                <div
-                  onClick={resetLoading ? undefined : forgotPassword}
-                  role="button"
-                  style={css(
-                    `cursor: ${resetLoading ? 'default' : 'pointer'}; padding: 2px 4px; color: #6B7B77; font-weight: 700; font-size: 12.5px;`,
-                  )}
-                >
-                  {resetLoading ? 'Bezig…' : 'Wachtwoord vergeten?'}
-                </div>
-              </div>
-              {resetError && (
-                <div
-                  style={css(
-                    'padding: 11px 14px; border-radius: 12px; background: #FDF6F5; color: #9E3B2C; border: 1.5px solid #EDD3CE; font-size: 13.5px; line-height: 1.5; text-align: center;',
-                  )}
-                >
-                  {resetError}
-                </div>
-              )}
-              {resetSent && (
-                <div
-                  style={css(
-                    'padding: 11px 14px; border-radius: 12px; background: #EAF4EE; color: #2F6D47; font-size: 13.5px; line-height: 1.5; text-align: center;',
-                  )}
-                >
-                  We sturen u een e-mail met een link om een nieuw wachtwoord in te stellen.
-                </div>
-              )}
-              <div style={css('text-align: center; font-size: 13.5px; color: #4B5C58;')}>
-                Nog geen lid?{' '}
-                <span onClick={showRegister} style={css('cursor: pointer; font-weight: 700; color: #2C4A5E;')}>
-                  Word lid
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isAuthRegister && (
-          <div
-            style={css(
-              'background: #FFFFFF; border-radius: 24px; padding: clamp(22px, 3.5vw, 40px); display: grid; grid-template-columns: repeat(auto-fit, minmax(256px, 1fr)); gap: 40px; align-items: start;',
-            )}
-          >
-            <div>
-              <div style={css("font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E; margin-bottom: 12px;")}>
-                Lidmaatschap aanvragen
-              </div>
-              <div style={css('font-size: 15px; line-height: 1.6; color: #4B5C58; margin-bottom: 18px;')}>
-                Het Collectief is een besloten omgeving voor en door fondsenwervers. Maak een account aan en u heeft
-                direct toegang — geen wachttijd of aparte beoordeling.
-              </div>
-            </div>
-
-            {applicationOpen && (
-              <div style={css('display: flex; flex-direction: column; gap: 14px;')}>
-                <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(256px, 1fr)); gap: 12px;')}>
-                  <input type="text" placeholder="Voornaam" value={reg.firstName || ''} onChange={onRegFirstName} style={invoer} />
-                  <input type="text" placeholder="Achternaam" value={reg.lastName || ''} onChange={onRegLastName} style={invoer} />
-                </div>
-                <input type="email" placeholder="E-mailadres" value={reg.email || ''} onChange={onRegEmail} style={invoer} />
-                <input
-                  type="password"
-                  placeholder="Kies een wachtwoord (minimaal 8 tekens)"
-                  value={reg.password || ''}
-                  onChange={onRegPassword}
-                  style={invoer}
-                />
-
-                <div>
-                  <div style={css('font-size: 13.5px; font-weight: 700; color: #2C4A5E; margin-bottom: 9px;')}>
-                    Wat omschrijft u het best?
-                  </div>
-                  <div style={css('display: flex; flex-direction: column; gap: 9px;')}>
-                    <label style={radioLabel}>
-                      <input type="radio" name="lidtype" value="zzp" checked={Boolean(typeZzp)} onChange={onRegType} style={radio} />{' '}
-                      Zelfstandig fondsenwerver (zzp)
-                    </label>
-                    <label style={radioLabel}>
-                      <input type="radio" name="lidtype" value="org" checked={Boolean(typeOrg)} onChange={onRegType} style={radio} />{' '}
-                      Fondsenwerver binnen een organisatie
-                    </label>
-                    <label style={radioLabel}>
-                      <input type="radio" name="lidtype" value="orient" checked={Boolean(typeOrient)} onChange={onRegType} style={radio} />{' '}
-                      Oriënterend, ik wil fondsenwerver worden
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <div style={css('font-size: 13.5px; font-weight: 700; color: #2C4A5E; margin-bottom: 9px;')}>Uw motivatie</div>
-                  <textarea
-                    value={reg.motivation || ''}
-                    onChange={onRegMotivation}
-                    rows="4"
-                    placeholder="Vertel iets over uzelf en waarom u lid wilt worden."
-                    style={css(
-                      "width: 100%; box-sizing: border-box; resize: vertical; padding: 12px 16px; border-radius: 12px; border: 1.5px solid #E1EAE4; font-size: 14.5px; line-height: 1.5; font-family: 'Mulish', sans-serif; outline: none;",
-                    )}
-                  />
-                </div>
-
-                {applicationError && (
-                  <div
-                    style={css(
-                      'padding: 11px 14px; border-radius: 12px; background: #FDF6F5; color: #9E3B2C; border: 1.5px solid #EDD3CE; font-size: 13.5px; line-height: 1.5; text-align: center;',
-                    )}
-                  >
-                    {applicationError}
-                  </div>
-                )}
-                <div
-                  onClick={applicationLoading ? undefined : submitApplication}
-                  role="button"
-                  style={css(
-                    `cursor: ${applicationLoading ? 'default' : 'pointer'}; text-align: center; padding: 13px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 15px; opacity: ${applicationLoading ? 0.7 : 1};`,
-                  )}
-                >
-                  {applicationLoading ? 'Bezig…' : 'Aanvraag versturen'}
-                </div>
-                <div style={css('text-align: center; font-size: 13.5px; color: #4B5C58;')}>
-                  Al lid?{' '}
-                  <span onClick={showLogin} style={css('cursor: pointer; font-weight: 700; color: #2C4A5E;')}>
-                    Inloggen
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {applicationSent && (
-              <div style={css('background: #EAF4EE; border-radius: 18px; padding: 32px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px;')}>
-                <div
-                  style={css(
-                    'width: 52px; height: 52px; border-radius: 50%; background: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #4E9A6C;',
-                  )}
-                >
-                  ✓
-                </div>
-                <div style={css("font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E;")}>Welkom bij Het Fondsenwervers Collectief</div>
-                <div style={css('font-size: 15px; line-height: 1.6; color: #4B5C58;')}>
-                  Uw account is aangemaakt en direct actief. Controleer ook uw inbox voor de bevestigingsmail — en
-                  voor een persoonlijk welkomstbericht met meer uitleg over het Collectief en Subsidie Kompas.
-                </div>
-                <div onClick={showLogin} style={css('cursor: pointer; margin-top: 6px; font-weight: 700; color: #2C4A5E; font-size: 14.5px;')}>
-                  Al lid? Inloggen →
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* LEDENLIJST */}

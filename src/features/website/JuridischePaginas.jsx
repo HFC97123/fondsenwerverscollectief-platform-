@@ -28,7 +28,7 @@ const PRIVACY = {
     {
       kop: 'Bewaartermijn en verwijderen',
       tekst:
-        'U kunt uw gesprekken en de informatie over uw organisatie op elk moment verwijderen via uw Subsidie Kompas-account. Zegt u uw lidmaatschap op, dan verwijderen wij uw profiel en uw inhoud, behalve wat wij wettelijk moeten bewaren voor de administratie.',
+        'U kunt uw gesprekken en de informatie over uw organisatie op elk moment verwijderen via uw account bij Het Fondsenwervers Collectief. Zegt u uw lidmaatschap op, dan verwijderen wij uw profiel en uw inhoud, behalve wat wij wettelijk moeten bewaren voor de administratie.',
     },
     {
       kop: 'Verwerkers',
@@ -52,12 +52,12 @@ const VOORWAARDEN = {
     {
       kop: 'Lidmaatschap',
       tekst:
-        'Een lidmaatschap is persoonlijk en bedoeld voor fondsenwervers en organisaties die zich met fondsenwerving en subsidies bezighouden. Na het aanmaken van een account heeft u direct toegang tot de ledencontent.',
+        'Een lidmaatschap is persoonlijk en bedoeld voor fondsenwervers en organisaties die zich met fondsenwerving en subsidies bezighouden. Na bevestiging van uw e-mailadres krijgt u toegang tot de ledencontent.',
     },
     {
       kop: 'Abonnementen op Subsidie Kompas',
       tekst:
-        'Subsidie Kompas kent drie vormen: Free, Pro en Premium. Een proefperiode gaat na afloop over in een betaald abonnement, tenzij u vóór het einde opzegt. Opzeggen kan per maand via uw account.',
+        'Subsidie Kompas is een dienst binnen Het Fondsenwervers Collectief en kent drie vormen: Free, Pro en Premium. Een betaald abonnement hoort bij uw bestaande account bij Het Fondsenwervers Collectief; er is geen apart Subsidie Kompas-account. Een gratis proefperiode gaat na afloop niet automatisch over in een betaald abonnement: u valt dan terug naar Free, tenzij u zelf een betaald abonnement afsluit. Opzeggen kan per maand via uw account.',
     },
     {
       kop: 'De fondsendatabase',

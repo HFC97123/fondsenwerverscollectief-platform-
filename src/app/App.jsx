@@ -49,8 +49,8 @@ function Poort({ route, children }) {
       <Container style={css('padding-top: 90px; padding-bottom: 110px;')}>
         <PageTitle size={type.paginaKop}>Log in om verder te gaan</PageTitle>
         <Lead>
-          Dit onderdeel is onderdeel van uw account. Log in of maak een account aan — u komt daarna
-          direct terug op deze pagina.
+          Dit onderdeel is alleen beschikbaar voor ingelogde leden van Het Fondsenwervers Collectief. Log in of
+          maak een account aan — u komt daarna direct terug op deze pagina.
         </Lead>
         <div style={css('margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap;')}>
           <Button onClick={() => authModal.openLogin()}>Inloggen</Button>

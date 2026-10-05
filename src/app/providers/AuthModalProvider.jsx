@@ -36,6 +36,8 @@ const LEEG_REGISTER = {
   lastName: '',
   email: '',
   password: '',
+  // Alleen frontend-validatie: wordt nooit naar Supabase of het profiel gestuurd.
+  passwordConfirm: '',
   type: '',
   motivation: '',
   organisatie: '',
@@ -55,6 +57,8 @@ export function AuthModalProvider({ children }) {
   const [registerForm, setRegisterForm] = useState(LEEG_REGISTER);
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState('');
+  const [wachtwoordFout, setWachtwoordFout] = useState('');
+  const [bevestigingEmail, setBevestigingEmail] = useState('');
   const [resetBezig, setResetBezig] = useState(false);
   const [resetFout, setResetFout] = useState('');
   const [resetVerzonden, setResetVerzonden] = useState(false);
@@ -63,6 +67,8 @@ export function AuthModalProvider({ children }) {
   const dicht = () => {
     setOpen(false);
     setFout('');
+    setWachtwoordFout('');
+    setBevestigingEmail('');
     setBezig(false);
     setResetFout('');
     setResetVerzonden(false);
@@ -83,6 +89,8 @@ export function AuthModalProvider({ children }) {
     setMode('register');
     setReden(redenTekst || '');
     setFout('');
+    setWachtwoordFout('');
+    setBevestigingEmail('');
     setOpen(true);
   };
 
@@ -190,10 +198,28 @@ export function AuthModalProvider({ children }) {
       return;
     }
 
+    // Wachtwoord herhalen: uitsluitend frontend-validatie vóór de bestaande
+    // registratie. Het herhaalde wachtwoord wordt hieronder nergens
+    // doorgegeven (niet aan Supabase en niet aan het profiel).
+    if (!f.passwordConfirm) {
+      setFout('');
+      setWachtwoordFout('Herhaal uw wachtwoord.');
+
+      return;
+    }
+
+    if (f.password !== f.passwordConfirm) {
+      setFout('');
+      setWachtwoordFout('De wachtwoorden komen niet overeen.');
+
+      return;
+    }
+
     setBezig(true);
     setFout('');
+    setWachtwoordFout('');
 
-    const { fout: registerFout } = await auth.registreer({
+    const registratie = await auth.registreer({
       firstName: f.firstName.trim(),
       lastName: f.lastName.trim(),
       email: f.email.trim().toLowerCase(),
@@ -201,10 +227,31 @@ export function AuthModalProvider({ children }) {
       type: f.type,
       motivation: f.motivation.trim(),
     });
+    const registerFout = registratie.fout;
 
+    // Echte fout: tonen en de ingevulde velden bewaren.
     if (registerFout) {
       setBezig(false);
       setFout(registerFout);
+
+      return;
+    }
+
+    // E-mailadres bestaat al: Supabase geeft dan geen fout maar een verhulde
+    // gebruiker zonder sessie. Formulier blijft ingevuld.
+    if (registratie.status === 'bestaat_al') {
+      setBezig(false);
+      setFout('Er bestaat al een account met dit e-mailadres. Log in of gebruik ‘Wachtwoord vergeten?’.');
+
+      return;
+    }
+
+    // Account aangemaakt, maar e-mailbevestiging vereist: duidelijke
+    // bevestigingsstatus in plaats van een stil, leeg formulier.
+    if (registratie.status === 'bevestiging') {
+      setBezig(false);
+      setBevestigingEmail(f.email.trim().toLowerCase());
+      setRegisterForm(LEEG_REGISTER);
 
       return;
     }
@@ -214,7 +261,7 @@ export function AuthModalProvider({ children }) {
     // bewaren als er meteen een sessie is (geen e-mailbevestiging vereist);
     // is die er niet, dan kan de gebruiker dit later alsnog invullen vanaf
     // de accountpagina.
-    const ingelogdeGebruiker = auth.user;
+    const ingelogdeGebruiker = registratie.user || auth.user;
     const heeftOnboardingAntwoord =
       f.organisatie.trim() || f.functie.trim() || f.waarNaarOpZoek.trim() || f.doel.trim();
 
@@ -256,6 +303,15 @@ export function AuthModalProvider({ children }) {
           registerForm={registerForm}
           setRegisterForm={setRegisterForm}
           onRegister={submitRegister}
+          bevestigingEmail={bevestigingEmail}
+          wachtwoordFout={wachtwoordFout}
+          onWachtwoordFoutWis={() => setWachtwoordFout('')}
+          onNaarLogin={(email) => {
+            setBevestigingEmail('');
+            setFout('');
+            setLoginForm((p) => ({ ...p, email: email || p.email }));
+            setMode('login');
+          }}
         />
       )}
     </AuthModalContext.Provider>
@@ -279,6 +335,10 @@ function AuthModalOverlay({
   registerForm,
   setRegisterForm,
   onRegister,
+  bevestigingEmail,
+  wachtwoordFout,
+  onWachtwoordFoutWis,
+  onNaarLogin,
 }) {
   const veld = (patch) => setRegisterForm((prev) => ({ ...prev, ...patch }));
 
@@ -323,17 +383,31 @@ function AuthModalOverlay({
           </div>
         )}
 
-        {!reden && (
+        {!reden && mode === 'login' && (
           <div style={css(`margin-bottom: 16px; font-size: ${type.klein}; line-height: 1.55; color: ${color.tekstZacht};`)}>
-            {mode === 'login'
-              ? 'Eén account voor Het Fondsenwervers Collectief en Subsidie Kompas.'
-              : 'Direct toegang na aanmaken — geen wachttijd of aparte beoordeling.'}
+            Eén account bij Het Fondsenwervers Collectief — ook voor Subsidie Kompas.
           </div>
         )}
 
         <Notice tone="fout">{fout}</Notice>
 
-        {mode === 'login' ? (
+        {mode === 'register' && bevestigingEmail ? (
+          <div style={css('display: grid; gap: 12px;')}>
+            <Notice tone="succes">
+              <div style={css('font-weight: 800; margin-bottom: 4px;')}>Controleer uw e-mail</div>
+              <div style={css('font-weight: 600;')}>
+                We hebben een bevestigingslink gestuurd naar {bevestigingEmail}. Klik op de link in de e-mail om uw
+                account te activeren. Daarna kunt u inloggen.
+              </div>
+            </Notice>
+            <div style={css(`font-size: ${type.klein}; line-height: 1.55; color: ${color.tekstZacht};`)}>
+              Geen e-mail ontvangen? Controleer ook uw spammap.
+            </div>
+            <Button block onClick={() => onNaarLogin(bevestigingEmail)}>
+              Naar inloggen
+            </Button>
+          </div>
+        ) : mode === 'login' ? (
           <div style={css('display: grid; gap: 12px;')}>
             <Field label="E-mailadres">
               <Input
@@ -384,23 +458,47 @@ function AuthModalOverlay({
         ) : (
           <div style={css('display: grid; gap: 12px;')}>
             <div style={css('display: grid; grid-template-columns: 1fr 1fr; gap: 10px;')}>
-              <Field label="Voornaam">
+              <Field label="Voornaam *">
                 <Input value={registerForm.firstName} onChange={(e) => veld({ firstName: e.target.value })} />
               </Field>
-              <Field label="Achternaam">
+              <Field label="Achternaam *">
                 <Input value={registerForm.lastName} onChange={(e) => veld({ lastName: e.target.value })} />
               </Field>
             </div>
-            <Field label="E-mailadres">
+            <Field label="E-mailadres *">
               <Input type="email" value={registerForm.email} onChange={(e) => veld({ email: e.target.value })} placeholder="naam@organisatie.nl" />
             </Field>
-            <Field label="Wachtwoord">
-              <Input type="password" value={registerForm.password} onChange={(e) => veld({ password: e.target.value })} placeholder="Minimaal 8 tekens" />
+            <Field label="Wachtwoord *">
+              <Input
+                type="password"
+                value={registerForm.password}
+                onChange={(e) => {
+                  veld({ password: e.target.value });
+                  onWachtwoordFoutWis();
+                }}
+                placeholder="Minimaal 8 tekens"
+              />
+            </Field>
+            <Field label="Wachtwoord herhalen *">
+              <Input
+                type="password"
+                value={registerForm.passwordConfirm}
+                onChange={(e) => {
+                  veld({ passwordConfirm: e.target.value });
+                  onWachtwoordFoutWis();
+                }}
+                placeholder="Herhaal uw wachtwoord"
+              />
+              {wachtwoordFout && (
+                <div role="alert" style={css(`margin-top: 6px; font-size: ${type.klein}; font-weight: 700; color: ${color.fout};`)}>
+                  {wachtwoordFout}
+                </div>
+              )}
             </Field>
 
             <div style={css(`margin-top: 6px; padding-top: 14px; border-top: 1px solid ${color.lijn};`)}>
               <div style={css(`margin-bottom: 10px; font-size: ${type.klein}; font-weight: 800; color: ${color.donkerblauw};`)}>
-                Laten we kennismaken <span style={css(`font-weight: 600; color: ${color.tekstLicht};`)}>(optioneel)</span>
+                Kennismaken <span style={css(`font-weight: 600; color: ${color.tekstLicht};`)}>(optioneel)</span>
               </div>
               <div style={css('display: grid; gap: 10px;')}>
                 <Field label="Organisatie">
@@ -409,7 +507,7 @@ function AuthModalOverlay({
                 <Field label="Functie">
                   <Input value={registerForm.functie} onChange={(e) => veld({ functie: e.target.value })} />
                 </Field>
-                <Field label="Ik ben vooral op zoek naar">
+                <Field label="Ik ben...">
                   <Select
                     value={registerForm.type}
                     onChange={(e) => veld({ type: e.target.value })}
@@ -421,7 +519,7 @@ function AuthModalOverlay({
                     ]}
                   />
                 </Field>
-                <Field label="Wat hoopt u te bereiken met Subsidie Kompas?">
+                <Field label="Waarom wilt u lid worden van Het Fondsenwervers Collectief?">
                   {/* RC1 stap 5 (K5/F3): dit antwoord gaat zowel naar
                       profile_onboarding.doel (onboarding/personalisatie,
                       ongewijzigd) als naar motivation (profiles.motivation,
@@ -434,9 +532,6 @@ function AuthModalOverlay({
                     rows={3}
                   />
                 </Field>
-              </div>
-              <div style={css(`margin-top: 8px; font-size: 12.5px; color: ${color.tekstLicht};`)}>
-                Deze antwoorden bepalen nooit of u toegang krijgt — u kunt ze ook later of nooit invullen.
               </div>
             </div>
 

@@ -335,12 +335,30 @@ export function AuthProvider({ children }) {
           throw error;
         }
 
+        // Supabase geeft bij een e-mailadres dat al bestaat (en e-mailbevestiging
+        // aan) GEEN fout, maar een verhulde gebruiker zonder sessie en met een
+        // LEGE identities-lijst. Een echt nieuwe registratie heeft altijd
+        // minstens één identity. Alleen een expliciet lege array telt als
+        // 'bestaat al'; ontbreekt het veld, dan behandelen we het als nieuw.
+        if (
+          data.user &&
+          !data.session &&
+          Array.isArray(data.user.identities) &&
+          data.user.identities.length === 0
+        ) {
+          return { fout: null, status: 'bestaat_al' };
+        }
+
         if (data.session && data.user) {
           update({ session: data.session, user: data.user, naam: naamVan(data.user) });
           await laadProfiel(data.user.id);
+
+          return { fout: null, status: 'ingelogd', user: data.user };
         }
 
-        return { fout: null };
+        // Account is aangemaakt maar er is (nog) geen sessie: e-mailbevestiging
+        // is vereist. De gebruiker moet eerst op de link in de e-mail klikken.
+        return { fout: null, status: 'bevestiging' };
       } catch (e) {
         return { fout: authFoutTekst(e, 'register') };
       }
