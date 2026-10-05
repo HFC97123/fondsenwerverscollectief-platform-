@@ -23,6 +23,7 @@ export function useApp() {
     isPro: auth.isPro,
     isPremium: auth.isPremium,
     profile: auth.profile,
+    profielProbleem: auth.profielProbleem,
     naam: auth.naam,
 
     proefActief: auth.proefActief,

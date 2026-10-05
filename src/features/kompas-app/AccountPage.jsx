@@ -125,6 +125,13 @@ export default function AccountPage() {
         intro="Uw account bij Het Fondsenwervers Collectief. Hier staan uw membership en uw bewaarde gesprekken, en bepaalt u wat Subsidie Kompas van u bewaart."
       />
 
+      {app.profielProbleem && (
+        <Notice tone="fout">
+          Uw account is niet volledig ingericht: uw profielgegevens konden niet worden geladen. Er worden geen
+          abonnementsrechten toegekend en u kunt nu geen proefperiode of abonnement starten. Probeer het later
+          opnieuw of neem contact met ons op.
+        </Notice>
+      )}
       {checkoutResultaat === 'success' && (
         <Notice tone="info">
           Betaling ontvangen. Uw membership wordt bijgewerkt zodra de betaling door Stripe is bevestigd.
@@ -172,11 +179,11 @@ export default function AccountPage() {
             MEMBERSHIP
           </span>
           <span style={css('font-size: 15.5px; font-weight: 800; color: #2C4A5E;')}>
-            {app.isAdmin ? 'Admin' : (TIER_LABEL[tier] || 'Free')}
+            {app.profielProbleem ? 'Niet beschikbaar' : app.isAdmin ? 'Admin' : (TIER_LABEL[tier] || 'Free')}
           </span>
         </span>
 
-        {tier === 'free' ? (
+        {app.profielProbleem ? null : tier === 'free' ? (
           <Button onClick={app.goAbonnementen}>Bekijk de abonnementen</Button>
         ) : (
           <Button variant="outline" onClick={beheerAbonnement}>

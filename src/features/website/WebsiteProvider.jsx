@@ -1100,6 +1100,14 @@ export function WebsiteProvider({ children, route, param }) {
     // start_trial, zie data/services/profile.js); hier alleen aanroepen en
     // het profiel verversen zodat tier/rechten meteen overal kloppen.
     startTrial: async (gewensteTier) => {
+      // Zonder profiel geen proefperiode (de RPC weigert dat ook server-side).
+      const userId = stRef.current.user && stRef.current.user.id;
+      const bestaandProfiel = stRef.current.profile || (await loadProfile(userId));
+
+      if (!bestaandProfiel) {
+        return { fout: 'Uw profielgegevens konden niet worden geladen. Er kan nu geen proefperiode worden gestart. Probeer het later opnieuw of neem contact met ons op.' };
+      }
+
       const { fout } = await startProefperiodeService(gewensteTier);
 
       if (fout) {

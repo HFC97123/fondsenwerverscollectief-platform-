@@ -263,6 +263,12 @@ export function AuthProvider({ children }) {
     profile: st.profile,
     profielLaden: st.profielLaden,
     profielFout: st.profielFout,
+    // Ingelogd, maar het profiel kon niet worden geladen (bijv. een auth-user
+    // zonder profiles-rij). Dit is een databaseprobleem, geen Free-account:
+    // er worden dan geen abonnementsrechten toegekend en proefperiode/
+    // betaald abonnement zijn geblokkeerd. Een gewone Free-gebruiker MET
+    // profiel raakt dit nooit.
+    profielProbleem: isIngelogd && !st.laden && !st.profielLaden && !st.profile && Boolean(st.profielFout),
 
     isIngelogd,
     naam: st.naam || naamVan(st.user) || 'Uw profiel',
@@ -378,6 +384,14 @@ export function AuthProvider({ children }) {
     // start_trial); hier alleen aanroepen en daarna het profiel verversen
     // zodat tier/rechten meteen overal kloppen.
     startProefperiode: async (gewensteTier) => {
+      // Zonder profiel geen proefperiode (de RPC weigert dat ook server-side).
+      const userId = stRef.current.user && stRef.current.user.id;
+      const bestaandProfiel = stRef.current.profile || (await laadProfiel(userId));
+
+      if (!bestaandProfiel) {
+        return { fout: 'Uw profielgegevens konden niet worden geladen. Er kan nu geen proefperiode worden gestart. Probeer het later opnieuw of neem contact met ons op.' };
+      }
+
       const { fout } = await startProefperiodeService(gewensteTier);
 
       if (fout) {

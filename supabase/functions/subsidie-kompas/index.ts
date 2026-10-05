@@ -2060,11 +2060,28 @@ Deno.serve(async (req) => {
     if (user) {
       profileId = user.id;
 
-      const { data: profiel } = await admin
+      const { data: profiel, error: profielFout } = await admin
         .from('profiles')
         .select('subscription_tier, subscription_active, trial_ends_at, role')
         .eq('id', user.id)
         .single();
+
+      // Een geldige sessie ZONDER leesbaar profiel is een inconsistente
+      // accountstatus (auth-user zonder profiles-rij, of de profielcontrole
+      // zelf faalt). Dat mag nooit stilzwijgend als Free doorlopen: de
+      // rate-limit-schrijfactie hieronder heeft een foreign key naar
+      // profiles en zou voor zo'n account falen, waarna de bewust
+      // fail-open limiter hem zou doorlaten. Daarom hier een gecontroleerde
+      // weigering, vóór de limiter, RPC's, websearch en OpenAI. Anonieme
+      // aanvragen (zonder Bearer-token) zijn hier niet door geraakt.
+      if (!profiel) {
+        console.error('[subsidie-kompas] profiel_ontbreekt_of_onleesbaar', profielFout?.code ?? 'onbekend');
+
+        return json(
+          { error: 'Uw account is niet volledig ingericht. Probeer het later opnieuw of neem contact op met Het Fondsenwervers Collectief.' },
+          profielFout?.code === 'PGRST116' ? 403 : 503,
+        );
+      }
 
       // Effectieve tier, uitsluitend server-side uit het profiel (nooit van de
       // client): actief betaald abonnement OF een nog lopende proefperiode.
@@ -2076,7 +2093,7 @@ Deno.serve(async (req) => {
       // zagen. Een verlopen trial zonder actief abonnement blijft Free.
       tier = effectieveTier(profiel);
 
-      isAdmin = profiel?.role === 'admin';
+      isAdmin = profiel.role === 'admin';
     }
   }
 
