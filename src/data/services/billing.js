@@ -2,7 +2,9 @@
 // geheime sleutels horen daar niet.
 //
 // Verwachte functies (nog te zetten):
-//   create-checkout-session  { tier } -> { url }  afrekenpagina openen
+//   create-checkout-session  { plan: 'PRO'|'PREMIUM', voorwaarden_akkoord: true } -> { url }
+//                            afrekenpagina openen. De SERVER bepaalt trial ja/nee,
+//                            prijs en alle rechten; de client stuurt alleen de keuze.
 //   stripe-portal    {}       -> { url }        abonnement beheren of opzeggen
 //
 // Bestaat een functie nog niet, dan komt er een nette melding terug en gebeurt
@@ -34,9 +36,16 @@ async function roepAan(functie, body) {
   }
 }
 
-// Start het afrekenen voor Pro of Premium.
-export async function startCheckout(tier) {
-  const res = await roepAan('create-checkout-session', { tier });
+// Start het afrekenen voor Pro of Premium ('PRO' of 'PREMIUM'). Er wordt
+// uitsluitend de keuze en het akkoord met de voorwaarden meegestuurd; of er een
+// gratis proefperiode is, de prijs en alle rechten bepaalt de server (Stripe).
+// Nog niet aangesloten op de abonneren-pagina (volgende fase).
+export async function startCheckout(plan, { voorwaardenAkkoord = false } = {}) {
+  if (plan !== 'PRO' && plan !== 'PREMIUM') {
+    return { url: null, error: GEEN_KOPPELING };
+  }
+
+  const res = await roepAan('create-checkout-session', { plan, voorwaarden_akkoord: voorwaardenAkkoord === true });
 
   if (res.url) {
     window.location.href = res.url;
