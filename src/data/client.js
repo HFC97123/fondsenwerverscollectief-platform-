@@ -1,4 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+// Bewust vóór het aanmaken van de client geëvalueerd: leest de auth-terugkeer
+// uit de URL-hash voordat Supabase die hash wist (zie authCallback.js).
+import './authCallback.js';
 
 // VITE_SUPABASE_URL hoort de kale project-URL te zijn (bv.
 // https://xxxx.supabase.co), zonder /rest/v1: de Supabase-client voegt dat

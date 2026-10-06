@@ -3,11 +3,13 @@ import React from 'react';
 import HoeHetWerktPage from './HoeHetWerktPage.jsx';
 import KompasFaqPage from './KompasFaqPage.jsx';
 import WachtwoordInstellenPage from './WachtwoordInstellenPage.jsx';
+import AbonnerenPage from './AbonnerenPage.jsx';
 
 const PAGINAS = {
   '/hoe-het-werkt': HoeHetWerktPage,
   '/kompas/faq': KompasFaqPage,
   '/wachtwoord-instellen': WachtwoordInstellenPage,
+  '/kompas/abonneren': AbonnerenPage,
 };
 
 export default function MarketingPages({ route }) {

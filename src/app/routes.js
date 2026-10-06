@@ -32,6 +32,10 @@ export const routes = [
 
   // De paden volgen de links in het goedgekeurde ontwerp.
   { pad: '/hoe-het-werkt', area: AREA.marketing, titel: 'Hoe het werkt', toegang: 'publiek' },
+  // Abonneren (Pro/Premium): bevestigingsstap. Publiek: een anonieme bezoeker
+  // ziet hier eerst wat er gebeurt en logt of registreert dan via de centrale
+  // overlay. Deze pagina start zelf nooit een proefperiode of abonnement.
+  { pad: '/kompas/abonneren', area: AREA.marketing, titel: 'Abonneren', toegang: 'publiek' },
   { pad: '/kompas/faq', area: AREA.marketing, titel: 'Veelgestelde vragen', toegang: 'publiek' },
 
   // Landingsplek voor de wachtwoord-resetlink uit de e-mail (zie

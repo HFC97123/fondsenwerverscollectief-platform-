@@ -134,7 +134,7 @@ export default function AccountPage() {
       )}
       {checkoutResultaat === 'success' && (
         <Notice tone="info">
-          Betaling ontvangen. Uw membership wordt bijgewerkt zodra de betaling door Stripe is bevestigd.
+          Uw aanvraag is ontvangen en wordt door Stripe verwerkt. Uw abonnement wordt bijgewerkt zodra Stripe dit heeft bevestigd; dit kan even duren. Er is nog niets geactiveerd.
         </Notice>
       )}
       {checkoutResultaat === 'cancelled' && (

@@ -15,6 +15,9 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { useAuth } from './AuthProvider.jsx';
 import { bewaarOnboarding } from '../../data/services/onboarding.js';
 import { verstuurResetmail } from '../../data/services/profile.js';
+import { abonnerenHash, magTerugleiden, neemTeAanbiedenIntentie } from '../../data/services/koopintentie.js';
+import { AUTH_CALLBACK_BIJ_LADEN } from '../../data/authCallback.js';
+import { naar } from '../routes.js';
 import { css } from '../../shared/lib/css.js';
 import { color, font, radius, type } from '../../shared/tokens.js';
 import { Button, Field, Input, Notice, Select, Textarea } from '../../shared/ui/index.js';
@@ -125,6 +128,46 @@ export function AuthModalProvider({ children }) {
     wasIngelogd.current = auth.isIngelogd;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.isIngelogd]);
+
+  // Terugleiding naar de abonneren-pagina. Heeft een bezoeker eerder voor Pro
+  // of Premium gekozen (alleen een bewaarde intentie, nooit een recht) en is
+  // hij nu ingelogd - bijvoorbeeld na e-mailbevestiging of omdat hij in een
+  // andere sessie terugkomt - dan sturen we hem EENMALIG naar die pagina.
+  // Daar gebeurt pas na een expliciete bevestiging iets; deze terugleiding
+  // start zelf nooit een proefperiode, Checkout of abonnement.
+  //
+  // Het effect kijkt naar de sessie ÉN naar de URL-hash. De bevestigingslink
+  // uit een e-mail komt terug met #access_token=... in de URL; Supabase wist
+  // die hash pas als de sessie is aangemaakt. Dat kan vóór of ná het moment
+  // zijn waarop wij "ingelogd" zien. Een eenmalige check op alleen
+  // isIngelogd miste daardoor de terugleiding. Door ook op de hash (en op
+  // 'laden') te reageren, wordt er daarna alsnog teruggeleid.
+  // Wachtwoordherstel wordt nooit verstoord: zie magTerugleiden().
+  const [routeHash, setRouteHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
+
+  useEffect(() => {
+    const bijWijziging = () => setRouteHash(window.location.hash || '');
+
+    window.addEventListener('hashchange', bijWijziging);
+
+    return () => window.removeEventListener('hashchange', bijWijziging);
+  }, []);
+
+  useEffect(() => {
+    if (!auth.isIngelogd || auth.laden) {
+      return;
+    }
+
+    if (!magTerugleiden({ hash: routeHash, callbackBijLaden: AUTH_CALLBACK_BIJ_LADEN })) {
+      return;
+    }
+
+    const code = neemTeAanbiedenIntentie();
+
+    if (code) {
+      naar(abonnerenHash(code));
+    }
+  }, [auth.isIngelogd, auth.laden, routeHash]);
 
   const submitLogin = async () => {
     const email = loginForm.email.trim().toLowerCase();

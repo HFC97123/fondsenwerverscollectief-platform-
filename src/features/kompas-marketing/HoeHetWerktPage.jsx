@@ -1,11 +1,11 @@
 // Hoe het werkt: wat Subsidie Kompas doet, de vijf stappen, en waarom Premium.
-import React, { useState } from 'react';
+import React from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from '../kompas-app/useKompasApp.js';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
-import { Notice } from '../../shared/ui/index.js';
-import { bewaarKoopintentie, wisKoopintentie } from '../../data/services/koopintentie.js';
+import { abonnerenHash, bewaarIntentie, intentieVoorTier } from '../../data/services/koopintentie.js';
+import { naar } from '../../app/routes.js';
 import { useStappen } from './useMarketingContent.js';
 
 const WAT_HET_DOET = [
@@ -121,33 +121,20 @@ export default function HoeHetWerktPage() {
   const app = useApp();
   const tier = app.subscriptionTier || 'free';
   const STAPPEN = useStappen() || STAPPEN_STANDAARD;
-  const [proefBezig, setProefBezig] = useState('');
-  const [proefFout, setProefFout] = useState('');
 
-  // Start de proefperiode voor een gekozen betaald abonnement. Is de bezoeker
-  // nog niet ingelogd, dan opent requireAuth eerst de login/registratie-overlay
-  // en voert deze actie na een geslaagde login/registratie alsnog uit — de
-  // bezoeker blijft op deze pagina en hoeft niets opnieuw te doen.
+  // Kiezen van Pro of Premium start NOOIT iets. Het onthoudt alleen de keuze
+  // (intentie PRO of PREMIUM, uitsluitend UX) en brengt de bezoeker naar
+  // /kompas/abonneren, waar uitleg staat en - eventueel na inloggen of een
+  // account aanmaken - pas na een expliciete bevestiging verder wordt gegaan.
   const kiesPlan = (plan) => {
-    // Alleen UX: onthoud de gekozen plan (pro/premium) tijdelijk als eerst
-    // inloggen of een account aanmaken nodig is, zodat de bezoeker na
-    // e-mailbevestiging niet opnieuw hoeft te zoeken. Geen entitlement.
-    if (!app.isLoggedIn) {
-      bewaarKoopintentie(plan.tier);
+    const code = intentieVoorTier(plan.tier);
+
+    if (!code) {
+      return;
     }
 
-    app.requireAuth(async () => {
-      wisKoopintentie();
-      setProefFout('');
-      setProefBezig(plan.tier);
-      const { fout } = await app.startProefperiode(plan.tier);
-      setProefBezig('');
-      if (fout) {
-        setProefFout(fout);
-        return;
-      }
-      app.goKompas();
-    }, `Log in of maak een account aan om ${plan.naam} te proberen.`);
+    bewaarIntentie(code);
+    naar(abonnerenHash(code));
   };
 
   return (
@@ -361,7 +348,7 @@ export default function HoeHetWerktPage() {
                 <span style={css("font-family: 'Newsreader', serif; font-size: 46px; font-weight: 600; color: #2C4A5E; line-height: 1;")}>
                   {plan.prijs}
                 </span>
-                <span style={css('font-size: 14px; color: #6B7B77;')}>per maand</span>
+                <span style={css('font-size: 14px; color: #6B7B77;')}>{plan.tier === 'free' ? 'per maand' : 'per maand excl. btw'}</span>
               </div>
               <div style={css('min-height: 22px; font-size: 14px; font-weight: 800; color: #4E9A6C; margin-bottom: 16px;')}>
                 {huidig ? '' : plan.proefperiode}
@@ -382,7 +369,6 @@ export default function HoeHetWerktPage() {
                 <button
                   type="button"
                   onClick={() => kiesPlan(plan)}
-                  disabled={Boolean(proefBezig)}
                   style={css(`
                     cursor: pointer;
                     box-sizing: border-box;
@@ -397,10 +383,9 @@ export default function HoeHetWerktPage() {
                     font-size: 15px;
                     font-weight: 800;
                     text-align: center;
-                    opacity: ${proefBezig && proefBezig !== plan.tier ? '0.6' : '1'};
                   `)}
                 >
-                  {proefBezig === plan.tier ? 'Bezig…' : plan.ctaTekst}
+                  {plan.ctaTekst}
                 </button>
               ) : (
                 <div style={css('box-sizing: border-box; min-height: 56px; margin-bottom: 26px;')} aria-hidden="true" />
@@ -431,12 +416,6 @@ export default function HoeHetWerktPage() {
           );
         })}
       </div>
-
-      {proefFout && (
-        <div style={css('max-width: 1180px; margin: -12px auto 0; padding: 0 clamp(16px, 4vw, 24px) 30px;')}>
-          <Notice tone="fout">{proefFout}</Notice>
-        </div>
-      )}
 
       <div style={css('background: #2C4A5E; padding: clamp(36px, 5vw, 66px) 0;')}>
         <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px); display: flex; align-items: center; justify-content: space-between; gap: 26px; flex-wrap: wrap;')}>
