@@ -12,19 +12,22 @@
 //  - Inloggen of een account aanmaken start NOOIT een proefperiode, Stripe of
 //    abonnement. Een anonieme bezoeker kiest hier alleen, logt in of maakt een
 //    account aan via de centrale Collectief-overlay en komt hier terug.
-//  - Deze pagina roept in deze fase GEEN start_trial aan en nergens een
-//    betaalflow: "Doorgaan naar betalen" toont voorlopig alleen een veilige,
-//    uitleggende tussenstand. De echte Checkout komt in een latere fase.
+//  - Deze pagina roept NOOIT start_trial aan. "Doorgaan naar betalen" roept
+//    uitsluitend de Edge Function create-checkout-session aan (alleen plan +
+//    akkoord) en stuurt de browser naar de teruggegeven Stripe Checkout-url.
+//    De terugkeer uit Stripe geeft nooit toegang: die komt uitsluitend via de
+//    geverifieerde Stripe-webhook. Deze pagina schrijft nooit tier, toegang of
+//    proefgegevens.
 //  - Of er een gratis proefperiode beschikbaar is, komt later van de server
 //    (prop `aanbod`). Zonder serverinformatie tonen we de standaardtekst; de
 //    frontend leidt dit nooit zelf af uit het profiel.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { Button, Notice } from '../../shared/ui/index.js';
 import { useApp } from '../kompas-app/useKompasApp.js';
 import { ABONNEMENTEN } from '../../data/abonnementen.js';
-import { leesCheckoutResultaat, wisCheckoutResultaat } from '../../data/services/billing.js';
+import { leesCheckoutResultaat, startCheckout, wisCheckoutResultaat } from '../../data/services/billing.js';
 import {
   INTENTIES,
   bewaarIntentie,
@@ -73,7 +76,10 @@ function Punten({ items }) {
 export function AbonnerenBevestiging({ intentie, aanbod }) {
   const app = useApp();
   const [akkoord, setAkkoord] = useState(false);
-  const [voorlopig, setVoorlopig] = useState(false);
+  const [bezig, setBezig] = useState(false);
+  const [fout, setFout] = useState('');
+  // Slot tegen dubbelklikken: werkt direct, ook vóórdat de volgende render er is.
+  const bezigSlot = useRef(false);
 
   const { tier } = INTENTIES[intentie];
   const info = ABONNEMENTEN[tier];
@@ -90,9 +96,59 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
     }
   }, [app.isLoggedIn, profiel && profiel.id]);
 
+  // Terug via de browserknop vanaf Stripe kan deze pagina uit de cache komen
+  // met een nog vergrendelde knop: geef de knop dan weer vrij.
+  useEffect(() => {
+    const bijTerugkeer = (e) => {
+      if (e && e.persisted) {
+        bezigSlot.current = false;
+        setBezig(false);
+      }
+    };
+
+    window.addEventListener('pageshow', bijTerugkeer);
+
+    return () => window.removeEventListener('pageshow', bijTerugkeer);
+  }, []);
+
   const naarAbonnementen = () => {
     wisIntentie();
     app.goAbonnementen();
+  };
+
+  // Start Stripe Checkout. Alleen plan + akkoord gaan naar de server; die
+  // bepaalt trial, prijs en rechten. Bij succes navigeert startCheckout zelf
+  // naar de gevalideerde Checkout-url en blijft de knop vergrendeld.
+  const startBetalen = async () => {
+    if (!akkoord || bezigSlot.current || !app.isLoggedIn || !profiel) {
+      return;
+    }
+
+    bezigSlot.current = true;
+    setBezig(true);
+    setFout('');
+
+    let res = null;
+
+    try {
+      res = await startCheckout(intentie, { voorwaardenAkkoord: akkoord });
+    } catch (e) {
+      res = null;
+    }
+
+    if (res && res.url && !res.error) {
+      return;
+    }
+
+    bezigSlot.current = false;
+    setBezig(false);
+    setFout((res && res.error) || 'Het openen van de betaalpagina is niet gelukt. Er is niets in rekening gebracht. Probeer het zo opnieuw.');
+
+    // Sessie verlopen: terug naar de centrale Collectief-login; de keuze blijft bewaard.
+    if (res && res.code === 'niet_ingelogd') {
+      bewaarIntentie(intentie);
+      app.openAuth(`Log opnieuw in om verder te gaan met ${info.naam}.`);
+    }
   };
 
   const voorwaardenLinks = (
@@ -200,7 +256,8 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
     );
   }
 
-  // 4. De bevestigingsstap. De knop activeert in deze fase niets.
+  // 4. De bevestigingsstap: pas na het vinkje start "Doorgaan naar betalen"
+  // Stripe Checkout (de server beslist daar over trial, prijs en rechten).
   return (
     <div style={KAART}>
       {samenvatting}
@@ -208,21 +265,26 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
         <input
           type="checkbox"
           checked={akkoord}
+          disabled={bezig}
           onChange={(e) => setAkkoord(e.target.checked)}
           style={css('flex-shrink: 0; width: 20px; height: 20px; margin: 2px 0 0; accent-color: #4E9A6C;')}
         />
         <span>{akkoordTekst}</span>
       </label>
       <div style={KNOPPEN}>
-        <Button onClick={() => setVoorlopig(true)} disabled={!akkoord}>Doorgaan naar betalen</Button>
-        <Button variant="outline" onClick={naarAbonnementen}>Niet nu</Button>
+        <Button onClick={startBetalen} disabled={!akkoord || bezig}>
+          {bezig ? 'Bezig met doorsturen…' : 'Doorgaan naar betalen'}
+        </Button>
+        <Button variant="outline" onClick={naarAbonnementen} disabled={bezig}>Niet nu</Button>
       </div>
-      {voorlopig && (
+      {bezig && (
         <div role="status">
-          <Notice tone="info">
-            Betalen is nog niet beschikbaar. Er is niets gestart en niets in rekening gebracht; uw account is niet
-            gewijzigd. Uw keuze voor {info.naam} is onthouden.
-          </Notice>
+          <Notice tone="info">U wordt doorgestuurd naar de beveiligde betaalpagina van Stripe. Er is nog niets in rekening gebracht.</Notice>
+        </div>
+      )}
+      {fout && (
+        <div role="alert">
+          <Notice tone="fout">{fout}</Notice>
         </div>
       )}
     </div>
