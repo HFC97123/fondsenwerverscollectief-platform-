@@ -126,6 +126,21 @@ export function tierVan(profiel) {
   return actief || proefActiefVan(profiel) ? ruw : 'free';
 }
 
+// Het actieve (door de server vastgelegde) Pro- of Premium-abonnement in het
+// profiel: 'pro', 'premium' of null. Alleen lezen. Een lopende interne
+// proefperiode zonder actief abonnement (subscription_active) telt hier bewust
+// niet: dit toont uitsluitend een abonnement dat de Stripe-webhook heeft
+// bevestigd, zodat de terugkeer uit Checkout nooit zelf iets "activeert".
+export function actiefAbonnementVan(profiel) {
+  if (!profiel || profiel.subscription_active !== true) {
+    return null;
+  }
+
+  const t = profiel.subscription_tier;
+
+  return t === 'pro' || t === 'premium' ? t : null;
+}
+
 // Is er een lopende (nog niet verstreken) proefperiode? Een actief betaald
 // abonnement telt hier niet als "proef" (dan is de proefperiode al
 // overgegaan in een echt abonnement, of nooit relevant geweest).

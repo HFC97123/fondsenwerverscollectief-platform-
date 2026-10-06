@@ -5,11 +5,12 @@
 export let supabase = null;
 export const isConfigured = true;
 
-export const log = { invoke: [], andere: [] };
+export const log = { invoke: [], andere: [], profielLees: 0 };
 
 export function __reset() {
   log.invoke.length = 0;
   log.andere.length = 0;
+  log.profielLees = 0;
 }
 
 export function __zetSupabase(volgende) {
@@ -17,7 +18,9 @@ export function __zetSupabase(volgende) {
 }
 
 // Maakt een nep-client. `antwoord(naam, opties)` geeft { data, error } terug.
-export function maakClient(antwoord) {
+// `profielen` (optioneel): functie die het profiel teruggeeft voor een LEZING van
+// public.profiles (select().eq().single()). Schrijven blijft een fout.
+export function maakClient(antwoord, profielen) {
   const spion = (pad) => new Proxy(function () {}, {
     get: (_, p) => spion(`${pad}.${String(p)}`),
     apply: () => {
@@ -33,7 +36,26 @@ export function maakClient(antwoord) {
         return antwoord(naam, opties);
       },
     },
-    from: spion('from'),
+    from: (tabel) => {
+      if (tabel === 'profiles' && typeof profielen === 'function') {
+        const keten = {
+          select: () => keten,
+          eq: () => keten,
+          single: async () => {
+            log.profielLees += 1;
+            return { data: profielen(), error: null };
+          },
+          update: () => { log.andere.push('profiles.update'); throw new Error('ONVERWACHTE schrijfactie op profiles'); },
+          upsert: () => { log.andere.push('profiles.upsert'); throw new Error('ONVERWACHTE schrijfactie op profiles'); },
+          insert: () => { log.andere.push('profiles.insert'); throw new Error('ONVERWACHTE schrijfactie op profiles'); },
+          delete: () => { log.andere.push('profiles.delete'); throw new Error('ONVERWACHTE schrijfactie op profiles'); },
+        };
+
+        return keten;
+      }
+
+      return spion('from')(tabel);
+    },
     rpc: spion('rpc'),
     auth: spion('auth'),
     storage: spion('storage'),

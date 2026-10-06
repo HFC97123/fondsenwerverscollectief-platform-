@@ -58,7 +58,10 @@ async function ctxMake(browser, state) {
       if (p === '/auth/v1/recover') return j({});
       if (p === '/rest/v1/profiles') {
         const acc = route.request().headers()['accept'] || '';
-        return acc.includes('vnd.pgrst.object') ? j(PROFILE) : j([PROFILE]);
+        // state.pro = de (nagebootste) Stripe-webhook heeft het abonnement vastgelegd
+        const prof = state.pro ? { ...PROFILE, subscription_tier: 'pro', subscription_active: true, subscription_status: 'trialing', stripe_customer_id: 'cus_mock', stripe_subscription_id: 'sub_mock', trial_started_at: '2026-10-06T18:00:51Z', trial_ends_at: '2099-10-13T18:00:51Z' } : PROFILE;
+        if (state.pro) state.proGelezen = (state.proGelezen || 0) + 1;
+        return acc.includes('vnd.pgrst.object') ? j(prof) : j([prof]);
       }
       if (p.startsWith('/rest/v1/')) return j([]);
       return j({});
@@ -214,6 +217,61 @@ await scenario('J checkout=success geeft geen rechten', async (page, c) => {
   ok(t.includes('wordt door Stripe verwerkt') && t.includes('Er is nog niets geactiveerd'), 'neutrale succes-melding');
   ok(!/Pro-abonnement actief|Premium-abonnement actief/.test(t), 'geen rechten uit de redirect');
   ok(c.fn.length === 0, 'geen extra checkout');
+});
+
+// K. success, maar de webhook komt later dan de terugkeer: de melding volgt het PROFIEL
+await scenario('K success: webhook later dan de terugkeer', async (page, c) => {
+  await naarBevestiging(page, 'PRO', 'Start 7 dagen gratis');
+  ok(JSON.parse(await store(page)).intentie === 'PRO', 'PRO-intent bewaard vóór de betaling');
+  await page.evaluate(() => { window.location.hash = '#/kompas/account?checkout=success'; }); await sleep(900);
+  let t = await page.locator('body').innerText();
+  ok(t.includes('wordt door Stripe verwerkt') && t.includes('Er is nog niets geactiveerd'), 'webhook nog niet binnen: neutrale verwerkingsmelding');
+  ok(!t.includes('abonnement is actief'), 'geen succes uit de redirect alleen');
+  ok(JSON.parse(await store(page)).intentie === 'PRO', 'intent blijft staan zolang het profiel niets toont');
+  c.state.pro = true; // de webhook heeft het abonnement vastgelegd
+  await page.waitForFunction(() => document.body.innerText.includes('Uw Pro-abonnement is actief.'), null, { timeout: 15000 });
+  t = await page.locator('body').innerText();
+  ok(!t.includes('Er is nog niets geactiveerd') && !t.includes('wordt door Stripe verwerkt'), 'tegenstrijdige verwerkingsmelding is verdwenen');
+  ok(/membership\s*pro/i.test(t), 'Membership toont Pro (uit het profiel)');
+  ok(await store(page) === null, 'koopintentie opgeruimd zodra het profiel Pro bevestigt');
+  const gelezen = c.state.proGelezen;
+  await sleep(4000);
+  ok(c.state.proGelezen === gelezen, 'na bevestiging stopt het opnieuw lezen van het profiel');
+  ok(c.fn.length === 0 && c.stripe.length === 0, 'geen extra checkout');
+});
+await scenario('L success: webhook al verwerkt bij het laden', async (page, c) => {
+  await naarBevestiging(page, 'PRO', 'Start 7 dagen gratis');
+  c.state.pro = true;
+  await page.goto(ORIGIN + '/?terugkeer=1#/kompas/account?checkout=success'); await page.waitForLoadState('networkidle'); await sleep(1200);
+  const t = await page.locator('body').innerText();
+  ok(t.includes('Uw Pro-abonnement is actief.'), 'directe, juiste succesmelding');
+  ok(!t.includes('Er is nog niets geactiveerd') && !t.includes('wordt door Stripe verwerkt'), 'geen tegenstrijdige verwerkingsmelding');
+  ok(/membership\s*pro/i.test(t), 'Membership toont Pro');
+  ok(await store(page) === null, 'koopintentie opgeruimd');
+  ok(!(await hashOf(page)).includes('checkout='), 'checkout-parameter uit de adresbalk gehaald');
+});
+await scenario('M success zonder account-bevestiging: geen toegang uit de redirect', async (page, c) => {
+  await naarBevestiging(page, 'PRO', 'Start 7 dagen gratis');
+  await page.goto(ORIGIN + '/?terugkeer=2#/kompas/account?checkout=success'); await page.waitForLoadState('networkidle'); await sleep(1200);
+  const t = await page.locator('body').innerText();
+  ok(t.includes('Er is nog niets geactiveerd') && !t.includes('abonnement is actief'), 'profiel free: alleen de verwerkingsmelding');
+  ok(/membership\s*free/i.test(t), 'Membership blijft Free zolang het profiel dat zegt');
+  ok(JSON.parse(await store(page)).intentie === 'PRO', 'intent niet opgeruimd door de redirect alleen');
+});
+// N. cancel: terugkeer is veilig, intent blijft, opnieuw proberen werkt
+await scenario('N cancel: intent blijft en opnieuw proberen werkt', async (page, c) => {
+  await naarBevestiging(page, 'PRO', 'Start 7 dagen gratis');
+  await page.goto(ORIGIN + '/?terugkeer=3#/kompas/abonneren?intent=PRO&checkout=cancelled'); await page.waitForLoadState('networkidle'); await sleep(1200);
+  const t = await page.locator('body').innerText();
+  ok(t.includes('De betaling is niet afgerond. Er is niets in rekening gebracht en er is niets geactiveerd.'), 'cancel-melding');
+  ok(JSON.parse(await store(page)).intentie === 'PRO', 'PRO-intent blijft beschikbaar');
+  ok(c.fn.length === 0, 'terugkeer start geen nieuwe checkout');
+  ok(!(await hashOf(page)).includes('checkout='), 'cancel-parameter uit de adresbalk gehaald');
+  await page.locator('input[type=checkbox]').check();
+  await page.getByRole('button', { name: 'Doorgaan naar betalen' }).click();
+  await page.waitForURL(/checkout\.stripe\.com/, { timeout: 8000 });
+  ok(c.fn.length === 1 && JSON.stringify(JSON.parse(c.fn[0].body)) === JSON.stringify({ plan: 'PRO', voorwaarden_akkoord: true }), 'opnieuw proberen: exact één aanroep met alleen plan + akkoord');
+  ok(c.state.pro !== true, 'geen tierwijziging door cancel of opnieuw proberen');
 });
 
 const mislukt = results.filter((r) => !r[0]);

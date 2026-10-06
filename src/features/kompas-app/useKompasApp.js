@@ -24,6 +24,7 @@ export function useApp() {
     isPremium: auth.isPremium,
     profile: auth.profile,
     profielProbleem: auth.profielProbleem,
+    herlaadProfiel: auth.herlaadProfiel,
     naam: auth.naam,
 
     proefActief: auth.proefActief,

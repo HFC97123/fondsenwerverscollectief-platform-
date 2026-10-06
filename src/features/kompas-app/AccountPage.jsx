@@ -12,6 +12,7 @@ import {
   wisCheckoutResultaat,
 } from '../../data/services/billing.js';
 import { bewaarOnboarding, haalAankopen, haalOnboarding } from '../../data/services/onboarding.js';
+import { useCheckoutTerugkeer } from './useCheckoutTerugkeer.js';
 
 const AANKOOP_LABEL = { cursus: 'Cursus', template: 'Template', download: 'Download', overig: 'Overig' };
 
@@ -43,6 +44,15 @@ export default function AccountPage() {
       wisCheckoutResultaat();
     }
   }, []);
+
+  // Wat er na de terugkeer getoond wordt, volgt uit het ACTUELE profiel (door
+  // de webhook bijgewerkt), niet uit de redirect. Ruimt ook de koopintentie op
+  // zodra de bedoelde toegang daadwerkelijk actief is.
+  const checkout = useCheckoutTerugkeer({
+    resultaat: checkoutResultaat,
+    profiel: app.profile,
+    herlaad: app.herlaadProfiel,
+  });
 
   const gesprekken = store.conversations || [];
   const tier = app.subscriptionTier || 'free';
@@ -132,9 +142,19 @@ export default function AccountPage() {
           opnieuw of neem contact met ons op.
         </Notice>
       )}
-      {checkoutResultaat === 'success' && (
+      {checkout.status === 'bevestigd' && (
+        <Notice tone="succes">
+          Uw {TIER_LABEL[checkout.tier]}-abonnement is actief.
+        </Notice>
+      )}
+      {checkout.status === 'wacht' && (
         <Notice tone="info">
           Uw aanvraag is ontvangen en wordt door Stripe verwerkt. Uw abonnement wordt bijgewerkt zodra Stripe dit heeft bevestigd; dit kan even duren. Er is nog niets geactiveerd.
+        </Notice>
+      )}
+      {checkout.status === 'wacht_te_lang' && (
+        <Notice tone="info">
+          De verwerking door Stripe duurt langer dan verwacht. Ververs deze pagina over enkele minuten: uw abonnement wordt bijgewerkt zodra Stripe dit heeft bevestigd. Er is nog niets geactiveerd.
         </Notice>
       )}
       {checkoutResultaat === 'cancelled' && (

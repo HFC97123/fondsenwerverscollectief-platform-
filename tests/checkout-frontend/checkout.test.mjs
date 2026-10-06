@@ -351,5 +351,147 @@ huidig = 'K koopintentie';
   ok(k.intentieVoorTier('pro') === 'PRO' && k.intentieVoorTier('free') === null, 'intentieVoorTier');
 }
 
+// ---- L. terugkeer uit Checkout: statusbewuste melding + koopintentie-opruiming (fase 2E) -------------------------
+huidig = 'L terugkeer-status';
+{
+  const { useCheckoutTerugkeer } = await import('../../src/features/kompas-app/useCheckoutTerugkeer.js');
+  const profielSvc = await import('../../src/data/services/profile.js');
+  const k = await import('../../src/data/services/koopintentie.js');
+  const { actiefAbonnementVan } = profielSvc;
+  // timers in de hook updaten React-state: binnen act() laten verlopen
+  const tijd = (ms) => act(async () => { await sleep(ms); });
+  const UID = PROFIEL.id;
+  const GRATIS = { id: UID, subscription_tier: 'free', subscription_active: false, trial_ends_at: null };
+  const PRO_ACTIEF = { id: UID, subscription_tier: 'pro', subscription_active: true, trial_ends_at: '2099-01-01T00:00:00Z' };
+  const PREMIUM_ACTIEF = { id: UID, subscription_tier: 'premium', subscription_active: true, trial_ends_at: '2099-01-01T00:00:00Z' };
+  const OUDE_PROEF = { id: UID, subscription_tier: 'pro', subscription_active: false, trial_ends_at: '2099-01-01T00:00:00Z' };
+
+  // L1. de profielregel: alleen een door de server vastgelegd, actief abonnement
+  ok(actiefAbonnementVan(null) === null && actiefAbonnementVan(undefined) === null && actiefAbonnementVan({}) === null, 'geen profiel -> geen abonnement');
+  ok(actiefAbonnementVan(GRATIS) === null, 'free -> null');
+  ok(actiefAbonnementVan(PRO_ACTIEF) === 'pro' && actiefAbonnementVan(PREMIUM_ACTIEF) === 'premium', 'actief pro/premium herkend');
+  ok(actiefAbonnementVan(OUDE_PROEF) === null, 'oude interne proef zonder actief abonnement telt niet als bevestigd');
+  ok(actiefAbonnementVan({ ...PRO_ACTIEF, subscription_tier: 'gold' }) === null && actiefAbonnementVan({ ...PRO_ACTIEF, subscription_active: 'true' }) === null, 'onbekende tier / niet-boolean actief -> null');
+
+  // Probe-component: toont wat de hook teruggeeft; de ouder houdt het profiel bij
+  // en `herlaad` verwerkt het verse profiel, zoals AuthProvider.herlaadProfiel.
+  let herlaadAantal = 0;
+  let serverProfiel = GRATIS;
+  const gedrag = { interval: 15, max: 4 };
+
+  function Wrapper({ resultaat, begin }) {
+    const [profiel, setProfiel] = React.useState(begin);
+    const r = useCheckoutTerugkeer({
+      resultaat,
+      profiel,
+      herlaad: async () => { herlaadAantal += 1; setProfiel(serverProfiel); },
+      intervalMs: gedrag.interval,
+      maxPogingen: gedrag.max,
+    });
+
+    return React.createElement('div', { id: 'probe', 'data-status': String(r.status), 'data-tier': r.tier || '' });
+  }
+  const probe = () => ({ status: container.querySelector('#probe').dataset.status, tier: container.querySelector('#probe').dataset.tier });
+  const nieuw = (app, profielen) => {
+    herlaadAantal = 0;
+    client.__reset();
+    dom.window.localStorage.clear();
+    client.__zetSupabase(client.maakClient(() => ({ data: null, error: null }), profielen));
+    fakeApp.__zetApp(app || INGELOGD);
+  };
+
+  // L2. webhook al verwerkt voor de pagina laadt: direct bevestigd, geen extra lezing
+  serverProfiel = PRO_ACTIEF;
+  nieuw(INGELOGD, () => serverProfiel);
+  await render(React.createElement(Wrapper, { resultaat: 'success', begin: PRO_ACTIEF }));
+  await tijd(80);
+  ok(probe().status === 'bevestigd' && probe().tier === 'pro', 'success + actief Pro in profiel -> bevestigd (Pro)');
+  ok(client.log.profielLees === 0 && herlaadAantal === 0, 'bevestigd: geen extra profiellezingen, geen herlaad');
+
+  serverProfiel = PREMIUM_ACTIEF;
+  nieuw(INGELOGD, () => serverProfiel);
+  await render(React.createElement(Wrapper, { resultaat: 'success', begin: PREMIUM_ACTIEF }));
+  await tijd(40);
+  ok(probe().status === 'bevestigd' && probe().tier === 'premium', 'success + actief Premium in profiel -> bevestigd (Premium)');
+
+  // L3. success zonder bevestiging in het profiel: eerst "wacht", daarna "wacht_te_lang"; het profiel wordt alleen gelezen
+  serverProfiel = GRATIS;
+  nieuw(INGELOGD, () => serverProfiel);
+  await render(React.createElement(Wrapper, { resultaat: 'success', begin: GRATIS }));
+  ok(probe().status === 'wacht', 'success + free profiel -> wacht (geen succes uit de redirect)');
+  await tijd(gedrag.interval * (gedrag.max + 4));
+  ok(probe().status === 'wacht_te_lang', 'na de wachtperiode: wacht_te_lang');
+  ok(client.log.profielLees === gedrag.max, `begrensd: precies ${gedrag.max} lezingen (was ${client.log.profielLees})`);
+  ok(herlaadAantal === 0 && client.log.andere.length === 0, 'niet bevestigd: geen herlaad en geen schrijfpad (' + client.log.andere.join(',') + ')');
+  const na = client.log.profielLees;
+  await tijd(gedrag.interval * 4);
+  ok(client.log.profielLees === na, 'na de wachtperiode wordt niet meer gelezen');
+
+  // L4. webhook komt na de terugkeer: profiel flipt, melding wordt bevestigd, lezen stopt
+  serverProfiel = GRATIS;
+  nieuw(INGELOGD, () => serverProfiel);
+  gedrag.max = 40;
+  await render(React.createElement(Wrapper, { resultaat: 'success', begin: GRATIS }));
+  await tijd(gedrag.interval * 2.5);
+  ok(probe().status === 'wacht', 'nog niet verwerkt: wacht');
+  serverProfiel = PREMIUM_ACTIEF; // de webhook is binnen
+  await tijd(gedrag.interval * 4);
+  ok(probe().status === 'bevestigd' && probe().tier === 'premium', 'na webhook: bevestigd (Premium)');
+  ok(herlaadAantal === 1, `app-toestand eenmalig ververst (herlaad ${herlaadAantal}x)`);
+  const na2 = client.log.profielLees;
+  await tijd(gedrag.interval * 4);
+  ok(client.log.profielLees === na2, 'na bevestiging stopt het lezen');
+  ok(client.log.andere.length === 0 && client.log.invoke.length === 0, 'geen schrijfpad en geen checkout-aanroep');
+  gedrag.max = 4;
+
+  // L5. geen succes-terugkeer: geen melding en geen lezing
+  nieuw(INGELOGD, () => GRATIS);
+  await render(React.createElement(Wrapper, { resultaat: null, begin: GRATIS }));
+  await tijd(gedrag.interval * 3);
+  ok(probe().status === 'null' && client.log.profielLees === 0, 'zonder ?checkout=success: geen melding, geen lezing');
+  nieuw(INGELOGD, () => GRATIS);
+  await render(React.createElement(Wrapper, { resultaat: 'cancelled', begin: GRATIS }));
+  await tijd(gedrag.interval * 3);
+  ok(probe().status === 'null' && client.log.profielLees === 0, 'cancelled: geen succes-melding, geen lezing');
+
+  // L6. opruimen stopt bij ontkoppelen
+  nieuw(INGELOGD, () => GRATIS);
+  await render(React.createElement(Wrapper, { resultaat: 'success', begin: GRATIS }));
+  await tijd(gedrag.interval * 1.5);
+  await act(async () => root.unmount());
+  root = null;
+  const na3 = client.log.profielLees;
+  await tijd(gedrag.interval * 4);
+  ok(client.log.profielLees === na3, 'na ontkoppelen geen lezingen meer');
+
+  // L7. koopintentie: alleen opruimen als het actuele profiel de bedoelde toegang toont
+  const metIntentie = async (code, resultaat, profiel) => {
+    nieuw(INGELOGD, () => profiel);
+    k.bewaarIntentie(code);
+    await render(React.createElement(Wrapper, { resultaat, begin: profiel }));
+    await tijd(30);
+    return k.leesIntentie();
+  };
+  ok((await metIntentie('PRO', 'success', PRO_ACTIEF)) === null, 'PRO-intent + actief Pro -> opgeruimd');
+  ok((await metIntentie('PREMIUM', 'success', PREMIUM_ACTIEF)) === null, 'PREMIUM-intent + actief Premium -> opgeruimd');
+  ok((await metIntentie('PRO', 'success', GRATIS)) === 'PRO', 'success-redirect alleen (profiel free) ruimt de intent NIET op');
+  ok((await metIntentie('PRO', 'success', OUDE_PROEF)) === 'PRO', 'oude interne proef (niet actief) ruimt de intent NIET op');
+  ok((await metIntentie('PREMIUM', 'success', PRO_ACTIEF)) === 'PREMIUM', 'andere dan de bedoelde tier ruimt de intent NIET op');
+  ok((await metIntentie('PRO', 'cancelled', GRATIS)) === 'PRO', 'cancelled: intent blijft beschikbaar voor opnieuw proberen');
+  ok((await metIntentie('PRO', null, PRO_ACTIEF)) === null, 'actief Pro zonder succes-parameter: oude PRO-intent toch opgeruimd (profiel is bepalend)');
+
+  // L8. bronscan: de terugkeer-hook schrijft niets en kent geen Price/trial/tier-schrijfpad
+  const root2 = process.env.REPO_ROOT || process.cwd();
+  const strip2 = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+  const hookBron = strip2(readFileSync(join(root2, 'src/features/kompas-app/useCheckoutTerugkeer.js'), 'utf8'));
+  ok(!/\.(update|upsert|insert|delete)\s*\(/.test(hookBron), 'hook: geen .update/.upsert/.insert/.delete');
+  ok(!/\.from\s*\(/.test(hookBron) && !/\.rpc\s*\(/.test(hookBron) && !/functions\.invoke/.test(hookBron), 'hook: geen .from()/.rpc()/functions.invoke (leest alleen via haalProfiel)');
+  ok(!/start_trial|startProefperiode|startCheckout/.test(hookBron), 'hook: geen start_trial/checkout');
+  ok(!/subscription_(tier|active|status)|trial_(started|ends)_at|stripe_(customer|subscription)_id/.test(hookBron), 'hook: raakt zelf geen abonnementsvelden (alleen via de leesregel in profile.js)');
+  const accountBron = strip2(readFileSync(join(root2, 'src/features/kompas-app/AccountPage.jsx'), 'utf8'));
+  ok(!/start_trial|startCheckout/.test(accountBron), 'AccountPage: geen start_trial/startCheckout');
+  ok(/checkout\.status === 'bevestigd'/.test(accountBron) && !/checkoutResultaat === 'success'\s*&&/.test(accountBron), 'AccountPage: succes-melding hangt van de profielstatus af, niet van de redirect alleen');
+}
+
 console.log(`\nCHECKOUT-FRONTEND: ${pass} geslaagd, ${fail} mislukt`);
 process.exit(fail === 0 ? 0 : 1);
