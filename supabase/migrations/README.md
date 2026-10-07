@@ -110,3 +110,9 @@ inerte SQL-comment, zonder functioneel effect: geen enkele instructie in het
 bestand raakt `external_relatienummer` op welke tabel dan ook. Omdat het
 bestand al live is toegepast en byte-voor-byte overeenkomt met wat Supabase
 heeft geregistreerd, is dit bewust niet gecorrigeerd in het bestand zelf.)
+
+## Voorbereid, nog NIET toegepast op het live-project
+
+| Bestand | Inhoud |
+|---|---|
+| `20261007120000_production_readiness_rechten_opschonen.sql` | Rechten opschonen vóór de Stripe-livegang: EXECUTE van `start_trial` intrekken (oude kaartloze trialroute; functie en trialdata blijven bestaan), TRUNCATE/TRIGGER/REFERENCES op `profiles` en `product_aankopen` voor anon/authenticated intrekken, en de 17 oudere `admin_*`-functies niet meer voor PUBLIC/anon. Alleen GRANT/REVOKE, geen data. Test: `supabase/tests/security-cleanup/test.sql` (27 checks). Wordt pas toegepast als onderdeel van de cutover, na akkoord van de eigenaar. |
