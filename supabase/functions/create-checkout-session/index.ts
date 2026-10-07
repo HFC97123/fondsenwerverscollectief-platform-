@@ -5,9 +5,10 @@
 // Pro- of Premium-abonnement, nu met een optionele gratis Stripe-trial.
 //
 // DEFINITIEF MODEL (alles wordt door de SERVER bepaald, nooit door de client):
-//  - alle bedragen zijn EXCLUSIEF btw; Stripe Tax is niet ingeschakeld
-//    (automatic_tax staat expliciet uit) en wordt alleen na apart akkoord
-//    ingeschakeld;
+//  - alle bedragen zijn EXCLUSIEF btw. Stripe Tax (automatic_tax) berekent de
+//    toepasselijke belasting en toont basisbedrag, belasting en totaal op de
+//    Stripe Checkout-pagina; Stripe is de enige bron van waarheid voor belasting.
+//    Er staat nergens in de code een btw-percentage of een bedrag incl. btw;
 //  - PRO     EUR 12 per maand excl. btw, trial 7 dagen als nog beschikbaar;
 //  - PREMIUM EUR 39 per maand excl. btw, trial 1 dag (beoogd exact 24 uur) als
 //            nog beschikbaar;
@@ -71,8 +72,8 @@ function json(body: unknown, status = 200) {
 // daadwerkelijke price-id's komen UITSLUITEND uit environment-secrets; hun
 // bedrag/valuta/interval wordt bij elk verzoek tegen deze verwachting
 // gecontroleerd, zodat een verwisselde of foute secret nooit een verkeerd
-// bedrag kan afrekenen. Bedragen zijn het basisbedrag EXCLUSIEF btw (er is
-// geen Stripe Tax ingeschakeld; fiscaal beleid is nog open).
+// bedrag kan afrekenen. Bedragen zijn het basisbedrag EXCLUSIEF btw; Stripe Tax
+// rekent de belasting er bij het afrekenen bovenop (zie controleBelastinggedrag).
 // Test-mode: deze secrets bevatten in de testfase Stripe TEST-price-id's.
 type Plan = 'PRO' | 'PREMIUM';
 
@@ -87,6 +88,35 @@ const PLANNEN: Record<Plan, { tier: 'pro' | 'premium'; priceEnv: string; bedragC
 // Stripe-statussen waarin er al een lopend abonnement is: dan geen tweede
 // Checkout (voorkomt dubbele abonnementen en twee gelijktijdige trials).
 const LOPENDE_STATUSSEN = new Set(['trialing', 'active', 'past_due', 'unpaid', 'paused']);
+
+// Stripe Tax: het basisbedrag (EUR 12 / EUR 39) moet EXCLUSIEF belasting zijn.
+// Staat een Price (of, bij tax_behavior 'unspecified', de standaard in de Tax
+// settings van Stripe) op 'inclusive' of 'inferred_by_currency' (= inclusief
+// voor EUR), dan zou Stripe de btw UIT het basisbedrag halen en ontvangen we
+// minder dan EUR 12 / EUR 39. Dat is een stille financiële fout, dus: weigeren
+// met een duidelijke logregel en geen Checkout. Er wordt niets gewijzigd bij
+// Stripe; de Price wordt nooit aangepast.
+// Geeft null terug als alles klopt, anders een korte reden voor de log.
+// deno-lint-ignore no-explicit-any
+async function controleBelastinggedrag(stripe: any, taxBehavior: string | null | undefined): Promise<string | null> {
+  if (taxBehavior === 'exclusive') {
+    return null;
+  }
+
+  if (taxBehavior === 'inclusive') {
+    return 'price_tax_behavior_inclusive';
+  }
+
+  // 'unspecified' (of onbekend): Stripe valt terug op de standaard uit de Tax
+  // settings van dit Stripe-account (Sandbox en Live hebben elk eigen settings).
+  const instellingen = await stripe.tax.settings.retrieve();
+
+  if (instellingen?.status !== 'active') {
+    return 'tax_settings_niet_actief';
+  }
+
+  return instellingen?.defaults?.tax_behavior === 'exclusive' ? null : 'tax_default_niet_exclusive';
+}
 
 // Een nog openstaande Checkout-sessie van dezelfde keuze wordt hergebruikt
 // (dubbelklik/refresh) zolang hij niet ouder is dan dit aantal seconden.
@@ -249,11 +279,19 @@ Deno.serve(async (req) => {
       return json({ error: 'De betaalfunctie is niet goed geconfigureerd.' }, 500);
     }
 
-    // Alleen voor de Sandbox-/livegang-controle van de btw-instelling: hoe is
-    // dit Price technisch geconfigureerd? (Geen geheimen; wijzigt niets.)
+    // Hoe is dit Price technisch geconfigureerd? (Geen geheimen; wijzigt niets.)
     console.info('create-checkout-session: price-config', { plan, tax_behavior: price.tax_behavior ?? 'onbekend', livemode: price.livemode });
+
+    // Stripe Tax: het basisbedrag moet exclusief belasting zijn (zie boven).
+    const belastingProbleem = await controleBelastinggedrag(stripe, price.tax_behavior);
+
+    if (belastingProbleem) {
+      console.error(`create-checkout-session: Stripe Tax niet goed ingesteld voor plan "${plan}" (${belastingProbleem}); geen Checkout`);
+
+      return json({ error: 'De betaalfunctie is niet goed geconfigureerd.' }, 500);
+    }
   } catch (err) {
-    console.error('create-checkout-session: Stripe-fout bij controleren price', String(err));
+    console.error('create-checkout-session: Stripe-fout bij controleren price of Tax-instellingen', String(err));
 
     return json({ error: 'Kon de betaalpagina niet aanmaken.' }, 502);
   }
@@ -400,6 +438,9 @@ Deno.serve(async (req) => {
   const hergebruik = open.find(
     (s) =>
       s.url &&
+      // Alleen een sessie MET Stripe Tax hergebruiken: een nog open sessie van
+      // vóór de invoering van Stripe Tax wordt verlopen en opnieuw aangemaakt.
+      s.automatic_tax?.enabled === true &&
       s.metadata?.supabase_user_id === user.id &&
       s.metadata?.plan === plan &&
       s.metadata?.trial_granted === String(metTrial) &&
@@ -465,9 +506,17 @@ Deno.serve(async (req) => {
     success_url: `${basis}/#/kompas/account?checkout=success`,
     cancel_url: `${basis}/#/kompas/abonneren?intent=${plan}&checkout=cancelled`,
     locale: 'nl',
-    // Prijzen zijn exclusief btw; Stripe Tax is niet ingeschakeld en wordt
-    // alleen na apart akkoord aangezet.
-    automatic_tax: { enabled: false },
+    // Prijzen zijn exclusief belasting. Stripe Tax berekent de belasting op de
+    // Checkout-pagina (basis, belasting, totaal) aan de hand van het factuuradres:
+    //  - billing_address_collection=required: het adres is altijd nodig;
+    //  - customer_update.address=auto: het ingevulde adres wordt op de bestaande
+    //    Stripe Customer bewaard/bijgewerkt (verplicht voor een bestaande klant,
+    //    anders kan Stripe het adres niet gebruiken). Alleen het adres; naam en
+    //    overige klantgegevens blijven ongemoeid.
+    // Geen btw-percentage of bedrag incl. btw in onze code: Stripe is de bron.
+    automatic_tax: { enabled: true },
+    billing_address_collection: 'required',
+    customer_update: { address: 'auto' },
     metadata,
     subscription_data: { metadata },
   };

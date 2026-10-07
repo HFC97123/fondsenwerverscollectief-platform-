@@ -493,5 +493,97 @@ huidig = 'L terugkeer-status';
   ok(/checkout\.status === 'bevestigd'/.test(accountBron) && !/checkoutResultaat === 'success'\s*&&/.test(accountBron), 'AccountPage: succes-melding hangt van de profielstatus af, niet van de redirect alleen');
 }
 
+
+// ---- M. Customer Portal: "Abonnement beheren" -> stripe-portal -----------------------------------------
+{
+  huidig = 'M Customer Portal';
+  const { openBeheerportaal, isStripePortalUrl } = billing;
+  const PORTAL_URL = 'https://billing.stripe.com/p/session/test_YWNjdF8xTQ';
+
+  // M0. url-validatie: alleen https op billing.stripe.com
+  ok(isStripePortalUrl(PORTAL_URL), 'echte Portal-url is geldig');
+  for (const slecht of ['http://billing.stripe.com/p/x', 'https://evil.example/p/x', 'https://billing.stripe.com.evil.com/x', 'https://user:pw@billing.stripe.com/x', 'javascript:alert(1)', 'data:text/html,hi', '//billing.stripe.com/x', 'billing.stripe.com/x', '', null, undefined, 42, {}, 'https://checkout.stripe.com/c/pay/x', 'https://stripe.com/x']) {
+    ok(!isStripePortalUrl(slecht), `Portal-url ongeldig: ${String(slecht)}`);
+  }
+  ok(!isStripeCheckoutUrl(PORTAL_URL), 'een Portal-url is geen geldige Checkout-url (en andersom)');
+
+  // M1. succes: aanroep stripe-portal zonder enige klantinformatie, daarna redirect
+  opnieuw(() => ({ data: { url: PORTAL_URL }, error: null }));
+  let r = await openBeheerportaal();
+  ok(r.url === PORTAL_URL && r.error === null && r.status === 200, 'succes: url, geen fout');
+  ok(client.log.invoke.length === 1 && client.log.invoke[0].naam === 'stripe-portal', 'precies één aanroep, naar stripe-portal');
+  ok(JSON.stringify(client.log.invoke[0].opties) === '{"body":{}}', 'er wordt NIETS meegestuurd (geen klant-id, user-id of return_url): body = {}');
+  ok(navigaties.length === 1 && navigaties[0] === PORTAL_URL, 'redirect naar de gevalideerde Portal-url');
+  ok(client.log.andere.length === 0 && client.log.profielLees === 0, 'geen enkele andere Supabase-aanroep (geen profiel-lezing/-schrijfactie, geen start_trial)');
+
+  // M2. geen Stripe-klant: nette functionele melding van de server, geen redirect
+  opnieuw(() => httpFout(409, { error: 'Er is nog geen abonnement gekoppeld aan dit account, dus er valt niets te beheren.', code: 'geen_klant' }));
+  r = await openBeheerportaal();
+  ok(r.url === null && r.code === 'geen_klant' && r.status === 409 && /geen abonnement gekoppeld/.test(r.error), 'geen_klant: servermelding wordt getoond');
+  ok(navigaties.length === 0 && client.log.andere.length === 0, 'geen redirect, geen andere aanroep');
+
+  // M3. niet ingelogd / sessie verlopen
+  opnieuw(() => httpFout(401, { error: 'Niet ingelogd.' }));
+  r = await openBeheerportaal();
+  ok(r.url === null && r.code === 'niet_ingelogd' && r.status === 401 && /sessie is verlopen/.test(r.error) && navigaties.length === 0, '401 -> sessie-verlopen-melding, geen redirect');
+
+  // M4. Stripe-/serverfout
+  opnieuw(() => httpFout(502, { error: 'Het beheerscherm kon niet worden geopend. Probeer het later opnieuw.' }));
+  r = await openBeheerportaal();
+  ok(r.url === null && r.status === 502 && /kon niet worden geopend/.test(r.error) && navigaties.length === 0, '502 -> nette melding, geen redirect');
+  opnieuw(() => httpFout(500, null));
+  r = await openBeheerportaal();
+  ok(r.url === null && /Uw abonnement en uw toegang zijn niet gewijzigd/.test(r.error) && navigaties.length === 0, 'fout zonder body -> eigen veilige melding (abonnement/toegang niet gewijzigd)');
+  opnieuw(async () => { throw new Error('netwerk weg'); });
+  r = await openBeheerportaal();
+  ok(r.url === null && /niet gewijzigd/.test(r.error) && navigaties.length === 0, 'netwerkfout -> veilige melding, geen redirect');
+
+  // M5. ongeldige of vreemde url wordt NOOIT geopend
+  for (const url of ['https://evil.example/portal', 'http://billing.stripe.com/p/x', 'https://checkout.stripe.com/c/pay/x', 'javascript:alert(1)', '', null, undefined]) {
+    opnieuw(() => ({ data: { url }, error: null }));
+    r = await openBeheerportaal();
+    ok(r.url === null && r.code === 'ongeldige_url' && navigaties.length === 0, `ongeldige url ${String(url)} -> geen redirect`);
+  }
+  opnieuw(() => ({ data: null, error: null })); r = await openBeheerportaal(); ok(r.url === null && navigaties.length === 0, 'lege respons -> geen redirect');
+
+  // M6. dubbelklik: één verzoek; daarna is een nieuwe aanroep weer mogelijk
+  let aanroepen = 0;
+  opnieuw(async () => { aanroepen += 1; await sleep(20); return { data: { url: PORTAL_URL }, error: null }; });
+  const [p1, p2, p3] = [openBeheerportaal(), openBeheerportaal(), openBeheerportaal()];
+  const [u1, u2, u3] = await Promise.all([p1, p2, p3]);
+  ok(aanroepen === 1 && client.log.invoke.length === 1, 'dubbelklik/triple-klik: slechts één stripe-portal-aanroep');
+  ok(u1.url === PORTAL_URL && u2.url === PORTAL_URL && u3.url === PORTAL_URL && navigaties.length === 1, 'alle klikken krijgen dezelfde uitkomst, één redirect');
+  await openBeheerportaal();
+  ok(aanroepen === 2, 'na afronding kan opnieuw (guard wordt vrijgegeven)');
+  opnieuw(async () => { throw new Error('x'); });
+  await openBeheerportaal(); await openBeheerportaal();
+  ok(client.log.invoke.length === 2, 'ook na een fout wordt de guard vrijgegeven');
+
+  // M7. geen Supabase-koppeling
+  opnieuw(GOED);
+  client.__zetSupabase(null);
+  r = await openBeheerportaal();
+  ok(r.url === null && r.code === 'niet_geconfigureerd' && navigaties.length === 0, 'geen Supabase -> nette melding, geen redirect');
+  client.__zetSupabase(client.maakClient(GOED));
+
+  // M8. bronscans: de portal-flow schrijft nooit rechten en kent geen klant-id uit de browser
+  const root3 = process.env.REPO_ROOT || process.cwd();
+  const strip3 = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+  const billingBron = strip3(readFileSync(join(root3, 'src/data/services/billing.js'), 'utf8'));
+  const i0 = billingBron.indexOf('export function openBeheerportaal');
+  const i1 = billingBron.indexOf('export function leesCheckoutResultaat');
+  const portalBron = billingBron.slice(i0, i1);
+  ok(i0 > 0 && i1 > i0 && portalBron.includes("'stripe-portal'"), 'openBeheerportaal gevonden en roept stripe-portal aan');
+  ok(!/\.(update|upsert|insert|delete)\s*\(|\.rpc\s*\(|\.from\s*\(/.test(portalBron), 'portal-flow: geen .update/.upsert/.insert/.delete/.rpc/.from');
+  ok(!/subscription_|stripe_customer_id|stripe_subscription_id|trial_|start_trial|startProefperiode|customer/i.test(portalBron.replace(/'stripe-portal'/g, '')), 'portal-flow: kent geen abonnements- of klantvelden (klant komt van de server)');
+  ok(/body:\s*\{\s*\}/.test(portalBron), 'portal-flow: body is een leeg object');
+  ok(/navigatie\.naar\(url\)/.test(portalBron) && !/window\.location\.href\s*=/.test(billingBron), 'redirect alleen via navigatie.naar na urlvalidatie (geen directe window.location.href)');
+  ok(!/roepAan/.test(billingBron), 'oude ongevalideerde roepAan-helper is verwijderd');
+  const accountBron2 = strip3(readFileSync(join(root3, 'src/features/kompas-app/AccountPage.jsx'), 'utf8'));
+  ok(/onClick=\{beheerAbonnement\}/.test(accountBron2) && /openBeheerportaal\(\)/.test(accountBron2) && /Abonnement beheren/.test(accountBron2), 'AccountPage: knop "Abonnement beheren" roept openBeheerportaal aan');
+  const beheerFn = accountBron2.slice(accountBron2.indexOf('const beheerAbonnement'), accountBron2.indexOf('return (', accountBron2.indexOf('const beheerAbonnement')));
+  ok(!/setTier|subscription_|tier\s*=|\.update|profile/i.test(beheerFn) && /setFout\(res\.error\)/.test(beheerFn), 'beheerAbonnement: toont alleen een eventuele fout; wijzigt geen tier of profiel');
+}
+
 console.log(`\nCHECKOUT-FRONTEND: ${pass} geslaagd, ${fail} mislukt`);
 process.exit(fail === 0 ? 0 : 1);

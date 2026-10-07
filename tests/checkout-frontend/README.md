@@ -14,7 +14,10 @@ Dekt: URL-validatie, niet ingelogd, geen akkoord, PRO, PREMIUM, dubbelklik,
 backendfouten (409/502/500/netwerk/401), ongeldige of ontbrekende Checkout-url,
 profielstaten, exacte request-body (alleen `plan` + `voorwaarden_akkoord`),
 bronscan op entitlement-writes, publieke routes (Free) en de ongewijzigde
-koopintentie-helpers.
+koopintentie-helpers. Sectie M dekt de Customer Portal-knop
+(`openBeheerportaal`): geen klantgegevens in het verzoek, urlvalidatie
+(`billing.stripe.com`), foutafhandeling, dubbelklik-guard en bronscans op
+entitlement-writes.
 
 ## Browsertest (Playwright, gemockte Supabase en Stripe)
 
