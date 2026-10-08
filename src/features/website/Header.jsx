@@ -25,43 +25,33 @@ const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
 const menuItemStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: #2C4A5E; cursor: pointer;');
 const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 700; color: #B4453B; cursor: pointer;');
 
-// Uitgelogd heet de trigger "Login": een tweede, bewust rustigere CTA naast
-// de solide groene "Probeer Subsidie Kompas"-pil, zodat de twee samen een
-// gebalanceerd paar vormen (gevuld + outline) in plaats van twee keer
-// dezelfde volle groene knop. Kleur is bewust exact #4E9A6C — hetzelfde
-// huisstijlgroen dat elders (o.a. HomePage.jsx) voor vetgedrukte
-// tekstlinks/CTA's wordt gebruikt — en de opmaak (padding/font-size) volgt
-// diezelfde clamp()-waarden als navKnop hierboven, voor gelijke hoogte en
-// verticale uitlijning. Het woord "Login" zelf gebruikt het brandingslettertype
-// (Newsreader, zelfde als het logo "Het Fondsenwervers Collectief") op het
-// zwaarste écht geladen gewicht (600 — Google Fonts-import in app.html laadt
-// voor Newsreader alleen 400/500/600/500-italic; 700 bestaat daar niet en zou
-// door de browser als onechte/"faux" bold worden nagebootst, wat er minder
-// verzorgd uitziet). Een subtiele -webkit-text-stroke voegt net dat beetje
-// extra gewicht toe zodat het woord duidelijk dikker oogt dan gewone 600-tekst,
-// zonder een nieuwe fontgewicht te hoeven laden — bewust beperkt tot déze knop,
-// de rest van de site/het lettertype blijft ongemoeid. De uitklap-dropdown
-// (Inloggen/Aanmelden) gebruikt bewust géén font-family hier en erft dus het
-// standaard site-lettertype (Mulish), niet Newsreader. Ingelogd blijft de
-// bestaande, rustigere pastelgroen/Newsreader-badge ongewijzigd (buiten scope
-// van deze wijziging).
+// Uitgelogd heet de trigger "Login": een rustige, witte pil met een dunne
+// lichtblauw/grijsblauwe rand en donkerblauwe tekst (zelfde marine #2C4A5E als
+// de navigatielinks), naast de solide groene "Probeer Subsidie Kompas"-pil. De
+// verticale padding en font-size volgen dezelfde clamp()-waarden als navKnop
+// hierboven, voor gelijke hoogte en uitlijning; de horizontale padding is
+// ruimer. Hover: heel lichte achtergrond en iets duidelijkere rand, zonder
+// schaduw of animatie. Het woord "Login" gebruikt het brandingslettertype
+// (Newsreader, zelfde als het logo). De uitklap-dropdown (Inloggen/Aanmelden)
+// gebruikt bewust géén font-family hier en erft dus het standaard
+// site-lettertype (Mulish). Ingelogd blijft de bestaande, rustigere
+// pastelgroen/Newsreader-badge ongewijzigd (buiten scope).
 function accountBadgeStijl(compact, hover, loggedOut) {
   if (loggedOut) {
     return css(`
       all: unset; box-sizing: border-box; cursor: pointer;
-      display: flex; align-items: center; gap: 6px;
-      padding: 10px clamp(14px, 1.6vw, 20px); border-radius: 999px;
-      background: ${hover ? 'rgba(78,154,108,0.16)' : 'rgba(78,154,108,0.08)'};
-      border: 1.5px solid #4E9A6C;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 10px clamp(20px, 2.2vw, 28px); border-radius: 999px;
+      background: ${hover ? '#F5F8FB' : '#FFFFFF'};
+      border: 1px solid ${hover ? '#A9BDD0' : '#CBD8E4'};
       font-family: 'Newsreader', serif;
       font-size: ${compact ? '13.5px' : 'clamp(13.5px, 1.2vw, 15px)'};
       font-weight: 600;
-      -webkit-text-stroke: 0.4px currentColor;
       letter-spacing: 0.1px;
-      color: #4E9A6C;
+      color: #2C4A5E;
       white-space: nowrap;
       text-align: center;
-      transition: background 0.2s ease;
+      transition: background 0.2s ease, border-color 0.2s ease;
     `);
   }
 
