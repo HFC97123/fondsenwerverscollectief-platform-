@@ -89,7 +89,13 @@ globalThis.fetch = async (url, init) => {
   }
   if (String(url).includes('/responses')) {
     world.openAi.push({ soort: 'responses', body });
-    return new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: 'MODELANTWOORD' }] }], usage: {} }), { status: 200 });
+    const modelTekst = world.modelTekst || 'MODELANTWOORD';
+    const antwoordObj = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: modelTekst }] }], usage: {} };
+    if (body.stream === true) {
+      const sse = `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: modelTekst })}\n\n` + `data: ${JSON.stringify({ type: 'response.completed', response: antwoordObj })}\n\n`;
+      return new Response(sse, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    }
+    return new Response(JSON.stringify(antwoordObj), { status: 200 });
   }
   throw new Error('onverwachte fetch ' + url);
 };

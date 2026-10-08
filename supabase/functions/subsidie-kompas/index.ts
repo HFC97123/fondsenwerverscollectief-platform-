@@ -2073,6 +2073,9 @@ type FondsCriteria = {
   // gebruiker kenmerkt (deelverzameling van themas). Leeg = onbekend: dan
   // gelden alle themas als kern (gedrag van vóór deze aanscherping).
   kernThemas?: string[];
+  // Kernthema's plus alleen hun directe synoniemen (zonder het brede sociale
+  // domein); wordt gevuld door breidThemasUit().
+  kernDirect?: string[];
   doelgroepen: string[];
   regios: string[];
   locatieTekst: string;
@@ -2391,6 +2394,13 @@ function beoordeelKandidaat(
     } else if (criteria.kernThemas?.length && !exact(themas, criteria.kernThemas).length) {
       // Overlap alleen op bijkomende/overkoepelende thema's is geen bewijs van inhoudelijke aansluiting.
       uitsluiting = 'thema sluit niet aan bij de kern van het project';
+    } else if (
+      criteria.kernDirect?.length &&
+      !exact(themas, criteria.kernDirect).length &&
+      themas.some((t) => !exact([t], [...THEMA_ALGEMEEN_SOCIAAL, ...criteria.themas]).length)
+    ) {
+      // Sluit alleen aan via het brede sociale domein, maar heeft ook themas met een andere focus.
+      uitsluiting = 'thema sluit niet aan bij de kern van het project (alleen algemeen sociaal, met een andere focus)';
     }
   } else if (criteria.doelgroepen.length && !doelgroepen.length) {
     uitsluiting = 'doelgroep onbekend: niet aantoonbaar passend';
@@ -2466,6 +2476,113 @@ function matchSignalenUitCriteria(c: FondsCriteria): MatchSignalen {
 // Beoordeelt de VOLLEDIGE pool (alle toegangsniveaus) en bepaalt daarna pas
 // wat getoond mag worden. Geeft ook de aantallen terug, uitsluitend na
 // matching/uitsluiting: een uitgesloten of niet-passend record telt nergens mee.
+// Verwante thema's (2026-10-08, op verzoek van de beheerder): een thema in de
+// beheerde database hoeft niet letterlijk gelijk te zijn aan het projectthema;
+// associaties tellen ook mee zolang het inhoudelijk past. Bewust een kleine,
+// leesbare tabel (geen tweede classificatiesysteem): pas hier aan of vul aan.
+// Alleen de zachte thema-toets wordt hiermee verruimd; doelgroep, regio,
+// plaatsgebondenheid, actualiteit en de scoredrempel blijven onverkort gelden.
+const THEMA_SYNONIEMEN: string[][] = [
+  ['Cultureel erfgoed', 'Erfgoed', 'Monumentenzorg', 'Restauratie'],
+  ['Podiumkunsten', 'Theater en podiumkunsten', 'Toneelkunsten', 'Dans'],
+  ['Literatuur', 'Literaire kunsten', 'Letterkunde'],
+  ['Design', 'Vormgeving', 'Architectuur', 'Mode'],
+  ['Media', 'Media en journalistiek', 'Journalistiek'],
+  ['Natuur', 'Natuur en milieu', 'Duurzaamheid'],
+  ['Onderwijs', 'Educatie'],
+  ['Gezondheid', 'Zorg', 'Gehandicaptenzorg', 'Mindervaliden'],
+  ['Onderzoek', 'Wetenschap', 'Wetenschappelijk onderzoek'],
+  ['Internationale samenwerking', 'Internationalisering', 'Ontwikkelingshulp'],
+  ['Jeugd en kinderen', 'Kinderen/jongeren'],
+  ['Vluchtelingen', 'Vluchtelingen en migranten'],
+  ['Mensenrechten', 'Democratie', 'Vrijheid', 'Vrede, vrijheid en veiligheid'],
+  ['Dieren', 'Dierenwelzijn'],
+  ['Sport', 'Recreatie'],
+  ['Armoedebestrijding', 'Armoede/zelfredzaamheid', 'Zelfredzaamheid', 'Noodhulp'],
+];
+// Overkoepelend sociaal domein: een specifiek sociaal thema valt ook onder de
+// paraplutermen, en een paraplu-kernthema (bv. "Maatschappij") staat open voor
+// de specifieke sociale thema's.
+const THEMA_PARAPLU = ['Maatschappij', 'Sociaal-maatschappelijk', 'Sociale innovatie', 'Welzijn', 'Kwaliteit van leven'];
+const THEMA_SOCIAAL_SPECIFIEK = [
+  'Armoedebestrijding',
+  'Armoede/zelfredzaamheid',
+  'Zelfredzaamheid',
+  'Noodhulp',
+  'Participatie & inclusie',
+  'Diversiteit en inclusie',
+  'Kwetsbare doelgroep',
+  'Eenzaamheid',
+  'Wonen en huisvesting',
+];
+
+// Themas die samen het "algemene sociale domein" vormen: een fonds dat alleen via
+// de brede paraplu aansluit (geen direct of synoniem kernthema) mag daarnaast
+// uitsluitend deze themas of themas van het project hebben. Heeft zo'n fonds
+// ook een vreemd thema (Mobiliteit, Cultuur, Gezondheid...), dan is het geen
+// passende associatie maar een breed fonds met een andere focus.
+const THEMA_ALGEMEEN_SOCIAAL = [...THEMA_PARAPLU, ...THEMA_SOCIAAL_SPECIFIEK, 'Vrijwilligers'];
+
+function synoniemenVan(themas: string[]): string[] {
+  const uit: string[] = [];
+  const voegToe = (n: string) => {
+    if (!uit.some((x) => normaliseerTekst(x) === normaliseerTekst(n))) uit.push(n);
+  };
+
+  for (const t of themas) {
+    voegToe(t);
+
+    for (const groep of THEMA_SYNONIEMEN) {
+      if (groep.some((g) => normaliseerTekst(g) === normaliseerTekst(t))) groep.forEach(voegToe);
+    }
+  }
+
+  return uit;
+}
+
+function verwanteThemas(themas: string[], metParaplu: boolean): string[] {
+  const uit: string[] = [];
+  const voegToe = (n: string) => {
+    if (!uit.some((x) => normaliseerTekst(x) === normaliseerTekst(n))) uit.push(n);
+  };
+  const normSet = (lijst: string[]) => new Set(lijst.map(normaliseerTekst));
+  const paraplu = normSet(THEMA_PARAPLU);
+  const sociaal = normSet(THEMA_SOCIAAL_SPECIFIEK);
+
+  for (const t of themas) {
+    voegToe(t);
+    const tn = normaliseerTekst(t);
+
+    for (const groep of THEMA_SYNONIEMEN) {
+      if (groep.some((g) => normaliseerTekst(g) === tn)) groep.forEach(voegToe);
+    }
+
+    if (sociaal.has(tn)) THEMA_PARAPLU.forEach(voegToe);
+    if (metParaplu && paraplu.has(tn)) {
+      THEMA_PARAPLU.forEach(voegToe);
+      THEMA_SOCIAAL_SPECIFIEK.forEach(voegToe);
+    }
+  }
+
+  return uit;
+}
+
+// Verruimt de zoekcriteria met verwante thema's. De kernthema's worden via de
+// tabel uitgebreid; de overige thema's krijgen alleen de synoniemen/paraplu van
+// de (uitgebreide) kernthema's erbij, zodat een paraplu-term in de gewone
+// thema's niet alle sociale thema's openzet.
+function breidThemasUit(criteria: FondsCriteria): FondsCriteria {
+  const kern = verwanteThemas(criteria.kernThemas || [], true);
+  const themas = verwanteThemas([...criteria.themas, ...kern], false);
+
+  return {
+    ...criteria,
+    themas,
+    kernThemas: criteria.kernThemas?.length ? kern : criteria.kernThemas,
+    kernDirect: criteria.kernThemas?.length ? synoniemenVan(criteria.kernThemas) : undefined,
+  };
+}
+
 function selecteerFreeFondsadvies(
   alle: { bron: Kandidaat['bron']; row: any }[],
   criteria: FondsCriteria,
@@ -2474,6 +2591,8 @@ function selecteerFreeFondsadvies(
   maxVolledig = FREE_ADVIES_MAX_VOLLEDIG,
   vandaag: string = vandaagIso(),
 ) {
+  criteria = breidThemasUit(criteria);
+
   const signalen = matchSignalenUitCriteria(criteria);
 
   let beoordeeld = alle.map(({ bron, row }) => {
@@ -2524,8 +2643,85 @@ function selecteerFreeFondsadvies(
     extraPremium,
     aantalAanvullend: extraPro + extraPremium,
     aantalAanvullendPremium: extraPremium,
+    verborgen: overig,
     signalen,
   };
+}
+
+// Eén plek voor de zin over extra mogelijkheden in Pro/Premium. De zin wordt
+// server-side aan het antwoord toegevoegd (niet door het model geschreven), zodat
+// het aantal altijd exact het aantal echte, nog niet genoemde databasematches is.
+function bouwAanvullendeZin(extraPro: number, extraPremium: number): string | null {
+  const delen: string[] = [];
+
+  if (extraPro > 0) {
+    delen.push(`nog ${extraPro} relevante ${extraPro === 1 ? 'fonds of regeling' : 'fondsen en regelingen'} beschikbaar binnen Pro`);
+  }
+
+  if (extraPremium > 0) {
+    delen.push(`nog ${extraPremium} relevante ${extraPremium === 1 ? 'fonds of regeling' : 'fondsen en regelingen'} uitsluitend beschikbaar binnen Premium`);
+  }
+
+  if (!delen.length) {
+    return null;
+  }
+
+  const waar = extraPro > 0 && extraPremium > 0 ? 'Pro respectievelijk Premium' : extraPro > 0 ? 'Pro' : 'Premium';
+
+  return `Daarnaast zijn er in onze database ${delen.join(' en ')}. De volledige details zijn beschikbaar binnen ${waar}.`;
+}
+
+function naamVoorVergelijking(t: unknown): string {
+  return String(t || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{Mn}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\b(stichting|the)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Een verborgen databasematch telt niet als "extra" wanneer het model dat fonds
+// zelf al bij naam heeft genoemd (bijv. na het online onderzoek): dan zou het
+// aantal hetzelfde fonds dubbel tellen. Vergelijkt de gever en de regelingsnaam
+// met de antwoordtekst.
+function verwerkAanvullendeZin(antwoord: string, selectie: any): { tekst: string; toegevoegd: string; extraPro: number; extraPremium: number; alGenoemd: number } {
+  const verborgen: any[] = Array.isArray(selectie?.verborgen) ? selectie.verborgen : [];
+  const schoon = String(antwoord || '')
+    .replace(/\s*Daarnaast zijn er in onze database[^.\n]*\.(?:\s*De volledige details[^.\n]*\.)?/gi, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .trimEnd();
+  const genormeerd = ` ${naamVoorVergelijking(schoon)} `;
+  const komtVoor = (naam: unknown) => {
+    const n = naamVoorVergelijking(naam);
+
+    return n.length >= 4 && genormeerd.includes(` ${n} `);
+  };
+
+  let extraPro = 0;
+  let extraPremium = 0;
+  let alGenoemd = 0;
+
+  for (const k of verborgen) {
+    if (komtVoor(k.funderNaam) || (k.bron === 'regeling' && komtVoor(k.naam))) {
+      alGenoemd += 1;
+      continue;
+    }
+
+    if (k.accessTier === 'free' || k.accessTier === 'pro') extraPro += 1;
+    else if (k.accessTier === 'premium') extraPremium += 1;
+  }
+
+  const zin = bouwAanvullendeZin(extraPro, extraPremium);
+
+  if (!zin) {
+    return { tekst: schoon, toegevoegd: '', extraPro, extraPremium, alGenoemd };
+  }
+
+  const toegevoegd = `\n\n${zin}`;
+
+  return { tekst: schoon + toegevoegd, toegevoegd, extraPro, extraPremium, alGenoemd };
 }
 
 function bouwFreeAdviesBlok(
@@ -2569,19 +2765,9 @@ function bouwFreeAdviesBlok(
     regels.push('Er is geen databasekandidaat die voor dit lid volledig getoond mag worden: noem dus geen enkele databaseregeling of -fonds bij naam.');
   }
 
-  const upsellRegels: string[] = [];
-
-  if (selectie.extraPro > 0) {
-    upsellRegels.push(`nog ${selectie.extraPro} relevante ${selectie.extraPro === 1 ? 'fonds of regeling' : 'fondsen en regelingen'} beschikbaar binnen Pro`);
-  }
-
-  if (selectie.extraPremium > 0) {
-    upsellRegels.push(`nog ${selectie.extraPremium} relevante ${selectie.extraPremium === 1 ? 'fonds of regeling' : 'fondsen en regelingen'} uitsluitend beschikbaar binnen Premium`);
-  }
-
   regels.push(
-    upsellRegels.length
-      ? `AANTALLEN IN HET ANTWOORD: sluit af met een korte zin in de trant van "Daarnaast zijn er in onze database ${upsellRegels.join(' en ')}." - uitsluitend met deze getallen. Noem nooit een naam of detail van een niet getoond fonds en noem nooit andere getallen (geen totaal aantal records, geen aantal "mogelijk passende" op basis van recordtellingen). Optioneel mag je het aantal ANDERE online gevonden, door jou zelf als passend beoordeelde en gecontroleerde mogelijkheden noemen, maar alleen als je dat betrouwbaar kunt vaststellen; anders laat je dat weg. Meld daarna kort dat de volledige details beschikbaar zijn binnen Pro respectievelijk Premium.`
+    selectie.extraPro + selectie.extraPremium > 0
+      ? 'AANTALLEN IN HET ANTWOORD: schrijf zelf GEEN zin over extra mogelijkheden binnen Pro of Premium en noem geen databasegetallen: het systeem voegt onderaan het antwoord automatisch één controlezin toe met de definitieve aantallen (na aftrek van fondsen die jij zelf al bij naam noemt). Noem nooit een naam of detail van een niet getoond databasefonds en verwijs er ook niet naar.'
       : 'AANTALLEN IN HET ANTWOORD: er zijn voor deze vraag GEEN extra passende mogelijkheden binnen Pro of Premium. Beweer dus nooit dat er extra matches in Pro of Premium zijn en noem geen aantallen uit de database.',
   );
 
@@ -3230,6 +3416,7 @@ Deno.serve(async (req) => {
   // en niet-fondsadviesvragen blijven ongewijzigd.
   let freeAdviesBlok: string | null = null;
   let freeCriteriaVoldoende = false;
+  let freeSelectie: any = null;
 
   if (!isAdmin && tier === 'free' && isFondsadviesVraag(berichten, modus)) {
     const advies = await freeFondsadvies(admin, apiKey, berichten, subsidieKandidaten, funderDeadlineKand, funderAlgemeenKand, tier, isAdmin);
@@ -3239,6 +3426,7 @@ Deno.serve(async (req) => {
     funderAlgemeenTekst = advies.algemeenTekst;
     freeAdviesBlok = advies.blok;
     freeCriteriaVoldoende = advies.voldoende;
+    freeSelectie = advies.selectie;
 
     if (profileId && advies.usage) {
       await legVerbruikVast(admin, {
@@ -3540,7 +3728,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ answer: tekst, sources: bronnen, veldVoorstellen, projectDossier });
+    // Free-fondsadvies: de zin over extra Pro/Premium-mogelijkheden komt van de
+    // server (exacte, gededubliceerde aantallen), niet van het model.
+    const eindTekst = freeSelectie ? verwerkAanvullendeZin(tekst, freeSelectie).tekst : tekst;
+
+    return json({ answer: eindTekst, sources: bronnen, veldVoorstellen, projectDossier });
   }
 
   // Antwoord woord voor woord. De frontend leest dit met een EventSource-achtige
@@ -3718,6 +3910,16 @@ Deno.serve(async (req) => {
                 // dossierupdate mag het antwoord zelf nooit blokkeren
               }
             }
+          }
+
+          if (freeSelectie && afgerond) {
+            const verwerkt = verwerkAanvullendeZin(volledig, freeSelectie);
+
+            if (verwerkt.toegevoegd) {
+              stuur({ delta: verwerkt.toegevoegd });
+            }
+
+            volledig = verwerkt.tekst;
           }
 
           stuur({ done: true, answer: volledig, sources: bronnen, veldVoorstellen, projectDossier });

@@ -191,8 +191,11 @@ sectie('Echte-data-fouten: regionaal gebonden regelingen met label "Landelijk", 
   resetWorld({ regelingen, extractor: extractorKern });
   const r = await vraag(handler, { messages: msg(A_TEKST) });
   const blok = blokVan(r.hoofd);
-  check('Echt: alleen "Landelijk Armoedefonds" telt (Schiermonnikoog, Noord-Brabant, Zwolle-tekst en kernloze thema\'s vallen af)', getal(blok, /extra_premium_count = (\d+)/) === 1 && getal(blok, /extra_pro_count = (\d+)/) === 0, blok.match(/DATABASE-UITKOMST[^\n]*/)?.[0]);
-  check('Echt: totaal passend = 1', getal(blok, /(\d+) passende regeling\(en\)/) === 1);
+  // 2026-10-08: thema's mogen ruimer worden geïnterpreteerd (associaties): een fonds met alleen
+  // paraplu-thema's uit het sociaal domein (Vrijwilligersprijs: Maatschappij/Sociaal-maatschappelijk) telt nu mee
+  // voor een armoedeproject. Plaatsgebonden fondsen blijven uitgesloten.
+  check('Echt: "Landelijk Armoedefonds" + paraplu-fonds (Vrijwilligersprijs) tellen; Schiermonnikoog, Noord-Brabant en Zwolle-tekst vallen af', getal(blok, /extra_premium_count = (\d+)/) === 2 && getal(blok, /extra_pro_count = (\d+)/) === 0, blok.match(/DATABASE-UITKOMST[^\n]*/)?.[0]);
+  check('Echt: totaal passend = 2', getal(blok, /(\d+) passende regeling\(en\)/) === 2);
 
   // Zelfde plaatsgebonden regelingen bij een project in die plaats: wel passend
   resetWorld({ regelingen: [regelingen[0], regelingen[2]], extractor: (t) => ({ themas: ['Armoedebestrijding'], kern_themas: ['Armoedebestrijding'], doelgroepen: ['Mensen in armoede'], regios: [], locatie: 'Zwolle', gevraagd_bedrag: null }) });
@@ -218,6 +221,84 @@ sectie('Echte-data-fouten: regionaal gebonden regelingen met label "Landelijk", 
   resetWorld({ regelingen: [reg({ naam: 'Regio-only Fonds', tier: 'premium', status: 'open', deadline: null, themas: [], doelgroepen: [], regios: ['Amsterdam'] })], extractor: dg });
   const rd2 = await vraag(handler, { messages: msg('Welke fondsen passen bij een project voor mensen in armoede in Amsterdam?') });
   check('Echt: fonds zonder doelgroep/thema telt niet mee op alleen regio', getal(blokVan(rd2.hoofd), /(\d+) passende regeling\(en\)/) === 0);
+}
+
+
+// ------------------------------------------------------------------ Verwante thema's (2026-10-08)
+sectie('Verwante thema\'s: associaties tellen mee, onverwante thema\'s niet');
+{
+  const kernArm = (t) => ({ themas: ['Armoedebestrijding'], kern_themas: ['Armoedebestrijding'], doelgroepen: [], regios: [], locatie: '', gevraagd_bedrag: null });
+  const regelingen = [
+    reg({ naam: 'Sociaal Domein Fonds', tier: 'premium', status: 'open', deadline: null, themas: ['Sociaal-maatschappelijk'], regios: ['Landelijk'] }),
+    reg({ naam: 'Welzijnsfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Welzijn'], regios: ['Landelijk'] }),
+    reg({ naam: 'Noodhulpfonds', tier: 'premium', status: 'open', deadline: null, themas: ['Noodhulp'], regios: ['Landelijk'] }),
+    reg({ naam: 'Cultuurpodium Fonds', tier: 'premium', status: 'open', deadline: null, themas: ['Podiumkunsten'], regios: ['Landelijk'] }),
+    reg({ naam: 'Sportfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Sport'], regios: ['Landelijk'] }),
+  ];
+  resetWorld({ regelingen, extractor: kernArm });
+  const r = await vraag(handler, { messages: msg('Welke fondsen passen bij ons armoedeproject?') });
+  const blok = blokVan(r.hoofd);
+  check('Verwant: sociaal-maatschappelijk, welzijn en noodhulp tellen mee voor een armoede-kernthema (1 Pro + 2 Premium)', getal(blok, /extra_pro_count = (\d+)/) === 1 && getal(blok, /extra_premium_count = (\d+)/) === 2, blok.match(/DATABASE-UITKOMST[^\n]*/)?.[0]);
+  check('Verwant: podiumkunsten en sport tellen NIET mee voor armoede', getal(blok, /(\d+) passende regeling\(en\)/) === 3);
+
+  // paraplu-kernthema (bv. "Maatschappij") staat open voor specifieke sociale thema's
+  const kernMaatschappij = () => ({ themas: ['Maatschappij'], kern_themas: ['Maatschappij'], doelgroepen: [], regios: [], locatie: '', gevraagd_bedrag: null });
+  resetWorld({ regelingen: [reg({ naam: 'Eenzaamheidsfonds', tier: 'premium', status: 'open', deadline: null, themas: ['Eenzaamheid'], regios: ['Landelijk'] }), reg({ naam: 'Sportfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Sport'], regios: ['Landelijk'] })], extractor: kernMaatschappij });
+  const rm = await vraag(handler, { messages: msg('Welke fondsen passen bij een maatschappelijk project?') });
+  const bm = blokVan(rm.hoofd);
+  check('Verwant: kernthema Maatschappij -> Eenzaamheid telt mee, Sport niet', getal(bm, /(\d+) passende regeling\(en\)/) === 1 && getal(bm, /extra_premium_count = (\d+)/) === 1);
+}
+
+// ------------------------------------------------------------------ Aanvullende zin: server-side en zonder dubbeltelling (2026-10-08)
+sectie('Aanvullende Pro/Premium-zin: door de server toegevoegd, zonder dubbeltelling');
+{
+  const kernArm = () => ({ themas: ['Armoedebestrijding'], kern_themas: ['Armoedebestrijding'], doelgroepen: [], regios: [], locatie: '', gevraagd_bedrag: null });
+  const regs = () => [
+    reg({ naam: 'Kansfonds Regeling', tier: 'premium', status: 'open', deadline: null, themas: ['Armoedebestrijding'], regios: ['Landelijk'], funder: 'Kansfonds' }),
+    reg({ naam: 'Rabo Regeling', tier: 'premium', status: 'open', deadline: null, themas: ['Armoedebestrijding'], regios: ['Landelijk'], funder: 'Rabobank Foundation' }),
+    reg({ naam: 'VSB Regeling', tier: 'pro', status: 'open', deadline: null, themas: ['Armoedebestrijding'], regios: ['Landelijk'], funder: 'Stichting VSBfonds' }),
+  ];
+  const zinVan = (a) => (a.match(/Daarnaast zijn er in onze database[^\n]*/g) || []);
+
+  // 1. geen dubbeltelling: het model noemt zelf al Kansfonds (en "VSBfonds" zonder "Stichting")
+  resetWorld({ regelingen: regs(), extractor: kernArm, modelTekst: 'Mijn advies: 1. Kansfonds, 2. VSBfonds, 3. Oranje Fonds.' });
+  const r1 = await vraag(handler, { messages: msg('Welke fondsen passen bij armoede?') });
+  const a1 = r1.json.answer;
+  check('Zin: aantallen na aftrek van door het model genoemde fondsen (1 Premium: Rabobank Foundation; Pro: 0)', zinVan(a1).length === 1 && /nog 1 relevante fonds of regeling uitsluitend beschikbaar binnen Premium/.test(a1) && !/binnen Pro\b/.test(zinVan(a1)[0]), a1);
+  check('Zin: verborgen fondsen worden niet bij naam genoemd door de server', !a1.includes('Rabobank'));
+
+  // 2. niets genoemd -> alle echte matches; het getal in de zin klopt met de server-telling
+  resetWorld({ regelingen: regs(), extractor: kernArm, modelTekst: 'Mijn advies: 1. Oranje Fonds.' });
+  const r2 = await vraag(handler, { messages: msg('Welke fondsen passen bij armoede?') });
+  check('Zin: 1 Pro + 2 Premium, correct enkelvoud/meervoud', /nog 1 relevante fonds of regeling beschikbaar binnen Pro en nog 2 relevante fondsen en regelingen uitsluitend beschikbaar binnen Premium/.test(r2.json.answer), r2.json.answer);
+
+  // 3. alles al genoemd -> geen zin
+  resetWorld({ regelingen: regs(), extractor: kernArm, modelTekst: 'Kansfonds, Rabobank Foundation en VSBfonds passen.' });
+  const r3 = await vraag(handler, { messages: msg('Welke fondsen passen bij armoede?') });
+  check('Zin: alles al genoemd -> geen zin over extra mogelijkheden', zinVan(r3.json.answer).length === 0, r3.json.answer);
+
+  // 4. een door het model zelf geschreven zin met een eigen getal wordt vervangen
+  resetWorld({ regelingen: regs(), extractor: kernArm, modelTekst: 'Advies: Oranje Fonds. Daarnaast zijn er in onze database nog 99 relevante fondsen en regelingen beschikbaar binnen Premium. De volledige details zijn beschikbaar binnen Premium.' });
+  const r4 = await vraag(handler, { messages: msg('Welke fondsen passen bij armoede?') });
+  check('Zin: eigen getal van het model (99) wordt vervangen door de server-telling', !r4.json.answer.includes('99') && zinVan(r4.json.answer).length === 1, r4.json.answer);
+
+  // 5. geen matches -> niets gezegd; Pro-gebruiker -> server voegt niets toe
+  resetWorld({ regelingen: [reg({ naam: 'Sportfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Sport'], regios: ['Landelijk'] })], extractor: kernArm, modelTekst: 'Geen match.' });
+  const r5 = await vraag(handler, { messages: msg('Welke fondsen passen bij armoede?') });
+  check('Zin: nul echte matches -> niets over Pro/Premium', zinVan(r5.json.answer).length === 0 && r5.json.answer === 'Geen match.');
+  resetWorld({ regelingen: regs(), extractor: kernArm, modelTekst: 'Pro-antwoord.', user: { id: 'u-pro' }, profile: { subscription_tier: 'pro', subscription_active: true, trial_ends_at: null, role: 'user' } });
+  const r6 = await vraag(handler, { messages: msg('Welke fondsen passen bij armoede?'), token: 'tok' });
+  check('Zin: Pro-gebruiker krijgt geen server-zin (ongewijzigd antwoord)', r6.json.answer === 'Pro-antwoord.', r6.json.answer);
+
+  // 6. streaming: delta + final done bevatten dezelfde, gecorrigeerde zin
+  resetWorld({ regelingen: regs(), extractor: kernArm, modelTekst: 'Advies: Kansfonds.' });
+  const res = await handler(new Request('http://x/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: msg('Welke fondsen passen bij armoede?'), kompasMode: 'fondsadvies', stream: true }) }));
+  const sse = await res.text();
+  const events = sse.split('\n').filter((l) => l.startsWith('data:')).map((l) => JSON.parse(l.slice(5)));
+  const done = events.find((e) => e.done);
+  const gestreamd = events.filter((e) => typeof e.delta === 'string').map((e) => e.delta).join('');
+  check('Stream: done.answer bevat de server-zin met 1 Pro en 1 Premium (Kansfonds al genoemd)', done && /nog 1 relevante fonds of regeling beschikbaar binnen Pro en nog 1 relevante fonds of regeling uitsluitend beschikbaar binnen Premium/.test(done.answer), done?.answer);
+  check('Stream: de gestreamde tekst eindigt met dezelfde zin als done.answer', done && gestreamd === done.answer, gestreamd);
 }
 
 console.log(`\nRESULTAAT: ${ok} OK, ${fout} FAIL`);
