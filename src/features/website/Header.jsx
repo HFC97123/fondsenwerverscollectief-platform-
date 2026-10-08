@@ -27,27 +27,26 @@ const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font
 
 // Uitgelogd heet de trigger "Login": een rustige, witte pil met een dunne
 // lichtblauw/grijsblauwe rand en donkerblauwe tekst (zelfde marine #2C4A5E als
-// de navigatielinks), naast de solide groene "Probeer Subsidie Kompas"-pil. De
-// verticale padding en font-size volgen dezelfde clamp()-waarden als navKnop
-// hierboven, voor gelijke hoogte en uitlijning; de horizontale padding is
-// ruimer. Hover: heel lichte achtergrond en iets duidelijkere rand, zonder
-// schaduw of animatie. Het woord "Login" gebruikt het brandingslettertype
-// (Newsreader, zelfde als het logo). De uitklap-dropdown (Inloggen/Aanmelden)
-// gebruikt bewust géén font-family hier en erft dus het standaard
-// site-lettertype (Mulish). Ingelogd blijft de bestaande, rustigere
-// pastelgroen/Newsreader-badge ongewijzigd (buiten scope).
+// de navigatielinks) in het sitelettertype (Mulish, vet), naast de solide
+// groene "Probeer Subsidie Kompas"-pil. Padding en font-size zijn zo gekozen dat
+// beide knoppen exact even hoog zijn (de rand van 1.5px zit in de verticale
+// padding afgetrokken); de horizontale padding is ruimer. Hover: heel lichte
+// achtergrond en iets duidelijkere rand, zonder schaduw of animatie. De
+// uitklap-dropdown (Inloggen/Aanmelden) erft eveneens het sitelettertype.
+// Ingelogd blijft de bestaande, rustigere pastelgroen/Newsreader-badge
+// ongewijzigd (buiten scope).
 function accountBadgeStijl(compact, hover, loggedOut) {
   if (loggedOut) {
+    // Geen font-family hier: `all: unset` laat het lettertype van de pagina
+    // (Mulish) doorlopen, dezelfde als de groene knop en de navigatielinks.
     return css(`
       all: unset; box-sizing: border-box; cursor: pointer;
       display: flex; align-items: center; justify-content: center; gap: 6px;
-      padding: 10px clamp(20px, 2.2vw, 28px); border-radius: 999px;
+      padding: 9px clamp(22px, 2.2vw, 30px); border-radius: 999px;
       background: ${hover ? '#F5F8FB' : '#FFFFFF'};
-      border: 1px solid ${hover ? '#A9BDD0' : '#CBD8E4'};
-      font-family: 'Newsreader', serif;
+      border: 1.5px solid ${hover ? '#B5C7D2' : '#D3DFE4'};
       font-size: ${compact ? '13.5px' : 'clamp(13.5px, 1.2vw, 15px)'};
-      font-weight: 600;
-      letter-spacing: 0.1px;
+      font-weight: 700;
       color: #2C4A5E;
       white-space: nowrap;
       text-align: center;
@@ -274,10 +273,12 @@ export default function Header() {
                 Beheer
               </div>
             )}
-            <a href="#" onClick={goKompas} style={navKnop}>
-              Probeer Subsidie Kompas
-            </a>
-            <AccountMenu />
+            <div style={css('display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-right: -10px;')}>
+              <a href="#" onClick={goKompas} style={navKnop}>
+                Probeer Subsidie Kompas
+              </a>
+              <AccountMenu />
+            </div>
           </div>
         )}
 
