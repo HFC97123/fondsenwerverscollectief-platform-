@@ -39,16 +39,16 @@ function accountBadgeStijl(compact, hover, loggedOut) {
   if (loggedOut) {
     // Geen font-family hier: `all: unset` laat het lettertype van de pagina
     // (Mulish) doorlopen, dezelfde als de groene knop en de navigatielinks.
-    // Bewust kleiner en smaller dan de groene knop: Login is een rustige,
-    // secundaire actie en hoeft niet even hoog te zijn.
+    // Zelfde hoogte en lettertype als de groene knop; alleen de horizontale
+    // padding is smaller (14-18px) zodat de knop compacter en luchtiger oogt.
     return css(`
       all: unset; box-sizing: border-box; cursor: pointer;
       display: flex; align-items: center; justify-content: center; gap: 6px;
-      padding: 5px clamp(14px, 1.5vw, 18px); border-radius: 999px;
+      padding: 9px clamp(14px, 1.5vw, 18px); border-radius: 999px;
       background: ${hover ? '#F5F8FB' : '#FFFFFF'};
-      border: 1px solid ${hover ? '#B5C7D2' : '#D3DFE4'};
-      font-size: ${compact ? '12.5px' : 'clamp(12.5px, 1.05vw, 13.5px)'};
-      font-weight: 600;
+      border: 1.5px solid ${hover ? '#B5C7D2' : '#D3DFE4'};
+      font-size: ${compact ? '13.5px' : 'clamp(13.5px, 1.2vw, 15px)'};
+      font-weight: 700;
       color: #2C4A5E;
       white-space: nowrap;
       text-align: center;
