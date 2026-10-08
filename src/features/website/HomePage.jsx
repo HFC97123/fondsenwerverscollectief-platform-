@@ -5,6 +5,7 @@ import React from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './WebsiteProvider.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
+import MemberCount from '../../shared/ui/MemberCount.jsx';
 
 const zwevendeVorm = (positie, animatie) =>
   css(`position: absolute; ${positie} opacity: ${animatie.opacity}; animation: ${animatie.naam} ${animatie.duur} ease-in-out infinite;`);
@@ -469,7 +470,14 @@ export default function HomePage() {
               <div style={css('font-size: 14px; color: #2C4A5E; line-height: 1.4;')}>fondsen en regelingen in de database</div>
             </div>
 
-            {['fondsenwervers aangesloten', "video's in de bibliotheek", 'waardering door leden'].map((label) => (
+            <div style={css('background: #DCEFE3; border-radius: 16px; padding: 24px;')}>
+              <div style={css("font-family: 'Newsreader', serif; font-size: 32px; font-weight: 700; color: #2C4A5E; margin-bottom: 8px;")}>
+                <MemberCount />
+              </div>
+              <div style={css('font-size: 14px; color: #2C4A5E; line-height: 1.4;')}>fondsenwervers aangesloten</div>
+            </div>
+
+            {["video's in de bibliotheek", 'waardering door leden'].map((label) => (
               <div key={label} style={css('background: #DCEFE3; border-radius: 16px; padding: 24px;')}>
                 <div
                   style={css(
