@@ -1,7 +1,8 @@
 // Collectief. Opmaak letterlijk uit het goedgekeurde ontwerp
 // (data-screen-label="Collectief"). Bevat hero, account/login/registratie,
-// ledenlijst, praktijkgidsen, intervisie, blog, ervaringen, vraag & antwoord,
-// leden & contact, vacatures en de Kompas-verwijzing.
+// praktijkgidsen, intervisie, blog, ervaringen, vraag & antwoord,
+// vacatures en de Kompas-verwijzing. Er is bewust (nog) geen ledenlijst of
+// smoelenboek: leden zien alleen hun eigen profiel.
 //
 // Alle bestaande functionaliteit uit WebsiteProvider blijft in gebruik:
 // Supabase-auth, aanmeldingen, gepubliceerde inhoud, vragen en antwoorden.
@@ -121,20 +122,6 @@ export default function NetwerkPage() {
     profileInitials,
     profileFullName,
     logout,
-    visHint,
-    visChecked,
-    visKey,
-    visTrackBg,
-    visKnobLeft,
-    visLabel,
-    visLabelColor,
-    toggleMemberVisible,
-    ledenlijst,
-    ledenlijstCount,
-    ledenlijstEmpty,
-    ledenHidden,
-    ledenQuery,
-    onLedenQuery,
     resources,
     sessions,
     hasSessions,
@@ -268,42 +255,6 @@ export default function NetwerkPage() {
                 waar u aan werkt en waarover u graag kennis uitwisselt.
               </div>
 
-              <div
-                style={css(
-                  'margin-bottom: 22px; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;',
-                )}
-              >
-                <div style={css('flex: 1 1 280px; min-width: 0;')}>
-                  <div style={css('margin-bottom: 5px; font-weight: 700; color: #2C4A5E; font-size: 15px;')}>
-                    Wilt u zichtbaar zijn voor andere leden?
-                  </div>
-                  <div style={css('font-size: 14px; line-height: 1.6; color: #4B5C58; text-wrap: pretty;')}>{visHint}</div>
-                </div>
-
-                <div
-                  onClick={toggleMemberVisible}
-                  onKeyDown={visKey}
-                  role="switch"
-                  tabIndex={0}
-                  aria-checked={visChecked}
-                  aria-label="Zichtbaar voor andere leden"
-                  style={css('cursor: pointer; display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-height: 44px;')}
-                >
-                  <span
-                    style={css(
-                      `position: relative; width: 52px; height: 30px; flex-shrink: 0; border-radius: 999px; background: ${visTrackBg}; transition: background 0.2s ease;`,
-                    )}
-                  >
-                    <span
-                      style={css(
-                        `position: absolute; top: 3px; left: ${visKnobLeft}; width: 24px; height: 24px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(44,74,94,0.25); transition: left 0.2s ease;`,
-                      )}
-                    />
-                  </span>
-                  <span style={css(`font-size: 14px; font-weight: 800; color: ${visLabelColor}; white-space: nowrap;`)}>{visLabel}</span>
-                </div>
-              </div>
-
               <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(256px, 1fr)); gap: 20px;')}>
                 <div style={css('background: #F7F9F8; border-radius: 16px; padding: 22px;')}>
                   <div style={css('font-weight: 700; color: #2C4A5E; font-size: 15px; margin-bottom: 14px;')}>Mijn opgeslagen artikelen</div>
@@ -329,77 +280,6 @@ export default function NetwerkPage() {
         )}
 
       </div>
-
-      {/* LEDENLIJST */}
-      {isLoggedIn && (
-        <div style={sectie}>
-          <div style={css('display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 24px;')}>
-            <div>
-              <div style={sectieKop}>Leden van het Collectief</div>
-              <div style={sectieSub}>{ledenlijstCount}</div>
-            </div>
-            <input
-              value={ledenQuery || ''}
-              onChange={onLedenQuery}
-              placeholder="Zoek op naam, expertise of regio…"
-              style={css(
-                "flex: 1 1 260px; max-width: 360px; box-sizing: border-box; min-height: 46px; padding: 13px 16px; border: 1px solid #E1EAE4; border-radius: 14px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 15px; color: #2E3A38; outline: none;",
-              )}
-            />
-          </div>
-
-          {ledenHidden && (
-            <div
-              style={css(
-                'margin-bottom: 18px; padding: 14px 18px; border: 1px solid #E1EAE4; border-radius: 14px; background: #FFFFFF; font-size: 14.5px; line-height: 1.6; color: #4B5C58;',
-              )}
-            >
-              U staat zelf niet in deze lijst. Zet de schuifknop in uw profiel op zichtbaar als u wilt dat vakgenoten u
-              kunnen vinden.
-            </div>
-          )}
-
-          <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 18px;')}>
-            {(ledenlijst || []).map((l, i) => (
-              <div key={l.id || i} style={css('background: #FFFFFF; border-radius: 18px; padding: clamp(20px, 3vw, 24px); display: flex; flex-direction: column; gap: 12px;')}>
-                <div style={css('display: flex; align-items: center; gap: 13px;')}>
-                  <span
-                    style={css(
-                      `width: 46px; height: 46px; flex-shrink: 0; border-radius: 50%; background: ${l.avatarBg}; display: flex; align-items: center; justify-content: center; font-family: 'Newsreader', serif; font-size: 17px; font-weight: 600; color: #2C4A5E;`,
-                    )}
-                  >
-                    {l.initials}
-                  </span>
-                  <span style={css('min-width: 0;')}>
-                    <span style={css('display: block; font-size: 15px; font-weight: 800; color: #2C4A5E;')}>{l.naam}</span>
-                    <span style={css('display: block; margin-top: 2px; font-size: 13px; color: #687974;')}>{l.rol}</span>
-                  </span>
-                </div>
-                <div style={css('font-size: 14px; line-height: 1.6; color: #4B5C58; text-wrap: pretty;')}>{l.bio}</div>
-                <div style={css('display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto;')}>
-                  {(l.tags || []).map((t, j) => (
-                    <span
-                      key={j}
-                      style={css('padding: 4px 11px; border-radius: 999px; background: #F2F6F4; color: #4B5C58; font-size: 11.5px; font-weight: 700;')}
-                    >
-                      {t.label || t}
-                    </span>
-                  ))}
-                </div>
-                {l.isSelf && <span style={css('font-size: 12.5px; font-weight: 800; color: #4E9A6C;')}>Dit bent u</span>}
-              </div>
-            ))}
-          </div>
-
-          {ledenlijstEmpty && (
-            <div style={css('padding: 26px 22px; border: 1px dashed #D5E0D9; border-radius: 18px; font-size: 15px; line-height: 1.65; color: #7B8985;')}>
-              {(ledenQuery || '').trim()
-                ? 'Geen leden gevonden. Pas uw zoekopdracht aan.'
-                : 'Nog geen leden zichtbaar. Zet uw profiel op zichtbaar om als eerste in deze lijst te verschijnen.'}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* PRAKTIJKGIDSEN & TEMPLATES */}
       {isLoggedIn && (

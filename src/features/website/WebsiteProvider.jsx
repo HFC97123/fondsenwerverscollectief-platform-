@@ -147,10 +147,9 @@ export function WebsiteProvider({ children, route, param }) {
 
     memberName: '',
 
-    // Ledenlijst, zichtbaarheid, bijeenkomsten en vraag & antwoord.
-    // Namen en gedrag overgenomen uit het goedgekeurde ontwerp.
+    // Bijeenkomsten en vraag & antwoord. memberVisible blijft bestaan als bewaarde
+    // voorkeur (zie workspace.js); er is nu geen ledenlijst waarop het werkt.
     memberVisible: true,
-    ledenQuery: '',
     sessionDraftOpen: false,
     sessionDraft: { title: '', day: '', month: '', time: '', mode: 'Online', note: '' },
     sessionProposed: false,
@@ -690,42 +689,8 @@ export function WebsiteProvider({ children, route, param }) {
   const siteBlogPosts = fromDatabase('blog', blogPosts);
   const siteVacancies = fromDatabase('vacancies', vacancies);
 
-  /* ---- Collectief: ledenlijst, bijeenkomsten, vraag & antwoord ----
-     Alleen echte leden: wie zelf zichtbaar staat via het profiel. Geen
-     voorbeeld-/demoleden meer — een lege lijst toont de lege staat
-     hieronder (ledenlijstEmpty) in plaats van verzonnen profielen. */
-
-  const AVATAR_KLEUREN = ['#A8D5BA', '#A9C9DE', '#D9E7C9', '#CFE0EB', '#E4DDF0', '#F0E3C9'];
-
-  const initialenVan = (naam) =>
-    String(naam || '')
-      .trim()
-      .split(/\s+/)
-      .map((w) => w[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-
-  const ledenZoek = (st.ledenQuery || '').trim().toLowerCase();
-
-  const eigenLid = st.memberVisible
-    ? [
-        {
-          naam: st.memberName || 'Uw profiel',
-          rol: 'Lid van het Collectief',
-          bio: 'Fondsenwerver met hart voor maatschappelijke projecten.',
-          tags: ['Fondsenwerving'],
-          isSelf: true,
-        },
-      ]
-    : [];
-
-  const ledenGefilterd = eigenLid
-    .filter(
-      (l) =>
-        !ledenZoek ||
-        `${l.naam} ${l.rol} ${l.bio} ${l.tags.join(' ')}`.toLowerCase().indexOf(ledenZoek) !== -1,
-    );
+  /* ---- Collectief: bijeenkomsten, vraag & antwoord ----
+     Er is bewust geen ledenlijst (smoelenboek) meer. */
 
   // Bijeenkomsten: gepubliceerd uit de database, plus eigen voorstellen.
   const alleSessies = st.memberSessions.concat(
@@ -1332,41 +1297,6 @@ export function WebsiteProvider({ children, route, param }) {
     experiences: siteExperiences,
     hasExperiences: siteExperiences.length > 0,
     vacancies: siteVacancies,
-
-    /* ---- Zichtbaarheid in de ledenlijst ---- */
-    toggleMemberVisible: () => update({ memberVisible: !stRef.current.memberVisible }),
-    visKey: (e) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-        update({ memberVisible: !stRef.current.memberVisible });
-      }
-    },
-    visChecked: st.memberVisible ? 'true' : 'false',
-    visTrackBg: st.memberVisible ? '#4E9A6C' : '#D5E0D9',
-    visKnobLeft: st.memberVisible ? '26px' : '3px',
-    visLabel: st.memberVisible ? 'Wel zichtbaar' : 'Niet zichtbaar',
-    visLabelColor: st.memberVisible ? '#2F6D47' : '#7B8985',
-    visHint: st.memberVisible
-      ? 'Uw naam, functie en organisatie zijn zichtbaar voor andere leden van het Collectief. Uw contactgegevens deelt u zelf.'
-      : 'U staat niet in de ledenlijst. Andere leden kunnen u niet vinden of benaderen.',
-
-    /* ---- Ledenlijst ---- */
-    ledenQuery: st.ledenQuery,
-    onLedenQuery: (e) => update({ ledenQuery: e.target.value }),
-    ledenlijst: ledenGefilterd.map((l, i) => ({
-      naam: l.naam,
-      rol: l.rol,
-      bio: l.bio,
-      isSelf: Boolean(l.isSelf),
-      initials: initialenVan(l.naam),
-      avatarBg: AVATAR_KLEUREN[i % AVATAR_KLEUREN.length],
-      tags: l.tags.map((t) => ({ label: t })),
-    })),
-    ledenlijstEmpty: ledenGefilterd.length === 0,
-    ledenlijstCount: `${ledenGefilterd.length}${ledenGefilterd.length === 1 ? ' lid' : ' leden'} zichtbaar${
-      ledenZoek ? ' voor deze zoekopdracht' : '. Leden bepalen zelf of zij in deze lijst staan.'
-    }`,
-    ledenHidden: !st.memberVisible,
 
     /* ---- Bijeenkomst voorstellen ---- */
     sessionDraftOpen: st.sessionDraftOpen,
