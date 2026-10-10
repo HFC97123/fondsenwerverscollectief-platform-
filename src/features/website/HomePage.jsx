@@ -6,6 +6,7 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './WebsiteProvider.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import MemberCount from '../../shared/ui/MemberCount.jsx';
+import LedenReviews from '../../shared/ui/LedenReviews.jsx';
 
 const zwevendeVorm = (positie, animatie) =>
   css(`position: absolute; ${positie} opacity: ${animatie.opacity}; animation: ${animatie.naam} ${animatie.duur} ease-in-out infinite;`);
@@ -493,6 +494,9 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* WAARDERING DOOR LEDEN (verborgen zolang er geen goedgekeurde reviews zijn) */}
+      <LedenReviews />
 
       {/* NIEUWS */}
       <div id="nieuws" style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 76px;')}>
