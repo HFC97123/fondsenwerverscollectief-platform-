@@ -44,15 +44,27 @@ const VELDEN = [
   { n: 'doelgroep', l: 'Doelgroep', p: 'Voor wie is het project bedoeld?', classificatie: true },
   { n: 'periodeVan', l: 'Looptijd van', p: 'jan 2027' },
   { n: 'periodeTot', l: 'Looptijd tot', p: 'dec 2027' },
-  { n: 'regio', l: 'Regio of plaats', p: 'Utrecht' },
+  { n: 'regio', l: 'Projectlocatie', p: 'Waar vindt dit project plaats? Bijvoorbeeld: Accra, Ghana' },
   { n: 'partners', l: 'Partners', p: 'Met welke andere organisaties werkt u samen?' },
   { n: 'omschrijving', l: 'Korte omschrijving', p: 'Wat gaat er gebeuren en wat levert het op?', breed: true, area: true },
   { n: 'doelstellingen', l: 'Doelstellingen', p: 'Wat wilt u met dit project bereiken?', breed: true, area: true },
+  { n: 'activiteiten', l: 'Activiteiten', p: 'Welke activiteiten voert u uit?', breed: true, area: true },
+  { n: 'impact', l: 'Beoogde impact', p: 'Welk verschil maakt dit project, voor wie?', breed: true, area: true },
+  { n: 'planning', l: 'Planning', p: 'Belangrijkste fasen en data', breed: true },
+  { n: 'schrijfvoorkeur', l: 'Schrijfvoorkeur voor dit project', p: 'Bijvoorbeeld: warm en mensgericht, zakelijk, resultaatgericht. Geldt voor alle teksten van dit project.', breed: true },
   { n: 'resultaten', l: 'Resultaten', p: 'Wat heeft dit project tot nu toe opgeleverd?', breed: true, area: true },
   { n: 'begroting', l: 'Totale projectbegroting', p: '€ 85.000' },
   { n: 'gevraagd', l: 'Gevraagd bedrag', p: '€ 35.000' },
   { n: 'eigenBijdrage', l: 'Eigen bijdrage', p: '€ 7.500' },
 ];
+
+const BRON_LABELS = {
+  handmatig: 'ingevuld door u',
+  upload: 'uit een document',
+  gesprek: 'uit het gesprek',
+  'gesprek-bevestigd': 'door u bevestigd in het gesprek',
+  'ai-afgeleid': 'afgeleid door AI, niet bevestigd',
+};
 
 export default function ProjectenPage({ embedded = false } = {}) {
   const app = useApp();
@@ -137,9 +149,14 @@ export default function ProjectenPage({ embedded = false } = {}) {
   const verwijderRij = (lijst, i) =>
     setForm((cur) => {
       const rows = (cur[lijst] || []).slice();
-      rows.splice(i, 1);
+      const [weg] = rows.splice(i, 1);
 
-      return { ...cur, [lijst]: rows };
+      // Een document dat al in de database staat, wordt alleen verwijderd
+      // omdat het lid dat hier expliciet kiest (nooit door een ander scherm).
+      const verwijderdeDocIds =
+        lijst === 'docs' && weg && weg.id ? (cur.verwijderdeDocIds || []).concat([weg.id]) : cur.verwijderdeDocIds;
+
+      return { ...cur, [lijst]: rows, ...(verwijderdeDocIds ? { verwijderdeDocIds } : {}) };
     });
 
   const opslaan = () => {
@@ -149,10 +166,19 @@ export default function ProjectenPage({ embedded = false } = {}) {
       return;
     }
 
-    store.saveProject(form);
+    const bewaar = store.saveProject(form);
+
     setForm(null);
     setFout('');
     setMelding('Project opgeslagen.');
+
+    // Lukt het bewaren in de database niet, dan zeggen we dat ook.
+    Promise.resolve(bewaar).then((id) => {
+      if (id === null) {
+        setMelding('');
+        setFout('Het project kon niet in de database worden opgeslagen. Probeer het opnieuw.');
+      }
+    });
   };
 
   const uploadDocs = (e) => {
@@ -290,6 +316,7 @@ export default function ProjectenPage({ embedded = false } = {}) {
                 <div style={css('min-width: 0; flex: 1 1 260px;')}>
                   <div style={css('margin-bottom: 5px; font-size: 15.5px; font-weight: 800; color: #2C4A5E;')}>
                     {p.naam || 'Naamloos project'}
+                    {p.gearchiveerd && <span style={css('margin-left: 8px; font-size: 12px; font-weight: 700; color: #7B8985;')}>(gearchiveerd)</span>}
                   </div>
                   <div style={css('font-size: 13.5px; color: #687974;')}>
                     {bits.length ? bits.join('  ·  ') : 'Nog geen looptijd of programma ingevuld'}
@@ -306,7 +333,10 @@ export default function ProjectenPage({ embedded = false } = {}) {
                   <Button variant="outline" onClick={() => { setForm(JSON.parse(JSON.stringify(p))); setMelding(''); }}>
                     Bewerken
                   </Button>
-                  <Button variant="plain" onClick={() => store.deleteProject(p.id)}>
+                  <Button variant="plain" onClick={() => store.archiveProject(p.id, !p.gearchiveerd)}>
+                    {p.gearchiveerd ? 'Terugzetten' : 'Archiveren'}
+                  </Button>
+                  <Button variant="plain" onClick={() => { if (window.confirm(`Project "${p.naam || 'Naamloos project'}" definitief verwijderen? Ook de documenten van dit project worden verwijderd.`)) store.deleteProject(p.id); }}>
                     Verwijderen
                   </Button>
                 </div>
@@ -361,6 +391,11 @@ export default function ProjectenPage({ embedded = false } = {}) {
                     />
                   ) : (
                     <input value={form[f.n] || ''} onChange={(e) => setVeld(f.n, e.target.value)} placeholder={f.p} style={veldStijl} />
+                  )}
+                  {form.bronnen && form.bronnen[f.n] && (
+                    <span style={css('display: block; margin-top: 4px; font-size: 12px; font-weight: 600; color: #7B8985;')}>
+                      Herkomst: {BRON_LABELS[form.bronnen[f.n]] || form.bronnen[f.n]}
+                    </span>
                   )}
                 </Field>
               ))}
@@ -494,7 +529,9 @@ export default function ProjectenPage({ embedded = false } = {}) {
                     <div key={i} style={kaartRij}>
                       <div style={css('flex: 1 1 200px; min-width: 0;')}>
                         <div style={css('font-size: 14.5px; font-weight: 700; color: #2C4A5E; overflow-wrap: anywhere;')}>{d.naam}</div>
-                        <div style={css('margin-top: 3px; font-size: 12.5px; color: #7B8985;')}>{d.grootte}</div>
+                        <div style={css('margin-top: 3px; font-size: 12.5px; color: #7B8985;')}>
+                          {[d.grootte, d.versie ? `versie ${d.versie}` : '', d.context && d.context.fonds ? `voor ${d.context.fonds}` : '', d.vervangen ? 'vervangen door een nieuwere versie' : ''].filter(Boolean).join(' · ')}
+                        </div>
                       </div>
                       <select value={d.soort} onChange={(e) => setRij('docs', i, 'soort', e.target.value)} aria-label="Soort document" style={{ ...selectStijl, flex: '0 1 200px' }}>
                         {DOC_SOORTEN.map((o) => (

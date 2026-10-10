@@ -46,7 +46,7 @@ const GEEN_VERBINDING =
 
   Geeft terug: { answer, sources, veldVoorstellen, projectDossier, error }
 */
-export async function askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode, projectDossier }) {
+export async function askKompas({ messages, tier, permissions, context, conversationId, activeProgramId, matchSignalen, kompasMode, projectDossier }) {
   if (!supabase) {
     return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
@@ -61,8 +61,11 @@ export async function askKompas({ messages, tier, permissions, context, conversa
         // nog niet is aangesloten; de aanroep blijft geldig.
         context: context || null,
         conversationId: conversationId ?? null,
-        orgProfile: orgProfile || null,
-        project: project || null,
+        // Organisatie en actief project worden door de server zelf uit de
+        // database gelezen (per ingelogde gebruiker); de browser stuurt alleen
+        // mee WELK project actief is. Zonder id: geen projectcontext.
+        activeProgramId: activeProgramId || null,
+        contextVersie: 2,
         matchSignalen: matchSignalen || null,
         kompasMode: kompasMode || null,
         projectDossier: projectDossier || null,
@@ -82,6 +85,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
       sources: data.sources || [],
       veldVoorstellen: data.veldVoorstellen || {},
       projectDossier: data.projectDossier || null,
+      projectDossierBronnen: data.projectDossierBronnen || {},
       error: null,
     };
   } catch (e) {
@@ -106,7 +110,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
   oude versie nog draait — dan valt deze functie terug op askKompas(), zodat de
   gebruiker altijd een antwoord krijgt.
 */
-export async function askKompasStream({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode, projectDossier, onDelta }) {
+export async function askKompasStream({ messages, tier, permissions, context, conversationId, activeProgramId, matchSignalen, kompasMode, projectDossier, onDelta }) {
   if (!supabase) {
     return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
@@ -129,8 +133,11 @@ export async function askKompasStream({ messages, tier, permissions, context, co
         permissions: permissions || {},
         context: context || null,
         conversationId: conversationId ?? null,
-        orgProfile: orgProfile || null,
-        project: project || null,
+        // Organisatie en actief project worden door de server zelf uit de
+        // database gelezen (per ingelogde gebruiker); de browser stuurt alleen
+        // mee WELK project actief is. Zonder id: geen projectcontext.
+        activeProgramId: activeProgramId || null,
+        contextVersie: 2,
         matchSignalen: matchSignalen || null,
         kompasMode: kompasMode || null,
         projectDossier: projectDossier || null,
@@ -142,7 +149,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
 
     // Geen stream: de functie ondersteunt het nog niet.
     if (!res.ok || soort.indexOf('text/event-stream') === -1) {
-      return askKompas({ messages, tier, permissions, context, conversationId, orgProfile, project, matchSignalen, kompasMode, projectDossier });
+      return askKompas({ messages, tier, permissions, context, conversationId, activeProgramId, matchSignalen, kompasMode, projectDossier });
     }
 
     const reader = res.body.getReader();
@@ -152,6 +159,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
     let sources = [];
     let veldVoorstellen = {};
     let projectDossierUit = null;
+    let projectDossierBronnenUit = {};
     let serverFout = null;
     // STAP 5 (gevonden tijdens de belastingstest met het zwaarste testgeval):
     // een verbroken verbinding gooit niet altijd een leesfout - bij een
@@ -203,6 +211,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
               sources = deel.sources || [];
               veldVoorstellen = deel.veldVoorstellen || {};
               projectDossierUit = deel.projectDossier || null;
+              projectDossierBronnenUit = deel.projectDossierBronnen || {};
             }
           } catch (e) {
             // onvolledig JSON-fragment (regel liep over twee chunks) - de
@@ -244,7 +253,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
       throw new Error('Leeg antwoord.');
     }
 
-    return { answer: volledig, sources, veldVoorstellen, projectDossier: projectDossierUit, error: null };
+    return { answer: volledig, sources, veldVoorstellen, projectDossier: projectDossierUit, projectDossierBronnen: projectDossierBronnenUit, error: null };
   } catch (e) {
     return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
@@ -338,119 +347,29 @@ export async function analyseerWebsite({ url }) {
   document. Blijft aan deze kant zodat de Edge Function er niets van hoeft te
   weten tot die is bijgewerkt.
 */
-export function buildContext({ orgProfile, projects, activeDoc, fieldLabels, linkedProjectId }) {
-  const delen = [];
-  const profiel = orgProfile || {};
-
-  // Fase 5, punt 6/7 uit het oorspronkelijke verzoek: de AI moet weten welk
-  // project bij dit gesprek hoort, als het lid dat heeft gekoppeld.
-  //
-  // Vervolgopdracht ("één geïntegreerd systeem"), volledige gespreks-
-  // context: naast de naam nu ook de eigen projectvelden zelf (doelgroep,
-  // regio, periode, omschrijving, doelstellingen, partners, resultaten,
-  // begroting/gevraagd/eigen bijdrage) - nodig voor de projectplan-generator
-  // en begrotingsondersteuning om niet naar al bekende informatie te
-  // hoeven vragen. Documenten van dit project blijven, zoals hierna al
-  // gebeurde, apart in de projectenlijst hieronder.
-  if (linkedProjectId) {
-    const gekoppeld = (projects || []).find((p) => p.id === linkedProjectId);
-
-    if (gekoppeld) {
-      delen.push(
-        `Dit gesprek is door het lid gekoppeld aan het project "${gekoppeld.naam || 'Naamloos project'}". Ga hiervan uit als hoofdonderwerp, tenzij het lid het duidelijk over iets anders heeft.`,
-      );
-
-      const projectLabels = {
-        doelgroep: 'doelgroep',
-        regio: 'regio/werkgebied',
-        periodeVan: 'periode van',
-        periodeTot: 'periode tot',
-        omschrijving: 'projectomschrijving',
-        doelstellingen: 'doelstellingen',
-        partners: 'samenwerkingspartners',
-        resultaten: 'beoogde resultaten',
-        begroting: 'totale begroting',
-        gevraagd: 'gevraagd bedrag',
-        eigenBijdrage: 'eigen bijdrage',
-      };
-
-      const projectRegels = Object.keys(projectLabels)
-        .filter((k) => {
-          const v = gekoppeld[k];
-
-          return Array.isArray(v) ? v.length : String(v ?? '').trim();
-        })
-        .map((k) => {
-          const v = Array.isArray(gekoppeld[k]) ? gekoppeld[k].join(', ') : gekoppeld[k];
-
-          return `- ${projectLabels[k]}: ${v}`;
-        });
-
-      if (projectRegels.length) {
-        delen.push(`Gegevens van dit project:\n${projectRegels.join('\n')}`);
-      }
-    }
-  }
-
-  const gevuld = Object.keys(profiel).filter((k) => {
-    const v = profiel[k];
-
-    return Array.isArray(v) ? v.length : String(v || '').trim();
-  });
-
-  if (gevuld.length) {
-    const regels = gevuld.map((k) => {
-      const label = (fieldLabels && fieldLabels[k]) || k;
-      const v = Array.isArray(profiel[k]) ? profiel[k].join(', ') : profiel[k];
-
-      return `- ${label}: ${v}`;
-    });
-
-    delen.push(`Organisatieprofiel van dit lid:\n${regels.join('\n')}`);
-  }
-
-  if ((projects || []).length) {
-    const regels = projects.map((pr) => {
-      const docs = pr.docs || [];
-      const namen = docs.map((d) => `${d.soort}: ${d.naam}`).join('; ');
-      const inhoud = docs
-        .filter((d) => d.tekst)
-        .map((d) => `Inhoud van ${d.naam}:\n${d.tekst}`)
-        .join('\n\n');
-
-      return [
-        `- ${pr.naam || 'Naamloos project'}`,
-        pr.gevraagd ? `, gevraagd bedrag ${pr.gevraagd}` : '',
-        pr.begroting ? `, begroting ${pr.begroting}` : '',
-        namen ? `\n  Documenten: ${namen}` : '',
-        inhoud ? `\n${inhoud}` : '',
-      ].join('');
-    });
-
-    delen.push(`Projecten van dit lid:\n${regels.join('\n')}`);
-  }
-
-  if (activeDoc) {
-    const project = (projects || []).find((p) => p.id === activeDoc.projectId);
-
-    delen.push(
-      `Het lid werkt nu verder aan het document "${activeDoc.naam}" (${activeDoc.soort})` +
-        (project ? ` bij het project ${project.naam || ''}` : '') +
-        '. Ga uit van de eerdere versie en stel gerichte vragen als informatie ontbreekt.',
-    );
-  }
-
-  if (!delen.length) {
+export function buildContext({ activeDoc, projects, linkedProjectId }) {
+  // Organisatieprofiel en actief project komen niet meer vanuit de browser:
+  // de server leest die zelf uit de database, voor de ingelogde gebruiker en
+  // alleen voor het actieve project (active_program_id). Hier staat daarom
+  // alleen nog het document waaraan het lid nu verder werkt - en alleen als
+  // dat document bij het actieve project hoort.
+  if (!activeDoc || !linkedProjectId || activeDoc.projectId !== linkedProjectId) {
     return null;
   }
 
-  return `Gebruik deze achtergrondinformatie waar die relevant is. Verzin niets wat er niet staat.\n\n${delen.join('\n\n')}`;
+  const project = (projects || []).find((p) => p.id === linkedProjectId);
+
+  return (
+    `Het lid werkt nu verder aan het document "${activeDoc.naam}" (${activeDoc.soort})` +
+    (project ? ` bij het project ${project.naam || ''}` : '') +
+    '. Ga uit van de eerdere versie en stel gerichte vragen als informatie ontbreekt.'
+  );
 }
 
 /*
   AI Fundraising Assistant, fase 1: bouwt de rauwe matchsignalen uit het
-  organisatieprofiel en het gekoppelde (of, bij ontbreken daarvan, het eerste)
-  project van dit lid. Puur een uitleesfunctie, geen scoring — het berekenen
+  organisatieprofiel en het ACTIEVE project van dit lid (geen terugval op een
+  willekeurig ander project). Puur een uitleesfunctie, geen scoring — het berekenen
   van een matchscore gebeurt uitsluitend server-side in de Edge Function
   (subsidie-kompas), zodat er geen matchlogica dubbel bestaat in frontend én
   backend. Geeft null terug zolang er niets bruikbaars bekend is, dan blijft
@@ -459,12 +378,14 @@ export function buildContext({ orgProfile, projects, activeDoc, fieldLabels, lin
 export function buildMatchSignalen({ orgProfile, projects, linkedProjectId }) {
   const profiel = orgProfile || {};
   const themas = Array.isArray(profiel.themas) ? profiel.themas : [];
-  const doelgroepen = Array.isArray(profiel.doelgroepen) ? profiel.doelgroepen : [];
-  const werkgebied = profiel.regio || '';
 
-  const project = linkedProjectId
-    ? (projects || []).find((p) => p.id === linkedProjectId)
-    : (projects || [])[0];
+  // Het ACTIEVE project is leidend; zonder actief project bestaat er geen
+  // projectcriterium (dus ook geen terugval op "het eerste project").
+  const project = linkedProjectId ? (projects || []).find((p) => p.id === linkedProjectId && !p.gearchiveerd) || null : null;
+
+  const projectDoelgroepen = project && Array.isArray(project.doelgroep) ? project.doelgroep.filter(Boolean) : [];
+  const doelgroepen = project && projectDoelgroepen.length ? projectDoelgroepen : Array.isArray(profiel.doelgroepen) ? profiel.doelgroepen : [];
+  const werkgebied = (project && String(project.regio || '').trim()) || profiel.regio || '';
 
   const gevraagdCijfers = project ? String(project.gevraagd || '').replace(/[^0-9]/g, '') : '';
   const gevraagdBedrag = gevraagdCijfers ? Number(gevraagdCijfers) : null;

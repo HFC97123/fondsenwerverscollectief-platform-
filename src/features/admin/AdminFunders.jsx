@@ -21,8 +21,10 @@ import {
   classifyFunder,
   createFunder,
   deleteFunder,
+  fetchFunderExclusiviteit,
   fetchFunders,
   setAccessTier,
+  setFunderExclusiviteit,
   updateFunder,
 } from '../../data/services/adminFunders.js';
 // Hergebruikt om, vóór het verwijderen van een fonds, te tonen hoeveel
@@ -83,6 +85,10 @@ const LEEG_BEWERKING = {
   doelgroepen: [],
   regios: [],
   accessTier: 'premium',
+  // Premium exclusief: afzonderlijk van het toegangsniveau (zie adminFunders.js). Standaard UIT.
+  premiumExclusive: false,
+  aliassen: '',
+  exclusiviteitBeschikbaar: false,
   bandbreedteBijdrageId: '',
   bijdrageToelichting: '',
   classificationReviewed: false,
@@ -564,6 +570,9 @@ export default function AdminFunders({ notify }) {
       doelgroepen: [],
       regios: [],
       accessTier: row.access_tier || 'premium',
+      premiumExclusive: false,
+      aliassen: '',
+      exclusiviteitBeschikbaar: false,
       bandbreedteBijdrageId: row.bandbreedte_bijdrage_id || '',
       bijdrageToelichting: row.bijdrage_toelichting || '',
       classificationReviewed: !!row.classification_reviewed,
@@ -594,11 +603,19 @@ export default function AdminFunders({ notify }) {
       notify('error', 'De bestaande classificaties van deze funder konden niet worden geladen.');
     }
 
+    // Exclusiviteit staat bewust niet in admin_list_funders (die RPC blijft ongewijzigd) maar in een
+    // eigen RPC. Faalt die (migratie nog niet toegepast), dan verschijnt de schakelaar niet.
+    const exclusiviteit = await fetchFunderExclusiviteit([row.id]);
+    const exRij = exclusiviteit.rijen.find((r) => r.funder_id === row.id) || null;
+
     const volledig = {
       ...basis,
       themas: koppelingen.themas,
       doelgroepen: koppelingen.doelgroepen,
       regios: koppelingen.regios,
+      premiumExclusive: !!exRij?.premium_exclusive,
+      aliassen: (exRij?.aliassen || []).join('\n'),
+      exclusiviteitBeschikbaar: exclusiviteit.beschikbaar,
     };
 
     setForm(volledig);
@@ -673,6 +690,28 @@ export default function AdminFunders({ notify }) {
 
       if (tierRes.error) {
         notify('error', 'Funder bijgewerkt, maar het toegangsniveau kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
+    }
+
+    // Premium exclusief + aliassen: alleen opslaan als de beheerder ze gewijzigd heeft en de database
+    // de bijbehorende RPC kent. Elke wijziging komt in classification_audit_log.
+    if (
+      form.exclusiviteitBeschikbaar &&
+      initialFormRef.current &&
+      (form.premiumExclusive !== initialFormRef.current.premiumExclusive || form.aliassen !== initialFormRef.current.aliassen)
+    ) {
+      const aliasLijst = form.aliassen
+        .split(/[\n,;]+/)
+        .map((a) => a.trim())
+        .filter(Boolean);
+      const exRes = await setFunderExclusiviteit(row.id, form.premiumExclusive, aliasLijst);
+
+      if (exRes.error) {
+        notify('error', 'Funder bijgewerkt, maar "Premium exclusief" kon niet worden opgeslagen.');
         setEditingId(null);
         laad();
 
@@ -1253,6 +1292,34 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
           </select>
         </Veld>
       </VeldGrid>
+      {form.exclusiviteitBeschikbaar ? (
+        <>
+          <p style={css('margin: 10px 0 6px; font-size: 12.5px; color: #82918B;')}>
+            "Premium exclusief" is iets anders dan het toegangsniveau. Alleen een expliciet exclusief fonds (handmatig
+            opgebouwd, nauwelijks publiek vindbaar) is voor Free en Pro volledig verborgen, ook in zoekresultaten van het
+            web. Een publiek bekend fonds dat op Premium staat (bijv. Oranje Fonds) laat u UIT: dat blijft voor Free en Pro
+            vindbaar met alleen publieke gegevens.
+          </p>
+          <label style={css('display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; font-weight: 700; color: #2C4A5E;')}>
+            <input
+              type="checkbox"
+              checked={form.premiumExclusive}
+              onChange={(e) => setForm((f) => ({ ...f, premiumExclusive: e.target.checked }))}
+            />
+            Premium exclusief — verborgen voor Free en Pro
+          </label>
+          <div style={css('height: 10px;')} />
+          <VeldGrid>
+            <Veld label="Aliassen / andere spellingen van de naam (één per regel, alleen nodig bij exclusieve fondsen)" span={3}>
+              <textarea style={textareaStyle} rows={2} value={form.aliassen} onChange={set('aliassen')} />
+            </Veld>
+          </VeldGrid>
+        </>
+      ) : (
+        <p style={css('margin: 10px 0 6px; font-size: 12.5px; color: #82918B;')}>
+          "Premium exclusief" is nog niet beschikbaar: de bijbehorende databasewijziging is nog niet toegepast.
+        </p>
+      )}
 
       <SectieKop muted>Technische status</SectieKop>
       <VeldGrid>

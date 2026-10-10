@@ -215,6 +215,15 @@ export async function startProefperiode(tier) {
 export async function uitloggen() {
   wisProfielCache();
 
+  // Gesprek van de publieke vraagbaak staat in sessionStorage: niet laten
+  // doorlopen naar het volgende account in dezelfde browsertab. (Het
+  // organisatieprofiel staat nooit in browseropslag; zie workspace.js.)
+  try {
+    window.sessionStorage.removeItem('fwc_vraagbaak_chat_v1');
+  } catch (e) {
+    // geen opslag beschikbaar
+  }
+
   if (!supabase) {
     return;
   }

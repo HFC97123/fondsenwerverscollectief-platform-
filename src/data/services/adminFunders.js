@@ -184,6 +184,38 @@ export async function setAccessTier(tabel, id, accessTier, reden = null) {
   return { error: res.error };
 }
 
+// Exclusiviteit ("Premium exclusief"): een AFZONDERLIJKE classificatie naast het toegangsniveau.
+// Alleen een funder met premium_exclusive = true is voor Free en Pro volledig verborgen, via elke bron
+// (database, regelingen, online zoeken). Een funder die alleen op Premium staat maar publiek bekend is
+// (bijv. Oranje Fonds) blijft voor Free/Pro vindbaar. De standaard is false; niets wordt automatisch
+// afgeleid. Lezen en schrijven gaan via admin_get_funder_exclusiviteit / admin_set_funder_exclusiviteit
+// (SECURITY DEFINER, beheerder-only, auditregel in classification_audit_log).
+// beschikbaar = false als de database-migratie nog niet is toegepast; de UI toont dan een korte melding
+// in plaats van een schakelaar die niets doet.
+export async function fetchFunderExclusiviteit(funderIds) {
+  const res = await query((sb) => sb.rpc('admin_get_funder_exclusiviteit', { p_funder_ids: funderIds }), []);
+
+  if (res.error) {
+    return { rijen: [], beschikbaar: false, error: res.error };
+  }
+
+  return { rijen: res.data || [], beschikbaar: true, error: null };
+}
+
+// aliassen: array met alternatieve namen/spellingen (alleen nodig voor identiteitsherkenning).
+export async function setFunderExclusiviteit(funderId, premiumExclusive, aliassen = null, reden = null) {
+  const res = await query((sb) =>
+    sb.rpc('admin_set_funder_exclusiviteit', {
+      p_funder_id: funderId,
+      p_premium_exclusive: premiumExclusive,
+      p_aliassen: aliassen,
+      p_reden: reden,
+    }),
+  );
+
+  return { error: res.error };
+}
+
 // Zelfde toegangsniveau in één keer voor meerdere rijen (bulk-actie).
 export async function bulkSetAccessTier(tabel, ids, accessTier, reden = null) {
   const res = await query(

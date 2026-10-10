@@ -3,6 +3,15 @@
 // tabel die in een volgende fase ook voor document-upload/-extractie wordt
 // gebruikt.
 //
+// Drie niveaus (zie ook features/kompas-app/projectKoppeling.js):
+//   organisatie = blijvende organisatiegegevens (organisatieprofiel.js)
+//   project     = subsidie_kompas_programs (deze module)
+//   document    = knowledge_items: doc_type, version, document_context
+//                 (fonds en documentspecifieke instructies), superseded_at.
+// Documenten zijn append-only: een nieuwe generatie wordt een nieuwe versie,
+// de vorige blijft bestaan (gemarkeerd als vervangen) en wordt nooit stil
+// overschreven of verwijderd.
+//
 // Veldnamen blijven aan de kant van de rest van de app ongewijzigd (naam,
 // programma, doelgroep, regio, periodeVan/Tot, begroting, gevraagd,
 // eigenBijdrage, partners, resultaten, eerder, cofin, regelingen, docs) -
@@ -29,6 +38,23 @@ function doelgroepUitKolom(waarde) {
 
 function doelgroepNaarKolom(waarde) {
   return (Array.isArray(waarde) ? waarde : waarde ? [waarde] : []).join(', ') || null;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const isEchtId = (id) => typeof id === 'string' && UUID_RE.test(id);
+
+function nieuwUuid() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  // Terugval voor omgevingen zonder crypto.randomUUID.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
 async function huidigeGebruiker() {
@@ -88,6 +114,12 @@ function naarProjectVeld(rij, docs) {
     eerder: Array.isArray(rij.previous_grants) ? rij.previous_grants : [],
     cofin: Array.isArray(rij.cofinanciers) ? rij.cofinanciers : [],
     regelingen: Array.isArray(rij.linked_schemes) ? rij.linked_schemes : [],
+    activiteiten: rij.activities || '',
+    impact: rij.impact_description || '',
+    planning: rij.planning || '',
+    schrijfvoorkeur: rij.writing_preferences || '',
+    bronnen: rij.field_sources && typeof rij.field_sources === 'object' ? rij.field_sources : {},
+    gearchiveerd: !!rij.archived_at,
     docs: docs || [],
   };
 }
@@ -124,6 +156,11 @@ function naarKolomPatch(project) {
     previous_grants: project.eerder || [],
     cofinanciers: project.cofin || [],
     linked_schemes: project.regelingen || [],
+    activities: project.activiteiten || null,
+    impact_description: project.impact || null,
+    planning: project.planning || null,
+    writing_preferences: project.schrijfvoorkeur || null,
+    field_sources: project.bronnen && typeof project.bronnen === 'object' ? project.bronnen : {},
   };
 }
 
@@ -131,9 +168,15 @@ function naarDocVeld(rij) {
   return {
     id: rij.id,
     naam: rij.file_name || rij.title || 'Document',
-    soort: rij.notes || 'Overig',
+    soort: rij.doc_type || rij.notes || 'Overig',
     grootte: '',
     tekst: rij.extracted_text || '',
+    versie: rij.version || 1,
+    // Documentniveau: o.a. { fonds, instructies } - hoort bij dit ene document.
+    context: rij.document_context && typeof rij.document_context === 'object' ? rij.document_context : {},
+    vervangen: !!rij.superseded_at,
+    gemaakt: rij.created_at || null,
+    bron: rij.source_type || 'upload',
   };
 }
 
@@ -163,8 +206,9 @@ export async function haalProjectenOp() {
   if (ids.length) {
     const { data: docs } = await supabase
       .from('subsidie_kompas_knowledge_items')
-      .select('id, program_id, file_name, title, notes, extracted_text')
-      .in('program_id', ids);
+      .select('id, program_id, file_name, title, notes, extracted_text, doc_type, version, document_context, superseded_at, created_at, source_type')
+      .in('program_id', ids)
+      .order('created_at', { ascending: true });
 
     docsPerProject = (docs || []).reduce((acc, d) => {
       (acc[d.program_id] = acc[d.program_id] || []).push(naarDocVeld(d));
@@ -176,9 +220,16 @@ export async function haalProjectenOp() {
   return (programs || []).map((p) => naarProjectVeld(p, docsPerProject[p.id]));
 }
 
-// Bewaart één project (nieuw of bestaand). Documenten worden volledig
-// vervangen door de meegegeven lijst, want het scherm bewerkt en bewaart een
-// project altijd als geheel (zelfde patroon als de rest van deze pagina).
+// Bewaart één project (nieuw of bestaand). Een id die geen echte database-id
+// (uuid) is - een nieuw project in het formulier heeft een tijdelijk id - telt
+// als nieuw en wordt aangemaakt.
+//
+// Documenten worden NIET meer vervangen: bestaande documenten blijven staan,
+// nieuwe worden toegevoegd (met versienummer per documentsoort + fonds), en
+// alleen documenten die het lid expliciet verwijderde (project.verwijderdeDocIds)
+// gaan weg.
+//
+// Geeft { id, error, docs } terug; docs is de lijst met definitieve doc-id's.
 export async function bewaarProject(project) {
   const userId = await huidigeGebruiker();
 
@@ -187,10 +238,11 @@ export async function bewaarProject(project) {
   }
 
   const kolomPatch = naarKolomPatch(project);
-  let id = project.id;
+  let id = isEchtId(project.id) ? project.id : null;
+  let organizationId = null;
 
   if (!id) {
-    const organizationId = await huidigeOfNieuweOrganisatie(userId);
+    organizationId = await huidigeOfNieuweOrganisatie(userId);
 
     if (!organizationId) {
       return { id: null, error: 'kon-organisatie-niet-aanmaken' };
@@ -219,49 +271,149 @@ export async function bewaarProject(project) {
     }
   }
 
-  // Documenten: bestaande rijen voor dit project weg, huidige lijst opnieuw
-  // aanmaken. Kleine, overzichtelijke lijstjes (zelfde als eerder/cofin), dus
-  // dit is niet duurder dan een verstandig diff'en.
-  await supabase.from('subsidie_kompas_knowledge_items').delete().eq('program_id', id).eq('user_id', userId);
+  if (!organizationId) {
+    const { data: orgRij } = await supabase.from('subsidie_kompas_programs').select('organization_id').eq('id', id).single();
 
-  const nieuweDocs = (project.docs || []).filter((d) => d.naam);
-
-  if (nieuweDocs.length) {
-    const { data: orgRij } = await supabase
-      .from('subsidie_kompas_programs')
-      .select('organization_id')
-      .eq('id', id)
-      .single();
-
-    await supabase.from('subsidie_kompas_knowledge_items').insert(
-      nieuweDocs.map((d) => ({
-        user_id: userId,
-        organization_id: orgRij?.organization_id || null,
-        program_id: id,
-        title: d.naam,
-        file_name: d.naam,
-        notes: d.soort || null,
-        extracted_text: d.tekst || null,
-        source_type: 'upload',
-        status: 'ready',
-      })),
-    );
+    organizationId = orgRij?.organization_id || null;
   }
 
-  return { id, error: null };
+  const { data: bestaandRijen } = await supabase
+    .from('subsidie_kompas_knowledge_items')
+    .select('id, doc_type, notes, title, document_context, version, superseded_at')
+    .eq('program_id', id)
+    .eq('user_id', userId);
+
+  const bestaand = bestaandRijen || [];
+  const bestaandIds = new Set(bestaand.map((d) => d.id));
+
+  // 1. Alleen expliciet verwijderde documenten (en alleen van dit project).
+  const teVerwijderen = (project.verwijderdeDocIds || []).filter((x) => bestaandIds.has(x));
+
+  if (teVerwijderen.length) {
+    await supabase.from('subsidie_kompas_knowledge_items').delete().in('id', teVerwijderen).eq('user_id', userId);
+  }
+
+  const verwijderd = new Set(teVerwijderen);
+  const huidig = bestaand.filter((d) => !verwijderd.has(d.id));
+  const fondsVan = (ctx) => String((ctx && ctx.fonds) || '').trim().toLowerCase();
+
+  // 2. Bestaande documenten waarvan het lid de soort of naam wijzigde.
+  for (const d of project.docs || []) {
+    const rij = d.id ? huidig.find((x) => x.id === d.id) : null;
+
+    if (rij && (d.soort && d.soort !== (rij.doc_type || rij.notes) || (d.naam && d.naam !== rij.title))) {
+      await supabase
+        .from('subsidie_kompas_knowledge_items')
+        .update({ title: d.naam || rij.title, file_name: d.naam || rij.title, notes: d.soort || null, doc_type: d.soort || null, updated_at: new Date().toISOString() })
+        .eq('id', rij.id)
+        .eq('user_id', userId);
+    }
+  }
+
+  // 3. Nieuwe documenten: als nieuwe versie van dezelfde soort + hetzelfde fonds.
+  const docs = [];
+
+  for (const d of project.docs || []) {
+    if (!d.naam) {
+      continue;
+    }
+
+    if (d.id && huidig.some((x) => x.id === d.id)) {
+      docs.push(d);
+
+      continue;
+    }
+
+    const soort = d.soort || 'Overig';
+    const context = d.context && typeof d.context === 'object' ? d.context : {};
+    const zelfde = huidig.filter((x) => (x.doc_type || x.notes) === soort && fondsVan(x.document_context) === fondsVan(context));
+    const versie = zelfde.reduce((m, x) => Math.max(m, x.version || 1), 0) + 1;
+    const docId = isEchtId(d.id) ? d.id : nieuwUuid();
+
+    const { error: docFout } = await supabase.from('subsidie_kompas_knowledge_items').insert({
+      id: docId,
+      user_id: userId,
+      organization_id: organizationId,
+      program_id: id,
+      title: d.naam,
+      file_name: d.naam,
+      notes: soort,
+      doc_type: soort,
+      version: versie,
+      document_context: context,
+      extracted_text: d.tekst || null,
+      source_type: d.bron || 'upload',
+      status: 'ready',
+    });
+
+    if (docFout) {
+      continue;
+    }
+
+    // De vorige versie blijft bestaan, maar telt niet meer als de huidige.
+    const vervangen = zelfde.filter((x) => !x.superseded_at).map((x) => x.id);
+
+    if (vervangen.length) {
+      await supabase
+        .from('subsidie_kompas_knowledge_items')
+        .update({ superseded_at: new Date().toISOString() })
+        .in('id', vervangen)
+        .eq('user_id', userId);
+    }
+
+    huidig.push({ id: docId, doc_type: soort, notes: soort, title: d.naam, document_context: context, version: versie, superseded_at: null });
+    docs.push({ ...d, id: docId, versie, context, vervangen: false });
+  }
+
+  return { id, error: null, docs };
 }
 
-export async function verwijderProject(id) {
+// Archiveren is de veilige standaard: niets gaat verloren, het project doet
+// alleen niet meer mee als actief project of in matching.
+export async function archiveerProject(id, archiveren = true) {
   const userId = await huidigeGebruiker();
 
-  if (!userId || !supabase) {
+  if (!userId || !supabase || !isEchtId(id)) {
     return false;
   }
 
-  // knowledge_items.program_id staat op ON DELETE SET NULL, niet CASCADE -
-  // expliciet opruimen, anders blijven documenten van een verwijderd project
-  // ongekoppeld in de kennisbank staan.
-  await supabase.from('subsidie_kompas_knowledge_items').delete().eq('program_id', id).eq('user_id', userId);
+  const { error } = await supabase
+    .from('subsidie_kompas_programs')
+    .update({ archived_at: archiveren ? new Date().toISOString() : null, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId);
+
+  if (!error && archiveren) {
+    // Gesprekken die dit project als actief project hadden, krijgen er geen meer.
+    await supabase.from('subsidie_kompas_conversations').update({ active_program_id: null }).eq('active_program_id', id).eq('user_id', userId);
+  }
+
+  return !error;
+}
+
+export async function verwijderDocument(id) {
+  const userId = await huidigeGebruiker();
+
+  if (!userId || !supabase || !isEchtId(id)) {
+    return false;
+  }
+
+  const { error } = await supabase.from('subsidie_kompas_knowledge_items').delete().eq('id', id).eq('user_id', userId);
+
+  return !error;
+}
+
+// Verwijdert een project definitief. Referentiële integriteit staat in de
+// database: documenten en websitebronnen van het project gaan mee
+// (ON DELETE CASCADE); gesprekken en berichten blijven bestaan en verliezen
+// alleen hun projectkoppeling (ON DELETE SET NULL). Er blijven dus geen
+// documenten zonder project achter.
+export async function verwijderProject(id) {
+  const userId = await huidigeGebruiker();
+
+  if (!userId || !supabase || !isEchtId(id)) {
+    return false;
+  }
 
   const { error } = await supabase.from('subsidie_kompas_programs').delete().eq('id', id).eq('user_id', userId);
 

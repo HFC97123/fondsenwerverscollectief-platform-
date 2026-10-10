@@ -7,8 +7,7 @@
 import React, { useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useFaqSections } from './useMarketingContent.js';
-
-const subnavLink = css('font-size: 14.5px; font-weight: 700; color: #2C4A5E; white-space: nowrap;');
+import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 
 // Een blok is tekst, of een object met opsommingstekens.
 function Blok({ blok }) {
@@ -34,38 +33,7 @@ export default function KompasFaqPage() {
 
   return (
     <div data-screen-label="Kompas veelgestelde vragen" style={css('min-height: 100vh; position: relative; z-index: 1;')}>
-      <div style={css('border-bottom: 1px solid #E1EAE4; background: rgba(247,249,248,0.94);')}>
-        <div
-          style={css(
-            'max-width: 1120px; margin: 0 auto; padding: 14px clamp(16px, 4vw, 24px); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;',
-          )}
-        >
-          <a href="#/kompas" style={css('cursor: pointer; color: #2C4A5E; font-size: 15px; font-weight: 700;')}>
-            ← Terug naar Subsidie Kompas
-          </a>
-
-          <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; margin-left: auto;')}>
-            <a href="#/hoe-het-werkt" style={subnavLink}>
-              Hoe het werkt
-            </a>
-            <a href="#/kompas/deadlines" style={subnavLink}>
-              Deadlines
-            </a>
-            <span style={css('font-size: 14.5px; font-weight: 700; color: #4E9A6C; white-space: nowrap;')}>FAQ</span>
-          </div>
-
-          <div style={css('display: flex; align-items: center; gap: 10px;')}>
-            <img
-              src="/uploads/kompas-logo.png"
-              alt="Subsidie Kompas"
-              style={css('width: 30px; height: 30px; border-radius: 50%; object-fit: contain; display: block;')}
-            />
-            <span style={css("font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E;")}>
-              Subsidie Kompas
-            </span>
-          </div>
-        </div>
-      </div>
+      <KompasSubnav actief="faq" />
 
       <div style={css('max-width: 900px; margin: 0 auto; padding: clamp(40px, 6vw, 66px) clamp(16px, 4vw, 24px) clamp(26px, 4vw, 40px);')}>
         <div

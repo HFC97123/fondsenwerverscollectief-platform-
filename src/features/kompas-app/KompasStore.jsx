@@ -9,6 +9,7 @@ import {
   bewaarWerkomgeving,
   haalWerkomgevingOp,
   laadWerkomgeving,
+  ruimOudeGedeeldeOpslagOp,
 } from '../../data/services/workspace.js';
 import {
   bewaarOrganisatieVelden,
@@ -16,7 +17,8 @@ import {
   verwijderOrganisatieprofiel,
   wisOrganisatieVeld,
 } from '../../data/services/organisatieprofiel.js';
-import { bewaarProject, haalProjectenOp, verwijderProject } from '../../data/services/projecten.js';
+import { archiveerProject, bewaarProject, haalProjectenOp, isEchtId, verwijderProject } from '../../data/services/projecten.js';
+import { markeerHandmatigeWijzigingen, pasUpdatesToe } from './projectKoppeling.js';
 import {
   haalGesprekkenOp,
   verwijderAlleGesprekken,
@@ -42,6 +44,14 @@ export const PROJECT_EMPTY = {
   cofin: [],
   docs: [],
   regelingen: [],
+  // Projectniveau (niet organisatiebreed, niet documentspecifiek):
+  activiteiten: '',
+  impact: '',
+  planning: '',
+  schrijfvoorkeur: '',
+  // Herkomst per veld: handmatig | upload | gesprek | gesprek-bevestigd.
+  bronnen: {},
+  gearchiveerd: false,
 };
 
 export const PLAN_STATUSSEN = ['Gepland', 'Aangevraagd', 'Toegekend', 'Afgewezen'];
@@ -61,8 +71,16 @@ export function useKompas() {
   return ctx;
 }
 
-export function KompasProvider({ children }) {
-  const [st, setSt] = useState(laadWerkomgeving);
+// userId = het user_id van de ingelogde gebruiker (of null zonder sessie).
+// KompasApp geeft deze provider een key={userId}, zodat bij elke wisseling van
+// account ALLE staat (organisatieprofiel, projecten, gesprekken, herkomst)
+// opnieuw en leeg begint - er blijft nooit iets van het vorige account hangen.
+export function KompasProvider({ children, userId = null }) {
+  const [st, setSt] = useState(() => {
+    ruimOudeGedeeldeOpslagOp();
+
+    return laadWerkomgeving(userId);
+  });
   const [orgBronnen, setOrgBronnen] = useState({});
 
   // Bron van de gegevens: 'lokaal' tot een sessie de database oplevert.
@@ -103,9 +121,18 @@ export function KompasProvider({ children }) {
         return;
       }
 
+      // Alleen het profiel van precies déze gebruiker. Komt het antwoord van
+      // een andere gebruiker dan de provider kent, dan wordt het genegeerd.
+      if (!userId || res.gebruikerId !== userId) {
+        return;
+      }
+
       orgBron.current = 'supabase';
       setOrgBronnen(res.bronnen || {});
-      setSt((cur) => ({ ...cur, orgProfile: { ...cur.orgProfile, ...res.profiel } }));
+      // VERVANGEN, niet samenvoegen: de database is de enige bron. Heeft deze
+      // gebruiker (nog) geen organisatie, dan is res.profiel {} en blijft de
+      // organisatiecontext leeg.
+      setSt((cur) => ({ ...cur, orgProfile: res.profiel || {} }));
     });
 
     return () => {
@@ -162,8 +189,8 @@ export function KompasProvider({ children }) {
   // Lokaal bewaren blijft altijd staan: het is de terugval bij verlies van
   // verbinding en de opslag voor wie niet is ingelogd.
   useEffect(() => {
-    bewaarWerkomgeving(st);
-  }, [st]);
+    bewaarWerkomgeving(userId, st);
+  }, [st, userId]);
 
   // Voorkeuren doorschrijven naar de database, ontdubbeld zodat typen geen
   // reeks aanroepen oplevert. Het organisatieprofiel loopt sinds kort apart
@@ -212,6 +239,56 @@ export function KompasProvider({ children }) {
   }, []);
 
   const patch = useCallback((next) => setSt((cur) => ({ ...cur, ...next })), []);
+
+  // Altijd de laatste projectenlijst, ook binnen dezelfde tik: zo wordt het
+  // bijgewerkte project eerst berekend en daarna pas bewaard, in plaats van
+  // het uit een setState-functie te "vangen" (die React uitstelt, waardoor
+  // bewaren dan stil kon overslaan).
+  const projectenRef = useRef(st.projects);
+
+  projectenRef.current = st.projects;
+
+  const pasProjectToe = useCallback((projectId, maakNieuw) => {
+    const huidig = projectenRef.current.find((p) => p.id === projectId);
+
+    if (!huidig) {
+      return null;
+    }
+
+    const nieuw = maakNieuw(huidig);
+
+    if (nieuw && nieuw !== huidig) {
+      projectenRef.current = projectenRef.current.map((p) => (p.id === projectId ? nieuw : p));
+      setSt((cur) => ({ ...cur, projects: cur.projects.map((p) => (p.id === projectId ? nieuw : p)) }));
+    }
+
+    return nieuw || null;
+  }, []);
+
+  // Bewaart één project in de database en zet het definitieve id (en de
+  // definitieve document-id's) terug in de staat. Geeft het uiteindelijke id
+  // terug, of null als bewaren in de database mislukte. Zonder databasebron
+  // (niet ingelogd) blijft het lokaal en geeft het tijdelijke id terug.
+  const persistProject = useCallback((teBewaren, tijdelijkId) => {
+    if (projectenBron.current !== 'supabase') {
+      return Promise.resolve(tijdelijkId);
+    }
+
+    return bewaarProject(teBewaren).then((res) => {
+      if (!res.id) {
+        return null;
+      }
+
+      setSt((cur) => ({
+        ...cur,
+        projects: cur.projects.map((p) =>
+          p.id === tijdelijkId ? { ...p, id: res.id, docs: res.docs || p.docs, verwijderdeDocIds: [] } : p,
+        ),
+      }));
+
+      return res.id;
+    });
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -281,9 +358,13 @@ export function KompasProvider({ children }) {
       // Een tijdelijk lokaal id (voor een nieuw project, vóórdat de database
       // een echt id teruggeeft) zodat de rij meteen zichtbaar is; zodra
       // bewaarProject() een echt id oplevert, wordt die er alsnog ingezet.
+      // Geeft een belofte terug met het uiteindelijke id (null bij mislukken).
+      // Wijzigingen via dit formulier zijn door het lid zelf gedaan en krijgen
+      // herkomst 'handmatig'.
       saveProject: (project) => {
         const tijdelijkId = project.id || `tijdelijk-${Date.now()}`;
-        const teBewaren = { ...project, id: tijdelijkId };
+        const vorig = (st.projects || []).find((p) => p.id === tijdelijkId) || null;
+        const teBewaren = { ...project, id: tijdelijkId, bronnen: markeerHandmatigeWijzigingen(vorig, project) };
 
         setSt((cur) => {
           const list = cur.projects.slice();
@@ -298,51 +379,77 @@ export function KompasProvider({ children }) {
           return { ...cur, projects: list };
         });
 
-        if (projectenBron.current === 'supabase') {
-          bewaarProject(project).then((res) => {
-            if (res.id && res.id !== tijdelijkId) {
-              setSt((cur) => ({
-                ...cur,
-                projects: cur.projects.map((p) => (p.id === tijdelijkId ? { ...p, id: res.id } : p)),
-              }));
-            }
-          });
+        return persistProject(teBewaren, tijdelijkId);
+      },
+
+      // Maakt een nieuw project aan uit het gespreksdossier (alleen aangeroepen
+      // na een duidelijk signaal en een duplicaatcontrole, zie
+      // projectKoppeling.js). Geeft een belofte met het echte id (null bij
+      // mislukken - dan wordt het gesprek ook niet aan een niet-bestaand
+      // project gekoppeld).
+      maakProject: ({ naam, velden, bronnen }) => {
+        const tijdelijkId = `tijdelijk-${Date.now()}`;
+        const project = {
+          ...PROJECT_EMPTY,
+          ...velden,
+          naam,
+          id: tijdelijkId,
+          bronnen: { ...(bronnen || {}) },
+        };
+
+        setSt((cur) => ({ ...cur, projects: cur.projects.concat([project]) }));
+
+        return persistProject(project, tijdelijkId).then((id) => {
+          if (!id) {
+            setSt((cur) => ({ ...cur, projects: cur.projects.filter((p) => p.id !== tijdelijkId) }));
+          }
+
+          return id;
+        });
+      },
+
+      // Vult/werkt één bestaand project bij met velden uit het gesprek
+      // (zie bepaalVeldUpdates). Raakt nooit een ander project.
+      werkProjectBij: (projectId, updates, opties) => {
+        const bijgewerkt = pasProjectToe(projectId, (huidig) => pasUpdatesToe(huidig, updates, opties));
+
+        return bijgewerkt ? persistProject(bijgewerkt, projectId) : Promise.resolve(null);
+      },
+
+      // Veilige standaard i.p.v. verwijderen: het project doet niet meer mee
+      // als actief project of in matching, maar niets gaat verloren.
+      archiveProject: (id, archiveren = true) => {
+        setSt((cur) => ({
+          ...cur,
+          projects: cur.projects.map((p) => (p.id === id ? { ...p, gearchiveerd: archiveren } : p)),
+        }));
+
+        if (projectenBron.current === 'supabase' && isEchtId(id)) {
+          archiveerProject(id, archiveren);
         }
       },
 
       deleteProject: (id) => {
         setSt((cur) => ({ ...cur, projects: cur.projects.filter((p) => p.id !== id) }));
 
-        if (projectenBron.current === 'supabase' && !String(id).startsWith('tijdelijk-')) {
+        if (projectenBron.current === 'supabase' && isEchtId(id)) {
           verwijderProject(id);
         }
       },
 
       addRegelingToProject: (regeling, projectId) => {
-        let bijgewerkt = null;
-
-        setSt((cur) => {
-          const list = cur.projects.slice();
-          const i = list.findIndex((p) => p.id === projectId);
-
-          if (i === -1) {
-            return cur;
-          }
-
-          const bestaand = list[i].regelingen || [];
+        const bijgewerkt = pasProjectToe(projectId, (huidig) => {
+          const bestaand = huidig.regelingen || [];
 
           if (bestaand.some((r) => String(r.id) === String(regeling.id))) {
-            return cur;
+            return huidig;
           }
 
-          list[i] = { ...list[i], regelingen: bestaand.concat([{ ...regeling, plan: 'Gepland', herinner: true }]) };
-          bijgewerkt = list[i];
-
-          return { ...cur, projects: list };
+          return { ...huidig, regelingen: bestaand.concat([{ ...regeling, plan: 'Gepland', herinner: true }]) };
         });
 
-        if (bijgewerkt && projectenBron.current === 'supabase') {
-          bewaarProject(bijgewerkt);
+        if (bijgewerkt) {
+          persistProject(bijgewerkt, projectId);
         }
       },
 
@@ -357,34 +464,32 @@ export function KompasProvider({ children }) {
       // projectdocumenten (project.docs -> subsidie_kompas_knowledge_items,
       // zie projecten.js) - geen nieuwe opslagstructuur.
       addGeneratedDocToProject: (projectId, doc) => {
-        let bijgewerkt = null;
+        const fondsVan = (d) => String((d.context && d.context.fonds) || '').trim().toLowerCase();
 
-        setSt((cur) => {
-          const list = cur.projects.slice();
-          const i = list.findIndex((p) => p.id === projectId);
-
-          if (i === -1) {
-            return cur;
-          }
-
-          const bestaand = list[i].docs || [];
+        const bijgewerkt = pasProjectToe(projectId, (huidig) => {
+          const bestaand = huidig.docs || [];
 
           // Geen dubbele opslag: exact dezelfde tekst en soort niet nogmaals
           // toevoegen (bijv. bij twee keer op "Opslaan bij project" klikken).
           if (bestaand.some((d) => d.soort === doc.soort && d.tekst === doc.tekst)) {
-            bijgewerkt = list[i];
-
-            return cur;
+            return huidig;
           }
 
-          list[i] = { ...list[i], docs: bestaand.concat([doc]) };
-          bijgewerkt = list[i];
+          // Een nieuwe generatie wordt een NIEUWE versie naast de vorige
+          // (zelfde soort + zelfde fonds); de vorige wordt niet vervangen.
+          const zelfde = (d) => d.soort === doc.soort && fondsVan(d) === fondsVan(doc);
+          const versie = bestaand.filter(zelfde).reduce((m, d) => Math.max(m, d.versie || 1), 0) + 1;
 
-          return { ...cur, projects: list };
+          return {
+            ...huidig,
+            docs: bestaand
+              .map((d) => (zelfde(d) ? { ...d, vervangen: true } : d))
+              .concat([{ ...doc, versie, vervangen: false, bron: 'generated', gemaakt: new Date().toISOString() }]),
+          };
         });
 
-        if (bijgewerkt && projectenBron.current === 'supabase') {
-          bewaarProject(bijgewerkt);
+        if (bijgewerkt) {
+          persistProject(bijgewerkt, projectId);
         }
       },
 
@@ -465,7 +570,7 @@ export function KompasProvider({ children }) {
 
       clearRegelingen: () => patch({ deadlines: [] }),
     }),
-    [st, patch, orgBronnen, bewaarOrgVeldGedebiend],
+    [st, patch, orgBronnen, bewaarOrgVeldGedebiend, persistProject, pasProjectToe],
   );
 
   return <KompasContext.Provider value={value}>{children}</KompasContext.Provider>;

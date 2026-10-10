@@ -7,7 +7,14 @@
 // Tabellen: zie supabase/migrations/0003_werkomgeving.sql
 import { supabase } from '../client.js';
 
-const STORAGE_KEY = 'sk-werkomgeving';
+// Lokale terugval (alleen projecten/gesprekken/voorkeuren/documentatie), ALTIJD
+// per ingelogde gebruiker: de sleutel bevat het user_id. Vroeger was dit één
+// gedeelde sleutel ('sk-werkomgeving') voor de hele browser, waardoor het
+// organisatieprofiel (en meer) van het ene account bij het volgende account
+// in dezelfde browser terechtkwam. Die oude gedeelde sleutel wordt niet meer
+// gelezen (zie ruimOudeGedeeldeOpslagOp()).
+const OUDE_GEDEELDE_SLEUTEL = 'sk-werkomgeving';
+const STORAGE_PREFIX = 'sk-werkomgeving:';
 
 export const LEEG = {
   orgProfile: {},
@@ -22,21 +29,66 @@ export const LEEG = {
 
 /* ---------- lokaal ---------- */
 
-export function laadWerkomgeving() {
-  try {
-    const ruw = window.localStorage.getItem(STORAGE_KEY);
+function sleutelVoor(userId) {
+  return userId ? `${STORAGE_PREFIX}${userId}` : null;
+}
 
-    return ruw ? { ...LEEG, ...JSON.parse(ruw) } : { ...LEEG };
+// Het organisatieprofiel (en daarmee organisatiegeheugen) staat uitsluitend in
+// de database, gekoppeld aan het user_id (subsidie_kompas_organizations). Het
+// wordt nooit lokaal bewaard of teruggelezen: een lokale kopie kan nooit
+// bij een ander account terechtkomen als er geen kopie is.
+export function laadWerkomgeving(userId) {
+  const sleutel = sleutelVoor(userId);
+
+  if (!sleutel) {
+    return { ...LEEG };
+  }
+
+  try {
+    const ruw = window.localStorage.getItem(sleutel);
+
+    return ruw ? { ...LEEG, ...JSON.parse(ruw), orgProfile: {} } : { ...LEEG };
   } catch (e) {
     return { ...LEEG };
   }
 }
 
-export function bewaarWerkomgeving(state) {
+export function bewaarWerkomgeving(userId, state) {
+  const sleutel = sleutelVoor(userId);
+
+  // Zonder ingelogde gebruiker wordt niets lokaal bewaard.
+  if (!sleutel) {
+    return;
+  }
+
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const { orgProfile, ...zonderOrganisatie } = state || {};
+
+    window.localStorage.setItem(sleutel, JSON.stringify(zonderOrganisatie));
   } catch (e) {
     // geen opslag beschikbaar; de sessie blijft in het geheugen werken
+  }
+}
+
+// Eenmalig: haalt uitsluitend het organisatieprofiel uit de oude, gedeelde
+// browseropslag. De rest van die oude sleutel blijft onaangeroerd (en wordt
+// niet meer gelezen), zodat er niets van een lid wordt verwijderd.
+export function ruimOudeGedeeldeOpslagOp() {
+  try {
+    const ruw = window.localStorage.getItem(OUDE_GEDEELDE_SLEUTEL);
+
+    if (!ruw) {
+      return;
+    }
+
+    const oud = JSON.parse(ruw);
+
+    if (oud && typeof oud === 'object' && 'orgProfile' in oud) {
+      delete oud.orgProfile;
+      window.localStorage.setItem(OUDE_GEDEELDE_SLEUTEL, JSON.stringify(oud));
+    }
+  } catch (e) {
+    // niets te doen
   }
 }
 

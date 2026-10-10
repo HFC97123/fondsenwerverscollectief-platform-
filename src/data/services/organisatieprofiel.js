@@ -101,7 +101,7 @@ function naarKolomWaarde(veld, waarde) {
   return waarde === '' || waarde == null ? null : waarde;
 }
 
-// Geeft { profiel, bronnen, organizationId } terug, of null zonder sessie of
+// Geeft { profiel, bronnen, organizationId, gebruikerId } terug, of null zonder sessie of
 // zonder database (dan valt de aanroeper terug op localStorage).
 export async function haalOrganisatieprofielOp() {
   const userId = await huidigeGebruiker();
@@ -121,7 +121,7 @@ export async function haalOrganisatieprofielOp() {
   }
 
   if (!org) {
-    return { profiel: {}, bronnen: {}, organizationId: null };
+    return { profiel: {}, bronnen: {}, organizationId: null, gebruikerId: userId };
   }
 
   const { data: bronnenRijen } = await supabase
@@ -137,7 +137,7 @@ export async function haalOrganisatieprofielOp() {
     bronnen[veld] = { type: r.source_type, ref: r.source_ref, tijd: r.updated_at };
   });
 
-  return { profiel: naarProfielVeld(org), bronnen, organizationId: org.id };
+  return { profiel: naarProfielVeld(org), bronnen, organizationId: org.id, gebruikerId: userId };
 }
 
 const BRON_LABEL = {

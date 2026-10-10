@@ -16,10 +16,12 @@
 // documentgenerator.
 //
 // Wat bewust NIET is meegenomen, omdat er geen echte data voor bestaat:
-// - Versiebeheer: project.docs/subsidie_kompas_knowledge_items kennen geen
-//   versies (bewaarProject() overschrijft bij elke opslag alle documenten van
-//   een project volledig) - dus geen "Nieuwe versie"-knop en geen
-//   versiegeschiedenis meer, in plaats van die te simuleren.
+// - Versiebeheer (bijgewerkt bij de organisatie/project-scheiding): documenten
+//   hebben nu een soort, versienummer, aanmaakdatum en (optioneel) een fonds
+//   (knowledge_items.doc_type/version/document_context). Een nieuwe generatie
+//   wordt een nieuwe versie naast de vorige; bewaarProject() vervangt of
+//   verwijdert bestaande documenten niet meer. Hier alleen weergegeven,
+//   geen "Nieuwe versie"-knop.
 // - Projectkoppeling wijzigen: een document is in de echte opslag altijd kind
 //   van precies één project (afgedwongen door bewaarBijProject() in
 //   KompasToolPage.jsx) en geen enkele bestaande service kan een document
@@ -295,7 +297,16 @@ export default function DocumentatiePage({ embedded = false } = {}) {
                   {d.naam}
                 </span>
                 <span style={css("display: block; margin-top: 3px; font-family: 'Mulish', sans-serif; font-size: 12.5px; color: #7B8985;")}>
-                  {`${d.soort || 'Overig'}  ·  ${d.projectNaam}  ·  openen in de chat`}
+                  {[
+                    d.soort || 'Overig',
+                    d.versie ? `versie ${d.versie}` : '',
+                    d.context && d.context.fonds ? `voor ${d.context.fonds}` : '',
+                    d.vervangen ? 'vervangen door een nieuwere versie' : '',
+                    d.projectNaam,
+                    'openen in de chat',
+                  ]
+                    .filter(Boolean)
+                    .join('  ·  ')}
                 </span>
               </button>
 

@@ -134,7 +134,7 @@ export async function haalGesprekModusEnDossier(conversationId) {
 // en/of het bijgewerkte Projectdossier op bij een bestaand gesprek. Best
 // effort, net als voegBerichtToe() hierboven - mag nooit de rest van
 // verstuur() blokkeren als dit faalt.
-export async function bijwerkenGesprekModusEnDossier({ conversationId, kompasMode, projectDossier }) {
+export async function bijwerkenGesprekModusEnDossier({ conversationId, kompasMode, projectDossier, wisDossier = false }) {
   if (!supabase || !conversationId) {
     return false;
   }
@@ -143,6 +143,9 @@ export async function bijwerkenGesprekModusEnDossier({ conversationId, kompasMod
 
   if (kompasMode) patch.kompas_mode = kompasMode;
   if (projectDossier) patch.project_dossier = projectDossier;
+  // Bij een wissel van project mag het dossier van het vorige project niet
+  // blijven hangen: dan wordt het expliciet leeggemaakt.
+  else if (wisDossier) patch.project_dossier = null;
 
   const { error } = await supabase.from('subsidie_kompas_conversations').update(patch).eq('id', conversationId);
 

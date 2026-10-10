@@ -10,9 +10,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
+import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { useKompas, DOC_SOORTEN } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import { askKompasStream, buildContext, buildMatchSignalen, haalBudgetUitTekst } from '../../data/services/chat.js';
+import { isEchtId } from '../../data/services/projecten.js';
+import {
+  bepaalProjectActie,
+  bepaalVeldUpdates,
+  dossierNaarProjectVelden,
+  filterOrganisatieVoorstel,
+  veldenOpLijst,
+} from './projectKoppeling.js';
 // RC1 stap 3B (2026-10-01): echte .docx-generatie voor "Exporteren naar
 // Word", via de bestaande Document Theme Engine (src/shared/document-theme/) -
 // geen tweede huisstijl-/opmaaksysteem, uitsluitend deze twee, daarvoor
@@ -290,6 +299,19 @@ export default function KompasToolPage() {
   // automatisch opgeslagen - zelfde goedkeurpatroon als document-/website-
   // analyse op de Organisatie-pagina, hier alleen inline in de chat zelf).
   const [chatVoorstel, setChatVoorstel] = useState(null);
+  // Organisatie <-> project: wat er met de projectgegevens uit dit gesprek is
+  // gebeurd (melding), een keuze bij een bestaand project met dezelfde naam
+  // (projectKeuze) of een afwijkende waarde in een al ingevuld projectveld
+  // (projectConflicten). De herkomst per dossierveld (lid/bevestigd/profiel)
+  // komt van de server en wordt hier bijgehouden zodat de herkomst per
+  // projectveld klopt.
+  const [projectMelding, setProjectMelding] = useState('');
+  const [projectKeuze, setProjectKeuze] = useState(null);
+  const [projectConflicten, setProjectConflicten] = useState(null);
+  const dossierBronnenRef = useRef({});
+  const negeerProjectOpslaanRef = useRef(false);
+  const verwerkBezigRef = useRef(false);
+  const gezienProjectenRef = useRef(new Set());
   // Aanvraagbeoordeling (prioriteit 5): een lid kan een document (aanvraag,
   // projectplan, tekst) aan zijn bericht hangen. Hergebruikt bewust dezelfde
   // client-side extractie (mammoth/pdfjs) als de documentupload bij
@@ -337,7 +359,7 @@ export default function KompasToolPage() {
   useEffect(() => {
     if (store.activeDoc) {
       setActiefDoc(store.activeDoc);
-      setGekoppeldProjectId(store.activeDoc.projectId || null);
+      koppelProject(store.activeDoc.projectId || null);
       store.patch({ activeDoc: null });
     }
   }, [store.activeDoc]);
@@ -492,11 +514,10 @@ export default function KompasToolPage() {
       // voor Free hier al onnodig wordt opgebouwd en verstuurd.
       context: hasPlanTools && buildContext ? buildContext({ ...store, activeDoc: actiefDoc, linkedProjectId: gekoppeldProjectId }) : null,
       conversationId: actiefGesprekId,
-      orgProfile: hasPlanTools ? store.orgProfile || null : null,
-      // Vervolgopdracht, prioriteit 6: het gekoppelde project zelf meesturen
-      // (net als orgProfile hierboven), zodat de Edge Function kan zien welke
-      // projectvelden nog ontbreken en het lid daar proactief op kan wijzen.
-      project: hasPlanTools ? (store.projects || []).find((p) => p.id === gekoppeldProjectId) || null : null,
+      // Welk project actief is: de server leest dat project (en de
+      // organisatie) zelf uit de database, voor de ingelogde gebruiker.
+      // Zonder actief project: geen projectcontext.
+      activeProgramId: hasPlanTools && isEchtId(gekoppeldProjectId) ? gekoppeldProjectId : null,
       // AI Fundraising Assistant, fase 1: alleen zinvol voor leden met een
       // organisatieprofiel/project (Pro/Premium) - zelfde voorwaarde als
       // orgProfile hierboven, want Free heeft deze gegevens structureel niet.
@@ -548,6 +569,7 @@ export default function KompasToolPage() {
     // het hier wordt leeggemaakt.
     if (res.projectDossier) {
       setProjectDossier(res.projectDossier);
+      dossierBronnenRef.current = { ...dossierBronnenRef.current, ...(res.projectDossierBronnen || {}) };
     }
 
     if (hasPlanTools && actiefGesprekId) {
@@ -569,12 +591,157 @@ export default function KompasToolPage() {
     // Fase 6: kwam er tijdens dit gesprek een voorstel uit voort (het lid
     // noemde zelf iets dat nog in het profiel ontbrak), toon dat dan ter
     // goedkeuring - nooit automatisch overnemen.
-    if (hasPlanTools && res.veldVoorstellen && Object.keys(res.veldVoorstellen).length) {
-      setChatVoorstel({
-        velden: res.veldVoorstellen,
-        gekozen: Object.fromEntries(Object.keys(res.veldVoorstellen).map((k) => [k, true])),
+    if (hasPlanTools && res.veldVoorstellen) {
+      // Alleen organisatiebrede voorstellen (de server filtert ook; dit is het
+      // vangnet aan de clientkant).
+      const orgVelden = filterOrganisatieVoorstel(res.veldVoorstellen, {
+        projectActief: Boolean(gekoppeldProjectId) || actieveModus === 'projectplan' || actieveModus === 'begroting',
+      });
+
+      if (Object.keys(orgVelden).length) {
+        setChatVoorstel({
+          velden: orgVelden,
+          gekozen: Object.fromEntries(Object.keys(orgVelden).map((k) => [k, true])),
+        });
+      }
+    }
+
+    // Projectgegevens uit het gesprek gaan naar het PROJECT (niet naar het
+    // organisatieprofiel), met alle waarborgen uit projectKoppeling.js.
+    if (hasPlanTools && res.projectDossier) {
+      await verwerkProjectDossier({
+        dossier: res.projectDossier,
+        berichtenLijst: nieuw,
+        gesprekId: actiefGesprekId,
       });
     }
+  };
+
+  const linkHuidigGesprekAanProject = async (projectId, gesprekId) => {
+    setGekoppeldProjectId(projectId);
+
+    if (gesprekId) {
+      const ok = await koppelGesprekAanProject(gesprekId, projectId);
+
+      if (ok) {
+        store.upsertGesprekInLijst({ id: gesprekId, projectId, tijd: new Date().toISOString() });
+      }
+    }
+  };
+
+  // Beslist wat er met het dossier van dit gesprek gebeurt. Zie
+  // bepaalProjectActie() voor de regels: alleen bij een duidelijk signaal,
+  // nooit een stil duplicaat, het actieve project is leidend en een door het
+  // lid zelf ingevuld veld wordt nooit stilzwijgend overschreven.
+  const verwerkProjectDossier = async ({ dossier, berichtenLijst, gesprekId }) => {
+    if (verwerkBezigRef.current) return;
+
+    verwerkBezigRef.current = true;
+
+    try {
+      const besluit = bepaalProjectActie({
+        dossier,
+        berichten: berichtenLijst,
+        gekoppeldProjectId,
+        projecten: store.projects,
+        genegeerd: negeerProjectOpslaanRef.current,
+      });
+      const afgebeeld = dossierNaarProjectVelden(dossier, dossierBronnenRef.current);
+
+      if (besluit.actie === 'bijwerken') {
+        const project = (store.projects || []).find((p) => p.id === besluit.projectId);
+        const updates = bepaalVeldUpdates(project, afgebeeld);
+        const gewijzigd = { ...updates.vulling, ...updates.bijwerking };
+
+        if (Object.keys(gewijzigd).length) {
+          const id = await store.werkProjectBij(project.id, updates);
+
+          setProjectMelding(
+            id
+              ? `Opgeslagen in project "${project.naam || 'Naamloos project'}": ${veldenOpLijst(gewijzigd)}.`
+              : `Opslaan in project "${project.naam || 'Naamloos project'}" is niet gelukt.`,
+          );
+        }
+
+        if (Object.keys(updates.conflicten).length) {
+          setProjectConflicten({ projectId: project.id, naam: project.naam, updates });
+        }
+      } else if (besluit.actie === 'aanmaken') {
+        const id = await store.maakProject({ naam: besluit.naam, velden: afgebeeld.velden, bronnen: afgebeeld.bronnen });
+
+        if (id) {
+          await linkHuidigGesprekAanProject(id, gesprekId);
+          setProjectMelding(
+            `Nieuw project "${besluit.naam}" aangemaakt met: ${veldenOpLijst(afgebeeld.velden)}. Dit gesprek hoort nu bij dit project; u vindt het onder Projecten.`,
+          );
+        } else {
+          setProjectMelding('Het project kon niet worden aangemaakt. De gegevens staan nog wel in dit gesprek.');
+        }
+      } else if (besluit.actie === 'kiezen') {
+        setProjectKeuze({ naam: besluit.naam, kandidaten: besluit.kandidaten, afgebeeld, gesprekId });
+      }
+    } finally {
+      verwerkBezigRef.current = false;
+    }
+  };
+
+  const kiesBestaandProject = async (kandidaat) => {
+    if (!projectKeuze) return;
+
+    const { afgebeeld, gesprekId } = projectKeuze;
+    const project = (store.projects || []).find((p) => p.id === kandidaat.id);
+
+    setProjectKeuze(null);
+
+    if (!project) return;
+
+    if (project.gearchiveerd) {
+      store.archiveProject(project.id, false);
+    }
+
+    const updates = bepaalVeldUpdates(project, afgebeeld);
+
+    await store.werkProjectBij(project.id, updates);
+    await linkHuidigGesprekAanProject(project.id, gesprekId);
+
+    setProjectMelding(`Opgeslagen in bestaand project "${project.naam || 'Naamloos project'}".`);
+
+    if (Object.keys(updates.conflicten).length) {
+      setProjectConflicten({ projectId: project.id, naam: project.naam, updates });
+    }
+  };
+
+  const maakToch = async () => {
+    if (!projectKeuze) return;
+
+    const { naam, afgebeeld, gesprekId } = projectKeuze;
+
+    setProjectKeuze(null);
+
+    const id = await store.maakProject({ naam, velden: afgebeeld.velden, bronnen: afgebeeld.bronnen });
+
+    if (id) {
+      await linkHuidigGesprekAanProject(id, gesprekId);
+      setProjectMelding(`Nieuw project "${naam}" aangemaakt.`);
+    }
+  };
+
+  const nietOpslaanInProject = () => {
+    negeerProjectOpslaanRef.current = true;
+    setProjectKeuze(null);
+    setProjectMelding('Prima, de projectgegevens uit dit gesprek worden niet opgeslagen.');
+  };
+
+  const overnemenConflicten = async () => {
+    if (!projectConflicten) return;
+
+    const { projectId, updates } = projectConflicten;
+
+    setProjectConflicten(null);
+
+    const id = await store.werkProjectBij(projectId, updates, { metConflicten: true });
+
+    setProjectMelding(id ? 'Wijzigingen overgenomen in het project.' : 'Overnemen in het project is niet gelukt.');
   };
 
   const togglePaneel = (naam) => () => setPaneel(paneel === naam ? null : naam);
@@ -591,6 +758,11 @@ export default function KompasToolPage() {
     // met een leeg Projectdossier - anders zou het dossier van het vorige
     // gesprek onbedoeld blijven meelopen.
     setProjectDossier(null);
+    dossierBronnenRef.current = {};
+    negeerProjectOpslaanRef.current = false;
+    setProjectMelding('');
+    setProjectKeuze(null);
+    setProjectConflicten(null);
   };
 
   // Haalt de berichten van een eerder gesprek op (lazy - de lijst zelf bevat
@@ -612,9 +784,17 @@ export default function KompasToolPage() {
 
     setMessages(berichten);
     setConversationId(h.id);
-    setGekoppeldProjectId(h.projectId || null);
+    // Alleen een project dat nog bestaat en niet gearchiveerd is blijft actief.
+    const bekend = (store.projects || []).find((p) => p.id === h.projectId);
+
+    setGekoppeldProjectId(h.projectId && bekend && !bekend.gearchiveerd ? h.projectId : null);
     setKompasMode(opgeslagenModus);
     setProjectDossier(opgeslagenDossier);
+    dossierBronnenRef.current = {};
+    negeerProjectOpslaanRef.current = false;
+    setProjectMelding('');
+    setProjectKeuze(null);
+    setProjectConflicten(null);
     setDraft('');
     setError('');
     setChatVoorstel(null);
@@ -628,16 +808,55 @@ export default function KompasToolPage() {
   const koppelProject = async (projectId) => {
     const genormaliseerd = projectId || null;
 
+    if (genormaliseerd === gekoppeldProjectId) return;
+
+    // Wissel van project = echt wisselen van context. Staat er al een gesprek,
+    // dan begint er een NIEUW gesprek voor het gekozen project (of zonder
+    // project): berichten, dossier en eerdere extracties van het vorige project
+    // lopen zo nooit mee. Het vorige gesprek blijft bewaard onder "Eerdere
+    // gesprekken".
+    if (messages.length > 0 || conversationId) {
+      const naam = genormaliseerd ? (store.projects || []).find((p) => p.id === genormaliseerd)?.naam || 'Naamloos project' : null;
+
+      nieuweChat();
+      setGekoppeldProjectId(genormaliseerd);
+      setProjectMelding(
+        naam
+          ? `Nieuw gesprek gestart voor project "${naam}". Het vorige gesprek vindt u terug onder Eerdere gesprekken.`
+          : 'Nieuw gesprek gestart zonder actief project. Het vorige gesprek vindt u terug onder Eerdere gesprekken.',
+      );
+
+      return;
+    }
+
     setGekoppeldProjectId(genormaliseerd);
+    setProjectDossier(null);
+    dossierBronnenRef.current = {};
+    setProjectKeuze(null);
+    setProjectConflicten(null);
+    setProjectMelding('');
+  };
 
-    if (conversationId) {
-      const ok = await koppelGesprekAanProject(conversationId, genormaliseerd);
+  // Is het gekoppelde project verwijderd of gearchiveerd (bijv. via het
+  // Projecten-paneel), dan heeft dit gesprek geen actief project meer.
+  useEffect(() => {
+    (store.projects || []).forEach((p) => gezienProjectenRef.current.add(p.id));
 
-      if (ok) {
-        store.upsertGesprekInLijst({ id: conversationId, projectId: genormaliseerd, tijd: new Date().toISOString() });
+    if (gekoppeldProjectId && gezienProjectenRef.current.has(gekoppeldProjectId)) {
+      const p = (store.projects || []).find((x) => x.id === gekoppeldProjectId);
+
+      if (!p || p.gearchiveerd) {
+        setGekoppeldProjectId(null);
+        setProjectDossier(null);
+        dossierBronnenRef.current = {};
+        setProjectMelding('Het gekoppelde project is verwijderd of gearchiveerd; dit gesprek heeft nu geen actief project.');
+
+        if (conversationId) {
+          koppelGesprekAanProject(conversationId, null);
+        }
       }
     }
-  };
+  }, [store.projects, gekoppeldProjectId]);
 
   // Vervolgopdracht, prioriteit 7 (Export). Vier acties onder een "groot"
   // AI-resultaat - hergebruikt bestaande mechanismen, geen nieuwe opslag:
@@ -771,10 +990,21 @@ export default function KompasToolPage() {
       return;
     }
 
-    const naam = `${soort} — concept van ${new Date().toLocaleDateString('nl-NL')}`;
+    // Documentniveau: een fonds en documentspecifieke instructies horen bij
+    // dit ene document en veranderen het project nooit. Een nieuwe generatie
+    // voor hetzelfde fonds wordt een nieuwe versie; de vorige blijft bestaan.
+    const fondsRuw = String((projectDossier && projectDossier.fondsKeuze) || '').trim();
+    const fonds = /^(generiek|algemeen|geen|nvt|n\.v\.t\.?)$/i.test(fondsRuw) ? '' : fondsRuw;
+    const instructies = String((projectDossier && projectDossier.documentinstructies) || '').trim();
+    const context = {};
 
-    store.addGeneratedDocToProject(gekoppeldProjectId, { naam, soort, grootte: '', tekst });
-    setResultaatMelding(`Opgeslagen als "${naam}" bij het project.`);
+    if (fonds) context.fonds = fonds;
+    if (instructies) context.instructies = instructies;
+
+    const naam = `${soort}${fonds ? ` voor ${fonds}` : ''} — concept van ${new Date().toLocaleDateString('nl-NL')}`;
+
+    store.addGeneratedDocToProject(gekoppeldProjectId, { naam, soort, grootte: '', tekst, context });
+    setResultaatMelding(`Opgeslagen als "${naam}" bij het project (als nieuwe versie; eerdere versies blijven bewaard).`);
   };
 
   const bewerkVerder = (soort) => {
@@ -798,50 +1028,10 @@ export default function KompasToolPage() {
     setChatVoorstel(null);
   };
 
-  const subnavLink = css('font-size: 14.5px; font-weight: 700; color: #2C4A5E; white-space: nowrap;');
-
   return (
     <div data-screen-label="Subsidie Kompas" style={css('min-height: 100vh; position: relative; z-index: 1;')}>
-      {/* SUBNAVIGATIE */}
-      <div style={css('position: relative; z-index: 1; border-bottom: 1px solid #E1EAE4; background: rgba(247,249,248,0.94);')}>
-        <div
-          style={css(
-            'max-width: 1120px; margin: 0 auto; padding: 14px clamp(16px, 4vw, 24px); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;',
-          )}
-        >
-          <div onClick={app.goHome} style={css('cursor: pointer; color: #2C4A5E; font-size: 15px; font-weight: 700;')}>
-            ← Terug naar Het Fondsenwervers Collectief
-          </div>
-
-          <div style={css('display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; margin-left: auto;')}>
-            <a href="#/hoe-het-werkt" style={subnavLink}>
-              Hoe het werkt
-            </a>
-            <a href="#/kompas/deadlines" style={subnavLink}>
-              Deadlines
-            </a>
-            <a href="#/kompas/faq" style={subnavLink}>
-              FAQ
-            </a>
-          </div>
-
-          <div style={css('display: flex; align-items: center; gap: 12px;')}>
-            {toonStatusBadge && (
-              <span style={css('padding: 5px 13px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 12px; font-weight: 800;')}>
-                {statusIndicator}
-              </span>
-            )}
-            <span style={css('display: flex; align-items: center; gap: 10px;')}>
-              <img
-                src="/uploads/kompas-logo.png"
-                alt="Subsidie Kompas"
-                style={css('width: 30px; height: 30px; border-radius: 50%; object-fit: contain; display: block;')}
-              />
-              <span style={css("font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E;")}>Subsidie Kompas</span>
-            </span>
-          </div>
-        </div>
-      </div>
+      {/* SUBNAVIGATIE: gedeelde Subsidie Kompas-kop (met de Subsidie Kompas-knop rechtsboven) */}
+      <KompasSubnav terugNaarKompas={false} toonPlan />
 
       {/* HERO */}
       <div style={css('position: relative; z-index: 1; max-width: 850px; margin: 72px auto 0; padding: 0 clamp(16px, 4vw, 24px); text-align: center;')}>
@@ -888,7 +1078,7 @@ export default function KompasToolPage() {
                 <span style={css('font-size: 12px; font-weight: 700; opacity: 0.7;')}>{documenten.length}</span>
               </button>
 
-              {(store.projects || []).length > 0 && (
+              {(store.projects || []).filter((p) => !p.gearchiveerd).length > 0 && (
                 <select
                   value={gekoppeldProjectId || ''}
                   onChange={(e) => koppelProject(e.target.value || null)}
@@ -897,8 +1087,8 @@ export default function KompasToolPage() {
                     'cursor: pointer; box-sizing: border-box; min-height: 38px; padding: 8px 16px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 800;',
                   )}
                 >
-                  <option value="">Geen project gekoppeld</option>
-                  {store.projects.map((p) => (
+                  <option value="">Geen actief project</option>
+                  {store.projects.filter((p) => !p.gearchiveerd).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.naam || 'Naamloos project'}
                     </option>
@@ -919,7 +1109,7 @@ export default function KompasToolPage() {
           <div style={css('display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -6px 0 16px; font-size: 12.5px; color: #7B8985;')}>
             <span style={css('font-weight: 700; color: #9CA9A5;')}>Context:</span>
             <span style={contextChipStijl}>
-              Project: {(store.projects || []).find((p) => p.id === gekoppeldProjectId)?.naam || 'geen'}
+              Actief project: {(store.projects || []).find((p) => p.id === gekoppeldProjectId)?.naam || 'geen'}
             </span>
             <span style={contextChipStijl}>Organisatie: {store.orgProfile?.name || 'niet ingevuld'}</span>
             <span style={contextChipStijl}>
@@ -1302,6 +1492,105 @@ export default function KompasToolPage() {
               </div>
             )}
 
+            {projectMelding && (
+              <div
+                style={css(
+                  'margin-bottom: 10px; padding: 10px 14px; border: 1px solid #BFD4C6; border-radius: 12px; background: #EAF4EE; font-size: 13px; font-weight: 700; color: #2F6D47; display: flex; align-items: center; justify-content: space-between; gap: 12px;',
+                )}
+              >
+                <span>{projectMelding}</span>
+                <span
+                  onClick={() => setProjectMelding('')}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Melding sluiten"
+                  style={css('cursor: pointer; color: #2F6D47; font-size: 16px; font-weight: 700;')}
+                >
+                  ×
+                </span>
+              </div>
+            )}
+
+            {projectKeuze && (
+              <div style={css('margin-bottom: 14px; padding: 18px; border: 1px solid #D6E3E9; border-radius: 16px; background: #EAF1F6;')}>
+                <div style={css('margin-bottom: 10px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
+                  U heeft al een project met een vergelijkbare naam. Waar moeten de projectgegevens uit dit gesprek heen?
+                </div>
+                <div style={css('display: flex; gap: 10px; flex-wrap: wrap;')}>
+                  {projectKeuze.kandidaten.map((k) => (
+                    <div
+                      key={k.id}
+                      onClick={() => kiesBestaandProject(k)}
+                      role="button"
+                      tabIndex={0}
+                      style={css(
+                        'cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-size: 13.5px; font-weight: 800;',
+                      )}
+                    >
+                      Opslaan in "{k.naam || 'Naamloos project'}"{k.gearchiveerd ? ' (terugzetten)' : ''}
+                    </div>
+                  ))}
+                  <div
+                    onClick={maakToch}
+                    role="button"
+                    tabIndex={0}
+                    style={css(
+                      'cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 700;',
+                    )}
+                  >
+                    Nieuw project aanmaken
+                  </div>
+                  <div
+                    onClick={nietOpslaanInProject}
+                    role="button"
+                    tabIndex={0}
+                    style={css(
+                      'cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 700;',
+                    )}
+                  >
+                    Niet opslaan
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {projectConflicten && (
+              <div style={css('margin-bottom: 14px; padding: 18px; border: 1px solid #E9D9A8; border-radius: 16px; background: #FBF6E4;')}>
+                <div style={css('margin-bottom: 10px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
+                  In dit gesprek staat iets anders dan in uw project "{projectConflicten.naam || 'Naamloos project'}". Uw eigen invoer is niet overschreven.
+                </div>
+                <div style={css('display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 13.5px; color: #3D4B48;')}>
+                  {Object.entries(projectConflicten.updates.conflicten).map(([veld, c]) => (
+                    <div key={veld}>
+                      <strong>{veldenOpLijst({ [veld]: 1 })}:</strong> nu "{Array.isArray(c.huidig) ? c.huidig.join(', ') : c.huidig}" — in gesprek "{c.nieuw}"
+                    </div>
+                  ))}
+                </div>
+                <div style={css('display: flex; gap: 10px; flex-wrap: wrap;')}>
+                  <div
+                    onClick={overnemenConflicten}
+                    role="button"
+                    tabIndex={0}
+                    style={css(
+                      'cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-size: 13.5px; font-weight: 800;',
+                    )}
+                  >
+                    Overnemen in het project
+                  </div>
+                  <div
+                    onClick={() => setProjectConflicten(null)}
+                    role="button"
+                    tabIndex={0}
+                    style={css(
+                      'cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 700;',
+                    )}
+                  >
+                    Huidige waarde houden
+                  </div>
+                </div>
+              </div>
+            )}
+
             {actiefDoc && (
               <div
                 style={css(
@@ -1328,7 +1617,10 @@ export default function KompasToolPage() {
                 )}
               >
                 <div style={css('margin-bottom: 10px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
-                  Subsidie Kompas wil dit toevoegen aan uw organisatieprofiel
+                  Dit lijkt organisatiebrede informatie. Toevoegen aan uw organisatieprofiel?
+                </div>
+                <div style={css('margin: -4px 0 12px; font-size: 12.5px; color: #4B5C58;')}>
+                  Gegevens over één project slaan we niet hier op, maar in het project zelf.
                 </div>
                 <div style={css('display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;')}>
                   {Object.entries(chatVoorstel.velden).map(([veld, waarde]) => {
@@ -1363,7 +1655,7 @@ export default function KompasToolPage() {
                       'cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-size: 13.5px; font-weight: 800;',
                     )}
                   >
-                    Overnemen in profiel
+                    Overnemen in organisatieprofiel
                   </div>
                   <div
                     onClick={() => setChatVoorstel(null)}
