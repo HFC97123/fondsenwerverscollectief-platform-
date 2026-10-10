@@ -38,26 +38,17 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { DOC_SOORTEN, useKompas } from './KompasStore.jsx';
 import { Button, EmptyState, Notice, Panel, PanelHeader } from '../../shared/ui/index.js';
-import { normalizeDocumentContent } from '../../shared/document-theme/normalizeDocumentContent.js';
-import { generateWordDocument } from '../../shared/document-theme/generateWordDocument.js';
-// RC1 stap 3 (K2), laatste onderdeel (2026-10-02): "Download Excel" voor een
-// opgeslagen begroting - hergebruikt exact dezelfde pipeline als "Exporteren
-// naar Excel" in de chat (KompasToolPage.jsx), geen tweede implementatie van
-// budgetUitTekst()/berekenBudget()/generateExcelDocument().
-import { haalBudgetUitTekst } from '../../data/services/chat.js';
-import { berekenBudget } from '../../shared/budget/berekenBudget.js';
-import { generateExcelDocument, bepaalExcelBestandsnaam } from '../../shared/budget/generateExcelDocument.js';
+// Exporteren (Word / Excel / PDF): gedeeld menu en gedeelde exportlaag
+// (src/shared/export/); de vroegere downloadDocument/downloadExcelDocument
+// staan daar nu eenmalig, met dezelfde Word-generator en begrotings-Excel.
+import ExportMenu from '../../shared/ui/ExportMenu.jsx';
+import { opgeslagenDocumentExport } from './exportBronnen.js';
 
 // Tot er een tweede documentgenerator bestaat (Excel/PDF, een latere stap) is
 // elk echt document hier altijd een .docx - geen verzonnen Excel/PDF-variant.
 const WORD_STIJL = { label: 'DOCX', bg: '#EAF1F6', color: '#2C4A5E' };
 
 const FILTERS = [['alle', 'Alle documenten'], ...DOC_SOORTEN.map((soort) => [soort, soort])];
-
-const veiligeBestandsnaam = (s) =>
-  String(s || '')
-    .replace(/[\\/:*?"<>|]/g, '')
-    .trim();
 
 export default function DocumentatiePage({ embedded = false } = {}) {
   const app = useApp();
@@ -66,7 +57,6 @@ export default function DocumentatiePage({ embedded = false } = {}) {
 
   const [filter, setFilter] = useState('alle');
   const [melding, setMelding] = useState('');
-  const [excelBezigIds, setExcelBezigIds] = useState(() => new Set());
 
   if (!paid) {
     return (
@@ -103,129 +93,6 @@ export default function DocumentatiePage({ embedded = false } = {}) {
     store.patch({ activeDoc: { id: doc.id, naam: doc.naam, soort: doc.soort, projectId: doc.projectId || '' } });
     window.location.hash = '#/subsidie-kompas';
   };
-
-  // Dezelfde generator als "Exporteren naar Word" in de chat
-  // (KompasToolPage.jsx's exporteerAlsWord): normalizeDocumentContent() +
-  // generateWordDocument(), met dezelfde huisstijl en dezelfde
-  // bestandsnaamopbouw. Geen silent no-op: bij een fout verschijnt dezelfde
-  // zichtbare melding als elders op deze pagina.
-  const downloadDocument = async (d) => {
-    try {
-      const inhoud = normalizeDocumentContent(d.tekst);
-      const organisatieNaam = store.orgProfile?.name || null;
-      const blob = await generateWordDocument({
-        title: d.soort || 'Document',
-        documentType: d.soort || undefined,
-        organizationName: organisatieNaam,
-        content: inhoud,
-      });
-
-      const documentNaam = veiligeBestandsnaam(d.soort) || 'Document';
-      const bestandsnaam = organisatieNaam
-        ? `${documentNaam} - ${veiligeBestandsnaam(organisatieNaam)}.docx`
-        : `Subsidie Kompas - ${documentNaam}.docx`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-
-      a.href = url;
-      a.download = bestandsnaam;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setMelding(`${d.naam} wordt gedownload.`);
-    } catch (e) {
-      setMelding('Het genereren van het Word-bestand is niet gelukt. Probeer het opnieuw.');
-    }
-  };
-
-  // RC1 stap 3 (K2), laatste onderdeel (2026-10-02): "Download Excel",
-  // uitsluitend aangeboden bij d.soort === 'Begroting' (zie de knop
-  // verderop) - dezelfde betrouwbare, gesloten documenttype-lijst
-  // (DOC_SOORTEN) die deze pagina al overal gebruikt voor filtering en het
-  // getoonde type, geen nieuwe op losse woorden gebaseerde herkenning.
-  // d.tekst is hier altijd de letterlijke, al bewaarde begrotingstekst uit de
-  // chat (zie bewaarBijProject() in KompasToolPage.jsx) - er wordt hier geen
-  // regex-parser gebruikt, uitsluitend de bestaande budgetUitTekst().
-  const downloadExcelDocument = async (d) => {
-    if (excelBezigIds.has(d.id)) {
-      return; // voorkomt meerdere gelijktijdige exports bij dubbelklikken
-    }
-
-    setExcelBezigIds((cur) => new Set(cur).add(d.id));
-    setMelding('Begroting wordt geanalyseerd...');
-
-    try {
-      const { budget: ruwBudget, error: extractieFout } = await haalBudgetUitTekst({ tekst: d.tekst });
-
-      if (extractieFout || !ruwBudget) {
-        setMelding(extractieFout || 'De begroting kon niet worden geanalyseerd. Probeer het opnieuw.');
-
-        return;
-      }
-
-      // Dezelfde bronprioriteit als de chat-export: het gekoppelde, echte
-      // project (begroting/gevraagd/eigenBijdrage/cofin) gaat rechtstreeks
-      // naar berekenBudget() - geen nieuwe regel hiervoor.
-      const project = (store.projects || []).find((p) => p.id === d.projectId) || null;
-      const budget = berekenBudget(ruwBudget.expenseLines, project, ruwBudget.meta);
-      const bruikbareRegels = budget.expenseLines.filter((r) => r.bedrag != null).length;
-
-      if (bruikbareRegels === 0) {
-        setMelding(
-          'Er is geen enkele bruikbare kostenregel gevonden in deze begroting. Werk de begroting verder uit en probeer het daarna opnieuw.',
-        );
-
-        return;
-      }
-
-      const organisatieNaam = store.orgProfile?.name || null;
-      const blob = await generateExcelDocument({ budget, project, organizationName: organisatieNaam });
-      const bestandsnaam = bepaalExcelBestandsnaam({ project, organizationName: organisatieNaam });
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-
-      a.href = url;
-      a.download = bestandsnaam;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setMelding(
-        budget.totals.isSluitend
-          ? 'Excel-bestand wordt gedownload.'
-          : 'Excel-bestand wordt gedownload. Let op: deze begroting is nog niet sluitend - het verschil staat duidelijk op het tabblad Dekkingsplan.',
-      );
-    } catch (e) {
-      setMelding('Het genereren van het Excel-bestand is niet gelukt. Probeer het opnieuw.');
-    } finally {
-      setExcelBezigIds((cur) => {
-        const volgende = new Set(cur);
-
-        volgende.delete(d.id);
-
-        return volgende;
-      });
-    }
-  };
-
-  const actieStyle = (kleur) =>
-    css(`
-      cursor: pointer;
-      min-height: 44px;
-      display: flex;
-      align-items: center;
-      border: none;
-      background: none;
-      padding: 0;
-      font-family: 'Mulish', sans-serif;
-      font-size: 13.5px;
-      font-weight: 700;
-      color: ${kleur};
-    `);
 
   return (
     <Panel embedded={embedded}>
@@ -311,19 +178,13 @@ export default function DocumentatiePage({ embedded = false } = {}) {
               </button>
 
               <span style={css('display: flex; align-items: center; gap: 14px; flex-shrink: 0; flex-wrap: wrap;')}>
-                <button type="button" onClick={() => downloadDocument(d)} style={{ ...actieStyle('#4E9A6C'), fontWeight: 800 }}>
-                  Download Word ↓
-                </button>
-                {d.soort === 'Begroting' && (
-                  <button
-                    type="button"
-                    onClick={() => downloadExcelDocument(d)}
-                    disabled={excelBezigIds.has(d.id)}
-                    style={{ ...actieStyle('#2C4A5E'), fontWeight: 800, opacity: excelBezigIds.has(d.id) ? 0.6 : 1 }}
-                  >
-                    {excelBezigIds.has(d.id) ? 'Bezig…' : 'Download Excel ↓'}
-                  </button>
-                )}
+                <ExportMenu
+                  toegestaan={paid}
+                  uitlijnen="rechts"
+                  onMelding={(tekst) => setMelding(tekst)}
+                  ariaLabel={`${d.naam} exporteren`}
+                  bouwModel={opgeslagenDocumentExport({ doc: d, store })}
+                />
               </span>
             </div>
           ))}

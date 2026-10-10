@@ -17,6 +17,8 @@ import {
 import { analyseerWebsite, extractOrganisatieVelden } from '../../data/services/chat.js';
 import { haalClassificatiesOp } from '../../data/services/classificaties.js';
 import { Button, ClassificatieSelect, Field, Notice, Panel, PanelHeader, SectionHeading, veldStijl } from '../../shared/ui/index.js';
+import ExportMenu from '../../shared/ui/ExportMenu.jsx';
+import { organisatieExport } from './exportBronnen.js';
 
 // Ook gebruikt door KompasToolPage.jsx (fase 6, veldlabels voor de
 // goedkeuring van AI-voorstellen die tijdens een gesprek naar voren komen).
@@ -325,6 +327,18 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
         <PanelHeader title="Organisatie"
           intro="Dit profiel is optioneel. Hoe meer u invult, hoe gerichter Subsidie Kompas adviseert over passende fondsen en hoe beter aanvragen in uw eigen toon worden geschreven."
         />
+      )}
+
+      {!isLeeg && (
+        <div style={css('display: flex; justify-content: flex-end; margin: -6px 0 14px;')}>
+          <ExportMenu
+            toegestaan={paid}
+            uitlijnen="rechts"
+            maat="normaal"
+            ariaLabel="Organisatieprofiel exporteren"
+            bouwModel={organisatieExport({ velden: VELDEN, store })}
+          />
+        </div>
       )}
 
       {isLeeg && (

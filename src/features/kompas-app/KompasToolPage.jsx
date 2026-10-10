@@ -13,7 +13,7 @@ import { useApp } from './useKompasApp.js';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { useKompas, DOC_SOORTEN } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
-import { askKompasStream, buildContext, buildMatchSignalen, haalBudgetUitTekst } from '../../data/services/chat.js';
+import { askKompasStream, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
 import { isEchtId } from '../../data/services/projecten.js';
 import {
   bepaalProjectActie,
@@ -22,19 +22,14 @@ import {
   filterOrganisatieVoorstel,
   veldenOpLijst,
 } from './projectKoppeling.js';
-// RC1 stap 3B (2026-10-01): echte .docx-generatie voor "Exporteren naar
-// Word", via de bestaande Document Theme Engine (src/shared/document-theme/) -
-// geen tweede huisstijl-/opmaaksysteem, uitsluitend deze twee, daarvoor
-// gebouwde functies hergebruikt.
-import { normalizeDocumentContent } from '../../shared/document-theme/normalizeDocumentContent.js';
-import { generateWordDocument } from '../../shared/document-theme/generateWordDocument.js';
-// RC1 stap 3D-4 (2026-10-01): echte .xlsx-generatie voor "Exporteren naar
-// Excel" in de begrotingsworkflow - zelfde architectuur als Word hierboven.
-// berekenBudget() is de enige rekenkundige waarheid (RC1 stap 3D);
-// generateExcelDocument() ontvangt uitsluitend het al berekende resultaat en
-// doet zelf geen AI-aanroep en geen eigen rekenwerk.
-import { berekenBudget } from '../../shared/budget/berekenBudget.js';
-import { generateExcelDocument, bepaalExcelBestandsnaam } from '../../shared/budget/generateExcelDocument.js';
+// Exporteren (Word / Excel / PDF): één gedeeld menu en één gedeelde exportlaag
+// (src/shared/export/). De Word-generator zelf (normalizeDocumentContent +
+// generateWordDocument, Document Theme Engine) en de begrotings-Excel
+// (haalBudgetUitTekst -> berekenBudget -> generateExcelDocument) zijn
+// ongewijzigd en worden daar hergebruikt; de vroegere functies
+// exporteerAlsWord/exporteerAlsExcel stonden hier en in DocumentatiePage.jsx.
+import ExportMenu from '../../shared/ui/ExportMenu.jsx';
+import { chatDocumentExport, gesprekExport } from './exportBronnen.js';
 import { extraheerTekst } from '../../data/services/documentExtractie.js';
 import {
   bijwerkenGesprekModusEnDossier,
@@ -879,109 +874,11 @@ export default function KompasToolPage() {
     }
   };
 
-  // RC1 stap 3B (2026-10-01): vervangt de vorige HTML-als-".doc"-truc door een
-  // echte .docx (OOXML), opgebouwd via de bestaande Document Theme Engine.
-  // Knop, zichtbaarheid (hasPlanTools) en de aanroep hiervan blijven exact
-  // ongewijzigd - uitsluitend de implementatie van deze ene functie verandert.
-  // Bevat UITSLUITEND de tekst van het aangeklikte chatbericht (`tekst`, exact
-  // zoals het lid dat al zag) plus, indien beschikbaar, de organisatienaam uit
-  // het al bestaande organisatieprofiel (`store.orgProfile?.name`, dezelfde
-  // bron als de contextchip "Organisatie: ..." verderop op deze pagina) - geen
-  // system prompt, runtimecontext, Projectdossier-bronnen, matchscores of
-  // andere interne/server-side gegevens worden hier ooit aan meegegeven.
-  const exporteerAlsWord = async (tekst, naam) => {
-    try {
-      const organisatieNaam = store.orgProfile?.name || null;
-      const content = normalizeDocumentContent(tekst);
-      const blob = await generateWordDocument({
-        title: naam || 'Subsidie Kompas',
-        documentType: naam || undefined,
-        organizationName: organisatieNaam,
-        content,
-      });
-
-      const veiligeBestandsnaam = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').trim();
-      const documentNaam = veiligeBestandsnaam(naam) || 'Projectplan';
-      const bestandsnaam = organisatieNaam
-        ? `${documentNaam} - ${veiligeBestandsnaam(organisatieNaam)}.docx`
-        : `Subsidie Kompas - ${documentNaam}.docx`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-
-      a.href = url;
-      a.download = bestandsnaam;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setResultaatMelding('Word-bestand wordt gedownload.');
-    } catch (e) {
-      // Geen stille failure: de gebruiker krijgt dezelfde zichtbare melding
-      // als bij de andere export-/opslagacties op deze pagina (zie
-      // kopieerBericht hierboven) in plaats van dat er niets gebeurt.
-      setResultaatMelding('Het genereren van het Word-bestand is niet gelukt. Probeer het opnieuw.');
-    }
-  };
-
-  // RC1 stap 3D-4 (2026-10-01): "Exporteren naar Excel" - uitsluitend
-  // zichtbaar tijdens een echte begrotingsworkflow (zie de knop verderop,
-  // additioneel gated op kompasMode === 'begroting'). Flow exact zoals
-  // opgedragen: begrotingstekst -> haalBudgetUitTekst() (Edge Function, pure
-  // transcriptie, geen rekenwerk) -> berekenBudget() (hier, client-side, de
-  // enige rekenkundige waarheid) -> bij een blokkerende fout (geen bruikbare
-  // kostenregels) een duidelijke melding en GEEN leeg/fictief Excelbestand;
-  // anders een echte .xlsx-download, ook wanneer de begroting nog niet
-  // sluit (dat verschil wordt dan juist expliciet getoond, nooit verborgen).
-  // Geen tweede validator: berekenBudget() en de eigen defensieve controle
-  // in generateExcelDocument() gebruiken hetzelfde waarschuwingen-resultaat.
-  const exporteerAlsExcel = async (tekst) => {
-    setResultaatMelding('Begroting wordt geanalyseerd...');
-
-    try {
-      const { budget: ruwBudget, error: extractieFout } = await haalBudgetUitTekst({ tekst });
-
-      if (extractieFout || !ruwBudget) {
-        setResultaatMelding(extractieFout || 'De begroting kon niet worden geanalyseerd. Probeer het opnieuw.');
-
-        return;
-      }
-
-      const project = (store.projects || []).find((p) => p.id === gekoppeldProjectId) || null;
-      const budget = berekenBudget(ruwBudget.expenseLines, project, ruwBudget.meta);
-      const bruikbareRegels = budget.expenseLines.filter((r) => r.bedrag != null).length;
-
-      if (bruikbareRegels === 0) {
-        setResultaatMelding(
-          'Er is geen enkele bruikbare kostenregel gevonden in deze begroting. Werk de begroting verder uit in het gesprek en probeer het daarna opnieuw.',
-        );
-
-        return;
-      }
-
-      const organisatieNaam = store.orgProfile?.name || null;
-      const blob = await generateExcelDocument({ budget, project, organizationName: organisatieNaam });
-      const bestandsnaam = bepaalExcelBestandsnaam({ project, organizationName: organisatieNaam });
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-
-      a.href = url;
-      a.download = bestandsnaam;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setResultaatMelding(
-        budget.totals.isSluitend
-          ? 'Excel-bestand wordt gedownload.'
-          : 'Excel-bestand wordt gedownload. Let op: deze begroting is nog niet sluitend - het verschil staat duidelijk op het tabblad Dekkingsplan.',
-      );
-    } catch (e) {
-      setResultaatMelding('Het genereren van het Excel-bestand is niet gelukt. Probeer het opnieuw.');
-    }
-  };
+  // Exporteren (Word/Excel/PDF) loopt voor alle resultaten via <ExportMenu>
+  // (zie de actierij onder een AI-resultaat) en de gedeelde exportlaag in
+  // src/shared/export/. Inhoud van een Word-export: uitsluitend de tekst van
+  // het aangeklikte chatbericht plus de organisatienaam - geen system prompt,
+  // runtimecontext, Projectdossier-bronnen of matchscores, exact als voorheen.
 
   const bewaarBijProject = (tekst, soort) => {
     if (!gekoppeldProjectId) {
@@ -1161,6 +1058,12 @@ export default function KompasToolPage() {
                             {h.titel}
                           </span>
                           <span style={css('display: flex; align-items: center; gap: 16px;')}>
+                            <ExportMenu
+                              toegestaan={hasPlanTools}
+                              uitlijnen="rechts"
+                              ariaLabel={`Gesprek ${h.titel} exporteren`}
+                              bouwModel={gesprekExport({ gesprekId: h.id, store })}
+                            />
                             <span style={css('color: #7B8985; font-size: 13px;')}>{historieLaadId === h.id ? 'Laden…' : formatDatum(h.tijd)}</span>
                             <span
                               onClick={() => {
@@ -1435,18 +1338,17 @@ export default function KompasToolPage() {
                         >
                           Opslaan bij project
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => exporteerAlsWord(m.content, resultaatSoort[i] || DOC_SOORTEN[0])}
-                          style={actieKnopStijl}
-                        >
-                          Exporteren naar Word
-                        </button>
-                        {kompasMode === 'begroting' && (
-                          <button type="button" onClick={() => exporteerAlsExcel(m.content)} style={actieKnopStijl}>
-                            Exporteren naar Excel
-                          </button>
-                        )}
+                        <ExportMenu
+                          toegestaan={hasPlanTools}
+                          onMelding={(tekst) => setResultaatMelding(tekst)}
+                          bouwModel={chatDocumentExport({
+                            tekst: m.content,
+                            soort: resultaatSoort[i] || DOC_SOORTEN[0],
+                            store,
+                            project: (store.projects || []).find((p) => p.id === gekoppeldProjectId) || null,
+                            alsBegroting: kompasMode === 'begroting',
+                          })}
+                        />
                         <button type="button" onClick={() => bewerkVerder(resultaatSoort[i] || DOC_SOORTEN[0])} style={actieKnopStijl}>
                           Later verder bewerken
                         </button>

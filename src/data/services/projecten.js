@@ -220,6 +220,67 @@ export async function haalProjectenOp() {
   return (programs || []).map((p) => naarProjectVeld(p, docsPerProject[p.id]));
 }
 
+// Export (Word/PDF/Excel): precies één project van de ingelogde gebruiker,
+// opnieuw uit de database gelezen op id (user_id-filter + RLS). Documenten
+// komen alleen met hun gegevens mee, zonder de volledige documenttekst.
+// Geeft null als het project niet bestaat of niet van deze gebruiker is.
+export async function haalProjectVoorExport(projectId) {
+  const userId = await huidigeGebruiker();
+
+  if (!userId || !supabase || !isEchtId(projectId)) {
+    return null;
+  }
+
+  const { data: rij, error } = await supabase
+    .from('subsidie_kompas_programs')
+    .select('*')
+    .eq('id', projectId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error || !rij) {
+    return null;
+  }
+
+  const { data: docs } = await supabase
+    .from('subsidie_kompas_knowledge_items')
+    .select('id, program_id, file_name, title, notes, doc_type, version, document_context, superseded_at, created_at, source_type')
+    .eq('program_id', rij.id)
+    .order('created_at', { ascending: true });
+
+  return naarProjectVeld(rij, (docs || []).map(naarDocVeld));
+}
+
+// Export: één bewaard projectdocument (mét tekst), alleen als het project van
+// de ingelogde gebruiker is. Geeft null in alle andere gevallen.
+export async function haalDocumentVoorExport(projectId, documentId) {
+  const userId = await huidigeGebruiker();
+
+  if (!userId || !supabase || !isEchtId(projectId) || !isEchtId(documentId)) {
+    return null;
+  }
+
+  const { data: programma } = await supabase
+    .from('subsidie_kompas_programs')
+    .select('id')
+    .eq('id', projectId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!programma) {
+    return null;
+  }
+
+  const { data: rij, error } = await supabase
+    .from('subsidie_kompas_knowledge_items')
+    .select('id, program_id, file_name, title, notes, extracted_text, doc_type, version, document_context, superseded_at, created_at, source_type')
+    .eq('id', documentId)
+    .eq('program_id', programma.id)
+    .maybeSingle();
+
+  return error || !rij ? null : naarDocVeld(rij);
+}
+
 // Bewaart één project (nieuw of bestaand). Een id die geen echte database-id
 // (uuid) is - een nieuw project in het formulier heeft een tijdelijk id - telt
 // als nieuw en wordt aangemaakt.

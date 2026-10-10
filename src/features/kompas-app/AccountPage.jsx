@@ -13,6 +13,8 @@ import {
 } from '../../data/services/billing.js';
 import { bewaarOnboarding, haalAankopen, haalOnboarding } from '../../data/services/onboarding.js';
 import { useCheckoutTerugkeer } from './useCheckoutTerugkeer.js';
+import ExportMenu from '../../shared/ui/ExportMenu.jsx';
+import { gesprekExport } from './exportBronnen.js';
 
 const AANKOOP_LABEL = { cursus: 'Cursus', template: 'Template', download: 'Download', overig: 'Overig' };
 
@@ -233,6 +235,12 @@ export default function AccountPage() {
               {c.titel}
             </button>
             <span style={css('display: flex; align-items: center; gap: 16px;')}>
+              <ExportMenu
+                toegestaan={tier === 'pro' || tier === 'premium'}
+                uitlijnen="rechts"
+                ariaLabel={`Gesprek ${c.titel} exporteren`}
+                bouwModel={gesprekExport({ gesprekId: c.id, store })}
+              />
               <span style={css('color: #7B8985; font-size: 13px;')}>{formatDatum(c.tijd)}</span>
               <button
                 type="button"

@@ -75,6 +75,46 @@ export async function haalBerichtenOp(conversationId) {
   return (data || []).map((m) => ({ role: m.role, content: m.content, fromUser: m.role === 'user' }));
 }
 
+// Export (Word/PDF/Excel): één gesprek met tijdstippen, opnieuw uit de
+// database gelezen op id. Het gesprek moet van de ingelogde gebruiker zijn
+// (user_id-filter) en valt bovendien onder de RLS-regels van beide tabellen;
+// een id uit de frontend is dus nooit voldoende om andermans gesprek te lezen.
+// Geeft null terug zonder sessie/database of als het gesprek niet van deze
+// gebruiker is.
+export async function haalGesprekVoorExport(conversationId) {
+  const userId = await huidigeGebruiker();
+
+  if (!userId || !supabase || !conversationId) {
+    return null;
+  }
+
+  const { data: gesprek, error } = await supabase
+    .from('subsidie_kompas_conversations')
+    .select('id, title, active_program_id, updated_at')
+    .eq('id', conversationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error || !gesprek) {
+    return null;
+  }
+
+  const { data: berichten, error: berichtFout } = await supabase
+    .from('subsidie_kompas_messages')
+    .select('role, content, created_at')
+    .eq('conversation_id', gesprek.id)
+    .order('created_at', { ascending: true });
+
+  if (berichtFout) {
+    return null;
+  }
+
+  return {
+    ...naarGesprekVeld(gesprek),
+    berichten: (berichten || []).map((m) => ({ role: m.role, content: m.content, tijd: m.created_at })),
+  };
+}
+
 // Maakt een nieuw gesprek aan - gebeurt op het eerste bericht van een nieuwe
 // chat, niet vooraf, zodat er geen lege gesprekken ontstaan die het lid nooit
 // echt is begonnen.

@@ -14,6 +14,8 @@ import {
 } from './KompasStore.jsx';
 import { haalClassificatiesOp } from '../../data/services/classificaties.js';
 import { Button, ClassificatieSelect, Field, EmptyState, Notice, Panel, PanelHeader, SectionHeading, Toggle, veldStijl, selectStijl } from '../../shared/ui/index.js';
+import ExportMenu from '../../shared/ui/ExportMenu.jsx';
+import { projectExport } from './exportBronnen.js';
 
 const MAANDEN = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 
@@ -329,7 +331,14 @@ export default function ProjectenPage({ embedded = false } = {}) {
                     } regelingen in het plan`}
                   </div>
                 </div>
-                <div style={css('display: flex; gap: 8px; flex-wrap: wrap;')}>
+                <div style={css('display: flex; gap: 8px; flex-wrap: wrap; align-items: center;')}>
+                  <ExportMenu
+                    toegestaan={paid}
+                    uitlijnen="rechts"
+                    maat="normaal"
+                    ariaLabel={`Project ${p.naam || 'Naamloos project'} exporteren`}
+                    bouwModel={projectExport({ projectId: p.id, store })}
+                  />
                   <Button variant="outline" onClick={() => { setForm(JSON.parse(JSON.stringify(p))); setMelding(''); }}>
                     Bewerken
                   </Button>

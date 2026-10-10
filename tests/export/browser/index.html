@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>exporttest</title></head><body style="margin:0"><div id="root"></div><script>
+(function(){var q=new URLSearchParams(location.search);
+window.__USER={id:'u1',email:'lid@test.nl',user_metadata:{full_name:'Lid Test'}};
+var tier=q.get('tier')||'pro';
+window.__TIER=tier;
+var P=function(id,naam,extra){return Object.assign({id:id,user_id:'u1',organization_id:'o1',name:naam,program_label:'Samen Eten',target_groups:'Ouderen, Alleenstaande ouders',location:'Utrecht-Noord',period_start:'jan 2027',period_end:'dec 2027',description:'Wekelijks een warme maaltijd.\n- Koken met vrijwilligers\n- Samen eten',goals:'40 gasten per week.',partners:'Wijkcentrum',results:null,budget_total:85000,requested_amount:35000,own_contribution:7500,previous_grants:[{fonds:'Oranje Fonds',jaar:'2025',bedrag:'€ 10.000',uitkomst:'Toegekend'}],cofinanciers:[{naam:'Gemeente Utrecht',bedrag:'€ 15.000',status:'Toegezegd'}],linked_schemes:[{id:'r1',naam:'Buurtbudget Utrecht',funder:'Gemeente Utrecht',deadline:'2027-03-01',aangevraagd:8000,plan:'Aangevraagd'}],activities:'Koken en eten.',impact_description:'Minder eenzaamheid.',planning:'Q1 voorbereiding',writing_preferences:null,field_sources:{},archived_at:null,created_at:'2026-09-01T10:00:00Z'},extra||{});};
+var AI='# Projectplan Buurtkeuken\n\n## Aanleiding\n'+'Veel buurtbewoners eten alleen. '.repeat(15)+'\n\n## Begroting\n| Kostenpost | Aantal | Bedrag |\n|---|---|---|\n| Coördinator | 1 | € 24.000 |\n| Zaalhuur | 10 | € 3.000 |\n';
+window.__SEED={tables:{
+ profiles:[{id:'u1',first_name:'Lid',last_name:'Test',email:'lid@test.nl',member_type:'lid',status:'approved',role:tier==='admin'?'admin':'member',subscription_tier:tier==='admin'?'premium':tier,subscription_active:tier!=='free'}],
+ subsidie_kompas_organizations:[{id:'o1',user_id:'u1',organization_name:'Stichting Buurtkracht',legal_form:'Stichting',mission:'Verbinden van buurtbewoners.',working_area:'Utrecht',themes:'Welzijn, Cultuur',target_groups:'Ouderen',annual_revenue:240000,staff_count:4,contact_persons:[{naam:'Aisya',functie:'Directeur',email:'a@b.nl',telefoon:'0612345678'}],social_media:[]},
+   {id:'o2',user_id:'u2',organization_name:'GEHEIM Andere Organisatie',mission:'MAG NIET ZICHTBAAR'}],
+ subsidie_kompas_programs:[P('11111111-1111-4111-8111-111111111111','Buurtkeuken De Brug'),P('22222222-2222-4222-8222-222222222222','GEHEIM Ander Project',{user_id:'u2',organization_id:'o2',description:'MAG NIET IN EXPORT'})],
+ subsidie_kompas_knowledge_items:[{id:'33333333-3333-4333-8333-333333333333',program_id:'11111111-1111-4111-8111-111111111111',file_name:'Projectplan - concept',title:null,notes:null,extracted_text:AI,doc_type:'Projectplan',version:1,document_context:{},superseded_at:null,created_at:'2026-10-01T10:00:00Z',source_type:'generated'},
+   {id:'44444444-4444-4444-8444-444444444444',program_id:'11111111-1111-4111-8111-111111111111',file_name:'Begroting - concept',title:null,notes:null,extracted_text:'| Post | Bedrag |\n|---|---|\n| A | € 1 |',doc_type:'Begroting',version:1,document_context:{},superseded_at:null,created_at:'2026-10-02T10:00:00Z',source_type:'generated'}],
+ subsidie_kompas_conversations:[{id:'55555555-5555-4555-8555-555555555555',user_id:'u1',title:'Projectplan Buurtkeuken',active_program_id:'11111111-1111-4111-8111-111111111111',updated_at:'2026-10-01T09:20:00Z',kompas_mode:'projectplan'},
+   {id:'66666666-6666-4666-8666-666666666666',user_id:'u2',title:'GEHEIM gesprek van ander',active_program_id:null,updated_at:'2026-10-02T09:20:00Z'}],
+ subsidie_kompas_messages:[{conversation_id:'55555555-5555-4555-8555-555555555555',role:'user',content:'Kun je me helpen met een projectplan?',created_at:'2026-10-01T09:15:00Z'},{conversation_id:'55555555-5555-4555-8555-555555555555',role:'assistant',content:AI,created_at:'2026-10-01T09:15:30Z'},{conversation_id:'66666666-6666-4666-8666-666666666666',role:'user',content:'GEHEIM bericht ander',created_at:'2026-10-02T09:15:00Z'}]
+}};
+})();
+</script><script type="module" src="main.js"></script></body></html>
