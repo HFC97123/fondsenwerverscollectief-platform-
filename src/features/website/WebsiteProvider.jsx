@@ -14,6 +14,7 @@ import {
   startProefperiode as startProefperiodeService,
   tierVan,
   uitloggen,
+  wisProfielCache,
 } from '../../data/services/profile.js';
 import { collections, siteTextBlocks } from '../../data/collections.js';
 import { naar } from '../../app/routes.js';
@@ -1011,6 +1012,25 @@ export function WebsiteProvider({ children, route, param }) {
     user: st.user,
     isLoggedIn,
     profile: st.profile,
+    // Haalt het eigen profiel opnieuw op (na een nieuwe foto of beschrijving);
+    // bij een fout blijft het bestaande profiel staan.
+    vernieuwProfiel: async () => {
+      const id = stRef.current.user?.id;
+
+      if (!id) {
+        return null;
+      }
+
+      wisProfielCache(id);
+
+      const data = await haalProfiel(id, { vers: true });
+
+      if (data) {
+        update({ profile: data });
+      }
+
+      return data;
+    },
     profileLoading: st.profileLoading,
     profileError: st.profileError,
 

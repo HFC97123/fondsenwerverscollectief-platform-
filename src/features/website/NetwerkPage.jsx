@@ -9,6 +9,7 @@
 import React from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './WebsiteProvider.jsx';
+import { LedenProfielBio, LedenProfielFoto } from './LedenProfiel.jsx';
 
 const sectie = css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 72px;');
 const sectieKop = css("font-family: 'Newsreader', serif; font-size: clamp(23px, 3.2vw, 28px); font-weight: 600; color: #2C4A5E;");
@@ -121,6 +122,9 @@ export default function NetwerkPage() {
     isLoggedIn,
     profileInitials,
     profileFullName,
+    profile,
+    isApproved,
+    vernieuwProfiel,
     logout,
     resources,
     hasResources,
@@ -224,13 +228,14 @@ export default function NetwerkPage() {
             )}
           >
             <div style={css('text-align: center;')}>
-              <div
-                style={css(
-                  "width: 120px; height: 120px; border-radius: 50%; background: repeating-linear-gradient(135deg, #A8D5BA, #A8D5BA 7px, #93C7AB 7px, #93C7AB 14px); margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; color: #2C4A5E; font-family: 'Newsreader', serif; font-size: clamp(25px, 3.8vw, 34px); font-weight: 600;",
-                )}
-              >
-                {profileInitials}
-              </div>
+              <LedenProfielFoto
+                userId={profile && profile.id}
+                fotoPad={profile && profile.avatar_path}
+                initialen={profileInitials}
+                naam={profileFullName}
+                magBewerken={Boolean(isApproved && profile)}
+                onGewijzigd={vernieuwProfiel}
+              />
               <div style={css("font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E;")}>{profileFullName}</div>
               <div style={css('font-size: 14px; color: #4B5C58; margin-top: 4px;')}>Lid van het Collectief</div>
               <div
@@ -251,10 +256,7 @@ export default function NetwerkPage() {
               >
                 Over mij
               </div>
-              <div style={css('font-size: 15px; line-height: 1.65; color: #4B5C58; margin-bottom: 28px; max-width: 560px;')}>
-                Fondsenwerver met hart voor maatschappelijke projecten. Vul hier een korte bio in zodat vakgenoten weten
-                waar u aan werkt en waarover u graag kennis uitwisselt.
-              </div>
+              <LedenProfielBio bio={profile && profile.bio} magBewerken={Boolean(isApproved && profile)} onGewijzigd={vernieuwProfiel} />
 
               <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(256px, 1fr)); gap: 20px;')}>
                 <div style={css('background: #F7F9F8; border-radius: 16px; padding: 22px;')}>

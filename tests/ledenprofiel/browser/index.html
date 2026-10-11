@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ledenprofieltest</title></head><body style="margin:0"><div id="root"></div><script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var wie = q.get('wie') || 'lid';
+  window.__USER = { id: '53570dd6-9b3e-4541-b2b1-80c9800c6695', email: 'lid@test.nl', user_metadata: { full_name: 'Sanne de Vries' } };
+  if (wie === 'bezoeker') window.__GEENSESSIE = true;
+  var status = wie === 'wacht' ? 'pending' : 'approved';
+  window.__SEED = { tables: { profiles: [{ id: window.__USER.id, first_name: 'Sanne', last_name: 'de Vries', email: 'lid@test.nl', member_type: 'lid', status: status, role: 'member', subscription_tier: 'free', subscription_active: false }] } };
+})();
+</script><script type="module" src="main.js"></script></body></html>
