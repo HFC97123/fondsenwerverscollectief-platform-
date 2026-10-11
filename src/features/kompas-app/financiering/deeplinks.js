@@ -14,7 +14,7 @@ export function projectFinancieringHref(projectId) {
   return `#${projectFinancieringPad(projectId)}`;
 }
 
-// FASE5 — "Bespreek met Subsidiekompas" vanuit Projectfinanciering, Mijn deadlines, Dashboard of het contextpaneel.
+// FASE5 — "Bespreek met Subsidie Kompas" vanuit Projectfinanciering, Mijn deadlines, Dashboard of het contextpaneel.
 // Pure link, geen schrijfactie: de chat opent het laatste bestaande gesprek van DIT project (dezelfde "ene app"),
 // of anders een nieuw gesprek met dit project als startpunt. 'focus' is het id van de fundingregel; de chat valideert
 // dat server-side. gesprekken: store.conversations ({ id, projectId, tijd }), nieuwste eerst of niet - hier gesorteerd.

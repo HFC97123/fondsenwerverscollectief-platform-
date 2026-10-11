@@ -60,10 +60,13 @@ with sync_playwright() as p:
             ok(f'{label}: eerste deadline = Oranje Fonds Burenhulp, status In voorbereiding', 'Oranje Fonds Burenhulp' in dl.nth(0).inner_text() and 'In voorbereiding' in dl.nth(0).inner_text())
             ok(f'{label}: Pro: Premium-bron gemaskeerd met label, eigen deadline blijft zichtbaar', 'Premium-fonds, niet zichtbaar in uw abonnement' in dl.nth(1).inner_text() and 'PREMIUMFONDS' not in txt(pg) and 'Geheim Premium' not in txt(pg))
             ok(f'{label}: eigen deadline (40 dagen) wint van regelingsdatum (60 dagen), geen snapshot', 'Overschreven Regeling' in dl.nth(2).inner_text() and '40 dagen' in dl.nth(2).inner_text().replace('\xa0',' '), dl.nth(2).inner_text().replace('\n',' | '))
-        ok(f'{label}: 2 eigen gesprekken', pg.locator('[data-testid="dashboard-gesprek"]').count()==2)
+        ok(f'{label}: Recente gesprekken staat niet meer op het Dashboard', pg.locator('[data-testid="dashboard-gesprek"]').count()==0 and pg.locator('[data-testid="dashboard-gesprekken"]').count()==0 and 'Recente gesprekken' not in txt(pg))
         ok(f'{label}: 2 eigen documenten', pg.locator('[data-testid="dashboard-document"]').count()==2, str(pg.locator('[data-testid="dashboard-document"]').count()))
-        ot=pg.locator('[data-testid="org-volledigheid"]').inner_text()
-        ok(f'{label}: organisatie-volledigheid weergegeven', '% compleet' in ot, ot)
+        ok(f'{label}: organisatieblok (naam, % compleet) staat niet meer op het Dashboard', pg.locator('[data-testid="dashboard-organisatie"]').count()==0 and pg.locator('[data-testid="org-volledigheid"]').count()==0 and '% compleet' not in txt(pg))
+        main=pg.locator('main, body').first
+        ok(f'{label}: geen bovenknoppen Nieuw gesprek / Naar Projecten', pg.get_by_role('button',name='Nieuw gesprek').count()==0 and pg.get_by_text('Naar Projecten',exact=True).count()==0)
+        ok(f'{label}: structuur = Projecten, Mijn komende deadlines, Recente documenten (in die volgorde)', [h.inner_text().strip().lower() for h in pg.locator('main h2, h2').all()][:3]==['projecten','mijn komende deadlines','recente documenten'], str([h.inner_text() for h in pg.locator('h2').all()]))
+        ok(f'{label}: naamgeving Subsidie Kompas op het Dashboard', 'Subsidiekompas' not in txt(pg) and 'Bespreek met Subsidie Kompas' in txt(pg))
         ok(f'{label}: open project-link', k1.locator('a:has-text("Open project")').get_attribute('href')=='#/kompas/projecten/11111111-1111-4111-8111-111111111111')
         ok(f'{label}: geen horizontale scroll (dashboard)', geenhscroll(pg))
         ok(f'{label}: geen pageerrors (dashboard)', not pg.errs, '; '.join(pg.errs)[:300])
@@ -126,22 +129,8 @@ with sync_playwright() as p:
         ok(f'{label}/Admin: Premium-bron zichtbaar met naam', 'PREMIUMFONDS Geheimnaam' in txt(pg))
         ctx.close()
 
-        # ---------- Overdracht naar chat
         ctx,pg=nieuw(b,vp,'pro','/kompas/dashboard')
-        pg.locator('[data-testid="dashboard-gesprek"]').filter(has_text='Projectplan Buurtkeuken').get_by_role('button',name='Open gesprek').click(); pg.wait_for_timeout(1500)
-        ok(f'{label}: Open gesprek -> chat', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555'), pg.evaluate('location.hash'))
-        t=txt(pg)
-        ok(f'{label}: gesprek geladen (berichten zichtbaar)', 'Kun je me helpen met een projectplan?' in t, t[:300].replace('\n',' | '))
-        ok(f'{label}: kop Actief in dit gesprek: Buurtkeuken De Brug', 'Actief in dit gesprek: Buurtkeuken De Brug' in t)
-        ok(f'{label}: nog steeds 1 werknav, Chat actief', nav(pg).count()==1 and nav(pg).locator('a[aria-current="page"]').first.inner_text().strip()=='Chat')
-        pg.screenshot(path=f'shots/{label}_open_gesprek.png')
-        # eenmalig: wegnavigeren en terug -> verzoek niet opnieuw toegepast
-        pg.goto(f'{BASE}?tier=pro#/kompas/dashboard'); pg.wait_for_timeout(1200)
-        ok(f'{label}: geen pageerrors (open gesprek)', not pg.errs, '; '.join(pg.errs)[:300])
-        ctx.close()
-
-        ctx,pg=nieuw(b,vp,'pro','/kompas/dashboard')
-        pg.locator('[data-testid="dashboard-project"]').filter(has_text='Taalcafe Zuid').get_by_role('button',name='Bespreek met Subsidiekompas').click(); pg.wait_for_timeout(1500)
+        pg.locator('[data-testid="dashboard-project"]').filter(has_text='Taalcafe Zuid').get_by_role('button',name='Bespreek met Subsidie Kompas').click(); pg.wait_for_timeout(1500)
         t=txt(pg)
         ok(f'{label}: Bespreek -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash')=='#/kompas' and 'Actief in dit gesprek: Taalcafe Zuid' in t)
         # terug naar dashboard en dan naar chat via nav: geen oud verzoek
@@ -150,11 +139,6 @@ with sync_playwright() as p:
         ok(f'{label}: verzoek is eenmalig (chat via nav begint niet opnieuw met oud verzoek)', pg.evaluate('location.hash')=='#/kompas' and not pg.errs)
         ctx.close()
 
-        # Nieuw gesprek
-        ctx,pg=nieuw(b,vp,'pro','/kompas/dashboard')
-        pg.get_by_role('button',name='Nieuw gesprek').click(); pg.wait_for_timeout(800)
-        ok(f'{label}: Nieuw gesprek -> chat', pg.evaluate('location.hash')=='#/kompas')
-        ctx.close()
     b.close()
 srv.terminate()
 f=[r for r in res if not r[1]]

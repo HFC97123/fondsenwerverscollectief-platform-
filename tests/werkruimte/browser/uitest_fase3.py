@@ -132,7 +132,7 @@ with sync_playwright() as p:
     ok('Alle regelingen: marktoverzicht intact (zoekveld, filters, kaarten)', pg.get_by_placeholder('Zoek in subsidieregelingen…').count()==1 and 'Nieuwe Testregeling' in txt(pg) and 'Testfonds Breed' in txt(pg))
     ok('Alle regelingen: kaarten zelf onveranderd (geen extra knoppen op de kaart)', pg.locator('[data-testid="detail-toevoegen"]').count()==0)
     open_detail(pg,'Nieuwe Testregeling')
-    ok('Alle regelingen: contextuele acties in de detailkaart', pg.get_by_test_id('detail-toevoegen').inner_text()=='Toevoegen aan projectfinanciering' and pg.get_by_test_id('detail-bespreek').inner_text()=='Bespreek met Subsidiekompas')
+    ok('Alle regelingen: contextuele acties in de detailkaart', pg.get_by_test_id('detail-toevoegen').inner_text()=='Toevoegen aan projectfinanciering' and pg.get_by_test_id('detail-bespreek').inner_text()=='Bespreek met Subsidie Kompas')
     pg.get_by_test_id('detail-toevoegen').click(); pg.wait_for_timeout(300)
     opties=pg.get_by_test_id('add-project').locator('option').all_inner_texts()
     ok('9: gearchiveerd project niet kiesbaar', 'Oud Gearchiveerd Project' not in opties, str(opties))
@@ -210,7 +210,7 @@ with sync_playwright() as p:
     pg.get_by_test_id('detail-bespreek').click(); pg.wait_for_timeout(1500)
     na=log(pg)[voor:]
     ls=pg.evaluate("JSON.stringify(Object.assign({}, localStorage))")
-    ok('17: Bespreek met Subsidiekompas gaat alleen naar de bestaande Chat (/kompas)', pg.evaluate('location.hash')=='#/kompas', pg.evaluate('location.hash'))
+    ok('17: Bespreek met Subsidie Kompas gaat alleen naar de bestaande Chat (/kompas)', pg.evaluate('location.hash')=='#/kompas', pg.evaluate('location.hash'))
     ok('17: geen fondsgegevens in chatverzoek, opslag of database (geen insert, geen bron-id in localStorage)', not [l for l in na if l['op'] in ('insert','update','upsert','delete')] and S_NIEUW not in ls and 'Nieuwe Testregeling' not in ls, ls[:200])
     ok('17: chat start zonder gekoppeld project of fondscontext', 'Nieuwe Testregeling' not in txt(pg))
     ctx.close()

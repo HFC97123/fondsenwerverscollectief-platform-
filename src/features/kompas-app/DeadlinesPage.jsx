@@ -1208,7 +1208,7 @@ export default function DeadlinesPage() {
               );
             })()}
 
-            {/* Toevoegen aan projectfinanciering (Pro/Premium) en Bespreek met Subsidiekompas: alleen voor
+            {/* Toevoegen aan projectfinanciering (Pro/Premium) en Bespreek met Subsidie Kompas: alleen voor
                 volledig zichtbare rijen (deze detailkaart opent alleen voor die), voor een regeling én voor een
                 fonds. Toevoegen loopt volledig via financiering/toevoegen.js; hier staat geen insertlogica.
                 Free ziet voor een regeling de bestaande uitleg en voor een fonds niets, zoals voorheen. */}
@@ -1252,7 +1252,7 @@ export default function DeadlinesPage() {
                     font-weight: 800;
                   `)}
                 >
-                  Bespreek met Subsidiekompas
+                  Bespreek met Subsidie Kompas
                 </button>
               </div>
             )}

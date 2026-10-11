@@ -87,7 +87,7 @@ export function KompasProvider({ children, userId = null }) {
   const bron = useRef('lokaal');
 
   // Eenmalige aanwijzing van het Dashboard aan de chat ("Open gesprek" /
-  // "Bespreek met Subsidiekompas"). Bewust een ref: geen extra render, geen
+  // "Bespreek met Subsidie Kompas"). Bewust een ref: geen extra render, geen
   // opslag, en de chat neemt het verzoek maar één keer over.
   const chatVerzoekRef = useRef(null);
   // FASE5: welk gesprek de chat het laatst open had, alleen zolang de app geladen is, zodat "Chat" in de navigatie na een

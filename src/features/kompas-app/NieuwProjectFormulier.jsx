@@ -14,7 +14,7 @@ import { formatEuro, leesBedragInvoer, teFinancieren } from './financiering/dekk
 // De velden van het aanmaakformulier, in volgorde. Gebruikt door de pagina en door de tests.
 export const NIEUW_PROJECT_VELDEN = ['naam', 'doelgroep', 'periodeVan', 'periodeTot', 'regio', 'omschrijving', 'begroting', 'eigenBijdrage'];
 
-export const OMSCHRIJVING_HULPTEKST = 'Heb je al een projectplan of two-pager? Voeg die toe en laat Subsidiekompas je projectomschrijving aanvullen.';
+export const OMSCHRIJVING_HULPTEKST = 'Heb je al een projectplan of two-pager? Voeg die toe en laat Subsidie Kompas je projectomschrijving aanvullen.';
 
 const HULP = 'display: block; margin-top: 4px; font-size: 12.5px; line-height: 1.5; font-weight: 600; color: #7B8985;';
 

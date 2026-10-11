@@ -159,10 +159,9 @@ try:
     ok('C10 daarna: linker "Dit project" = B-gesprekken, context = B', 'Een vraag over het taalcafe' in titels(pg,'dit-project') and pg.get_by_test_id('project-context-panel').get_attribute('data-project-id')==P2)
     ctx.close()
 
-    # Dashboard -> Open gesprek: gesprekrij leidend
+    # Dashboard bevat geen gesprekken meer (gesprekken horen in Chat)
     ctx,pg=nieuw(b,DESK,'pro','/kompas/dashboard')
-    pg.get_by_test_id('dashboard-gesprek').filter(has_text='Projectplan Buurtkeuken').get_by_role('button').click(); pg.wait_for_timeout(1500)
-    ok('C11 Dashboard -> Open gesprek: chat toont project van het gesprek', pg.evaluate('location.hash') in ('#/kompas', f'#/kompas?conversation={CA}') and kop(pg)=='Buurtkeuken De Brug' and 'Kun je me helpen met een projectplan?' in txt(pg))
+    ok('C11 Dashboard toont geen Recente gesprekken meer; gesprekken zijn alleen via Chat bereikbaar', pg.get_by_test_id('dashboard-gesprek').count()==0 and 'Recente gesprekken' not in txt(pg))
     ctx.close()
     ctx,pg=nieuw(b,DESK,'pro','/kompas/dashboard')
     pg.evaluate("1"); 

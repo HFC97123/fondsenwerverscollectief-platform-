@@ -1,13 +1,14 @@
 // Dashboard van de Pro/Premium-werkruimte: de cockpit.
 //
-// Uitsluitend samenvatten en doorlinken. Dit scherm heeft GEEN eigen opslag en
-// geen eigen editors: projecten, gesprekken, documenten en het
-// organisatieprofiel komen rechtstreeks uit de bestaande bronnen
-// (useKompas -> projecten.js / gesprekken.js / organisatieprofiel.js), en alle
-// berekeningen zitten in het pure bestand dashboardData.js.
-// "Open gesprek" en "Bespreek met Subsidiekompas" geven alleen een eenmalige
-// aanwijzing aan de chat (store.zetChatVerzoek); het Dashboard voert zelf geen
-// AI-logica uit.
+// Uitsluitend samenvatten en doorlinken: een compacte cockpit met Projecten,
+// Mijn komende deadlines en Recente documenten. Elke andere functie houdt zijn
+// eigen primaire plek (gesprekken in Chat, planning in Deadlines, het
+// organisatieprofiel in Organisatieprofiel) en wordt hier bewust NIET herhaald.
+// Dit scherm heeft GEEN eigen opslag en geen eigen editors; de gegevens komen
+// uit de bestaande bronnen (useKompas) en alle berekeningen zitten in het pure
+// bestand dashboardData.js. "Bespreek met Subsidie Kompas" geeft alleen een
+// eenmalige aanwijzing aan de chat (store.zetChatVerzoek); het Dashboard voert
+// zelf geen AI-logica uit.
 import React, { useMemo } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
@@ -112,7 +113,7 @@ function ProjectKaart({ project, onBespreek }) {
             "cursor: pointer; display: inline-flex; align-items: center; min-height: 40px; box-sizing: border-box; padding: 8px 18px; border-radius: 999px; border: 1px solid #CFE0D6; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800;",
           )}
         >
-          Bespreek met Subsidiekompas
+          Bespreek met Subsidie Kompas
         </button>
       </div>
     </article>
@@ -127,14 +128,13 @@ function Pagina({ children }) {
   );
 }
 
-function Kop({ intro, children }) {
+function Kop({ intro }) {
   return (
     <div style={css('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 22px;')}>
       <div style={css('min-width: 0; flex: 1 1 320px;')}>
         <h1 style={css("margin: 0 0 6px; font-family: 'Newsreader', serif; font-size: clamp(26px, 3.6vw, 34px); font-weight: 600; color: #2C4A5E;")}>Dashboard</h1>
         <p style={{ ...tekstStijl, margin: 0, maxWidth: '640px', fontSize: '15.5px', lineHeight: 1.7 }}>{intro}</p>
       </div>
-      {children}
     </div>
   );
 }
@@ -165,7 +165,7 @@ export default function DashboardPage() {
   if (!paid) {
     return (
       <Pagina>
-        <Kop intro="Met Pro en Premium ziet u hier in één oogopslag uw projecten, de financiering, komende deadlines, recente gesprekken en documenten." />
+        <Kop intro="Met Pro en Premium ziet u hier in één oogopslag uw projecten, de financiering, komende deadlines en recente documenten." />
         <Button variant="dark" onClick={app.goAbonnementen}>
           Bekijk de abonnementen
         </Button>
@@ -178,24 +178,11 @@ export default function DashboardPage() {
     app.goKompas();
   };
 
-  const openGesprek = (g) => {
-    store.zetChatVerzoek({ type: 'gesprek', gesprekId: g.id, projectId: g.projectId });
-    app.goKompas();
-  };
-
   const getoond = data.projecten.slice(0, MAX_PROJECTEN);
-  const org = data.organisatie;
 
   return (
     <Pagina>
-      <Kop intro="Uw fondsenwerving in één oogopslag: projecten, financiering, deadlines, gesprekken en documenten. Beheren doet u op de pagina zelf; hier ziet u de stand van zaken.">
-        <div style={css('display: flex; flex-wrap: wrap; gap: 10px;')}>
-          <Button onClick={app.goKompas}>Nieuw gesprek</Button>
-          <Button variant="outline" onClick={app.goProjecten}>
-            Naar Projecten
-          </Button>
-        </div>
-      </Kop>
+      <Kop intro="Uw projecten, komende deadlines en recente documenten in één oogopslag." />
 
       {financiering.status === 'fout' && (
         <div role="status" data-testid="financiering-fout" style={{ ...tekstStijl, marginBottom: '12px', padding: '10px 14px', border: '1px solid #EEDCC0', borderRadius: '12px', background: '#FBF1E3', color: '#8A5A16' }}>
@@ -209,9 +196,11 @@ export default function DashboardPage() {
         testid="dashboard-projecten"
         titel="Projecten"
         actie={
-          <a href="#/kompas/projecten" style={linkStijl}>
-            {data.projecten.length > MAX_PROJECTEN ? `Alle ${data.projecten.length} projecten` : 'Naar Projecten'}
-          </a>
+          data.projecten.length > MAX_PROJECTEN ? (
+            <a href="#/kompas/projecten" style={linkStijl}>
+              {`Alle ${data.projecten.length} projecten`}
+            </a>
+          ) : null
         }
       >
         {getoond.length ? (
@@ -270,34 +259,6 @@ export default function DashboardPage() {
           )}
         </Sectie>
 
-        <Sectie testid="dashboard-gesprekken" titel="Recente gesprekken">
-          {data.gesprekken.length ? (
-            <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px;')}>
-              {data.gesprekken.map((g) => (
-                <li key={g.id} data-testid="dashboard-gesprek" style={css('display: flex; gap: 12px; align-items: center;')}>
-                  <div style={css('min-width: 0; flex: 1;')}>
-                    <div style={{ ...tekstStijl, fontWeight: 800, color: '#2C4A5E', overflowWrap: 'anywhere' }}>{g.titel}</div>
-                    <div style={{ ...tekstStijl, fontSize: '13px', color: '#7B8985' }}>
-                      {g.projectNaam || 'Geen project'}
-                      {g.tijd ? ` · ${formatTijd(g.tijd, new Date())}` : ''}
-                    </div>
-                  </div>
-                  <button type="button" onClick={() => openGesprek(g)} style={linkStijl}>
-                    Open gesprek
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Leeg>
-              Nog geen opgeslagen gesprekken.{' '}
-              <a href="#/kompas" style={linkStijl}>
-                Start een gesprek
-              </a>
-            </Leeg>
-          )}
-        </Sectie>
-
         <Sectie
           testid="dashboard-documenten"
           titel="Recente documenten"
@@ -322,29 +283,6 @@ export default function DashboardPage() {
           ) : (
             <Leeg>Nog geen documenten bij uw projecten. Documenten die u in de chat opslaat, verschijnen hier.</Leeg>
           )}
-        </Sectie>
-
-        <Sectie
-          testid="dashboard-organisatie"
-          titel="Organisatie"
-          actie={
-            <a href="#/kompas/organisatie" style={linkStijl}>
-              {org.pct < 100 ? 'Profiel aanvullen' : 'Bekijk profiel'}
-            </a>
-          }
-        >
-          <div style={{ ...tekstStijl, fontWeight: 800, color: '#2C4A5E', marginBottom: '10px' }}>{org.naam || 'Nog niet ingevuld'}</div>
-          <div
-            role="img"
-            aria-label={`Organisatieprofiel ${org.pct}% compleet`}
-            style={css('height: 8px; border-radius: 999px; overflow: hidden; background: #E9EFEB;')}
-          >
-            <span data-testid="org-voortgang" style={css(`display: block; height: 100%; width: ${org.pct}%; background: #4E9A6C;`)} />
-          </div>
-          <div data-testid="org-volledigheid" style={{ ...tekstStijl, marginTop: '8px', fontSize: '13.5px' }}>
-            {org.pct}% compleet ({org.ingevuld} van {org.totaal} kernvelden)
-            {org.ontbreekt.length ? ` · ontbreekt: ${org.ontbreekt.slice(0, 3).join(', ')}${org.ontbreekt.length > 3 ? '…' : ''}` : ''}
-          </div>
         </Sectie>
       </div>
     </Pagina>

@@ -49,7 +49,7 @@ with sync_playwright() as p:
     ok('formulier: gewenste velden zichtbaar', all(x in ft for x in ['Projectnaam','Doelgroep','Looptijd van','Looptijd tot','Projectlocatie','Projectomschrijving','Totale projectbegroting','Eigen bijdrage','Te financieren bedrag']), ft)
     ok('formulier: verwijderde velden niet zichtbaar', not any(x in ft for x in VERWIJDERD), ft)
     ok('formulier: knop "Project aanmaken"', f.get_by_role('button',name='Project aanmaken').count()==1)
-    ok('formulier: hulptekst bij omschrijving', 'Heb je al een projectplan of two-pager? Voeg die toe en laat Subsidiekompas je projectomschrijving aanvullen.' in ft)
+    ok('formulier: hulptekst bij omschrijving', 'Heb je al een projectplan of two-pager? Voeg die toe en laat Subsidie Kompas je projectomschrijving aanvullen.' in ft)
     ok('formulier: twee native datumvelden', f.locator('input[type="date"]').count()==2)
     ok('formulier: te financieren is read-only (geen invoerveld) en toont €0 zonder begroting', pg.locator('input[data-testid="np-te-financieren"]').count()==0 and waar(pg,'np-te-financieren')=='0')
     pg.screenshot(path='shots/formulier_1_desktop.png', full_page=True)

@@ -58,7 +58,7 @@ gelijk('velden in volgorde', NIEUW_PROJECT_VELDEN, ['naam', 'doelgroep', 'period
   check(`formulier toont "${l}"`, formSrc.includes(l)));
 ['Programma of onderdeel', 'Partners', 'Doelstellingen', 'Activiteiten', 'Beoogde impact', 'Resultaten', 'Schrijfvoorkeur', 'Eerdere', 'Co-financier', 'Cofinancier'].forEach((l) =>
   check(`formulier toont "${l}" NIET`, !zonderCommentaar(formSrc).includes(l)));
-gelijk('hulptekst bij omschrijving exact', OMSCHRIJVING_HULPTEKST, 'Heb je al een projectplan of two-pager? Voeg die toe en laat Subsidiekompas je projectomschrijving aanvullen.');
+gelijk('hulptekst bij omschrijving exact', OMSCHRIJVING_HULPTEKST, 'Heb je al een projectplan of two-pager? Voeg die toe en laat Subsidie Kompas je projectomschrijving aanvullen.');
 check('twee native datumvelden (type="date"), geen datepicker-bibliotheek', (formSrc.match(/type="date"/g) || []).length === 2 && !/datepicker|flatpickr|react-datepicker/i.test(formSrc));
 check('te financieren is read-only (geen input)', /data-testid="np-te-financieren"[\s\S]{0,200}<div|<div[\s\S]{0,80}np-te-financieren/.test(formSrc) && !/<input[^>]*np-te-financieren/.test(formSrc));
 check('formulier gebruikt teFinancieren uit de gedeelde module (geen eigen formule)', /teFinancieren/.test(formSrc) && !/begroting\s*-\s*eigen/i.test(zonderCommentaar(formSrc)));

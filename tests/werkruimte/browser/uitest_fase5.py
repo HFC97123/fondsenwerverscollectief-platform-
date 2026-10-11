@@ -181,7 +181,7 @@ try:
     # ============================================================ D. Bespreek vanuit Projectfinanciering/Deadlines/Dashboard + hervatten
     ctx,pg=nieuw(b,DESK,'pro',f'/kompas/projecten/{P1}?tab=projectfinanciering')
     links=pg.get_by_test_id('bespreek-link')
-    ok('D1 Projectfinanciering: elke regel heeft "Bespreek met Subsidiekompas"', links.count()>=7)
+    ok('D1 Projectfinanciering: elke regel heeft "Bespreek met Subsidie Kompas"', links.count()>=7)
     href=links.first.get_attribute('href')
     ok('D2 de link bevat alleen uuid\'s: laatste gesprek van dit project + id van de fundingregel', re.fullmatch(r'#/kompas\?conversation=[0-9a-f-]{36}&focus=[0-9a-f-]{36}',href or '') is not None and f'conversation={CA}' in href, href)
     links.first.click(); pg.wait_for_timeout(2000)

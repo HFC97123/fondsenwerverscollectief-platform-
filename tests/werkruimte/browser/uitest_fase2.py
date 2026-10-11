@@ -142,13 +142,13 @@ with sync_playwright() as p:
     pg.keyboard.press('End'); pg.wait_for_timeout(100)
     ok('toetsenbord: End -> laatste tab', pg.locator('[data-testid="tab-btn-gesprekken"]').get_attribute('aria-selected')=='true')
     ctx.close()
-    # --- Bespreek met Subsidiekompas
+    # --- Bespreek met Subsidie Kompas
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P2}')
     ok('project zonder financiering: dossier werkt, KPI\'s € 0 en Nog te financieren —', '—' in kpi(pg,'Totale begroting') and '€ 0' in kpi(pg,'Toegekend'))
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(300)
     ok('project zonder financiering: lege staat, geen fout', pg.locator('[data-testid="pf-leeg"]').count()==1 and pg.locator('[data-testid="pf-fout"]').count()==0)
-    pg.get_by_role('button',name='Bespreek met Subsidiekompas').click(); pg.wait_for_timeout(1500)
-    ok('Bespreek met Subsidiekompas -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Taalcafe Zuid' in txt(pg))
+    pg.get_by_role('button',name='Bespreek met Subsidie Kompas').click(); pg.wait_for_timeout(1500)
+    ok('Bespreek met Subsidie Kompas -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Taalcafe Zuid' in txt(pg))
     ctx.close()
     # --- isolatie
     for naam,pad in [('ander project',f'/kompas/projecten/{PX}'),('onbekend id','/kompas/projecten/00000000-0000-4000-8000-0000000000aa')]:

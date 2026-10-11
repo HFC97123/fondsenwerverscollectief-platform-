@@ -185,7 +185,7 @@ function GesprekkenTab({ project, gesprekken, onOpen, onBespreek }) {
       <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;')}>
         <h2 style={css(`${LABEL} margin: 0;`)}>Gesprekken over dit project</h2>
         <button type="button" onClick={() => onBespreek(project.id)} style={css(LINK)}>
-          Bespreek met Subsidiekompas
+          Bespreek met Subsidie Kompas
         </button>
       </div>
       {/* Dezelfde gedeelde gesprekkenlijst als in de chatwerkruimte (Fase 4), gefilterd op dit project. */}
@@ -299,7 +299,7 @@ export default function ProjectDetailPage({ projectId }) {
             </h1>
             {meta && <div data-testid="project-detail-meta" style={css(`${TEKST} color: #7B8985;`)}>{meta}</div>}
           </div>
-          <Button onClick={() => bespreek(project.id)}>Bespreek met Subsidiekompas</Button>
+          <Button onClick={() => bespreek(project.id)}>Bespreek met Subsidie Kompas</Button>
         </div>
 
         {project.gearchiveerd && (

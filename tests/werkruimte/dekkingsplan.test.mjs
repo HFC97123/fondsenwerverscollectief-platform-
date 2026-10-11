@@ -191,7 +191,7 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
   check('dossier: geen hoofdmenu-item en route valt onder Projecten', !/Projectdossier/.test(lees('src/features/kompas-app/KompasWerkNav.jsx')));
   check('dossier: tabs Overzicht, Projectfinanciering, Documenten, Gesprekken', ['overzicht', 'projectfinanciering', 'documenten', 'gesprekken'].every((t) => detail.includes(`id: '${t}'`)));
   check('dossier: Free ziet geen financiering (hook krijgt null zonder plan)', /useProjectFinanciering\(project && paid \? projectId : null\)/.test(detail));
-  check('dossier: Bespreek met Subsidiekompas gebruikt alleen de chatverzoek-handoff', /store\.zetChatVerzoek/.test(detail) && !/askKompas|functions\.invoke/.test(detail));
+  check('dossier: Bespreek met Subsidie Kompas gebruikt alleen de chatverzoek-handoff', /store\.zetChatVerzoek/.test(detail) && !/askKompas|functions\.invoke/.test(detail));
 
   const dash = lees('src/features/kompas-app/dashboard/DashboardPage.jsx');
   check('dashboard: Free haalt geen dekkingsplannen op (lege id-lijst)', /paid \? \(store\.projects/.test(dash));
