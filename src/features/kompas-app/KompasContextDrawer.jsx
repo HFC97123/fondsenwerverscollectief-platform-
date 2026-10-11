@@ -23,7 +23,10 @@ import { css } from '../../shared/lib/css.js';
 // per ongeluk geraakte achtergrond nooit onbedoeld een paneel met ingevulde
 // gegevens sluit.
 
-const TAB_VOLGORDE = ['org', 'proj', 'doc', 'historie'];
+// Fase 4: de chatwerkruimte gebruikt de tabbladen 'gesprekken' en 'context' (tablet/mobiel; op desktop >= 1200 px
+// staan die als vaste kolommen naast de chat en wordt deze lade niet getoond). De overige sleutels blijven
+// ondersteund voor aanroepers die ze nog aanleveren.
+const TAB_VOLGORDE = ['gesprekken', 'context', 'org', 'proj', 'doc', 'historie'];
 
 export default function KompasContextDrawer({ active, onSelect, onClose, tabs }) {
   const [desktop, setDesktop] = useState(() => window.innerWidth >= 900);
@@ -50,7 +53,14 @@ export default function KompasContextDrawer({ active, onSelect, onClose, tabs })
     vorigeFocusRef.current = document.activeElement;
     drawerRef.current?.focus();
 
+    // Scroll lock: de pagina erachter scrolt niet mee zolang de lade of sheet open staat.
+    const vorigeOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+
     return () => {
+      document.body.style.overflow = vorigeOverflow;
+
       const vorigElement = vorigeFocusRef.current;
 
       if (vorigElement && typeof vorigElement.focus === 'function' && document.contains(vorigElement)) {
@@ -74,9 +84,9 @@ export default function KompasContextDrawer({ active, onSelect, onClose, tabs })
       return;
     }
 
-    const focusbareElementen = drawerRef.current.querySelectorAll(
-      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
+    const focusbareElementen = Array.from(drawerRef.current.querySelectorAll(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+    )).filter((el) => (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0)); // verborgen elementen (bijv. in een ingeklapte <details>) tellen niet mee
 
     if (focusbareElementen.length === 0) {
       return;

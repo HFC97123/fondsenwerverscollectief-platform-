@@ -17,16 +17,20 @@ with sync_playwright() as p:
             if tier=='free':
                 ok(f'{label}/free chat: geen Exporteren', pg.locator('button[aria-haspopup="menu"]').count()==0 and pg.locator('text=Context').count()>=0)
                 ok(f'{label}/free: geen pageerrors', not errs, '; '.join(errs)[:200]); ctx.close(); continue
-            pg.get_by_role('button',name=re.compile('Eerdere gesprekken')).first.click(); pg.wait_for_timeout(600)
-            ex=pg.locator('button[aria-haspopup="menu"]:not(.fwk-wn-org)')
-            ok(f'{label}/{tier} Eerdere gesprekken: 1 exportknop, geen gesprek van ander', ex.count()==1 and pg.locator('text=GEHEIM').count()==0, str(ex.count()))
+            # Fase 4: gesprekken staan in de linkerkolom (desktop) of in de Gesprekken-sheet (mobiel); export staat onder het geopende gesprek.
+            scope=pg.locator('[role=dialog]') if label=='mobile' else pg.locator('[data-testid=kolom-gesprekken]')
+            def open_lijst():
+                if label=='mobile': pg.get_by_test_id('open-gesprekken').click(); pg.wait_for_timeout(500)
+            open_lijst()
+            scope.locator('[data-testid=gesprek-open]',has_text='Projectplan Buurtkeuken').first.click(); pg.wait_for_timeout(1200)
+            open_lijst()
+            ex=scope.locator('button[aria-label*="exporteren"]')
+            ok(f'{label}/{tier} Gesprekken: 1 exportknop onder het geopende gesprek, geen gesprek van ander', ex.count()==1 and pg.locator('text=GEHEIM').count()==0, str(ex.count()))
             pg.screenshot(path=f'shot2_{label}_{tier}_historie.png')
             ex.first.click()
             with pg.expect_download(timeout=30000) as d: pg.get_by_role('menuitem',name='PDF (.pdf)').click()
             dl=d.value; dl.save_as(f'dl2/{label}_{tier}_{dl.suggested_filename}')
             ok(f'{label}/{tier} gesprek PDF naam', dl.suggested_filename=='Projectplan_Buurtkeuken_Gesprek.pdf', dl.suggested_filename)
-            # gesprek openen -> actierij onder antwoord
-            pg.locator('[role=dialog]').get_by_text('Projectplan Buurtkeuken',exact=True).first.click(); pg.wait_for_timeout(1200)
             if pg.locator('[role=dialog]').count(): pg.get_by_label('Sluiten').first.click(); pg.wait_for_timeout(500)
             chat=pg.locator('button[aria-label="Exporteren"]')
             ok(f'{label}/{tier} chat: exportmenu onder AI-resultaat', chat.count()==1, str(chat.count()))

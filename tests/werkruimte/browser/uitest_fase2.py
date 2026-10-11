@@ -129,9 +129,9 @@ with sync_playwright() as p:
     # --- Gesprekken / Documenten / toetsenbord
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}?tab=gesprekken')
     ok('deeplink ?tab=gesprekken opent het tabblad', pg.locator('[data-testid="tab-btn-gesprekken"]').get_attribute('aria-selected')=='true')
-    ok('Gesprekken: alleen eigen gesprek van dit project', pg.locator('[data-testid="detail-gesprek"]').count()==1 and 'Projectplan Buurtkeuken' in txt(pg) and 'Losse vraag' not in txt(pg) and 'GEHEIM' not in txt(pg))
-    pg.locator('[data-testid="detail-gesprek"]').get_by_role('button',name='Open gesprek').click(); pg.wait_for_timeout(1500)
-    ok('Gesprekken: Open gesprek -> chat met actief project', pg.evaluate('location.hash')=='#/kompas' and 'Actief project: Buurtkeuken De Brug' in txt(pg) and 'Kun je me helpen met een projectplan?' in txt(pg))
+    ok('Gesprekken: alleen eigen gesprek van dit project', pg.locator('[data-testid="tab-gesprekken"] [data-testid="gesprek-rij"]').count()==1 and 'Projectplan Buurtkeuken' in txt(pg) and 'Losse vraag' not in txt(pg) and 'GEHEIM' not in txt(pg))
+    pg.locator('[data-testid="tab-gesprekken"] [data-testid="gesprek-open"]').click(); pg.wait_for_timeout(1500)
+    ok('Gesprekken: Open gesprek -> chat met actief project', pg.evaluate('location.hash')=='#/kompas' and 'Actief in dit gesprek: Buurtkeuken De Brug' in txt(pg) and 'Kun je me helpen met een projectplan?' in txt(pg))
     ctx.close()
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}')
     pg.locator('[data-testid="tab-btn-documenten"]').click(); pg.wait_for_timeout(200)
@@ -147,7 +147,7 @@ with sync_playwright() as p:
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(300)
     ok('project zonder financiering: lege staat, geen fout', pg.locator('[data-testid="pf-leeg"]').count()==1 and pg.locator('[data-testid="pf-fout"]').count()==0)
     pg.get_by_role('button',name='Bespreek met Subsidiekompas').click(); pg.wait_for_timeout(1500)
-    ok('Bespreek met Subsidiekompas -> chat met Actief project: Taalcafe Zuid', pg.evaluate('location.hash')=='#/kompas' and 'Actief project: Taalcafe Zuid' in txt(pg))
+    ok('Bespreek met Subsidiekompas -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash')=='#/kompas' and 'Actief in dit gesprek: Taalcafe Zuid' in txt(pg))
     ctx.close()
     # --- isolatie
     for naam,pad in [('ander project',f'/kompas/projecten/{PX}'),('onbekend id','/kompas/projecten/00000000-0000-4000-8000-0000000000aa')]:
@@ -225,8 +225,8 @@ with sync_playwright() as p:
     ok('na toevoegen: dossier toont de regel met live bronnaam en brondeadline (status Interessant)', pg.locator('[data-testid="pf-regel"]').count()==1 and 'Nieuwe Testregeling' in pg.locator('[data-testid="pf-regel-naam"]').inner_text() and 'Datum van de regeling' in pg.locator('[data-testid="pf-regel-deadline"]').inner_text(), txt(pg)[:300])
     ctx.close()
     # --- Fase 1-regressie: werknav mag het contextpaneel niet afdekken; organisatiemenu blijft boven de pagina
-    ctx,pg=nieuw(b,vp,'pro','/kompas')
-    pg.get_by_role('button',name=re.compile('Eerdere gesprekken')).first.click(); pg.wait_for_timeout(500)
+    ctx,pg=nieuw(b,{'width':1000,'height':800},'pro','/kompas')
+    pg.get_by_test_id('open-gesprekken').click(); pg.wait_for_timeout(500)
     pg.get_by_label('Sluiten').first.click(timeout=3000); pg.wait_for_timeout(400)
     ok('werknav: "Sluiten" van het contextpaneel is klikbaar (nav ligt niet erover)', pg.locator('[role=dialog]').count()==0)
     nav(pg).locator('.fwk-wn-org').click(); pg.wait_for_timeout(200)

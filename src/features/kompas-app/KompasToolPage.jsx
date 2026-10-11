@@ -39,10 +39,15 @@ import {
   maakGesprekAan,
   voegBerichtToe,
 } from '../../data/services/gesprekken.js';
-import OrganisatieprofielPage, { VELDEN } from './OrganisatieprofielPage.jsx';
-import ProjectenPage from './ProjectenPage.jsx';
-import DocumentatiePage from './DocumentatiePage.jsx';
+import { VELDEN } from './OrganisatieprofielPage.jsx';
 import KompasContextDrawer from './KompasContextDrawer.jsx';
+// Fase 4: de Pro/Premium-chatwerkruimte (Gesprekken | Chat | Context). De chatlogica hieronder is ongewijzigd;
+// deze modules verzorgen alleen de plaatsing en de weergave van gesprekken en context.
+import ChatWerkruimte, { useWerkruimteModus } from './chat/ChatWerkruimte.jsx';
+import ConversationsList from './chat/ConversationsList.jsx';
+import GegevensVerwijderen from './chat/GegevensVerwijderen.jsx';
+import ProjectContextPanel from './chat/ProjectContextPanel.jsx';
+import { projectVoorBestaandGesprek, projectVoorChatVerzoek, projectVoorWeergave } from './chat/actiefProject.js';
 
 // RC1-acceptatietest, bevinding K3 (2026-10-01): vóór deze aanpassing
 // activeerde de frontend de 'projectplan'-modus (en daarmee het
@@ -141,18 +146,6 @@ function detecteerBegrotingIntentie(tekst) {
   return BEGROTING_WOORD_PATROON.test(tekst) && BEGROTING_ACTIECUE_PATROON.test(tekst);
 }
 
-function formatDatum(iso) {
-  if (!iso) {
-    return '';
-  }
-
-  try {
-    return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
-  } catch (e) {
-    return '';
-  }
-}
-
 const STARTERS = [
   'Ik zoek financiering voor een nieuw project',
   'Welke fondsen passen bij mijn organisatie?',
@@ -175,39 +168,6 @@ const actieKnopStijl = css(`
   font-size: 12.5px;
   font-weight: 700;
 `);
-
-// Vervolgopdracht, prioriteit 4 (Contexttabs): alleen-lezen chip, bewust géén
-// cursor/hover-styling - dit zijn statusindicatoren, geen knoppen (in
-// tegenstelling tot actieKnopStijl hierboven, dat wél aanklikbare acties is).
-const contextChipStijl = css(`
-  box-sizing: border-box;
-  min-height: 26px;
-  padding: 3px 11px;
-  border-radius: 999px;
-  border: 1px solid #E4EAE8;
-  background: #FFFFFF;
-  color: #5B6E69;
-  font-size: 12.5px;
-  font-weight: 600;
-`);
-
-const pil = (actief) =>
-  css(`
-    cursor: pointer;
-    box-sizing: border-box;
-    min-height: 38px;
-    display: flex;
-    align-items: center;
-    white-space: nowrap;
-    padding: 9px 20px;
-    border-radius: 999px;
-    border: 1px solid ${actief ? '#BFD4C6' : '#D6E3E9'};
-    background: ${actief ? '#EAF4EE' : '#FFFFFF'};
-    color: ${actief ? '#2F6D47' : '#2C4A5E'};
-    font-family: 'Mulish', sans-serif;
-    font-size: 13.5px;
-    font-weight: 800;
-  `);
 
 function DenkKompas() {
   return (
@@ -321,12 +281,6 @@ export default function KompasToolPage() {
   const taRef = useRef(null);
 
   const gesprekken = store.conversations || [];
-  // RC1 stap 3C (2026-10-01): niet langer store.genDocs (altijd leeg, zie
-  // DocumentatiePage.jsx) - dezelfde telling als die pagina nu zelf gebruikt:
-  // echte, bewaarde projectdocumenten met daadwerkelijke inhoud.
-  const documenten = (store.projects || []).flatMap((p) =>
-    (p.docs || []).filter((d) => d.tekst && String(d.tekst).trim().length > 0),
-  );
   const [actiefDoc, setActiefDoc] = useState(null);
   // Vervolgopdracht, prioriteit 7 ("Later verder bewerken"): per AI-resultaat
   // gekozen documentsoort (DOC_SOORTEN), en een korte bevestiging na
@@ -403,7 +357,7 @@ export default function KompasToolPage() {
   };
 
   // Bewaart een gesprek pas op het eerste bericht (niet vooraf) zodat er geen
-  // lege gesprekken ontstaan; alleen voor wie de "Eerdere gesprekken"-lijst
+  // lege gesprekken ontstaan; alleen voor wie de gesprekkenlijst
   // ook ziet (hasPlanTools) - voor Free blijft een gesprek puur lokaal, zoals
   // voorheen.
   const verstuur = async (tekst, modusOverride) => {
@@ -739,8 +693,6 @@ export default function KompasToolPage() {
     setProjectMelding(id ? 'Wijzigingen overgenomen in het project.' : 'Overnemen in het project is niet gelukt.');
   };
 
-  const togglePaneel = (naam) => () => setPaneel(paneel === naam ? null : naam);
-
   const nieuweChat = () => {
     setMessages([]);
     setDraft('');
@@ -779,10 +731,9 @@ export default function KompasToolPage() {
 
     setMessages(berichten);
     setConversationId(h.id);
-    // Alleen een project dat nog bestaat en niet gearchiveerd is blijft actief.
-    const bekend = (store.projects || []).find((p) => p.id === h.projectId);
-
-    setGekoppeldProjectId(h.projectId && bekend && !bekend.gearchiveerd ? h.projectId : null);
+    // Het project van de gesprekrij (active_program_id) is leidend; alleen een project dat nog bestaat
+    // en niet gearchiveerd is blijft actief (zie chat/actiefProject.js).
+    setGekoppeldProjectId(projectVoorBestaandGesprek(h, store.projects));
     setKompasMode(opgeslagenModus);
     setProjectDossier(opgeslagenDossier);
     dossierBronnenRef.current = {};
@@ -817,8 +768,8 @@ export default function KompasToolPage() {
       setGekoppeldProjectId(genormaliseerd);
       setProjectMelding(
         naam
-          ? `Nieuw gesprek gestart voor project "${naam}". Het vorige gesprek vindt u terug onder Eerdere gesprekken.`
-          : 'Nieuw gesprek gestart zonder actief project. Het vorige gesprek vindt u terug onder Eerdere gesprekken.',
+          ? `Nieuw gesprek gestart voor project "${naam}". Het vorige gesprek vindt u terug onder Gesprekken.`
+          : 'Nieuw gesprek gestart zonder actief project. Het vorige gesprek vindt u terug onder Gesprekken.',
       );
 
       return;
@@ -864,12 +815,14 @@ export default function KompasToolPage() {
       return;
     }
 
-    const project = (store.projects || []).find((p) => p.id === verzoek.projectId && !p.gearchiveerd);
+    // Fase 4: bij het openen van een bestaand gesprek is de gesprekrij leidend, niet het project uit het
+    // verzoek (dat kan verouderd zijn). Een nieuw gesprek voor een project gebruikt dat project als startcontext.
+    const projectId = projectVoorChatVerzoek({ verzoek, gesprekken: store.conversations, projecten: store.projects });
 
     if (verzoek.type === 'gesprek' && verzoek.gesprekId) {
-      openGesprek({ id: verzoek.gesprekId, projectId: project ? project.id : null });
-    } else if (verzoek.type === 'project' && project) {
-      koppelProject(project.id);
+      openGesprek({ id: verzoek.gesprekId, projectId });
+    } else if (verzoek.type === 'project' && projectId) {
+      koppelProject(projectId);
     }
   }, []);
 
@@ -945,302 +898,210 @@ export default function KompasToolPage() {
     setChatVoorstel(null);
   };
 
-  return (
-    <div data-screen-label="Subsidie Kompas" style={css('min-height: 100vh; position: relative; z-index: 1;')}>
-      {/* SUBNAVIGATIE: gedeelde Subsidie Kompas-kop (met de Subsidie Kompas-knop rechtsboven) */}
-      <KompasSubnav terugNaarKompas={false} toonPlan />
 
-      {/* HERO */}
-      <div style={css('position: relative; z-index: 1; max-width: 850px; margin: 72px auto 0; padding: 0 clamp(16px, 4vw, 24px); text-align: center;')}>
-        <img
-          src="/uploads/kompas-logo.png"
-          alt="Subsidie Kompas"
-          style={css('width: 78px; height: 78px; border-radius: 50%; object-fit: contain; display: inline-block;')}
-        />
-        <div style={css("margin-top: 18px; font-family: 'Newsreader', serif; font-size: 21px; font-weight: 600; color: #4E9A6C;")}>
-          Subsidie Kompas
-        </div>
-        <div
-          style={css(
-            "margin: 12px 0 22px; font-family: 'Newsreader', serif; font-size: clamp(34px, 7vw, 56px); font-weight: 600; line-height: 1.08; color: #2C4A5E;",
-          )}
-        >
-          Uw gids bij fondsenwerving
-        </div>
-        <div style={css('max-width: 710px; margin: 0 auto; font-size: 18px; line-height: 1.65; color: #4B5C58;')}>
-          Subsidie Kompas helpt u aan projectfinanciering: passende fondsen, een concrete strategie en begeleiding bij
-          de aanvraag.
-        </div>
-      </div>
 
-      <div style={css('position: relative; z-index: 1; max-width: 1040px; margin: 54px auto 80px; padding: 0 clamp(16px, 4vw, 24px);')}>
-        {/* PILLEN */}
-        <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;')}>
-          {hasPlanTools && (
-            <>
-              <button type="button" onClick={nieuweChat} style={pil(false)}>
-                + Nieuwe chat
-              </button>
-              <button type="button" onClick={togglePaneel('historie')} style={pil(paneel === 'historie')}>
-                Eerdere gesprekken ({gesprekken.length})
-              </button>
-              <button type="button" onClick={togglePaneel('org')} style={pil(paneel === 'org')}>
-                Organisatie
-              </button>
-              <button type="button" onClick={togglePaneel('proj')} style={pil(paneel === 'proj')}>
-                Projecten
-              </button>
-              <button type="button" onClick={togglePaneel('doc')} style={{ ...pil(paneel === 'doc'), gap: '8px' }}>
-                Documenten
-                <span style={css('font-size: 12px; font-weight: 700; opacity: 0.7;')}>{documenten.length}</span>
-              </button>
+  // ---------------------------------------------------------------------------
+  // Fase 4: chatwerkruimte (alleen Pro/Premium/Admin). Uitsluitend weergave en navigatie rond de chat.
+  // ---------------------------------------------------------------------------
+  const modus = useWerkruimteModus();
+  const drie = hasPlanTools && modus === 'drie';
+  // Het actieve project van dit gesprek: gekoppeldProjectId (uit de gesprekrij of de startkeuze), gevalideerd.
+  const actiefProject = projectVoorWeergave({ gekoppeldProjectId, projecten: store.projects });
+  const actiefProjectNaam = actiefProject ? actiefProject.naam || 'Naamloos project' : '';
+  const kiesbareProjecten = (store.projects || []).filter((p) => !p.gearchiveerd);
+  const modusLabel = { projectplan: 'Projectplan', begroting: 'Begroting' }[kompasMode] || '';
 
-              {(store.projects || []).filter((p) => !p.gearchiveerd).length > 0 && (
-                <select
-                  value={gekoppeldProjectId || ''}
-                  onChange={(e) => koppelProject(e.target.value || null)}
-                  aria-label="Koppel dit gesprek aan een project"
-                  style={css(
-                    'cursor: pointer; box-sizing: border-box; min-height: 38px; padding: 8px 16px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 800;',
-                  )}
-                >
-                  <option value="">Geen actief project</option>
-                  {store.projects.filter((p) => !p.gearchiveerd).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.naam || 'Naamloos project'}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </>
-          )}
-        </div>
+  // Op desktop >= 1200 px staan Gesprekken en Context als vaste kolommen; dan bestaat de lade niet.
+  useEffect(() => {
+    if (drie && paneel) {
+      setPaneel(null);
+    }
+  }, [drie, paneel]);
 
-        {/* Vervolgopdracht, prioriteit 4 (Contexttabs): compact, alleen-lezen
-            overzicht van welke context de AI op dit moment heeft - geen
-            groot paneel, alleen de chips die de opdracht zelf noemt en die
-            vandaag ook echt bepaald kunnen worden (Fonds/Regeling ontbreken
-            bewust: er bestaat nog geen fonds-/regelingselector in de chat -
-            zie het architectuuroverzicht). */}
-        {hasPlanTools && (
-          <div style={css('display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -6px 0 16px; font-size: 12.5px; color: #7B8985;')}>
-            <span style={css('font-weight: 700; color: #9CA9A5;')}>Context:</span>
-            <span style={contextChipStijl}>
-              Actief project: {(store.projects || []).find((p) => p.id === gekoppeldProjectId)?.naam || 'geen'}
-            </span>
-            <span style={contextChipStijl}>Organisatie: {store.orgProfile?.name || 'niet ingevuld'}</span>
-            <span style={contextChipStijl}>
-              Documenten: {((store.projects || []).find((p) => p.id === gekoppeldProjectId)?.docs || []).length}
-            </span>
-          </div>
-        )}
+  // Wisselen van gesprek tijdens een lopend antwoord zou berichten van twee gesprekken door elkaar halen
+  // (het antwoord komt binnen op het scherm van een ander gesprek). Daarom is de gesprekslijst op slot
+  // zolang `loading` waar is; de chatlogica zelf is hiervoor niet aangepast.
+  const vergrendeld = loading;
 
-        {/* CONTEXTPANEEL (Organisatie/Projecten/Documenten/Context): Vervolgopdracht
-            "Verbeter UX contextpanelen rondom Subsidie Kompas chat" (2026-10-01).
-            De vier vroegere losse, boven de chat gerenderde blokken (Eerdere
-            gesprekken, Documentatie, Projecten, Organisatie) zijn hier
-            samengevoegd tot één compact, uitschuifbaar paneel met tabbladen
-            (KompasContextDrawer), zodat de chat altijd direct zichtbaar blijft
-            en niet meer naar beneden wordt geduwd. De inhoud van elk tabblad
-            is ongewijzigd - dezelfde componenten, dezelfde state, dezelfde
-            data - alleen de lay-out eromheen is veranderd. */}
-        {hasPlanTools && (
-          <KompasContextDrawer
-            active={paneel}
-            onSelect={setPaneel}
-            onClose={() => setPaneel(null)}
-            tabs={{
-              org: { label: 'Organisatie', content: <OrganisatieprofielPage embedded /> },
-              proj: { label: 'Projecten', content: <ProjectenPage embedded /> },
-              doc: { label: 'Documenten', badge: documenten.length, content: <DocumentatiePage embedded /> },
-              historie: {
-                label: 'Context',
-                content: (
-                  <>
-                    <div style={css("margin-bottom: 18px; font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E;")}>
-                      Eerdere gesprekken
-                    </div>
+  const openUitLijst = async (h) => {
+    if (vergrendeld) return;
 
-                    <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-                      {gesprekken.map((h) => (
-                        <div
-                          key={h.id}
-                          style={css(
-                            'display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; min-height: 44px; padding: 13px 16px; border: 1px solid #E1EAE4; border-radius: 14px;',
-                          )}
-                        >
-                          <span
-                            onClick={() => openGesprek(h)}
-                            role="button"
-                            tabIndex={0}
-                            style={css('cursor: pointer; flex: 1 1 220px; min-width: 0; color: #2C4A5E; font-size: 14.5px; font-weight: 700;')}
-                          >
-                            {h.titel}
-                          </span>
-                          <span style={css('display: flex; align-items: center; gap: 16px;')}>
-                            <ExportMenu
-                              toegestaan={hasPlanTools}
-                              uitlijnen="rechts"
-                              ariaLabel={`Gesprek ${h.titel} exporteren`}
-                              bouwModel={gesprekExport({ gesprekId: h.id, store })}
-                            />
-                            <span style={css('color: #7B8985; font-size: 13px;')}>{historieLaadId === h.id ? 'Laden…' : formatDatum(h.tijd)}</span>
-                            <span
-                              onClick={() => {
-                                store.deleteConversation(h.id);
+    setPaneel(null);
+    await openGesprek(h);
+  };
 
-                                if (h.id === conversationId) {
-                                  nieuweChat();
-                                }
-                              }}
-                              role="button"
-                              tabIndex={0}
-                              style={css('cursor: pointer; min-height: 44px; display: flex; align-items: center; color: #9E3B2C; font-size: 13px; font-weight: 700;')}
-                            >
-                              Verwijderen
-                            </span>
-                          </span>
-                        </div>
-                      ))}
+  const nieuwUitLijst = () => {
+    if (vergrendeld) return;
 
-                      {gesprekken.length === 0 && (
-                        <div style={css('padding: 20px 16px; border: 1px dashed #D5E0D9; border-radius: 14px; font-size: 14.5px; line-height: 1.6; color: #7B8985;')}>
-                          Nog geen bewaarde gesprekken. Zodra u een vraag stelt, bewaart Subsidie Kompas het gesprek hier zodat
-                          u er later op terug kunt komen.
-                        </div>
-                      )}
+    setPaneel(null);
+    nieuweChat();
+  };
 
-                      <div
-                        onClick={nieuweChat}
-                        role="button"
-                        tabIndex={0}
-                        style={css(
-                          'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #D6E3E9; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-size: 13.5px; font-weight: 800;',
-                        )}
-                      >
-                        + Nieuw gesprek
-                      </div>
-                    </div>
+  const verwijderUitLijst = (h) => {
+    if (vergrendeld) return;
 
-                    <div style={css('margin-top: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
-                      <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>Gegevens verwijderen</div>
-                      <div style={css('margin-bottom: 16px; font-size: 14px; line-height: 1.65; color: #536460;')}>
-                        U bepaalt zelf wat Subsidie Kompas van u bewaart. Verwijderen kan niet worden teruggedraaid; wat u
-                        weghaalt gebruikt Subsidie Kompas niet meer in adviezen en aanvragen.
-                      </div>
-                      <div style={css('display: flex; gap: 10px; flex-wrap: wrap;')}>
-                        <div
-                          onClick={() => {
-                            store.clearConversations();
-                            nieuweChat();
-                            setAccountMsg('Alle gesprekken zijn verwijderd.');
-                          }}
-                          role="button"
-                          style={css(
-                            'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #E1D3D0; border-radius: 999px; background: #FFFFFF; color: #9E3B2C; font-size: 14px; font-weight: 700;',
-                          )}
-                        >
-                          Alle gesprekken verwijderen
-                        </div>
-                        <div
-                          onClick={() => {
-                            store.clearOrgProfile();
-                            setAccountMsg('De informatie over uw organisatie is verwijderd.');
-                          }}
-                          role="button"
-                          style={css(
-                            'cursor: pointer; box-sizing: border-box; min-height: 44px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #E1D3D0; border-radius: 999px; background: #FFFFFF; color: #9E3B2C; font-size: 14px; font-weight: 700;',
-                          )}
-                        >
-                          Informatie over mijn organisatie verwijderen
-                        </div>
-                      </div>
+    store.deleteConversation(h.id);
 
-                      {accountMsg && (
-                        <div
-                          style={css(
-                            'margin-top: 16px; padding: 13px 16px; border: 1px solid #BFD4C6; border-radius: 12px; background: #EAF4EE; font-size: 14.5px; font-weight: 700; color: #2F6D47;',
-                          )}
-                        >
-                          {accountMsg}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ),
-              },
-            }}
+    if (h.id === conversationId) {
+      nieuweChat();
+    }
+  };
+
+  const projectNaamVan = (id) => {
+    const p = (store.projects || []).find((x) => x.id === id);
+
+    return p ? p.naam || 'Naamloos project' : '';
+  };
+
+  const gesprekkenInhoud = (
+    <>
+      <ConversationsList
+        gesprekken={gesprekken}
+        actiefGesprekId={conversationId}
+        actiefProjectId={actiefProject ? actiefProject.id : null}
+        actiefProjectNaam={actiefProjectNaam}
+        onOpen={openUitLijst}
+        onNieuw={nieuwUitLijst}
+        onVerwijder={verwijderUitLijst}
+        laadId={historieLaadId}
+        vergrendeld={vergrendeld}
+        projectNaamVan={projectNaamVan}
+        renderExport={(h) => (
+          <ExportMenu
+            toegestaan={hasPlanTools}
+            uitlijnen="rechts"
+            ariaLabel={`Gesprek ${h.titel} exporteren`}
+            bouwModel={gesprekExport({ gesprekId: h.id, store })}
           />
         )}
+      />
+      <GegevensVerwijderen
+        melding={accountMsg}
+        onAlleGesprekken={() => {
+          store.clearConversations();
+          nieuweChat();
+          setAccountMsg('Alle gesprekken zijn verwijderd.');
+        }}
+        onOrganisatie={() => {
+          store.clearOrgProfile();
+          setAccountMsg('De informatie over uw organisatie is verwijderd.');
+        }}
+      />
+    </>
+  );
 
-        {/* UPGRADE */}
-        {upgradeOpen && (
-          <div
-            style={css(
-              'position: fixed; inset: 0; z-index: 300; background: rgba(33,56,74,0.5); display: flex; align-items: center; justify-content: center; padding: 20px;',
-            )}
-          >
-            <div style={css('max-width: 460px; width: 100%; padding: clamp(24px, 3vw, 34px); border-radius: 22px; background: #FFFFFF;')}>
-              <div style={css("margin-bottom: 10px; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
-                Automatisch uw organisatieprofiel laten opbouwen?
-              </div>
-              <div style={css('margin-bottom: 18px; font-size: 15px; line-height: 1.7; color: #4B5C58;')}>
-                Met Pro en Premium analyseert Subsidie Kompas uw website en bouwt automatisch een organisatieprofiel op.
-                Dit bespaart tijd en zorgt voor betere fondsselecties en nauwkeurigere AI-adviezen.
-              </div>
-              <div style={css('display: flex; gap: 12px; flex-wrap: wrap;')}>
-                <a
-                  href="#/hoe-het-werkt"
-                  onClick={() => setUpgradeOpen(false)}
-                  style={css(
-                    'box-sizing: border-box; min-height: 44px; display: flex; align-items: center; padding: 12px 22px; border-radius: 999px; background: #4E9A6C; color: #FFFFFF; font-size: 14.5px; font-weight: 800;',
-                  )}
-                >
-                  Bekijk Pro
-                </a>
-                <div
-                  onClick={() => setUpgradeOpen(false)}
-                  role="button"
-                  style={css(
-                    'cursor: pointer; box-sizing: border-box; min-height: 44px; display: flex; align-items: center; padding: 12px 22px; border-radius: 999px; border: 1px solid #E1EAE4; background: #FFFFFF; color: #2C4A5E; font-size: 14.5px; font-weight: 700;',
-                  )}
-                >
-                  Misschien later
-                </div>
-              </div>
+  const toolbarKnop = (actief) =>
+    css(
+      `cursor: pointer; box-sizing: border-box; min-height: 40px; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; border: 1px solid ${actief ? '#BFD4C6' : '#D6E3E9'}; background: ${actief ? '#EAF4EE' : '#FFFFFF'}; color: ${actief ? '#2F6D47' : '#2C4A5E'}; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800;`,
+    );
+
+  // Compacte werkkop voor Pro/Premium (vervangt de logo-kop van het chatvenster): wie/wat is actief in dit gesprek.
+  const werkkop = (
+    <div
+      data-testid="werkkop"
+      style={css('display: flex; flex-direction: column; gap: 10px; padding: 12px clamp(14px, 2.4vw, 22px); border-bottom: 1px solid #D6E3E9; background: #FFFFFF;')}
+    >
+      {!drie && (
+        <div data-testid="werkruimte-knoppen" style={css('display: flex; align-items: center; gap: 8px; flex-wrap: wrap;')}>
+          <button type="button" data-testid="open-gesprekken" aria-haspopup="dialog" aria-expanded={paneel === 'gesprekken'} onClick={() => setPaneel(paneel === 'gesprekken' ? null : 'gesprekken')} style={toolbarKnop(paneel === 'gesprekken')}>
+            Gesprekken <span style={css('font-size: 12px; opacity: 0.7;')}>{gesprekken.length}</span>
+          </button>
+          <button type="button" data-testid="open-context" aria-haspopup="dialog" aria-expanded={paneel === 'context'} onClick={() => setPaneel(paneel === 'context' ? null : 'context')} style={toolbarKnop(paneel === 'context')}>
+            Context
+          </button>
+          <button type="button" data-testid="nieuw-gesprek-kop" aria-label="Nieuw gesprek" onClick={nieuwUitLijst} disabled={vergrendeld} style={toolbarKnop(false)}>
+            + Nieuw
+          </button>
+        </div>
+      )}
+      <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap;')}>
+        <img src="/uploads/kompas-logo.png" alt="Subsidie Kompas" style={css('width: 32px; height: 32px; border-radius: 50%; object-fit: contain; display: block; flex: 0 0 auto;')} />
+        <div style={css('flex: 1 1 220px; min-width: 0;')}>
+          <div data-testid="actief-project-kop" style={css("font-family: 'Mulish', sans-serif; font-size: 14.5px; color: #2C4A5E; overflow-wrap: anywhere;")}>
+            Actief in dit gesprek: <strong data-testid="actief-project-naam">{actiefProjectNaam || 'geen project'}</strong>
+          </div>
+          {modusLabel && (
+            <div data-testid="werkkop-modus" style={css('margin-top: 2px; font-size: 12px; font-weight: 700; color: #7B8985;')}>
+              Modus: {modusLabel}
             </div>
+          )}
+        </div>
+        {kiesbareProjecten.length > 0 && (
+          <div style={css('display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0;')}>
+            <select
+              data-testid="project-kiezer"
+              value={gekoppeldProjectId || ''}
+              disabled={vergrendeld}
+              onChange={(e) => koppelProject(e.target.value || null)}
+              aria-label="Koppel dit gesprek aan een project"
+              title={messages.length > 0 || conversationId ? 'Wisselen van project start een nieuw gesprek' : 'Project voor dit gesprek'}
+              style={css(
+                "cursor: pointer; box-sizing: border-box; min-height: 36px; max-width: 220px; padding: 6px 12px; border-radius: 999px; border: 1px solid #D6E3E9; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 800;",
+              )}
+            >
+              <option value="">Geen actief project</option>
+              {kiesbareProjecten.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.naam || 'Naamloos project'}
+                </option>
+              ))}
+            </select>
+            {(messages.length > 0 || conversationId) && (
+              <span className="fwk-cw-hint" style={css('font-size: 11.5px; color: #7B8985;')}>
+                Wisselen start een nieuw gesprek
+              </span>
+            )}
           </div>
         )}
-
-        {/* CHATVENSTER */}
-        <div style={css('overflow: hidden; border-radius: 30px; background: #EAF1F6; box-shadow: 0 15px 45px rgba(44,74,94,0.08);')}>
-          <div style={css('padding: 14px 22px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid #D6E3E9; background: #FFFFFF;')}>
-            <img
-              src="/uploads/kompas-logo.png"
-              alt="Subsidie Kompas"
-              style={css('width: 38px; height: 38px; border-radius: 50%; object-fit: contain; display: block;')}
-            />
-            <div>
-              <div style={css('color: #2C4A5E; font-size: 15px; font-weight: 800;')}>Subsidie Kompas</div>
-              <div style={css('margin-top: 2px; color: #6B7B77; font-size: 11.5px;')}>Adviseur voor subsidies en fondsenwerving</div>
-            </div>
-            <div style={css('margin-left: auto; display: flex; align-items: center; gap: 10px;')}>
-              <span style={css('width: 8px; height: 8px; border-radius: 50%; background: #4E9A6C;')} />
-              <span style={css('color: #667873; font-size: 12px;')}>online</span>
-              {toonStatusBadge && (
-                <div
-                  style={css(
-                    'padding: 6px 10px; border: 1px solid #DCE5E1; border-radius: 999px; background: #F7F9F8; color: #6B7B77; font-size: 10.5px; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase;',
-                  )}
-                >
-                  {planLabel}
-                </div>
-              )}
-            </div>
+        {toonStatusBadge && (
+          <div style={css('padding: 5px 10px; border: 1px solid #DCE5E1; border-radius: 999px; background: #F7F9F8; color: #6B7B77; font-size: 10.5px; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase;')}>
+            {planLabel}
           </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const chatVenster = (
+        <div
+          data-testid="chat-venster"
+          style={
+            drie
+              ? css('display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; border-radius: 24px; background: #EAF1F6; box-shadow: 0 15px 45px rgba(44,74,94,0.08);')
+              : css('overflow: hidden; border-radius: 30px; background: #EAF1F6; box-shadow: 0 15px 45px rgba(44,74,94,0.08);')
+          }
+        >
+          {hasPlanTools ? (
+            werkkop
+          ) : (
+            <div style={css('padding: 14px 22px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid #D6E3E9; background: #FFFFFF;')}>
+              <img
+                src="/uploads/kompas-logo.png"
+                alt="Subsidie Kompas"
+                style={css('width: 38px; height: 38px; border-radius: 50%; object-fit: contain; display: block;')}
+              />
+              <div>
+                <div style={css('color: #2C4A5E; font-size: 15px; font-weight: 800;')}>Subsidie Kompas</div>
+                <div style={css('margin-top: 2px; color: #6B7B77; font-size: 11.5px;')}>Adviseur voor subsidies en fondsenwerving</div>
+              </div>
+              <div style={css('margin-left: auto; display: flex; align-items: center; gap: 10px;')}>
+                <span style={css('width: 8px; height: 8px; border-radius: 50%; background: #4E9A6C;')} />
+                <span style={css('color: #667873; font-size: 12px;')}>online</span>
+                {toonStatusBadge && (
+                  <div
+                    style={css(
+                      'padding: 6px 10px; border: 1px solid #DCE5E1; border-radius: 999px; background: #F7F9F8; color: #6B7B77; font-size: 10.5px; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase;',
+                    )}
+                  >
+                    {planLabel}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {messages.length === 0 && (
-            <div style={css('padding: clamp(20px, 3.4vw, 34px);')}>
+            <div style={drie ? css('flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: clamp(20px, 3.4vw, 34px);') : css('padding: clamp(20px, 3.4vw, 34px);')}>
               <div style={css('display: flex; justify-content: flex-start; margin-bottom: 28px;')}>
                 <div
                   style={css(
@@ -1276,8 +1137,11 @@ export default function KompasToolPage() {
           {messages.length > 0 && (
             <div
               ref={scrollRef}
+              data-testid="chat-berichten"
               style={css(
-                'min-height: min(500px, 58vh); max-height: 660px; overflow-y: auto; padding: clamp(20px, 3vw, 30px) clamp(18px, 3.4vw, 34px) 24px; display: flex; flex-direction: column; gap: 18px;',
+                drie
+                  ? 'flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: clamp(20px, 3vw, 30px) clamp(18px, 3.4vw, 34px) 24px; display: flex; flex-direction: column; gap: 18px;'
+                  : 'min-height: min(500px, 58vh); max-height: 660px; overflow-y: auto; padding: clamp(20px, 3vw, 30px) clamp(18px, 3.4vw, 34px) 24px; display: flex; flex-direction: column; gap: 18px;',
               )}
             >
               {messages.map((m, i) =>
@@ -1400,7 +1264,8 @@ export default function KompasToolPage() {
             </div>
           )}
 
-          <div style={css('padding: 6px clamp(14px, 3vw, 28px) 30px;')}>
+          <div style={css(drie ? 'flex: 0 0 auto; padding: 6px clamp(14px, 3vw, 28px) 16px;' : 'padding: 6px clamp(14px, 3vw, 28px) 30px;')}>
+            <div data-testid="chat-meldingen" style={drie ? css('max-height: 34vh; overflow-y: auto;') : undefined}>
             {/* Vervolgopdracht, prioriteit 7 (Export): korte bevestiging na
                 Kopiëren/Opslaan bij project/Exporteren/Later verder bewerken -
                 zelfde compacte, gedempte stijl als accountMsg hierboven. */}
@@ -1592,6 +1457,7 @@ export default function KompasToolPage() {
                 </div>
               </div>
             )}
+            </div>
 
             <div style={css('display: flex; align-items: flex-end; gap: 10px; padding: 10px 10px 10px 20px; border-radius: 26px; background: #FFFFFF;')}>
               {app.canUploadFiles && (
@@ -1618,6 +1484,7 @@ export default function KompasToolPage() {
               )}
               <textarea
                 ref={taRef}
+                data-testid="chat-invoer"
                 value={draft}
                 onChange={(e) => {
                   setDraft(e.target.value);
@@ -1639,6 +1506,7 @@ export default function KompasToolPage() {
                 onClick={() => verstuur()}
                 role="button"
                 aria-label="Verstuur vraag"
+                data-testid="chat-verstuur"
                 style={css(
                   'width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; background: #4E9A6C; cursor: pointer;',
                 )}
@@ -1696,7 +1564,124 @@ export default function KompasToolPage() {
             )}
           </div>
         </div>
+  );
+
+  const upgradeModal = (
+    <>
+        {/* UPGRADE */}
+        {upgradeOpen && (
+          <div
+            style={css(
+              'position: fixed; inset: 0; z-index: 300; background: rgba(33,56,74,0.5); display: flex; align-items: center; justify-content: center; padding: 20px;',
+            )}
+          >
+            <div style={css('max-width: 460px; width: 100%; padding: clamp(24px, 3vw, 34px); border-radius: 22px; background: #FFFFFF;')}>
+              <div style={css("margin-bottom: 10px; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
+                Automatisch uw organisatieprofiel laten opbouwen?
+              </div>
+              <div style={css('margin-bottom: 18px; font-size: 15px; line-height: 1.7; color: #4B5C58;')}>
+                Met Pro en Premium analyseert Subsidie Kompas uw website en bouwt automatisch een organisatieprofiel op.
+                Dit bespaart tijd en zorgt voor betere fondsselecties en nauwkeurigere AI-adviezen.
+              </div>
+              <div style={css('display: flex; gap: 12px; flex-wrap: wrap;')}>
+                <a
+                  href="#/hoe-het-werkt"
+                  onClick={() => setUpgradeOpen(false)}
+                  style={css(
+                    'box-sizing: border-box; min-height: 44px; display: flex; align-items: center; padding: 12px 22px; border-radius: 999px; background: #4E9A6C; color: #FFFFFF; font-size: 14.5px; font-weight: 800;',
+                  )}
+                >
+                  Bekijk Pro
+                </a>
+                <div
+                  onClick={() => setUpgradeOpen(false)}
+                  role="button"
+                  style={css(
+                    'cursor: pointer; box-sizing: border-box; min-height: 44px; display: flex; align-items: center; padding: 12px 22px; border-radius: 999px; border: 1px solid #E1EAE4; background: #FFFFFF; color: #2C4A5E; font-size: 14.5px; font-weight: 700;',
+                  )}
+                >
+                  Misschien later
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+    </>
+  );
+
+  // FREE, anonieme bezoekers en niet-betalende accounts: de bestaande chatpagina, ongewijzigd
+  // (hero, chatvenster, upgradehints). Geen kolommen, geen contextpaneel.
+  if (!hasPlanTools) {
+    return (
+      <div data-screen-label="Subsidie Kompas" style={css('min-height: 100vh; position: relative; z-index: 1;')}>
+        {/* SUBNAVIGATIE: gedeelde Subsidie Kompas-kop (met de Subsidie Kompas-knop rechtsboven) */}
+        <KompasSubnav terugNaarKompas={false} toonPlan />
+
+      {/* HERO */}
+      <div style={css('position: relative; z-index: 1; max-width: 850px; margin: 72px auto 0; padding: 0 clamp(16px, 4vw, 24px); text-align: center;')}>
+        <img
+          src="/uploads/kompas-logo.png"
+          alt="Subsidie Kompas"
+          style={css('width: 78px; height: 78px; border-radius: 50%; object-fit: contain; display: inline-block;')}
+        />
+        <div style={css("margin-top: 18px; font-family: 'Newsreader', serif; font-size: 21px; font-weight: 600; color: #4E9A6C;")}>
+          Subsidie Kompas
+        </div>
+        <div
+          style={css(
+            "margin: 12px 0 22px; font-family: 'Newsreader', serif; font-size: clamp(34px, 7vw, 56px); font-weight: 600; line-height: 1.08; color: #2C4A5E;",
+          )}
+        >
+          Uw gids bij fondsenwerving
+        </div>
+        <div style={css('max-width: 710px; margin: 0 auto; font-size: 18px; line-height: 1.65; color: #4B5C58;')}>
+          Subsidie Kompas helpt u aan projectfinanciering: passende fondsen, een concrete strategie en begeleiding bij
+          de aanvraag.
+        </div>
       </div>
+
+        <div style={css('position: relative; z-index: 1; max-width: 1040px; margin: 54px auto 80px; padding: 0 clamp(16px, 4vw, 24px);')}>
+          <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;')} />
+
+          {upgradeOpen && upgradeModal}
+
+          {/* CHATVENSTER */}
+          {chatVenster}
+        </div>
+      </div>
+    );
+  }
+
+  // PRO/PREMIUM/ADMIN: werkruimte Gesprekken | Chat | Context (zie chat/ChatWerkruimte.jsx).
+  // Geen min-height: 100vh: de werkruimte gebruikt zelf de viewporthoogte onder de navigatie (geen dubbele paginascroll).
+  return (
+    <div data-screen-label="Subsidie Kompas" style={css(drie ? 'position: relative; z-index: 1;' : 'min-height: 100vh; position: relative; z-index: 1;')}>
+      {/* SUBNAVIGATIE: gedeelde Subsidie Kompas-kop (met de Subsidie Kompas-knop rechtsboven) */}
+      <KompasSubnav terugNaarKompas={false} toonPlan />
+
+      <ChatWerkruimte
+        modus={modus}
+        links={gesprekkenInhoud}
+        rechts={<ProjectContextPanel projectId={actiefProject ? actiefProject.id : null} />}
+      >
+        {chatVenster}
+      </ChatWerkruimte>
+
+      {/* LADE / BOTTOM SHEET (alleen tablet en mobiel): de bestaande KompasContextDrawer. Op desktop >= 1200 px
+          staan Gesprekken en Context als vaste kolommen; er is dan geen lade (geen dubbele ingangen). */}
+      {!drie && (
+        <KompasContextDrawer
+          active={paneel}
+          onSelect={setPaneel}
+          onClose={() => setPaneel(null)}
+          tabs={{
+            gesprekken: { label: 'Gesprekken', badge: gesprekken.length, content: gesprekkenInhoud },
+            context: { label: 'Context', content: <ProjectContextPanel projectId={actiefProject ? actiefProject.id : null} /> },
+          }}
+        />
+      )}
+
+      {upgradeOpen && upgradeModal}
     </div>
   );
 }

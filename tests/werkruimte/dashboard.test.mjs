@@ -256,7 +256,7 @@ const lees = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8')
   const store = lees('src/features/kompas-app/KompasStore.jsx');
   check('store: chatverzoek is een ref (geen opslag) en wordt eenmalig overgenomen', /chatVerzoekRef = useRef\(null\)/.test(store) && /neemChatVerzoek: \(\) => \{[\s\S]*?chatVerzoekRef\.current = null;/.test(store));
   const tool = lees('src/features/kompas-app/KompasToolPage.jsx');
-  check('chat: overdracht alleen voor Pro/Premium en via bestaande handlers', /store\.neemChatVerzoek[\s\S]{0,400}!hasPlanTools[\s\S]{0,700}openGesprek\(\{ id: verzoek\.gesprekId[\s\S]{0,200}koppelProject\(project\.id\)/.test(tool));
+  check('chat: overdracht alleen voor Pro/Premium en via bestaande handlers', /store\.neemChatVerzoek[\s\S]{0,400}!hasPlanTools[\s\S]{0,700}openGesprek\(\{ id: verzoek\.gesprekId[\s\S]{0,200}koppelProject\(projectId\)/.test(tool));
   check('chat: askKompas-aanroep ongewijzigd aanwezig', tool.includes('activeProgramId: hasPlanTools && isEchtId(gekoppeldProjectId) ? gekoppeldProjectId : null'));
 }
 

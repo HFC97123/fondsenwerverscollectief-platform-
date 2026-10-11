@@ -14,6 +14,7 @@ import { useProjectFinanciering } from '../financiering/useProjectFinanciering.j
 import { KLEUR } from '../financiering/FinancieringUi.jsx';
 import { dagenTekst, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, formatTijd } from '../financiering/dekkingsplan.js';
 import ProjectfinancieringTab from './ProjectfinancieringTab.jsx';
+import ConversationsList from '../chat/ConversationsList.jsx';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14.5px; line-height: 1.6; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;";
@@ -194,23 +195,8 @@ function GesprekkenTab({ project, gesprekken, onOpen, onBespreek }) {
           Bespreek met Subsidiekompas
         </button>
       </div>
-      {gesprekken.length ? (
-        <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px;')}>
-          {gesprekken.map((g) => (
-            <li key={g.id} data-testid="detail-gesprek" style={css('display: flex; gap: 12px; align-items: center;')}>
-              <div style={css('min-width: 0; flex: 1;')}>
-                <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{g.titel || 'Gesprek'}</div>
-                {g.tijd && <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>{formatTijd(g.tijd, new Date())}</div>}
-              </div>
-              <button type="button" onClick={() => onOpen(g)} style={css(LINK)}>
-                Open gesprek
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div style={css(`${TEKST} color: #7B8985;`)}>Nog geen opgeslagen gesprekken over dit project.</div>
-      )}
+      {/* Dezelfde gedeelde gesprekkenlijst als in de chatwerkruimte (Fase 4), gefilterd op dit project. */}
+      <ConversationsList gesprekken={gesprekken} projectFilter={project.id} embedded compact showSearch={false} showNewConversation={false} onOpen={onOpen} />
     </section>
   );
 }

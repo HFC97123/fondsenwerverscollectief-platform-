@@ -132,7 +132,7 @@ with sync_playwright() as p:
         ok(f'{label}: Open gesprek -> chat', pg.evaluate('location.hash')=='#/kompas', pg.evaluate('location.hash'))
         t=txt(pg)
         ok(f'{label}: gesprek geladen (berichten zichtbaar)', 'Kun je me helpen met een projectplan?' in t, t[:300].replace('\n',' | '))
-        ok(f'{label}: chip Actief project: Buurtkeuken De Brug', 'Actief project: Buurtkeuken De Brug' in t)
+        ok(f'{label}: kop Actief in dit gesprek: Buurtkeuken De Brug', 'Actief in dit gesprek: Buurtkeuken De Brug' in t)
         ok(f'{label}: nog steeds 1 werknav, Chat actief', nav(pg).count()==1 and nav(pg).locator('a[aria-current="page"]').first.inner_text().strip()=='Chat')
         pg.screenshot(path=f'shots/{label}_open_gesprek.png')
         # eenmalig: wegnavigeren en terug -> verzoek niet opnieuw toegepast
@@ -143,7 +143,7 @@ with sync_playwright() as p:
         ctx,pg=nieuw(b,vp,'pro','/kompas/dashboard')
         pg.locator('[data-testid="dashboard-project"]').filter(has_text='Taalcafe Zuid').get_by_role('button',name='Bespreek met Subsidiekompas').click(); pg.wait_for_timeout(1500)
         t=txt(pg)
-        ok(f'{label}: Bespreek -> chat met Actief project: Taalcafe Zuid', pg.evaluate('location.hash')=='#/kompas' and 'Actief project: Taalcafe Zuid' in t)
+        ok(f'{label}: Bespreek -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash')=='#/kompas' and 'Actief in dit gesprek: Taalcafe Zuid' in t)
         # terug naar dashboard en dan naar chat via nav: geen oud verzoek
         nav(pg).get_by_role('link',name='Dashboard').click(); pg.wait_for_timeout(500)
         nav(pg).get_by_role('link',name='Chat',exact=True).click(); pg.wait_for_timeout(1000)
