@@ -118,7 +118,7 @@ const project = (extra = {}) => ({
   gelijk('legacy linked_schemes (project.regelingen) beïnvloedt de dekking niet', dekkingVanProject(project(), []).toegekend, 0);
   gelijk('project zonder regels werkt', dekkingVanProject(project(), undefined).nogNodig, 90000);
   gelijk('project zonder alles werkt', dekkingVanProject({ id: 'x' }).nogNodig, 0);
-  gelijk('co-financiers worden gemeld als niet meegeteld', dekkingVanProject(project(), REGELS_P1).cofinNietMeegeteld, 2);
+  gelijk('geen cofinNietMeegeteld meer: cofinanciers staan als regels in program_funding', dekkingVanProject(project(), REGELS_P1).cofinNietMeegeteld, undefined);
 }
 
 // ---------- deadlines ----------

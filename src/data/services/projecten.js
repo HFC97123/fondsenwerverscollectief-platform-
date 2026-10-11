@@ -18,6 +18,7 @@
 // zie KompasStore.jsx/ProjectenPage.jsx. naarProjectVeld()/naarKolomPatch()
 // vertalen naar de Engelse kolomnamen in de database.
 import { supabase } from '../client.js';
+import { teFinancieren } from '../../features/kompas-app/financiering/dekkingsplan.js';
 
 // Doelgroep is voorheen een los tekstveld geweest (target_groups, plain
 // text in de database). Om meervoudige selectie mogelijk te maken zonder
@@ -126,7 +127,7 @@ function naarProjectVeld(rij, docs) {
 
 // begroting/gevraagd/eigenBijdrage zijn gewone tekstvelden in de UI (zoals
 // nu al, met placeholders als '€ 85.000'), dus hier op dezelfde manier
-// schoongemaakt als berekenDekking() in KompasStore.jsx al doet: alle
+// schoongemaakt als projectBedrag() in financiering/dekkingsplan.js: alle
 // niet-cijfers eruit, anders levert '€ 85.000' een ongeldig getal op.
 function getal(v) {
   if (v === '' || v == null) {
@@ -138,7 +139,7 @@ function getal(v) {
   return cijfers ? Number(cijfers) : null;
 }
 
-function naarKolomPatch(project) {
+export function naarKolomPatch(project) {
   return {
     name: project.naam || 'Naamloos project',
     program_label: project.programma || null,
@@ -151,12 +152,14 @@ function naarKolomPatch(project) {
     partners: project.partners || null,
     results: project.resultaten || null,
     budget_total: getal(project.begroting),
-    requested_amount: getal(project.gevraagd),
+    // Te financieren bedrag: ALTIJD afgeleid (begroting min eigen bijdrage, nooit negatief) met de ene
+    // gedeelde functie teFinancieren(); een los ingevoerd "gevraagd bedrag" bestaat niet meer. Zonder
+    // begroting blijft de kolom leeg.
+    requested_amount: getal(project.begroting) == null ? null : teFinancieren(project.begroting, project.eigenBijdrage),
     own_contribution: getal(project.eigenBijdrage),
-    previous_grants: project.eerder || [],
-    cofinanciers: project.cofin || [],
-    // linked_schemes wordt sinds Fase 2 niet meer geschreven: het dekkingsplan staat in
-    // subsidie_kompas_program_funding. De kolom blijft bestaan en wordt nog gelezen (legacy/rollback).
+    // previous_grants, cofinanciers en linked_schemes worden NIET meer geschreven. Financiering staat in
+    // subsidie_kompas_program_funding (de enige actieve bron). De kolommen blijven bestaan met hun
+    // bestaande inhoud (legacy/rollback); een update laat ze ongemoeid, dus er gaat niets verloren.
     activities: project.activiteiten || null,
     impact_description: project.impact || null,
     planning: project.planning || null,

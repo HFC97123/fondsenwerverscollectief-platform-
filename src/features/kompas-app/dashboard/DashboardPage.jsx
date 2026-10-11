@@ -70,7 +70,7 @@ function ProjectKaart({ project, onBespreek }) {
         <Kpi label="Begroting" waarde={d.heeftBegroting ? formatEuro(d.begroting) : '—'} />
         <Kpi label="Toegekend" waarde={formatEuro(d.toegekend)} kleur={KLEUR.toegekend} />
         <Kpi label="Aangevraagd" waarde={formatEuro(d.aangevraagd)} kleur={KLEUR.aangevraagd} />
-        <Kpi label="Overige dekking" waarde={formatEuro(d.overige)} kleur={KLEUR.overige} />
+        <Kpi label="Eigen bijdrage" waarde={formatEuro(d.overige)} kleur={KLEUR.overige} />
         <Kpi label="Nog te financieren" waarde={d.heeftBegroting ? formatEuro(d.nogNodig) : '—'} kleur="#C5D2CB" />
       </div>
 

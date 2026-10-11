@@ -18,6 +18,7 @@
 // aanroeper expliciet meegeeft (dat is zelf al uit de RLS-beveiligde tabellen
 // van de ingelogde gebruiker gehaald, zie exportService.js).
 import { normalizeDocumentContent } from '../document-theme/normalizeDocumentContent.js';
+import { STATUS_LABEL, teFinancieren } from '../../features/kompas-app/financiering/dekkingsplan.js';
 
 const EXCEL_CEL_MAX = 32000; // Excel staat maximaal 32.767 tekens per cel toe
 
@@ -27,7 +28,7 @@ const gevuld = (v) => v !== '' && v != null && !(Array.isArray(v) && v.length ==
 
 const tekst = (v) => (v == null ? '' : Array.isArray(v) ? v.filter(Boolean).join(', ') : String(v).trim());
 
-// Zelfde regel als berekenDekking() (KompasStore.jsx) en getal() in
+// Zelfde regel als projectBedrag() (financiering/dekkingsplan.js) en getal() in
 // projecten.js: alle niet-cijfers eruit. Zo komen de bedragen in de export
 // altijd overeen met wat het lid in de app ziet.
 const bedragNaarGetal = (v) => {
@@ -187,24 +188,28 @@ const PROJECT_TEKSTVELDEN = [
 
 /**
  * @param {Object} project  Eén project (vorm van naarProjectVeld in projecten.js)
- * @param {Object} opties   { organisatieNaam, dekking } - `dekking` is het
- *                          resultaat van berekenDekking(project) (KompasStore.jsx),
- *                          zodat de totalen exact die van de app zijn.
+ * @param {Object} opties   { organisatieNaam, dekking, regels }
+ *                          - `dekking` is het resultaat van dekkingVanProject() (financiering/dekkingsplan.js,
+ *                            de enige financiële berekening van de app), numeriek;
+ *                          - `regels` zijn de financieringsregels van het project (regelUitRpc-vorm, uit
+ *                            subsidie_kompas_program_funding). Zo zijn de totalen exact die van de app.
  */
-export function bouwProjectModel(project, { organisatieNaam, dekking } = {}) {
+export function bouwProjectModel(project, { organisatieNaam, dekking, regels } = {}) {
   const p = project || {};
   const naam = tekst(p.naam) || 'Naamloos project';
-  const looptijd = [tekst(p.periodeVan), tekst(p.periodeTot)].filter(Boolean).join(' – ');
+  const looptijd = [datumTekst(p.periodeVan), datumTekst(p.periodeTot)].filter(Boolean).join(' – ');
   const begroting = bedragNaarGetal(p.begroting);
-  const gevraagd = bedragNaarGetal(p.gevraagd);
   const eigen = bedragNaarGetal(p.eigenBijdrage);
-  const getalVan = (s) => bedragNaarGetal(s);
-  const toegekend = dekking ? getalVan(dekking.toegekend) : null;
-  const inAanvraag = dekking ? getalVan(dekking.inAanvraag) : null;
-  const open = dekking ? getalVan(dekking.open) : null;
-  const cofin = (p.cofin || []).filter((c) => gevuld(c.naam) || gevuld(c.bedrag));
-  const eerder = (p.eerder || []).filter((e) => gevuld(e.fonds) || gevuld(e.bedrag));
-  const regelingen = (p.regelingen || []).filter((r) => gevuld(r.naam));
+  // Te financieren bedrag: altijd afgeleid met de gedeelde functie, nooit een apart ingevoerd bedrag.
+  const teFin = begroting != null ? teFinancieren(begroting, eigen) : null;
+  const toegekend = dekking ? dekking.toegekend : null;
+  const aangevraagd = dekking ? dekking.aangevraagd : null;
+  const nogNodig = dekking ? dekking.nogNodig : null;
+  const bronnen = Array.isArray(regels) ? regels.filter(Boolean) : [];
+  // Cofinanciers en andere financiering (op naam) staan apart van gekoppelde fondsen en regelingen uit de catalogus.
+  const cofin = bronnen.filter((r) => r.bronType === 'financier');
+  const regelingen = bronnen.filter((r) => r.bronType !== 'financier');
+  const statusTekst = (r) => STATUS_LABEL[r.status] || '';
   const docs = (p.docs || []).filter((d) => !d.vervangen);
 
   const blocks = [
@@ -228,11 +233,11 @@ export function bouwProjectModel(project, { organisatieNaam, dekking } = {}) {
 
   const financiering = [
     ['Totale projectbegroting', begroting],
-    ['Gevraagd bedrag', gevraagd],
     ['Eigen bijdrage', eigen],
-    ['Toegekend (incl. eigen bijdrage)', toegekend],
-    ['In aanvraag', inAanvraag],
-    ['Nog te dekken', open],
+    ['Te financieren bedrag', teFin],
+    ['Toegekend', toegekend],
+    ['Aangevraagd', aangevraagd],
+    [dekking?.volledigGedekt ? 'Nog te financieren (volledig gedekt)' : 'Nog te financieren', nogNodig],
   ].filter(([, w]) => w != null && !(w === 0 && !dekking?.heeftBegroting));
 
   if (financiering.length) {
@@ -245,19 +250,11 @@ export function bouwProjectModel(project, { organisatieNaam, dekking } = {}) {
 
   if (cofin.length) {
     blocks.push(
-      ...sectie('Co-financiers', [
-        { type: 'table', headers: ['Co-financier', 'Bedrag', 'Status'], rows: cofin.map((c) => [tekst(c.naam), tekst(c.bedrag), tekst(c.status)]) },
-      ]),
-    );
-  }
-
-  if (eerder.length) {
-    blocks.push(
-      ...sectie('Eerdere aanvragen', [
+      ...sectie('Cofinanciers en andere financiering', [
         {
           type: 'table',
-          headers: ['Fonds of regeling', 'Jaar', 'Bedrag', 'Uitkomst'],
-          rows: eerder.map((e) => [tekst(e.fonds), tekst(e.jaar), tekst(e.bedrag), tekst(e.uitkomst)]),
+          headers: ['Cofinancier', 'Aangevraagd', 'Toegekend', 'Status'],
+          rows: cofin.map((r) => [tekst(r.naam), euroTekst(r.requested), euroTekst(r.awarded), statusTekst(r)]),
         },
       ]),
     );
@@ -268,14 +265,8 @@ export function bouwProjectModel(project, { organisatieNaam, dekking } = {}) {
       ...sectie('Gekoppelde fondsen en regelingen', [
         {
           type: 'table',
-          headers: ['Regeling', 'Financier', 'Deadline', 'Aangevraagd bedrag', 'Status'],
-          rows: regelingen.map((r) => [
-            tekst(r.naam),
-            tekst(r.funder),
-            datumTekst(r.deadline),
-            euroTekst(bedragNaarGetal(r.aangevraagd != null && r.aangevraagd !== '' ? r.aangevraagd : r.bedragMax)),
-            tekst(r.plan) || 'Gepland',
-          ]),
+          headers: ['Fonds of regeling', 'Financier', 'Deadline', 'Aangevraagd', 'Toegekend', 'Status'],
+          rows: regelingen.map((r) => [tekst(r.naam), tekst(r.funder), datumTekst(r.deadline), euroTekst(r.requested), euroTekst(r.awarded), statusTekst(r)]),
         },
       ]),
     );
@@ -299,7 +290,7 @@ export function bouwProjectModel(project, { organisatieNaam, dekking } = {}) {
         looptijd ? { onderdeel: 'Looptijd', waarde: looptijd } : null,
         { onderdeel: 'Status', waarde: p.gearchiveerd ? 'Gearchiveerd' : 'Actief' },
         begroting != null ? { onderdeel: 'Totale projectbegroting', waarde: begroting, type: 'euro' } : null,
-        gevraagd != null ? { onderdeel: 'Gevraagd bedrag', waarde: gevraagd, type: 'euro' } : null,
+        teFin != null ? { onderdeel: 'Te financieren bedrag', waarde: teFin, type: 'euro' } : null,
         eigen != null ? { onderdeel: 'Eigen bijdrage', waarde: eigen, type: 'euro' } : null,
         { onderdeel: 'Exportdatum', waarde: vandaag(), type: 'datum' },
       ].filter(Boolean),
@@ -323,11 +314,11 @@ export function bouwProjectModel(project, { organisatieNaam, dekking } = {}) {
 
   const fin = [
     ['Totale projectbegroting', begroting],
-    ['Gevraagd bedrag', gevraagd],
     ['Eigen bijdrage', eigen],
-    ['Toegekend (incl. eigen bijdrage)', toegekend],
-    ['In aanvraag', inAanvraag],
-    ['Nog te dekken', open],
+    ['Te financieren bedrag', teFin],
+    ['Toegekend', toegekend],
+    ['Aangevraagd', aangevraagd],
+    ['Nog te financieren', nogNodig],
   ].filter(([, w]) => w != null && !(w === 0 && !dekking?.heeftBegroting));
 
   if (fin.length) {
@@ -347,25 +338,9 @@ export function bouwProjectModel(project, { organisatieNaam, dekking } = {}) {
   if (cofin.length) {
     sheets.push(
       sheet(
-        'Co-financiers',
-        [K('Co-financier', 'naam', 36), K('Bedrag', 'bedrag', 18, 'euro'), K('Status', 'status', 18)],
-        cofin.map((c) => ({ naam: tekst(c.naam), bedrag: bedragNaarGetal(c.bedrag), status: tekst(c.status) })),
-      ),
-    );
-  }
-
-  if (eerder.length) {
-    sheets.push(
-      sheet(
-        'Eerdere aanvragen',
-        [K('Fonds of regeling', 'fonds', 36), K('Jaar', 'jaar', 10), K('Bedrag', 'bedrag', 18, 'euro'), K('Uitkomst', 'uitkomst', 20), K('Reden', 'reden', 50)],
-        eerder.map((e) => ({
-          fonds: tekst(e.fonds),
-          jaar: tekst(e.jaar),
-          bedrag: bedragNaarGetal(e.bedrag),
-          uitkomst: tekst(e.uitkomst),
-          reden: tekst(e.reden),
-        })),
+        'Cofinanciers',
+        [K('Cofinancier', 'naam', 36), K('Aangevraagd', 'aangevraagd', 18, 'euro'), K('Toegekend', 'toegekend', 18, 'euro'), K('Status', 'status', 18)],
+        cofin.map((r) => ({ naam: tekst(r.naam), aangevraagd: r.requested, toegekend: r.awarded, status: statusTekst(r) })),
       ),
     );
   }
@@ -374,13 +349,14 @@ export function bouwProjectModel(project, { organisatieNaam, dekking } = {}) {
     sheets.push(
       sheet(
         'Fondsen en regelingen',
-        [K('Regeling', 'naam', 40), K('Financier', 'funder', 30), K('Deadline', 'deadline', 14, 'datum'), K('Aangevraagd bedrag', 'bedrag', 20, 'euro'), K('Status', 'plan', 16)],
+        [K('Fonds of regeling', 'naam', 40), K('Financier', 'funder', 30), K('Deadline', 'deadline', 14, 'datum'), K('Aangevraagd', 'aangevraagd', 18, 'euro'), K('Toegekend', 'toegekend', 18, 'euro'), K('Status', 'status', 16)],
         regelingen.map((r) => ({
           naam: tekst(r.naam),
           funder: tekst(r.funder),
           deadline: isoNaarDate(r.deadline) || tekst(r.deadline),
-          bedrag: bedragNaarGetal(r.aangevraagd != null && r.aangevraagd !== '' ? r.aangevraagd : r.bedragMax),
-          plan: tekst(r.plan) || 'Gepland',
+          aangevraagd: r.requested,
+          toegekend: r.awarded,
+          status: statusTekst(r),
         })),
       ),
     );

@@ -29,7 +29,7 @@ def kaart_waarden(pg,kaart):
     t=kaart.inner_text().replace('\xa0',' ')
     def g(l):
         m=re.search(re.escape(l)+r'\s*\n?\s*€\s*([\d\.]+)',t); return m.group(1) if m else None
-    return [g('Toegekend'),g('Aangevraagd'),g('Overige dekking'),g('Nog te financieren')]
+    return [g('Toegekend'),g('Aangevraagd'),g('Eigen bijdrage'),g('Nog te financieren')]
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
     # ============ Desktop Pro: dossier
@@ -46,14 +46,15 @@ with sync_playwright() as p:
     ok('dossier KPI: Totale begroting € 100.000', '€ 100.000' in kpi(pg,'Totale begroting'), kpi(pg,'Totale begroting'))
     ok('dossier KPI: Toegekend € 30.000 (toegekend leeg -> aangevraagd telt)', '€ 30.000' in kpi(pg,'Toegekend'))
     ok('dossier KPI: Aangevraagd € 15.000', '€ 15.000' in kpi(pg,'Aangevraagd'))
-    ok('dossier KPI: Overige dekking € 20.000', '€ 20.000' in kpi(pg,'Overige dekking'))
+    ok('dossier KPI: Eigen bijdrage € 20.000', '€ 20.000' in kpi(pg,'Eigen bijdrage'))
     ok('dossier KPI: Nog te financieren € 35.000', '€ 35.000' in kpi(pg,'Nog te financieren'))
     ok('dossier KPI: eerstvolgende deadline = Oranje Fonds Burenhulp', 'Oranje Fonds Burenhulp' in kpi(pg,'Eerstvolgende deadline'), kpi(pg,'Eerstvolgende deadline'))
     tabs=[x.inner_text().strip() for x in pg.locator('[role="tab"]').all()]
     ok('dossier: 4 tabs in juiste volgorde', tabs==['Overzicht','Projectfinanciering','Documenten','Gesprekken'], str(tabs))
     ok('dossier: Overzicht standaard geselecteerd', pg.locator('[data-testid="tab-btn-overzicht"]').get_attribute('aria-selected')=='true')
     ov=pg.locator('[data-testid="tab-overzicht"]').inner_text()
-    ok('dossier Overzicht: projectgegevens uit subsidie_kompas_programs', 'Wekelijks een warme maaltijd.' in ov and 'Wijkcentrum' in ov and 'Gemeente Utrecht' in ov)
+    ok('dossier Overzicht: projectgegevens uit subsidie_kompas_programs', 'Wekelijks een warme maaltijd.' in ov and 'Wijkcentrum' in ov)
+    ok('dossier Overzicht: geen oude lijsten Co-financiers/Eerdere toekenningen meer; verwijzing naar Projectfinanciering', 'Co-financiers' not in ov and 'Eerdere toekenningen' not in ov and 'Naar Projectfinanciering' in ov, ov[-300:])
     ok('dossier Overzicht: gebruikt geen financieringsregels', 'Buurtbudget' not in ov and 'Oranje Fonds' not in ov and 'LEGACY' not in t)
     ok('dossier: geen GEHEIM, geen legacy', 'GEHEIM' not in t and 'LEGACY' not in t)
     ok('dossier: RPC kompas_dekkingsplan voor eigen project aangeroepen', pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan' && l.filters[0].includes('%s'))"%P1))
@@ -118,7 +119,7 @@ with sync_playwright() as p:
     ok('verwijderen: regel weg uit database en scherm, andere regels onaangeroerd', fr(pg,5) is None and pg.locator('[data-testid="pf-regel"]').count()==7 and fr(pg,10) is not None)
     ok('bewerken: geen pageerrors', not pg.errs, '; '.join(pg.errs)[:300])
     # --- Dashboard = detail
-    detail={k:kpi(pg,k) for k in ['Toegekend','Aangevraagd','Overige dekking','Nog te financieren']}
+    detail={k:kpi(pg,k) for k in ['Toegekend','Aangevraagd','Eigen bijdrage','Nog te financieren']}
     dw=[re.search(r'€ ([\d\.]+)',v).group(1) for v in detail.values()]
     pg.locator('a[href="#/kompas/dashboard"]').first.click(); pg.wait_for_timeout(1500)
     k1=pg.locator('[data-testid="dashboard-project"]').filter(has_text='Buurtkeuken De Brug').first
@@ -186,7 +187,8 @@ with sync_playwright() as p:
     t=txt(pg)
     k=pg.locator('[data-testid="open-project"]')
     ok('Projecten: Open project-link per actief project met UUID (3 eigen)', k.count()==3 and k.first.get_attribute('href').startswith('#/kompas/projecten/'), str(k.count()))
-    ok('Projecten: aantal regelingen komt uit het dekkingsplan (8)', '8 regelingen in het dekkingsplan' in t, t[:400])
+    kf=' || '.join(re.sub(r'\s+',' ',x.replace('\xa0',' ')) for x in pg.locator('[data-testid="projecten-kaart-financiering"]').all_inner_texts())
+    ok('Projecten: kaart toont dezelfde financiering als het projectdossier (30.000 / 15.000 / 20.000 / 35.000)', 'Toegekend € 30.000 · Aangevraagd € 15.000 · Eigen bijdrage € 20.000 · Nog te financieren € 35.000' in kf, kf)
     ok('Projecten: komende deadlines uit het dekkingsplan, niet uit legacy', pg.locator('[data-testid="projecten-komende-deadline"]').count()==3 and 'Oranje Fonds Burenhulp' in t and 'LEGACY' not in t)
     pg.get_by_role('button',name='Bewerken').first.click(); pg.wait_for_timeout(400)
     ok('Projecten formulier: dekkingsplan-verwijzing naar projectfinancieringstab, geen oude regelingen-editor', pg.locator('[data-testid="form-dekkingsplan-verwijzing"]').count()==1 and 'Aan te vragen bedrag' not in pg.content() and 'LEGACY' not in txt(pg))

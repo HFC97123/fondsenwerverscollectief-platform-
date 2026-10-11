@@ -1,15 +1,12 @@
-// Projecten: per project looptijd, begroting, eerdere toekenningen,
-// co-financiers, regelingen in het dekkingsplan en documenten.
+// Projecten: per project looptijd, begroting, financiering (uit Projectfinanciering) en documenten.
+// Nieuw project = licht aanmaakformulier (NieuwProjectFormulier); bewerken = uitgebreid formulier.
+// Cofinanciers, eerdere toekenningen en regelingen staan in Projectfinanciering
+// (subsidie_kompas_program_funding), niet meer in dit formulier.
 import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
-import {
-  COFIN_STATUSSEN,
-  DOC_SOORTEN,
-  PROJECT_EMPTY,
-  UITKOMSTEN,
-  useKompas,
-} from './KompasStore.jsx';
+import { DOC_SOORTEN, PROJECT_EMPTY, useKompas } from './KompasStore.jsx';
+import NieuwProjectFormulier from './NieuwProjectFormulier.jsx';
 import { haalClassificatiesOp } from '../../data/services/classificaties.js';
 import { Button, ClassificatieSelect, Field, EmptyState, Notice, Panel, PanelHeader, SectionHeading, Toggle, veldStijl, selectStijl } from '../../shared/ui/index.js';
 import ExportMenu from '../../shared/ui/ExportMenu.jsx';
@@ -17,17 +14,17 @@ import { isEchtId } from '../../data/services/projecten.js';
 import { projectExport } from './exportBronnen.js';
 import { useDekkingsplannen } from './financiering/useProjectFinanciering.js';
 import { projectFinancieringHref } from './financiering/deeplinks.js';
-import { STATUS_LABEL, formatDatum, komendeDeadlines } from './financiering/dekkingsplan.js';
+import { STATUS_LABEL, bedragenVoorOpslaan, dekkingVanProject, formatDatum, formatEuro, komendeDeadlines, periodeTekst, teFinancieren } from './financiering/dekkingsplan.js';
 
 const VELDEN = [
   { n: 'naam', l: 'Naam van het project', p: 'Bijvoorbeeld: Buurtkeuken De Brug', breed: true },
   { n: 'programma', l: 'Programma of onderdeel', p: 'Waar valt het project onder?' },
   { n: 'doelgroep', l: 'Doelgroep', p: 'Voor wie is het project bedoeld?', classificatie: true },
-  { n: 'periodeVan', l: 'Looptijd van', p: 'jan 2027' },
-  { n: 'periodeTot', l: 'Looptijd tot', p: 'dec 2027' },
+  { n: 'periodeVan', l: 'Looptijd van', p: '', datum: true },
+  { n: 'periodeTot', l: 'Looptijd tot', p: '', datum: true },
   { n: 'regio', l: 'Projectlocatie', p: 'Waar vindt dit project plaats? Bijvoorbeeld: Accra, Ghana' },
   { n: 'partners', l: 'Partners', p: 'Met welke andere organisaties werkt u samen?' },
-  { n: 'omschrijving', l: 'Korte omschrijving', p: 'Wat gaat er gebeuren en wat levert het op?', breed: true, area: true },
+  { n: 'omschrijving', l: 'Projectomschrijving', p: 'Wat gaat er gebeuren en wat levert het op?', breed: true, area: true },
   { n: 'doelstellingen', l: 'Doelstellingen', p: 'Wat wilt u met dit project bereiken?', breed: true, area: true },
   { n: 'activiteiten', l: 'Activiteiten', p: 'Welke activiteiten voert u uit?', breed: true, area: true },
   { n: 'impact', l: 'Beoogde impact', p: 'Welk verschil maakt dit project, voor wie?', breed: true, area: true },
@@ -35,7 +32,6 @@ const VELDEN = [
   { n: 'schrijfvoorkeur', l: 'Schrijfvoorkeur voor dit project', p: 'Bijvoorbeeld: warm en mensgericht, zakelijk, resultaatgericht. Geldt voor alle teksten van dit project.', breed: true },
   { n: 'resultaten', l: 'Resultaten', p: 'Wat heeft dit project tot nu toe opgeleverd?', breed: true, area: true },
   { n: 'begroting', l: 'Totale projectbegroting', p: '€ 85.000' },
-  { n: 'gevraagd', l: 'Gevraagd bedrag', p: '€ 35.000' },
   { n: 'eigenBijdrage', l: 'Eigen bijdrage', p: '€ 7.500' },
 ];
 
@@ -47,6 +43,27 @@ const BRON_LABELS = {
   'ai-afgeleid': 'afgeleid door AI, niet bevestigd',
 };
 
+// Looptijd: een native datumveld. Een bestaand project met vrije tekst ("Q1 2026") houdt een tekstveld,
+// zodat die waarde niet stil verdwijnt; kiest u een datum, dan komt er een echte datum voor in de plaats.
+const ISO_DATUM = /^\d{4}-\d{2}-\d{2}$/;
+
+function LooptijdInvoer({ waarde, onChange, label }) {
+  const v = waarde || '';
+
+  if (v && !ISO_DATUM.test(v)) {
+    return (
+      <span style={css('display: grid; gap: 6px;')}>
+        <input value={v} onChange={(e) => onChange(e.target.value)} aria-label={label} style={veldStijl} />
+        <button type="button" onClick={() => onChange('')} style={css('justify-self: start; cursor: pointer; border: none; background: none; padding: 0; font-size: 12.5px; font-weight: 700; color: #4E9A6C;')}>
+          Kies een datum
+        </button>
+      </span>
+    );
+  }
+
+  return <input type="date" value={v} onChange={(e) => onChange(e.target.value)} aria-label={label} style={veldStijl} />;
+}
+
 export default function ProjectenPage({ embedded = false } = {}) {
   const app = useApp();
   const store = useKompas();
@@ -55,6 +72,7 @@ export default function ProjectenPage({ embedded = false } = {}) {
   const [form, setForm] = useState(null);
   const [melding, setMelding] = useState('');
   const [fout, setFout] = useState('');
+  const [bezig, setBezig] = useState(false);
 
   // Doelgroep gebruikt dezelfde centrale classificatielijst als het
   // organisatieprofiel (zie data/services/classificaties.js) in plaats van
@@ -107,7 +125,7 @@ export default function ProjectenPage({ embedded = false } = {}) {
       <Panel embedded={embedded}>
         {!embedded && (
           <PanelHeader title="Projecten"
-            intro="Met Pro en Premium legt u per project de looptijd, begroting, eerdere aanvragen en co-financiers vast, en neemt u regelingen op in uw dekkingsplan."
+            intro="Met Pro en Premium legt u per project de looptijd en begroting vast, en volgt u de financiering: toegekend, aangevraagd en cofinanciers."
           />
         )}
         <Button variant="dark" onClick={app.goAbonnementen}>
@@ -130,7 +148,6 @@ export default function ProjectenPage({ embedded = false } = {}) {
       return { ...cur, [lijst]: rows };
     });
 
-  const voegRij = (lijst, blank) => setForm((cur) => ({ ...cur, [lijst]: (cur[lijst] || []).concat([blank]) }));
 
   const verwijderRij = (lijst, i) =>
     setForm((cur) => {
@@ -152,18 +169,49 @@ export default function ProjectenPage({ embedded = false } = {}) {
       return;
     }
 
-    const bewaar = store.saveProject(form);
+    if (form.periodeVan && form.periodeTot && /^\d{4}-\d{2}-\d{2}$/.test(form.periodeVan) && /^\d{4}-\d{2}-\d{2}$/.test(form.periodeTot) && form.periodeTot < form.periodeVan) {
+      setFout('De einddatum van de looptijd ligt voor de startdatum.');
 
-    setForm(null);
+      return;
+    }
+
+    // Bedragen strikt omzetten (geen raden); het te financieren bedrag wordt bij het opslaan afgeleid.
+    const bedragen = bedragenVoorOpslaan(form);
+
+    if (!bedragen.ok) {
+      setFout(bedragen.fout);
+
+      return;
+    }
+
+    const { nieuw, ...zonderVlag } = form;
+    const teBewaren = { ...zonderVlag, begroting: bedragen.begroting, eigenBijdrage: bedragen.eigenBijdrage, gevraagd: bedragen.begroting === '' ? '' : teFinancieren(bedragen.begroting, bedragen.eigenBijdrage) };
+    const bewaar = store.saveProject(teBewaren);
+
     setFout('');
-    setMelding('Project opgeslagen.');
+    setBezig(true);
 
-    // Lukt het bewaren in de database niet, dan zeggen we dat ook.
+    // Lukt het bewaren in de database niet, dan zeggen we dat ook; het formulier blijft dan open.
     Promise.resolve(bewaar).then((id) => {
+      setBezig(false);
+
       if (id === null) {
         setMelding('');
         setFout('Het project kon niet in de database worden opgeslagen. Probeer het opnieuw.');
+
+        return;
       }
+
+      setForm(null);
+
+      if (nieuw && isEchtId(id)) {
+        // Na het aanmaken direct naar het projectdossier.
+        window.location.hash = `#/kompas/projecten/${id}`;
+
+        return;
+      }
+
+      setMelding('Project opgeslagen.');
     });
   };
 
@@ -224,7 +272,6 @@ export default function ProjectenPage({ embedded = false } = {}) {
     e.target.value = '';
   };
 
-  const rijStyle = css('display: flex; gap: 10px; flex-wrap: wrap; align-items: center;');
   const kaartRij = css('display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 13px 16px; border: 1px solid #E1EAE4; border-radius: 14px; background: #F7F9F8;');
   const verwijderStyle = css('cursor: pointer; min-height: 44px; display: flex; align-items: center; padding: 0 6px; border: none; background: none; color: #9E3B2C; font-size: 13.5px; font-weight: 700;');
 
@@ -232,11 +279,11 @@ export default function ProjectenPage({ embedded = false } = {}) {
     <Panel embedded={embedded}>
       {!embedded && (
         <PanelHeader title="Projecten"
-          intro="Werft u per project of programma? Leg hier per project de looptijd, begroting, eerdere aanvragen en co-financiers vast. Subsidie Kompas gebruikt dit naast uw organisatieprofiel bij fondsselecties en aanvragen."
+          intro="Werft u per project of programma? Leg hier per project de looptijd en begroting vast; de financiering (toegekend, aangevraagd, cofinanciers) volgt u in het projectdossier. Subsidie Kompas gebruikt dit naast uw organisatieprofiel bij fondsselecties en aanvragen."
         />
       )}
 
-      {komende.length > 0 && (
+      {komende.length > 0 && !(form && form.nieuw) && (
         <div style={css('margin-bottom: 16px; padding: 14px 18px; border: 1px solid #D6E3E9; border-radius: 20px; background: #EAF1F6;')}>
           <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 12px;')}>
             <span style={css('font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
@@ -289,11 +336,27 @@ export default function ProjectenPage({ embedded = false } = {}) {
         </div>
       )}
 
-      {store.projects.length > 0 && (
+      {store.projects.length > 0 && !(form && form.nieuw) && (
         <div style={css('margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;')}>
           {store.projects.map((p) => {
-            const toegekend = (p.eerder || []).filter((x) => String(x.uitkomst || '').indexOf('oegekend') !== -1).length;
-            const bits = [p.programma, [p.periodeVan, p.periodeTot].filter(Boolean).join(' – '), p.regio].filter(Boolean);
+            const bits = [p.programma, periodeTekst(p.periodeVan, p.periodeTot), p.regio].filter(Boolean);
+            const regelsVanProject = financiering.perProject[p.id];
+            const dek = Array.isArray(regelsVanProject) ? dekkingVanProject(p, regelsVanProject) : null;
+            // Financiering uitsluitend uit de financieringsregels (zelfde berekening als Dashboard en projectdossier).
+            const finTekst = p.gearchiveerd
+              ? ''
+              : !isEchtId(p.id)
+                ? 'Sla het project op om de financiering te volgen'
+                : financiering.status === 'laden' && !dek
+                  ? 'Financiering wordt geladen…'
+                  : !dek
+                    ? 'De financiering kon niet worden geladen'
+                    : !dek.heeftBegroting
+                      ? 'Totale projectbegroting nog niet ingevuld'
+                      : `Toegekend ${formatEuro(dek.toegekend)}  ·  Aangevraagd ${formatEuro(dek.aangevraagd)}  ·  Eigen bijdrage ${formatEuro(dek.overige)}  ·  ${
+                          dek.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren ${formatEuro(dek.nogNodig)}`
+                        }`;
+            const docTekst = `${(p.docs || []).length} ${(p.docs || []).length === 1 ? 'document' : 'documenten'}`;
 
             return (
               <div key={p.id} style={css('padding: 14px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #F7F9F8; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;')}>
@@ -305,13 +368,8 @@ export default function ProjectenPage({ embedded = false } = {}) {
                   <div style={css('font-size: 13.5px; color: #687974;')}>
                     {bits.length ? bits.join('  ·  ') : 'Nog geen looptijd of programma ingevuld'}
                   </div>
-                  <div style={css('margin-top: 6px; font-size: 13px; color: #7B8985;')}>
-                    {`${p.gevraagd ? `Gevraagd ${p.gevraagd}` : 'Gevraagd bedrag nog niet ingevuld'}  ·  ${toegekend} eerdere ${
-                      toegekend === 1 ? 'toekenning' : 'toekenningen'
-                    }  ·  ${(p.cofin || []).length} co-financiers  ·  ${(p.docs || []).length} documenten`}
-                    {Array.isArray(financiering.perProject[p.id]) && (
-                      <span data-testid="projecten-regels-aantal">{`  ·  ${financiering.perProject[p.id].length} ${financiering.perProject[p.id].length === 1 ? 'regeling' : 'regelingen'} in het dekkingsplan`}</span>
-                    )}
+                  <div data-testid="projecten-kaart-financiering" style={css('margin-top: 6px; font-size: 13px; color: #7B8985;')}>
+                    {[finTekst, docTekst].filter(Boolean).join('  ·  ')}
                   </div>
                 </div>
                 <div style={css('display: flex; gap: 8px; flex-wrap: wrap; align-items: center;')}>
@@ -354,14 +412,26 @@ export default function ProjectenPage({ embedded = false } = {}) {
       )}
 
       {!form && (
-        <Button onClick={() => { setForm({ ...PROJECT_EMPTY, id: `p${Date.now()}` }); setMelding(''); setFout(''); }}>
+        <Button onClick={() => { setForm({ ...PROJECT_EMPTY, id: `p${Date.now()}`, nieuw: true }); setMelding(''); setFout(''); }}>
           + Nieuw project
         </Button>
       )}
 
       <Notice>{melding}</Notice>
 
-      {form && (
+      {form && form.nieuw && (
+        <NieuwProjectFormulier
+          form={form}
+          setVeld={setVeld}
+          doelgroepen={doelgroepen}
+          fout={fout}
+          bezig={bezig}
+          onOpslaan={opslaan}
+          onAnnuleer={() => { setForm(null); setFout(''); }}
+        />
+      )}
+
+      {form && !form.nieuw && (
         <div>
           <div style={css("margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid #E1EAE4; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
             {String(form.naam || '').trim() || 'Nieuw project'}
@@ -382,6 +452,8 @@ export default function ProjectenPage({ embedded = false } = {}) {
                       placeholder={f.p}
                       ariaLabel={f.l}
                     />
+                  ) : f.datum ? (
+                    <LooptijdInvoer waarde={form[f.n]} onChange={(w) => setVeld(f.n, w)} label={f.l} />
                   ) : f.area ? (
                     <textarea
                       value={form[f.n] || ''}
@@ -400,64 +472,19 @@ export default function ProjectenPage({ embedded = false } = {}) {
                   )}
                 </Field>
               ))}
-            </div>
-
-            <div>
-              <SectionHeading>Eerdere fondsen en toekenningen</SectionHeading>
-              {!(form.eerder || []).length && (
-                <div style={css('margin-bottom: 14px; font-size: 14.5px; color: #7B8985;')}>
-                  Nog geen eerdere aanvragen vastgelegd.
+              <Field span="1 / -1">
+                Te financieren bedrag
+                <div data-testid="bewerk-te-financieren" style={{ ...veldStijl, display: 'flex', alignItems: 'center', background: '#F2F6F4', color: '#2C4A5E', fontWeight: 800 }}>
+                  {formatEuro(teFinancieren(form.begroting, form.eigenBijdrage))}
                 </div>
-              )}
-              <div style={css('display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;')}>
-                {(form.eerder || []).map((r, i) => (
-                  <div key={i} style={rijStyle}>
-                    <input value={r.fonds || ''} onChange={(e) => setRij('eerder', i, 'fonds', e.target.value)} placeholder="Fonds of regeling" style={{ ...veldStijl, flex: '1 1 200px' }} />
-                    <input value={r.jaar || ''} onChange={(e) => setRij('eerder', i, 'jaar', e.target.value)} placeholder="Jaar" style={{ ...veldStijl, flex: '0 1 90px' }} />
-                    <input value={r.bedrag || ''} onChange={(e) => setRij('eerder', i, 'bedrag', e.target.value)} placeholder="Bedrag" style={{ ...veldStijl, flex: '0 1 130px' }} />
-                    <select value={r.uitkomst || UITKOMSTEN[0]} onChange={(e) => setRij('eerder', i, 'uitkomst', e.target.value)} style={{ ...selectStijl, flex: '0 1 190px' }}>
-                      {UITKOMSTEN.map((o) => (
-                        <option key={o} value={o}>{o}</option>
-                      ))}
-                    </select>
-                    <input value={r.reden || ''} onChange={(e) => setRij('eerder', i, 'reden', e.target.value)} placeholder="Toelichting bij de uitkomst" style={{ ...veldStijl, flex: '1 1 100%' }} />
-                    <button type="button" onClick={() => verwijderRij('eerder', i)} style={verwijderStyle}>Verwijderen</button>
-                  </div>
-                ))}
-              </div>
-              <Button variant="outline" onClick={() => voegRij('eerder', { fonds: '', jaar: '', bedrag: '', uitkomst: UITKOMSTEN[0], reden: '' })}>
-                + Aanvraag toevoegen
-              </Button>
+                <span style={css('font-size: 12.5px; font-weight: 600; color: #7B8985;')}>Automatisch berekend: totale projectbegroting min eigen bijdrage.</span>
+              </Field>
             </div>
 
             <div>
-              <SectionHeading>Co-financiers</SectionHeading>
-              {!(form.cofin || []).length && (
-                <div style={css('margin-bottom: 14px; font-size: 14.5px; color: #7B8985;')}>Nog geen co-financiers vastgelegd.</div>
-              )}
-              <div style={css('display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;')}>
-                {(form.cofin || []).map((r, i) => (
-                  <div key={i} style={rijStyle}>
-                    <input value={r.naam || ''} onChange={(e) => setRij('cofin', i, 'naam', e.target.value)} placeholder="Co-financier" style={{ ...veldStijl, flex: '1 1 200px' }} />
-                    <input value={r.bedrag || ''} onChange={(e) => setRij('cofin', i, 'bedrag', e.target.value)} placeholder="Bedrag" style={{ ...veldStijl, flex: '0 1 130px' }} />
-                    <select value={r.status || COFIN_STATUSSEN[0]} onChange={(e) => setRij('cofin', i, 'status', e.target.value)} style={{ ...selectStijl, flex: '0 1 170px' }}>
-                      {COFIN_STATUSSEN.map((o) => (
-                        <option key={o} value={o}>{o}</option>
-                      ))}
-                    </select>
-                    <button type="button" onClick={() => verwijderRij('cofin', i)} style={verwijderStyle}>Verwijderen</button>
-                  </div>
-                ))}
-              </div>
-              <Button variant="outline" onClick={() => voegRij('cofin', { naam: '', bedrag: '', status: COFIN_STATUSSEN[0] })}>
-                + Co-financier toevoegen
-              </Button>
-            </div>
-
-            <div>
-              <SectionHeading>Regelingen in het dekkingsplan</SectionHeading>
+              <SectionHeading>Cofinanciers en andere financiering</SectionHeading>
               <div data-testid="form-dekkingsplan-verwijzing" style={css('font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
-                Het dekkingsplan van dit project (fondsen en regelingen, bedragen, status, eigen deadline en herinnering) beheert u in het projectdossier, op het tabblad Projectfinanciering.
+                Cofinanciers, eerdere toekenningen, fondsen en regelingen (bedragen, status, eigen deadline en herinnering) beheert u in het projectdossier, op het tabblad Projectfinanciering.
                 {isEchtId(form.id) ? (
                   <>
                     {' '}

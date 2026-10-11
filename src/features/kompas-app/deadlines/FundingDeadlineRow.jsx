@@ -21,7 +21,7 @@ export default function FundingDeadlineRow({ rij, nu, onHerinnering }) {
   const { regel, project } = rij;
   const w = deadlineWeergave(regel, nu);
   const heeftBron = regel.bronStatus === 'zichtbaar';
-  const soort = regel.bronType === 'fonds' ? 'Fonds' : 'Regeling';
+  const soort = regel.bronType === 'financier' ? 'Financier' : regel.bronType === 'fonds' ? 'Fonds' : 'Regeling';
 
   return (
     <article
@@ -44,7 +44,7 @@ export default function FundingDeadlineRow({ rij, nu, onHerinnering }) {
           {regel.naam}
         </div>
         <div style={css(`${TEKST} font-size: 13px; color: #687974; overflow-wrap: anywhere;`)}>
-          {heeftBron && `${soort}${regel.funder && regel.bronType !== 'fonds' ? ` · ${regel.funder}` : ''} · `}
+          {heeftBron && `${soort}${regel.funder && regel.bronType !== 'fonds' && regel.bronType !== 'financier' ? ` · ${regel.funder}` : ''} · `}
           <span data-testid="md-project">{project.naam}</span>
         </div>
         <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px;')}>

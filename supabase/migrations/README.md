@@ -148,3 +148,12 @@ van het live project (92 registraties):
   (zie hierboven) en, apart in `supabase/voorstel-niet-uitgevoerd/`,
   `20261009100000_funders_premium_exclusive.sql` (+ rollback). Die laatste is
   een aparte release en vraagt een eigen akkoord.
+
+**`20261011180913_project_funding_financier_naam.sql`** (Projectformulier en
+één financiële waarheid, 2026-10-11) is live toegepast onder deze versie: voegt
+`financier_naam` toe aan `subsidie_kompas_program_funding`, past de "hoogstens
+één bron"-check aan, migreert eenmalig en idempotent de cofinanciers/eerdere
+toekenningen uit de oude JSON-kolommen (die blijven bewaard voor terugdraaien,
+maar worden niet meer gelezen of geschreven) en werkt de RPC
+`kompas_dekkingsplan` bij. De rollback staat apart in
+`supabase/voorstel-niet-uitgevoerd/`. Toegepast: nooit opnieuw uitvoeren.

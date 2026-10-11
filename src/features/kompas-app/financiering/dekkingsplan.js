@@ -126,6 +126,14 @@ export function formatDatum(iso) {
   return x ? `${x.d} ${MAANDEN[x.m - 1]} ${x.y}` : '';
 }
 
+// Looptijd van een project: van-tot. Nieuwe projecten bewaren ISO-datums (YYYY-MM-DD, native datumvelden),
+// oudere projecten kunnen vrije tekst hebben ("Q1 2026"): die blijft ongewijzigd leesbaar.
+export function periodeTekst(van, tot) {
+  const toon = (w) => (leesDatum(w) && /^\d{4}-\d{2}-\d{2}$/.test(String(w).trim()) ? formatDatum(String(w).trim()) : String(w == null ? '' : w).trim());
+
+  return [toon(van), toon(tot)].filter(Boolean).join(' – ');
+}
+
 // "12 november" (zonder jaar), voor de vergelijking "Uw datum / Regeling".
 export function formatDatumLang(iso) {
   const x = leesDatum(iso);
@@ -216,21 +224,40 @@ export function deadlineVergelijking(regel) {
 // Dekking
 // ---------------------------------------------------------------------------
 
-// Overige dekking = eigen bijdrage (numerieke projectkolom). Co-financiers (project.cofin) zijn
-// vrije tekst met een getypt bedrag en dus niet betrouwbaar kwantitatief: die tellen NIET mee.
-// Het aantal niet-meegetelde co-financiers wordt wel gemeld zodat de UI dat eerlijk kan tonen.
+// Overige dekking = eigen bijdrage (numerieke projectkolom). Cofinanciers en andere financiering
+// staan als gewone regels in subsidie_kompas_program_funding (regels) en tellen daar mee; er is
+// geen tweede bron (het oude vrije-tekstveld "cofinanciers" wordt niet meer gelezen).
 export function overigeDekkingVanProject(project) {
   return projectBedrag(project && project.eigenBijdrage);
 }
 
-export function aantalNietMeegetelleCofinanciers(project) {
-  const cofin = Array.isArray(project && project.cofin) ? project.cofin : [];
+// Projectbedragen uit het formulier (begroting, eigen bijdrage) strikt omzetten voor het opslaan:
+// leeg of een geldig bedrag ("85000", "85.000", "€ 85.000", "85.000,50"). Alles anders is ongeldig;
+// er wordt niet geraden. Bedragen worden op hele euro's afgerond. -> { ok, begroting, eigenBijdrage, fout }
+export function bedragenVoorOpslaan({ begroting, eigenBijdrage }) {
+  const b = leesBedragInvoer(typeof begroting === 'number' ? String(begroting).replace('.', ',') : begroting);
+  const e = leesBedragInvoer(typeof eigenBijdrage === 'number' ? String(eigenBijdrage).replace('.', ',') : eigenBijdrage);
 
-  return cofin.filter((x) => x && (String(x.naam || '').trim() || String(x.bedrag == null ? '' : x.bedrag).trim())).length;
+  if (!b.ok) return { ok: false, fout: 'Vul bij de totale projectbegroting een bedrag in, bijvoorbeeld 85.000.' };
+  if (!e.ok) return { ok: false, fout: 'Vul bij de eigen bijdrage een bedrag in, bijvoorbeeld 7.500.' };
+
+  return {
+    ok: true,
+    begroting: b.waarde == null ? '' : Math.round(b.waarde),
+    eigenBijdrage: e.waarde == null ? '' : Math.round(e.waarde),
+    fout: '',
+  };
+}
+
+// Te financieren bedrag van een project: begroting min eigen bijdrage, nooit negatief.
+// DE ENE berekening voor het projectformulier, de database-kolom requested_amount en alle weergaven.
+export function teFinancieren(begroting, eigenBijdrage) {
+  return Math.max(0, projectBedrag(begroting) - projectBedrag(eigenBijdrage));
 }
 
 // De rekenregels:
 //   Toegekend          = som van awarded_amount (terugval: requested_amount) bij status awarded
+//                        (bron: Toegezegd/Toegekend uit het formulier -> awarded)
 //   Aangevraagd        = som van requested_amount bij status submitted
 //   Overige dekking    = eigen bijdrage
 //   Nog te financieren = max(0, begroting - toegekend - aangevraagd - overige dekking), nooit negatief
@@ -268,14 +295,11 @@ export function berekenDekking({ begroting, regels, overige }) {
 }
 
 export function dekkingVanProject(project, regels) {
-  return {
-    ...berekenDekking({
-      begroting: project && project.begroting,
-      regels: regels || [],
-      overige: overigeDekkingVanProject(project || {}),
-    }),
-    cofinNietMeegeteld: aantalNietMeegetelleCofinanciers(project || {}),
-  };
+  return berekenDekking({
+    begroting: project && project.begroting,
+    regels: regels || [],
+    overige: overigeDekkingVanProject(project || {}),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -372,7 +396,8 @@ export function mijnDeadlines(projecten, fundingPerProject, nu) {
 
         if (isKomendeDeadline(regel, nu)) komend.push(rij);
         else if (dagenTot(regel.deadline, nu) != null) eerder.push(rij);
-        else zonder.push(rij);
+        // Een cofinancier of andere financiering op naam zonder eigen deadline is geen deadline-item.
+        else if (regel.bronType !== 'financier') zonder.push(rij);
       });
     });
 

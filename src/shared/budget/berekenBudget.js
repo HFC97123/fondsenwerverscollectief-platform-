@@ -7,11 +7,12 @@
 // toelichting daar); alle rekenwerk en alle controles gebeuren hier, in
 // gewone, synchroon testbare JS - geen tweede implementatie van bestaande
 // financiële logica: de dekkingskant hergebruikt rechtstreeks de al
-// bestaande, geteste berekenDekking() (KompasStore.jsx).
+// bestaande dekkingVanProject() (financiering/dekkingsplan.js).
 //
 // Nog GEEN Excel, nog GEEN opslag: dit is uitsluitend tekst -> structuur ->
 // validatie (zie claude/rc1-stap3-analyse-begrotingsflow-excel.md).
-import { berekenDekking } from '../../features/kompas-app/KompasStore.jsx';
+import { dekkingVanProject, STATUS_LABEL } from '../../features/kompas-app/financiering/dekkingsplan.js';
+import { cofinanciersVoorBegroting } from '../../features/kompas-app/financiering/exportFinanciering.js';
 
 const AFRONDING_TOLERANTIE = 0.01; // euro - voorkomt valse "afwijking" door drijvendekomma-afronding
 
@@ -117,9 +118,9 @@ export function berekenKostenregel(regel) {
 
 // Combineert de itemized kostenregels (uit budgetUitTekst(), via
 // berekenKostenregel hierboven) met de al bestaande, structured
-// projectfinanciering (project.begroting/gevraagd/eigenBijdrage/cofin/
-// eerder/regelingen - subsidie_kompas_programs, zie data/services/
-// projecten.js) tot één canonical, gevalideerd Budget.
+// projectfinanciering (project.begroting/eigenBijdrage - subsidie_kompas_programs, zie
+// data/services/projecten.js - plus de financieringsregels uit
+// subsidie_kompas_program_funding) tot één canonical, gevalideerd Budget.
 //
 // Bronprioriteit (opdrachtpunt "bestaande projectdata", DEEL 8): voor het
 // gevraagde bedrag geldt hetzelfde patroon als het al bestaande Projectdossier
@@ -131,7 +132,10 @@ export function berekenKostenregel(regel) {
 // (er wordt in deze stap sowieso niets opgeslagen - zie DEEL 9) en wordt
 // alleen gebruikt wanneer de brontekst dat bedrag daadwerkelijk noemt, nooit
 // geraden.
-export function berekenBudget(expenseLines, project, budgetMeta) {
+// `financiering` (optioneel) = { regels, dekking } uit haalFinancieringVoorExport(): de regels uit
+// subsidie_kompas_program_funding en de totalen uit dekkingVanProject(). Zonder financiering telt alleen
+// de eigen bijdrage van het project mee.
+export function berekenBudget(expenseLines, project, budgetMeta, financiering) {
   const regels = (Array.isArray(expenseLines) ? expenseLines : []).map(berekenKostenregel);
 
   const totaalPerCategorie = {};
@@ -150,12 +154,13 @@ export function berekenBudget(expenseLines, project, budgetMeta) {
   const afwijkendeRegels = regels.filter((r) => r.afwijking);
   const ongeldigeRegels = regels.filter((r) => r.ongeldig);
 
-  // Dekking: rechtstreeks hergebruikt uit de al bestaande, geteste
-  // berekenDekking() - geen tweede implementatie van dezelfde financiële
-  // logica (DEEL 6). berekenDekking() leest project.begroting/eigenBijdrage/
-  // eerder/regelingen/cofin rechtstreeks.
-  const dekking = berekenDekking(project || {});
-  const totaalDekking = rond((dekking?.toegekend || 0) + (dekking?.inAanvraag || 0));
+  // Dekking: rechtstreeks hergebruikt uit de enige financiële berekening van de app,
+  // dekkingVanProject() (financiering/dekkingsplan.js) - geen tweede implementatie (DEEL 6).
+  // Toegekend + aangevraagd (uit de financieringsregels) + eigen bijdrage.
+  const fin = financiering || {};
+  const bronRegels = Array.isArray(fin.regels) ? fin.regels : [];
+  const dekking = fin.dekking || dekkingVanProject(project || {}, bronRegels);
+  const totaalDekking = rond((dekking?.toegekend || 0) + (dekking?.aangevraagd || 0) + (dekking?.overige || 0));
 
   const meta = budgetMeta || {};
   const gevraagdUitGesprek = parseEuroDutch(meta.requestedAmountStated);
@@ -175,7 +180,7 @@ export function berekenBudget(expenseLines, project, budgetMeta) {
     projectFinanciering: {
       begroting: parseEuroDutch(project?.begroting),
       eigenBijdrage: parseEuroDutch(project?.eigenBijdrage),
-      cofinanciers: Array.isArray(project?.cofin) ? project.cofin : [],
+      cofinanciers: cofinanciersVoorBegroting(bronRegels, STATUS_LABEL),
       dekking,
     },
     totals: {

@@ -43,7 +43,7 @@ with sync_playwright() as p:
         ok(f'{label}: Begroting 100000', bedrag('Begroting','100000'), k1t[:200])
         ok(f'{label}: Toegekend 30000', bedrag('Toegekend','30000'))
         ok(f'{label}: Aangevraagd 15000', bedrag('Aangevraagd','15000'))
-        ok(f'{label}: Overige dekking 20000 (alleen eigen bijdrage; co-financiers met tekstbedragen tellen niet mee)', bedrag('Overige dekking','20000'))
+        ok(f'{label}: Eigen bijdrage 20000 (alleen eigen bijdrage; co-financiers met tekstbedragen tellen niet mee)', bedrag('Eigen bijdrage','20000'))
         ok(f'{label}: Nog te financieren 35000', bedrag('Nog te financieren','35000'))
         ok(f'{label}: samenvatting "Nog te financieren: € 35.000"', '35.000' in k1.locator('[data-testid="dekking-samenvatting"]').inner_text())
         ok(f'{label}: legacy linked_schemes (LEGACY, 99999) telt NIET mee en is nergens zichtbaar', 'LEGACY' not in t and '99.999' not in t and '88.888' not in t)

@@ -82,6 +82,43 @@ export async function voegRegelToe({ projectId, schemeId = null, funderId = null
   return { ok: true, id: data?.id || null };
 }
 
+// Voegt een cofinancier of andere financiering toe op naam (financier_naam), zonder verwijzing naar
+// een fonds of regeling uit de catalogus. Bij status 'awarded' staat het bedrag in awarded_amount,
+// anders in requested_amount. Dezelfde naam twee keer in één project kan niet (unieke index).
+// -> { ok: true, id } | { ok: false, reden: 'bestaat-al' | 'geen-sessie' | 'ongeldig' | 'fout' }
+export async function voegFinancierToe({ projectId, naam, bedrag = null, status = 'submitted' }) {
+  const userId = await huidigeGebruiker();
+
+  if (!userId || !supabase) {
+    return { ok: false, reden: 'geen-sessie' };
+  }
+
+  const schoon = String(naam == null ? '' : naam).trim();
+
+  if (!isEchtId(projectId) || !schoon || schoon.length > 200 || ['interesting', 'preparing', 'submitted', 'awarded', 'rejected'].indexOf(status) === -1) {
+    return { ok: false, reden: 'ongeldig' };
+  }
+
+  const { data, error } = await supabase
+    .from('subsidie_kompas_program_funding')
+    .insert({
+      user_id: userId,
+      program_id: projectId,
+      financier_naam: schoon,
+      requested_amount: status === 'awarded' ? null : bedrag,
+      awarded_amount: status === 'awarded' ? bedrag : null,
+      status,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    return { ok: false, reden: error.code === '23505' ? 'bestaat-al' : 'fout' };
+  }
+
+  return { ok: true, id: data?.id || null };
+}
+
 // Wijzigt de velden die van het lid zijn (zie patchVoorDatabase in financiering/dekkingsplan.js).
 export async function werkRegelBij(regelId, databasePatch) {
   const userId = await huidigeGebruiker();

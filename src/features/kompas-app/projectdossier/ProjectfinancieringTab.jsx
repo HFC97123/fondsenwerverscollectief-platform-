@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
+import { voegFinancierToe } from '../../../data/services/projectFinanciering.js';
 import {
   STATUSSEN,
   STATUS_LABEL,
@@ -41,7 +42,7 @@ function Legenda({ dekking }) {
     ['Totale begroting', dekking.heeftBegroting ? formatEuro(dekking.begroting) : '—', '#C5D2CB'],
     ['Toegekend', formatEuro(dekking.toegekend), KLEUR.toegekend],
     ['Aangevraagd', formatEuro(dekking.aangevraagd), KLEUR.aangevraagd],
-    ['Overige dekking', formatEuro(dekking.overige), KLEUR.overige],
+    ['Eigen bijdrage', formatEuro(dekking.overige), KLEUR.overige],
     ['Nog te financieren', dekking.heeftBegroting ? formatEuro(dekking.nogNodig) : '—', '#E1EAE4'],
   ];
 
@@ -121,8 +122,8 @@ function Regel({ regel, onWijzig, onVerwijder }) {
           </div>
           {heeftBron && (
             <div style={css(`${TEKST} font-size: 13px; color: #7B8985; overflow-wrap: anywhere;`)}>
-              {regel.bronType === 'fonds' ? 'Fonds' : 'Regeling'}
-              {regel.funder && regel.bronType !== 'fonds' ? ` · ${regel.funder}` : ''}
+              {regel.bronType === 'financier' ? 'Cofinancier of andere financiering' : regel.bronType === 'fonds' ? 'Fonds' : 'Regeling'}
+              {regel.funder && regel.bronType !== 'fonds' && regel.bronType !== 'financier' ? ` · ${regel.funder}` : ''}
               {regel.website && (
                 <>
                   {' · '}
@@ -267,8 +268,118 @@ function Regel({ regel, onWijzig, onVerwijder }) {
   );
 }
 
+// Cofinancier of andere financiering op naam toevoegen (financier_naam). Geen koppeling aan een fonds of
+// regeling uit de catalogus; het bedrag telt mee volgens de status: Toegekend of Aangevraagd.
+function FinancierToevoegen({ projectId, onKlaar }) {
+  const [open, setOpen] = useState(false);
+  const [naam, setNaam] = useState('');
+  const [bedrag, setBedrag] = useState('');
+  const [status, setStatus] = useState('awarded');
+  const [bezig, setBezig] = useState(false);
+  const [fout, setFout] = useState('');
+
+  const sluit = () => {
+    setOpen(false);
+    setNaam('');
+    setBedrag('');
+    setStatus('awarded');
+    setFout('');
+  };
+
+  const bewaar = async (e) => {
+    e.preventDefault();
+
+    const gelezen = leesBedragInvoer(bedrag);
+
+    if (!naam.trim()) {
+      setFout('Vul de naam van de cofinancier in.');
+
+      return;
+    }
+
+    if (!gelezen.ok) {
+      setFout('Vul een bedrag in, bijvoorbeeld 12.500.');
+
+      return;
+    }
+
+    setBezig(true);
+
+    const res = await voegFinancierToe({ projectId, naam, bedrag: gelezen.waarde, status });
+
+    setBezig(false);
+
+    if (!res.ok) {
+      setFout(res.reden === 'bestaat-al' ? 'Deze cofinancier staat al bij dit project.' : 'Toevoegen is niet gelukt. Probeer het opnieuw.');
+
+      return;
+    }
+
+    sluit();
+    await onKlaar();
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        data-testid="pf-financier-open"
+        onClick={() => setOpen(true)}
+        style={css("cursor: pointer; min-height: 40px; padding: 0 16px; border: 1px solid #CFDDD5; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800;")}
+      >
+        + Cofinancier of andere financiering toevoegen
+      </button>
+    );
+  }
+
+  return (
+    <form
+      data-testid="pf-financier-form"
+      onSubmit={bewaar}
+      style={css('box-sizing: border-box; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px 14px; padding: 16px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF;')}
+    >
+      <label style={css('min-width: 0;')}>
+        <span style={css(LABEL)}>Naam</span>
+        <input data-testid="pf-financier-naam" value={naam} maxLength={200} onChange={(e) => setNaam(e.target.value)} placeholder="Bijvoorbeeld Stichting DOCO" style={css(INVOER)} />
+      </label>
+      <label style={css('min-width: 0;')}>
+        <span style={css(LABEL)}>Bedrag</span>
+        <input data-testid="pf-financier-bedrag" inputMode="decimal" value={bedrag} onChange={(e) => setBedrag(e.target.value)} placeholder="€" style={css(INVOER)} />
+      </label>
+      <label style={css('min-width: 0;')}>
+        <span style={css(LABEL)}>Status</span>
+        <select data-testid="pf-financier-status" value={status} onChange={(e) => setStatus(e.target.value)} style={css(INVOER)}>
+          {STATUSSEN.map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABEL[s]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div style={css('grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;')}>
+        <button
+          type="submit"
+          disabled={bezig}
+          data-testid="pf-financier-opslaan"
+          style={css("cursor: pointer; min-height: 40px; padding: 0 18px; border: none; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800;")}
+        >
+          {bezig ? 'Opslaan…' : 'Toevoegen'}
+        </button>
+        <button type="button" onClick={sluit} style={css("cursor: pointer; min-height: 40px; padding: 0 14px; border: none; background: none; color: #4B5C58; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 700;")}>
+          Annuleren
+        </button>
+        {fout && (
+          <span role="alert" data-testid="pf-financier-fout" style={css(`${TEKST} font-size: 13px; font-weight: 700; color: #9E3B2C;`)}>
+            {fout}
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
 export default function ProjectfinancieringTab({ project, financiering, dekking }) {
-  const { status, fout, regels, wijzig, verwijder } = financiering;
+  const { status, fout, regels, wijzig, verwijder, laad } = financiering;
 
   return (
     <div data-testid="tab-projectfinanciering" style={css('display: flex; flex-direction: column; gap: 18px;')}>
@@ -301,32 +412,36 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
         )}
         <Legenda dekking={dekking} />
         <div style={css(`${TEKST} margin-top: 14px; font-size: 12.5px; color: #7B8985;`)}>
-          Toegekend telt het toegekende bedrag (is dat leeg, dan het aangevraagde bedrag); Aangevraagd telt regels met status Aangevraagd; Overige dekking is uw eigen bijdrage.
-          {dekking.cofinNietMeegeteld > 0 &&
-            ` ${dekking.cofinNietMeegeteld === 1 ? 'Eén co-financier' : `${dekking.cofinNietMeegeteld} co-financiers`} uit het projectoverzicht ${dekking.cofinNietMeegeteld === 1 ? 'telt' : 'tellen'} niet mee: de bedragen zijn vrije tekst.`}
+          Toegekend telt het toegekende bedrag (is dat leeg, dan het aangevraagde bedrag); Aangevraagd telt regels met status Aangevraagd; Eigen bijdrage staat bij de projectgegevens. Cofinanciers en andere financiering staan hieronder als gewone regels.
         </div>
       </section>
 
       <section>
         <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;')}>
-          <h2 style={css(`${LABEL} margin: 0;`)}>Dekkingsplan</h2>
+          <h2 style={css(`${LABEL} margin: 0;`)}>Cofinanciers en andere financiering</h2>
           <a href="#/kompas/deadlines" style={css("font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #4E9A6C; text-decoration: none;")}>
             Regelingen zoeken bij Deadlines
           </a>
         </div>
 
+        {status === 'klaar' && project && project.id && (
+          <div style={css('margin-bottom: 12px;')}>
+            <FinancierToevoegen projectId={project.id} onKlaar={laad} />
+          </div>
+        )}
+
         {status === 'laden' && <div style={css(`${TEKST} color: #7B8985;`)}>Dekkingsplan wordt geladen…</div>}
 
         {status === 'klaar' && regels.length === 0 && (
           <div data-testid="pf-leeg" style={css(`${TEKST} padding: 18px 20px; border: 1px dashed #CFDDD5; border-radius: 16px; color: #7B8985;`)}>
-            Dit project heeft nog geen regelingen of fondsen in het dekkingsplan. Neem ze op vanuit Deadlines; ze verschijnen dan hier met hun status, bedrag en deadline.
+            Dit project heeft nog geen financiering in het dekkingsplan. Voeg hierboven een cofinancier toe, of neem regelingen en fondsen op vanuit Deadlines; ze verschijnen dan hier met hun status en bedrag.
           </div>
         )}
 
         {regels.length > 0 && (
           <>
             <div className="fwk-pf-kop" aria-hidden="true">
-              {['Fonds / regeling', 'Aangevraagd', 'Toegekend', 'Status', 'Deadline', 'Herinnering'].map((k) => (
+              {['Financier, fonds of regeling', 'Aangevraagd', 'Toegekend', 'Status', 'Deadline', 'Herinnering'].map((k) => (
                 <span key={k} style={css(LABEL)}>
                   {k}
                 </span>

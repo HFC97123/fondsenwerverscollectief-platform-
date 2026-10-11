@@ -293,6 +293,38 @@ export async function extractOrganisatieVelden({ text, fileName }) {
 }
 
 /*
+  Vraagt een voorstel voor de korte projectomschrijving uit één document van een eigen project
+  (mode: 'project-omschrijving'). De server leest het project en het document zelf uit de database
+  (eigenaar, project en document worden daar gecontroleerd); de browser stuurt alleen twee id's.
+  Geeft { omschrijving, documentNaam, reden, error } terug. omschrijving is een voorstel en wordt
+  nooit vanzelf opgeslagen; reden is 'geen-tekst' of 'te-weinig-informatie' wanneer er geen voorstel is.
+*/
+export async function stelProjectOmschrijvingVoor({ projectId, documentId }) {
+  if (!supabase) {
+    return { omschrijving: null, documentNaam: '', reden: null, error: GEEN_VERBINDING };
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke(CHAT_FUNCTION, {
+      body: { mode: 'project-omschrijving', projectId, documentId },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      omschrijving: data && typeof data.omschrijving === 'string' && data.omschrijving.trim() ? data.omschrijving : null,
+      documentNaam: (data && data.documentNaam) || '',
+      reden: (data && data.reden) || null,
+      error: null,
+    };
+  } catch (e) {
+    return { omschrijving: null, documentNaam: '', reden: null, error: 'Het document kon niet worden geanalyseerd. Probeer het opnieuw.' };
+  }
+}
+
+/*
   RC1 stap 3D-4 (2026-10-01): laat een al in de chat opgestelde begrotingstekst
   structureren (mode: 'budget'), voor de "Exporteren naar Excel"-knop in de
   begrotingsworkflow (KompasToolPage.jsx). Geeft { budget, error } terug -

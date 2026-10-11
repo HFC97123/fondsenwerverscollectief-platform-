@@ -387,8 +387,8 @@ async function bouwDekkingsplanSheet(workbook, { budget, project, organizationNa
   };
 
   // Eigen bijdrage en cofinanciers - uitsluitend de al bestaande,
-  // gestructureerde projectfinanciering (project.eigenBijdrage/project.cofin,
-  // via budget.projectFinanciering - zie berekenBudget()), nooit een status
+  // gestructureerde projectfinanciering (project.eigenBijdrage en de cofinanciers uit
+  // subsidie_kompas_program_funding, via budget.projectFinanciering - zie berekenBudget()), nooit een status
   // verzonnen wanneer die er niet is (opdrachtpunt 3).
   const financiering = budget.projectFinanciering || {};
   let heeftFinancieringsregel = false;
@@ -399,7 +399,7 @@ async function bouwDekkingsplanSheet(workbook, { budget, project, organizationNa
   }
 
   (Array.isArray(financiering.cofinanciers) ? financiering.cofinanciers : []).forEach((c) => {
-    schrijfRegel(c?.naam || '', 'Cofinanciering', parseEuroDutch(c?.bedrag), c?.status || '');
+    schrijfRegel(c?.naam || '', 'Cofinanciering', c?.bedrag != null && typeof c.bedrag === 'number' ? c.bedrag : parseEuroDutch(c?.bedrag), c?.status || '');
     heeftFinancieringsregel = true;
   });
 
@@ -432,19 +432,12 @@ async function bouwDekkingsplanSheet(workbook, { budget, project, organizationNa
 
   // TOTAAL DEKKING: de canonical waarheid rechtstreeks uit berekenBudget()
   // (budget.totals.totaalDekking) - BEWUST als vaste numerieke waarde, geen
-  // formule over de zichtbare rijen hierboven. Reden: berekenDekking()
-  // (KompasStore.jsx, hergebruikt door berekenBudget()) telt voor "toegekend"/
-  // "in aanvraag" ook eerder toegekende financiering en gekoppelde
-  // regelingen mee (project.eerder/project.regelingen) die hier bewust GEEN
-  // aparte rij krijgen (opdrachtpunt 3 noemt uitsluitend eigen bijdrage,
-  // cofinanciers en aangevraagd bedrag als kolominhoud) - een SUM-formule
-  // over alleen de hierboven zichtbare rijen zou dan een ONJUIST, te laag
-  // bedrag kunnen tonen. Dit is dus geen tweede validator (die logica staat
-  // al, ongewijzigd, in berekenDekking()) maar uitsluitend het al bestaande
+  // formule over de zichtbare rijen hierboven. Het totaal komt uit dekkingVanProject()
+  // (eigen bijdrage + toegekend + aangevraagd uit Projectfinanciering); de rijen hierboven
+  // zijn exact dezelfde posten. Dit is geen tweede validator maar het bestaande
   // resultaat zichtbaar maken (opdrachtpunt 11: "gebruik het bestaande
   // validator-resultaat").
-  const heeftAndereBronnen =
-    (Array.isArray(project?.eerder) && project.eerder.length > 0) || (Array.isArray(project?.regelingen) && project.regelingen.length > 0);
+  const heeftAndereBronnen = false;
   const totaalDekkingRij = rij;
   const rDekking = ws.getRow(totaalDekkingRij);
 

@@ -10,7 +10,6 @@ import {
   LABEL_BRON_VERWIJDERD,
   STATUSSEN,
   STATUS_LABEL,
-  aantalNietMeegetelleCofinanciers,
   bedragVoorInvoer,
   berekenDekking,
   deadlineVergelijking,
@@ -100,7 +99,7 @@ gelijk('formatEuro', formatEuro(12500), '€ 12.500');
 {
   const p = { eigenBijdrage: '€ 10.000', cofin: [{ naam: 'Gemeente', bedrag: '€ 5.000 of meer', status: 'Toegezegd' }, { naam: 'Bank', bedrag: '', status: 'Aangevraagd' }, { naam: '', bedrag: '' }] };
   gelijk('overige = alleen eigen bijdrage; geen tekstparsing van co-financiers', overigeDekkingVanProject(p), 10000);
-  gelijk('niet-meegeteld aantal co-financiers (lege rij telt niet)', aantalNietMeegetelleCofinanciers(p), 2);
+  gelijk('het oude cofin-veld van het project telt nergens meer mee (geen dubbele telling met de financieringsregels)', dekkingVanProject({ begroting: 100000, ...p }, []).toegekend + dekkingVanProject({ begroting: 100000, ...p }, []).aangevraagd, 0);
   gelijk('geen eigen bijdrage -> 0', overigeDekkingVanProject({ cofin: [{ naam: 'X', bedrag: '9999' }] }), 0);
 }
 // ---------- Test 17: Dashboard = dossier ----------
@@ -187,7 +186,7 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
   // Test 19: Overzicht gebruikt alleen projectgegevens
   const detail = lees('src/features/kompas-app/projectdossier/ProjectDetailPage.jsx');
   const overzicht = detail.slice(detail.indexOf('function OverzichtTab'), detail.indexOf('function DocumentenTab'));
-  check('19: Overzicht-tab gebruikt geen financieringsdata (geen financiering/regels/RPC)', !/financiering|regels|dekking|rpc/i.test(overzicht));
+  check('19: Overzicht-tab gebruikt geen financieringsdata (geen hook/RPC/rekenmodule; alleen een verwijzing naar Projectfinanciering)', !/useProjectFinanciering|useDekkingsplannen|dekkingVanProject|berekenDekking|haalDekkingsplan|rpc\(/i.test(overzicht));
   check('19: Overzicht leest uit de projectprop (subsidie_kompas_programs via de store)', /project\.omschrijving/.test(overzicht));
   check('dossier: geen hoofdmenu-item en route valt onder Projecten', !/Projectdossier/.test(lees('src/features/kompas-app/KompasWerkNav.jsx')));
   check('dossier: tabs Overzicht, Projectfinanciering, Documenten, Gesprekken', ['overzicht', 'projectfinanciering', 'documenten', 'gesprekken'].every((t) => detail.includes(`id: '${t}'`)));
@@ -215,8 +214,14 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
   const zonderFase5 = (t) => t.replace(/\/\/ FASE5-BEGIN[\s\S]*?\/\/ FASE5-END/g, '').replace(/\{\/\* FASE5-BEGIN[\s\S]*?FASE5-END \*\/\}/g, '');
   verboden.forEach((f) => check(`22: ${f} verwijst buiten de FASE5-blokken niet naar de nieuwe fundingbron (askKompas/chat/Edge Function ongewijzigd)`, !nieuweBron.test(zonderFase5(lees(f)))));
   const bestanden = [...loop('src/data'), ...loop('src/shared')].filter((f) => /\.(js|jsx|ts)$/.test(f) && !f.endsWith('projectFinanciering.js'));
-  const raak = bestanden.filter((f) => nieuweBron.test(zonderCommentaar(readFileSync(f, 'utf8'))));
-  check('23: geen enkele matching-/fondsadvies-/export-/documentgeneratiecode gebruikt de nieuwe fundingbron ', raak.length === 0, raak.join(', '));
+  // Sinds de financieringsopschoning (okt 2026) lezen exports de enige financiële bron, maar uitsluitend via de
+  // pure rekenmodule (financiering/dekkingsplan.js) en features/.../exportFinanciering.js; shared/ en data/ lezen
+  // de tabel of de RPC nooit zelf.
+  const toegestaanPureImport = ['src/data/services/projecten.js', 'src/shared/budget/berekenBudget.js', 'src/shared/export/exportModel.js'];
+  const directeTabel = /kompas_dekkingsplan|program_funding|services\/projectFinanciering|useProjectFinanciering/;
+  const raak = bestanden.filter((f) => !toegestaanPureImport.includes(f.replace(/\\/g, '/')) && nieuweBron.test(zonderCommentaar(readFileSync(f, 'utf8'))));
+  const rechtstreeks = bestanden.filter((f) => directeTabel.test(zonderCommentaar(readFileSync(f, 'utf8'))));
+  check('23: matching-/fondsadvies-/export-/documentgeneratiecode in data/ en shared/ gebruikt de fundingbron alleen via de pure rekenmodule', raak.length === 0 && rechtstreeks.filter((f) => !/exportService\.js$/.test(f)).length === 0, `${raak.join(', ')} | ${rechtstreeks.join(', ')}`);
   const migraties = loop('supabase/migrations').filter((f) => f.endsWith('.sql'));
   const metFunding = migraties.filter((f) => /create table[^;]*subsidie_kompas_program_funding/i.test(readFileSync(f, 'utf8')));
   check('24: de migratie staat precies één keer in supabase/migrations onder de live versie (20261011104804), niet meer als voorstel; rollback apart', metFunding.length === 1 && metFunding[0].endsWith('20261011104804_project_funding_fase2.sql') && !existsSync('supabase/voorstel-niet-uitgevoerd/20261011130000_project_funding.sql') && existsSync('supabase/voorstel-niet-uitgevoerd/20261011104804_project_funding_fase2_rollback.sql'));

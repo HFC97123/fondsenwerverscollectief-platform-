@@ -19,7 +19,7 @@ function maak(n) {
       if (n === 'subsidie_kompas_program_funding') {
         const eigen = rows.find((r) => r.user_id !== me().id || !tabel('subsidie_kompas_programs').some((p) => p.id === r.program_id && p.user_id === me().id));
         if (eigen) return { data: null, error: { code: '42501', message: 'new row violates row-level security policy' } };
-        const dubbel = rows.find((r) => t.some((x) => x.program_id === r.program_id && ((r.scheme_id && x.scheme_id === r.scheme_id) || (r.funder_id && x.funder_id === r.funder_id))));
+        const dubbel = rows.find((r) => t.some((x) => x.program_id === r.program_id && ((r.scheme_id && x.scheme_id === r.scheme_id) || (r.funder_id && x.funder_id === r.funder_id) || (r.financier_naam && String(x.financier_naam || '').trim().toLowerCase() === String(r.financier_naam).trim().toLowerCase()))));
         if (dubbel) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
       }
       const nieuw = rows.map((r) => ({ id: `00000000-0000-4000-8000-${String(++teller).padStart(12, '0')}`, ...r }));
@@ -66,7 +66,7 @@ export const supabase = {
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     signOut: async () => ({ error: null }),
   },
-  functions: { invoke: async (n) => { window.__LOG.push({ tabel: `functions:${n}`, op: 'invoke', filters: [] }); return { data: null, error: null }; } },
+  functions: { invoke: async (n, opts) => { window.__LOG.push({ tabel: `functions:${n}`, op: 'invoke', filters: [JSON.stringify((opts && opts.body) || {})] }); if (window.__FN) return window.__FN(n, opts && opts.body); return { data: null, error: null }; } },
   rpc: async (naam, args) => {
     window.__LOG.push({ tabel: `rpc:${naam}`, op: 'rpc', filters: [JSON.stringify(args || {})] });
     if (naam !== 'kompas_dekkingsplan') return { data: null, error: null };
@@ -81,7 +81,8 @@ export const supabase = {
     const rijen = tabel('subsidie_kompas_program_funding').filter((r) => r.program_id === prog.id && r.user_id === me().id);
     const uit = rijen.map((r) => {
       const bron = B[r.scheme_id || r.funder_id] || null;
-      const basis = { id: r.id, program_id: r.program_id, scheme_id: null, funder_id: null, bron_type: r.scheme_id ? 'regeling' : r.funder_id ? 'fonds' : null, bron_status: 'zichtbaar', bron_naam: null, funder_naam: null, website: null, systeem_deadline: null, systeem_deadline_bron: null, requested_amount: r.requested_amount ?? null, awarded_amount: r.awarded_amount ?? null, status: r.status, eigen_deadline: r.eigen_deadline || null, effectieve_deadline: r.eigen_deadline || null, reminder_enabled: r.reminder_enabled !== false, notes: r.notes || null, created_at: r.created_at || '2026-10-01T10:00:00Z', updated_at: r.created_at || '2026-10-01T10:00:00Z' };
+      const basis = { id: r.id, program_id: r.program_id, scheme_id: null, funder_id: null, bron_type: r.financier_naam ? 'financier' : r.scheme_id ? 'regeling' : r.funder_id ? 'fonds' : null, bron_status: 'zichtbaar', bron_naam: null, funder_naam: null, website: null, systeem_deadline: null, systeem_deadline_bron: null, requested_amount: r.requested_amount ?? null, awarded_amount: r.awarded_amount ?? null, status: r.status, eigen_deadline: r.eigen_deadline || null, effectieve_deadline: r.eigen_deadline || null, reminder_enabled: r.reminder_enabled !== false, notes: r.notes || null, created_at: r.created_at || '2026-10-01T10:00:00Z', updated_at: r.created_at || '2026-10-01T10:00:00Z' };
+      if (r.financier_naam) return { ...basis, bron_naam: r.financier_naam };
       if (!r.scheme_id && !r.funder_id) return { ...basis, bron_status: 'verwijderd' };
       if (!bron || (bron.premium && !premium)) return { ...basis, bron_status: 'verborgen' };
       return { ...basis, scheme_id: r.scheme_id, funder_id: r.funder_id, bron_naam: bron.naam, funder_naam: bron.funder || null, website: bron.website || null, systeem_deadline: bron.deadline || null, systeem_deadline_bron: bron.deadline ? (r.funder_id ? 'fonds' : 'regeling') : null, effectieve_deadline: r.eigen_deadline || bron.deadline || null };

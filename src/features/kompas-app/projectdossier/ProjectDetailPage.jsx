@@ -12,9 +12,11 @@ import { useApp } from '../useKompasApp.js';
 import { useKompas } from '../KompasStore.jsx';
 import { useProjectFinanciering } from '../financiering/useProjectFinanciering.js';
 import { KLEUR } from '../financiering/FinancieringUi.jsx';
-import { dagenTekst, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, formatTijd } from '../financiering/dekkingsplan.js';
+import { dagenTekst, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, formatTijd, periodeTekst } from '../financiering/dekkingsplan.js';
 import ProjectfinancieringTab from './ProjectfinancieringTab.jsx';
 import ConversationsList from '../chat/ConversationsList.jsx';
+import ProjectgegevensAanvullen from './ProjectgegevensAanvullen.jsx';
+import { isEchtId } from '../../../data/services/projecten.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14.5px; line-height: 1.6; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;";
@@ -94,9 +96,7 @@ function Veld({ label, children }) {
 
 function OverzichtTab({ project }) {
   const doelgroep = Array.isArray(project.doelgroep) ? project.doelgroep.join(', ') : project.doelgroep;
-  const eerder = Array.isArray(project.eerder) ? project.eerder.filter((x) => x && (x.fonds || x.bedrag)) : [];
-  const cofin = Array.isArray(project.cofin) ? project.cofin.filter((x) => x && (x.naam || x.bedrag)) : [];
-  const periode = [project.periodeVan, project.periodeTot].filter(Boolean).join(' – ');
+  const periode = periodeTekst(project.periodeVan, project.periodeTot);
   const heeftInhoud = [project.omschrijving, project.doelstellingen, project.activiteiten, project.impact, project.planning, project.partners, project.resultaten, doelgroep, project.programma].some(Boolean);
 
   return (
@@ -127,35 +127,19 @@ function OverzichtTab({ project }) {
         )}
       </section>
 
-      {(eerder.length > 0 || cofin.length > 0) && (
-        <section style={css(`${KAART} display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px 24px;`)}>
-          {eerder.length > 0 && (
-            <div data-testid="overzicht-eerder">
-              <h2 style={css(`${LABEL} margin: 0 0 8px;`)}>Eerdere toekenningen en aanvragen</h2>
-              <ul style={css(`${TEKST} margin: 0; padding-left: 18px;`)}>
-                {eerder.map((x, i) => (
-                  <li key={i}>{[x.fonds, x.jaar, x.bedrag, x.uitkomst].filter(Boolean).join(' · ')}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {cofin.length > 0 && (
-            <div data-testid="overzicht-cofin">
-              <h2 style={css(`${LABEL} margin: 0 0 8px;`)}>Co-financiers</h2>
-              <ul style={css(`${TEKST} margin: 0; padding-left: 18px;`)}>
-                {cofin.map((x, i) => (
-                  <li key={i}>{[x.naam, x.bedrag, x.status].filter(Boolean).join(' · ')}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-      )}
+      <section data-testid="overzicht-financiering-verwijzing" style={css(`${KAART} display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;`)}>
+        <div style={css(`${TEKST} min-width: 0; flex: 1 1 320px;`)}>
+          Toegekende en aangevraagde bijdragen, ook van cofinanciers en andere financiering, staan bij Projectfinanciering.
+        </div>
+        <a href={`#/kompas/projecten/${project.id}?tab=projectfinanciering`} style={css(LINK)}>
+          Naar Projectfinanciering
+        </a>
+      </section>
     </div>
   );
 }
 
-function DocumentenTab({ project }) {
+function DocumentenTab({ project, store }) {
   const docs = (project.docs || []).filter((d) => d && !d.vervangen);
 
   return (
@@ -176,6 +160,15 @@ function DocumentenTab({ project }) {
                 {d.versie > 1 ? ` · versie ${d.versie}` : ''}
                 {d.gemaakt ? ` · ${formatTijd(d.gemaakt, new Date())}` : ''}
               </div>
+              {isEchtId(d.id) && isEchtId(project.id) && (
+                <ProjectgegevensAanvullen
+                  project={project}
+                  document={d}
+                  onOpslaan={(tekst) =>
+                    store.werkProjectBij(project.id, { vulling: {}, bijwerking: { omschrijving: tekst }, bronnen: { omschrijving: 'upload' }, conflicten: {} })
+                  }
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -280,7 +273,7 @@ export default function ProjectDetailPage({ projectId }) {
     );
   }
 
-  const meta = [project.regio, [project.periodeVan, project.periodeTot].filter(Boolean).join(' – ')].filter(Boolean).join(' · ');
+  const meta = [project.regio, periodeTekst(project.periodeVan, project.periodeTot)].filter(Boolean).join(' · ');
 
   const bespreek = (id) => {
     store.zetChatVerzoek({ type: 'project', projectId: id });
@@ -319,7 +312,7 @@ export default function ProjectDetailPage({ projectId }) {
           <Kpi naam="Totale begroting" waarde={dekking.heeftBegroting ? formatEuro(dekking.begroting) : '—'} kleur="#C5D2CB" />
           <Kpi naam="Toegekend" waarde={formatEuro(dekking.toegekend)} kleur={KLEUR.toegekend} />
           <Kpi naam="Aangevraagd" waarde={formatEuro(dekking.aangevraagd)} kleur={KLEUR.aangevraagd} />
-          <Kpi naam="Overige dekking" waarde={formatEuro(dekking.overige)} kleur={KLEUR.overige} />
+          <Kpi naam="Eigen bijdrage" waarde={formatEuro(dekking.overige)} kleur={KLEUR.overige} />
           <Kpi
             naam="Nog te financieren"
             waarde={dekking.heeftBegroting ? (dekking.volledigGedekt ? 'Volledig gedekt' : formatEuro(dekking.nogNodig)) : '—'}
@@ -358,7 +351,7 @@ export default function ProjectDetailPage({ projectId }) {
         <div role="tabpanel" id={`pd-paneel-${tab}`} aria-labelledby={`pd-tab-${tab}`}>
           {tab === 'overzicht' && <OverzichtTab project={project} />}
           {tab === 'projectfinanciering' && <ProjectfinancieringTab project={project} financiering={financiering} dekking={dekking} />}
-          {tab === 'documenten' && <DocumentenTab project={project} />}
+          {tab === 'documenten' && <DocumentenTab project={project} store={store} />}
           {tab === 'gesprekken' && <GesprekkenTab project={project} gesprekken={gesprekken} onOpen={openGesprek} onBespreek={bespreek} />}
         </div>
       </div>

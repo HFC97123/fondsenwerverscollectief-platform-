@@ -31,7 +31,7 @@ export function StatusChip({ status }) {
 
 export function Voortgangsbalk({ dekking, projectNaam, hoogte = 10 }) {
   const s = dekking.segmenten;
-  const beschrijving = `Financiering van ${projectNaam}: toegekend ${formatEuro(dekking.toegekend)}, aangevraagd ${formatEuro(dekking.aangevraagd)}, overige dekking ${formatEuro(dekking.overige)}, nog te financieren ${formatEuro(dekking.nogNodig)}.`;
+  const beschrijving = `Financiering van ${projectNaam}: toegekend ${formatEuro(dekking.toegekend)}, aangevraagd ${formatEuro(dekking.aangevraagd)}, eigen bijdrage ${formatEuro(dekking.overige)}, nog te financieren ${formatEuro(dekking.nogNodig)}.`;
 
   return (
     <div

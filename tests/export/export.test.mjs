@@ -45,8 +45,15 @@ try {
 } catch (e) { ok('PDF gegenereerd', false, e.stack); }
 
 // ===== EXCEL document + project + org + gesprek
-const dekking = { toegekend: '€ 25.000', inAanvraag: '€ 8.000', open: '€ 52.000', heeftBegroting: true };
-const projModel = bouwProjectModel(PROJECT_A, { organisatieNaam: store.orgProfile.name, dekking });
+import { dekkingVanProject } from '../../src/features/kompas-app/financiering/dekkingsplan.js';
+// Financieringsregels zoals kompas_dekkingsplan() ze teruggeeft (regelUitRpc-vorm): de enige bron voor de export.
+const REGELS = [
+  { id: 'f1', bronType: 'financier', bronStatus: 'zichtbaar', naam: 'Gemeente Utrecht', status: 'awarded', awarded: 15000, requested: null },
+  { id: 'f2', bronType: 'financier', bronStatus: 'zichtbaar', naam: 'Lokale ondernemer', status: 'interesting', awarded: null, requested: 2500 },
+  { id: 'f3', bronType: 'regeling', bronStatus: 'zichtbaar', naam: 'Buurtbudget Utrecht', funder: 'Gemeente Utrecht', deadline: '2027-03-01', status: 'submitted', awarded: null, requested: 8000 },
+];
+const dekking = dekkingVanProject(PROJECT_A, REGELS);
+const projModel = bouwProjectModel(PROJECT_A, { organisatieNaam: store.orgProfile.name, dekking, regels: REGELS });
 const orgModel = bouwOrganisatieModel(PROFIEL, VELDEN);
 const gesModel = bouwGesprekModel({ titel: 'Projectplan Buurtkeuken', berichten: BERICHTEN, projectNaam: PROJECT_A.naam, organisatieNaam: store.orgProfile.name });
 for (const [naam, m] of [['document', docModel], ['project', projModel], ['organisatie', orgModel], ['gesprek', gesModel]]) {
@@ -67,8 +74,13 @@ const finRijen = []; fin.eachRow((r, n) => { if (n >= 5) finRijen.push(r.values.
 console.log(JSON.stringify(finRijen));
 ok('Financiering: bedragen numeriek', finRijen.every((r) => typeof r[1] === 'number'));
 ok('Financiering: begroting 85000', finRijen[0][1] === 85000);
-const cof = wb.getWorksheet('Co-financiers'); const cofR = []; cof.eachRow((r, n) => { if (n >= 5) cofR.push(r.values.slice(1)); });
-ok('Co-financiers numeriek', typeof cofR[0][1] === 'number' && cofR[0][1] === 15000, JSON.stringify(cofR));
+const finMap = Object.fromEntries(finRijen.map((r) => [r[0], r[1]]));
+ok('Financiering: Te financieren = begroting - eigen bijdrage', finMap['Te financieren bedrag'] === 77500, JSON.stringify(finRijen));
+ok('Financiering: Toegekend 15000 en Aangevraagd 8000 uit de financieringsregels (zelfde als dashboard)', finMap['Toegekend'] === 15000 && finMap['Aangevraagd'] === 8000, JSON.stringify(finRijen));
+ok('Financiering: Nog te financieren = begroting - toegekend - aangevraagd - eigen', finMap['Nog te financieren'] === 85000 - 15000 - 8000 - 7500, JSON.stringify(finRijen));
+ok('geen sheet Co-financiers/Eerdere aanvragen meer; wel Cofinanciers', !wb.getWorksheet('Co-financiers') && !wb.getWorksheet('Eerdere aanvragen') && !!wb.getWorksheet('Cofinanciers'));
+const cof = wb.getWorksheet('Cofinanciers'); const cofR = []; cof.eachRow((r, n) => { if (n >= 5) cofR.push(r.values.slice(1)); });
+ok('Cofinanciers numeriek (toegekend 15000)', typeof cofR[0][2] === 'number' && cofR[0][2] === 15000, JSON.stringify(cofR));
 let alleTekst = ''; wb.eachSheet((ws) => ws.eachRow((r) => r.eachCell((c) => { alleTekst += String(c.value) + '\n'; })));
 ok('geen data van ander project in project-Excel', !alleTekst.includes('GEHEIM'));
 wb = await lees('tests/export/.build/out/out_gesprek.xlsx');

@@ -6,7 +6,7 @@
 // Sinds Fase 2 komt het dekkingsplan uit subsidie_kompas_program_funding (via
 // kompas_dekkingsplan) en rekent het Dashboard met EXACT dezelfde module als het projectdossier:
 // financiering/dekkingsplan.js. Hier staat dus geen eigen financiële rekenlogica meer.
-import { dekkingVanProject, eerstvolgendeDeadline, komendeDeadlines } from '../financiering/dekkingsplan.js';
+import { dekkingVanProject, eerstvolgendeDeadline, komendeDeadlines, periodeTekst } from '../financiering/dekkingsplan.js';
 
 export {
   ACTIEVE_STATUSSEN,
@@ -23,6 +23,8 @@ export {
   isKomendeDeadline,
   komendeDeadlines,
   overigeDekkingVanProject,
+  periodeTekst,
+  teFinancieren,
 } from '../financiering/dekkingsplan.js';
 
 // ---------------------------------------------------------------------------
@@ -116,7 +118,7 @@ export function bouwDashboard({ projects, funding, conversations, orgProfile, nu
         id: p.id,
         naam: p.naam || 'Naamloos project',
         locatie: p.regio || '',
-        periode: [p.periodeVan, p.periodeTot].filter(Boolean).join(' – '),
+        periode: periodeTekst(p.periodeVan, p.periodeTot),
         dekking: dekkingVanProject(p, regels),
         volgendeDeadline: eerstvolgendeDeadline(regels, nu),
         aantalRegels: regels.length,

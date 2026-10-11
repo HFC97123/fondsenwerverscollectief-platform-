@@ -13,7 +13,7 @@ import { supabase } from '../../data/client.js';
 import { haalProjectVoorExport, haalDocumentVoorExport, isEchtId } from '../../data/services/projecten.js';
 import { haalOrganisatieprofielOp } from '../../data/services/organisatieprofiel.js';
 import { haalGesprekVoorExport } from '../../data/services/gesprekken.js';
-import { berekenDekking } from './KompasStore.jsx';
+import { haalFinancieringVoorExport } from './financiering/exportFinanciering.js';
 import {
   bouwDocumentModel,
   bouwProjectModel,
@@ -81,7 +81,7 @@ export function opgeslagenDocumentExport({ doc, store }) {
   };
 }
 
-/** Eén project met financiering, co-financiers en gekoppelde regelingen. */
+/** Eén project met financiering (uit Projectfinanciering), cofinanciers en gekoppelde regelingen. */
 export function projectExport({ projectId, store }) {
   return async () => {
     const project = await projectVers(projectId, store);
@@ -90,7 +90,9 @@ export function projectExport({ projectId, store }) {
       return null;
     }
 
-    return bouwProjectModel(project, { organisatieNaam: orgNaamUitStore(store), dekking: berekenDekking(project) });
+    const fin = await haalFinancieringVoorExport(project);
+
+    return bouwProjectModel(project, { organisatieNaam: orgNaamUitStore(store), dekking: fin.dekking, regels: fin.regels });
   };
 }
 

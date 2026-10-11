@@ -87,7 +87,9 @@ async function begrotingExcel({ tekst, project, organisatieNaam }, onStatus) {
 
   const { berekenBudget } = await import('../budget/berekenBudget.js');
   const { generateExcelDocument, bepaalExcelBestandsnaam } = await import('../budget/generateExcelDocument.js');
-  const budget = berekenBudget(ruwBudget.expenseLines, project, ruwBudget.meta);
+  const { haalFinancieringVoorExport } = await import('../../features/kompas-app/financiering/exportFinanciering.js');
+  const financiering = await haalFinancieringVoorExport(project);
+  const budget = berekenBudget(ruwBudget.expenseLines, project, ruwBudget.meta, financiering);
   const bruikbareRegels = budget.expenseLines.filter((r) => r.bedrag != null).length;
 
   if (bruikbareRegels === 0) {
