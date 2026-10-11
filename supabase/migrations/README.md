@@ -116,3 +116,35 @@ heeft geregistreerd, is dit bewust niet gecorrigeerd in het bestand zelf.)
 | Bestand | Inhoud |
 |---|---|
 | `20261007120000_production_readiness_rechten_opschonen.sql` | Rechten opschonen vóór de Stripe-livegang: EXECUTE van `start_trial` intrekken (oude kaartloze trialroute; functie en trialdata blijven bestaan), TRUNCATE/TRIGGER/REFERENCES op `profiles` en `product_aankopen` voor anon/authenticated intrekken, en de 17 oudere `admin_*`-functies niet meer voor PUBLIC/anon. Alleen GRANT/REVOKE, geen data. Test: `supabase/tests/security-cleanup/test.sql` (27 checks). Wordt pas toegepast als onderdeel van de cutover, na akkoord van de eigenaar. |
+
+## Synchronisatie met het live migratieregister (2026-10-11)
+
+Op 2026-10-11 is deze map vergeleken met `supabase_migrations.schema_migrations`
+van het live project (92 registraties):
+
+- **63 live toegepaste migraties ontbraken als bestand** (waaronder alle van
+  2026-09-07 t/m 2026-09-11, `kompas_matching_testlog`,
+  `project_organisatie_scheiding_waarborgen` en de taxonomie-/deadlinereview-
+  datamigraties van 2026-10-11). Ze zijn woordelijk uit het register
+  overgenomen onder exact hun live versienummer. Er is bij deze synchronisatie
+  NIETS op de database uitgevoerd.
+- **3 bestanden droegen een ander versienummer dan live** en zijn hernoemd naar
+  de live versie (inhoud ongewijzigd, gecontroleerd): `stripe_webhook_fundament`
+  (20261006081609), `publieke_leden_telling` (20261008105704) en
+  `kompas_funders_voor_matching` (20261008112929). Zo kan geen tool ze later
+  als "nog niet toegepast" opnieuw uitvoeren.
+- **`20261011104804_project_funding_fase2.sql`** (Werkruimte Fase 2) staat onder
+  de live versie; het bestand bevat extra commentaar, de DDL is gelijk aan wat
+  live is toegepast. De bijbehorende rollback staat bewust apart in
+  `supabase/voorstel-niet-uitgevoerd/`. Dit is een toegepaste migratie: nooit
+  opnieuw uitvoeren.
+- **Live aanwezig maar zonder register-regel** (destijds buiten het register om
+  toegepast; objecten zijn live gecontroleerd): `20261010120000_member_reviews`,
+  `20261010150000_beheertabellen_publieke_content`,
+  `20261011100000_publieke_ledenwaardering`,
+  `20261011120000_ledenprofiel_foto_en_bio`. Hun versienummers zijn dus niet
+  uit het register afkomstig; de objecten bestaan live. Niet opnieuw uitvoeren.
+- **Niet toegepast (voorbereid)**: `20261007120000_production_readiness_rechten_opschonen.sql`
+  (zie hierboven) en, apart in `supabase/voorstel-niet-uitgevoerd/`,
+  `20261009100000_funders_premium_exclusive.sql` (+ rollback). Die laatste is
+  een aparte release en vraagt een eigen akkoord.

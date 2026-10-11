@@ -14,4 +14,4 @@ create function public.current_user_has_pro_access() returns boolean language sq
    or (subscription_tier in ('pro','premium') and subscription_active = true)
    or (subscription_tier in ('pro','premium') and trial_ends_at is not null and trial_ends_at > now()))); $$;
 SQL
-$P -f ${MIGR:-../../migrations/20261006120000_stripe_webhook_fundament.sql} && echo DB_READY
+$P -f ${MIGR:-../../migrations/20261006081609_stripe_webhook_fundament.sql} && echo DB_READY
