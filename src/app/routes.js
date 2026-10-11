@@ -50,6 +50,9 @@ export const routes = [
   // De Kompas-pagina van het ontwerp: de tool met de drie panelen.
   { pad: '/subsidie-kompas', area: AREA.app, titel: 'Subsidie Kompas', toegang: 'publiek' },
   { pad: '/kompas', area: AREA.app, titel: 'Subsidie Kompas', toegang: 'publiek' },
+  // Dashboard van de Pro/Premium-werkruimte (cockpit, alleen samenvatten en doorlinken). Voor Free
+  // toont de pagina zelf een uitnodiging voor Pro/Premium, net als Projecten.
+  { pad: '/kompas/dashboard', area: AREA.app, titel: 'Dashboard', toegang: 'lid' },
   { pad: '/kompas/deadlines', area: AREA.app, titel: 'Deadlines', toegang: 'publiek' },
   { pad: '/kompas/organisatie', area: AREA.app, titel: 'Organisatie', toegang: 'lid' },
   { pad: '/kompas/projecten', area: AREA.app, titel: 'Projecten', toegang: 'lid' },

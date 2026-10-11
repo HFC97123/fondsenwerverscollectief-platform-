@@ -853,6 +853,26 @@ export default function KompasToolPage() {
     }
   }, [store.projects, gekoppeldProjectId]);
 
+  // Eenmalige overdracht vanuit het Dashboard (zie KompasStore.zetChatVerzoek):
+  // een bestaand gesprek openen, of een nieuw gesprek voor een project starten.
+  // Hergebruikt uitsluitend de bestaande openGesprek/koppelProject; zonder
+  // verzoek (of voor Free) gebeurt er niets.
+  useEffect(() => {
+    const verzoek = store.neemChatVerzoek ? store.neemChatVerzoek() : null;
+
+    if (!verzoek || !hasPlanTools) {
+      return;
+    }
+
+    const project = (store.projects || []).find((p) => p.id === verzoek.projectId && !p.gearchiveerd);
+
+    if (verzoek.type === 'gesprek' && verzoek.gesprekId) {
+      openGesprek({ id: verzoek.gesprekId, projectId: project ? project.id : null });
+    } else if (verzoek.type === 'project' && project) {
+      koppelProject(project.id);
+    }
+  }, []);
+
   // Vervolgopdracht, prioriteit 7 (Export). Vier acties onder een "groot"
   // AI-resultaat - hergebruikt bestaande mechanismen, geen nieuwe opslag:
   // - Kopiëren: alleen het klembord.

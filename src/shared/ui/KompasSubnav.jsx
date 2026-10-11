@@ -8,9 +8,10 @@
 // brengt de gebruiker altijd terug naar de hoofdroute van de chatbot (#/kompas, zie
 // HOOFDROUTE_CHATBOT hieronder en routes.js) en gebruikt daarvoor de bestaande hash-navigatie
 // (app.goKompas -> naar('/kompas')): geen paginaherlading.
-import React from 'react';
+import React, { useContext } from 'react';
 import { css } from '../lib/css.js';
 import { useApp } from '../../features/kompas-app/useKompasApp.js';
+import { WerkNavContext } from '../../features/kompas-app/werkNavContext.js';
 
 const linkStijl = css('font-size: 14.5px; font-weight: 700; color: #2C4A5E; white-space: nowrap;');
 const actiefStijl = css('font-size: 14.5px; font-weight: 700; color: #4E9A6C; white-space: nowrap;');
@@ -46,6 +47,8 @@ const NAV_CSS = `
 // terug naar de website-home.
 export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth = '1120px', toonPlan = false }) {
   const app = useApp();
+  // In de Pro/Premium-werkruimte staat bovenaan al KompasWerkNav (zie KompasApp.jsx): dan geen tweede balk.
+  const werkNavActief = useContext(WerkNavContext);
   const tier = app.subscriptionTier || 'free';
   // Compacte statusindicator: naam + abonnement, uitsluitend zichtbaar
   // zolang er echt iets Pro/Premium (of Admin) te tonen is - zie
@@ -82,6 +85,10 @@ export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth 
 
     app.goKompas();
   };
+
+  if (werkNavActief) {
+    return null;
+  }
 
   return (
     <div style={css('position: relative; z-index: 1; border-bottom: 1px solid #E1EAE4; background: rgba(247,249,248,0.94);')}>

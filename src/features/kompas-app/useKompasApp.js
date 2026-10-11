@@ -51,6 +51,7 @@ export function useApp() {
     goAbonnementen: () => naar('/hoe-het-werkt'),
     goHome: () => naar('/'),
     goKompas: () => naar('/kompas'),
+    goDashboard: () => naar('/kompas/dashboard'),
     goDeadlines: () => naar('/kompas/deadlines'),
     goOrganisatie: () => naar('/kompas/organisatie'),
     goProjecten: () => naar('/kompas/projecten'),

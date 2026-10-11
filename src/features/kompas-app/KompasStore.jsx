@@ -86,6 +86,11 @@ export function KompasProvider({ children, userId = null }) {
   // Bron van de gegevens: 'lokaal' tot een sessie de database oplevert.
   const bron = useRef('lokaal');
 
+  // Eenmalige aanwijzing van het Dashboard aan de chat ("Open gesprek" /
+  // "Bespreek met Subsidiekompas"). Bewust een ref: geen extra render, geen
+  // opslag, en de chat neemt het verzoek maar één keer over.
+  const chatVerzoekRef = useRef(null);
+
   // Projecten/documentatie/gesprekken/voorkeuren: nog het oude spoor
   // (workspace.js), dat vooralsnog altijd stil terugvalt op localStorage
   // omdat de tabellen die het verwacht niet bestaan. Blijft ongewijzigd tot
@@ -435,6 +440,18 @@ export function KompasProvider({ children, userId = null }) {
         if (projectenBron.current === 'supabase' && isEchtId(id)) {
           verwijderProject(id);
         }
+      },
+
+      zetChatVerzoek: (verzoek) => {
+        chatVerzoekRef.current = verzoek || null;
+      },
+
+      neemChatVerzoek: () => {
+        const verzoek = chatVerzoekRef.current;
+
+        chatVerzoekRef.current = null;
+
+        return verzoek;
       },
 
       addRegelingToProject: (regeling, projectId) => {
