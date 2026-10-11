@@ -1,0 +1,257 @@
+# Fase 2 browsertests: projectdossier, projectfinanciering, Dashboard = dossier, maskering, isolatie, Free ongewijzigd.
+import subprocess, time, sys, os, re
+from playwright.sync_api import sync_playwright
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+srv = subprocess.Popen(['python3','-m','http.server','8768','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+time.sleep(1)
+BASE='http://localhost:8768/index.html'
+P1='11111111-1111-4111-8111-111111111111'; P2='22222222-2222-4222-8222-222222222222'; P3='33333333-3333-4333-8333-333333333333'; PX='99999999-9999-4999-8999-999999999999'
+res=[]
+def ok(n,c,d=''):
+    res.append((n,bool(c),d)); print(('OK  ' if c else 'FAIL'),n,(d if not c else ''), flush=True)
+os.makedirs('shots',exist_ok=True)
+def nieuw(b,vp,tier,pad,init=None):
+    ctx=b.new_context(viewport=vp); pg=ctx.new_page()
+    pg.add_init_script("document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='div[style*=\"z-index: 2000\"]{display:none !important}';document.head.appendChild(s)})")
+    if init: pg.add_init_script(init)
+    pg.errs=[]; pg.on('pageerror',lambda e: pg.errs.append(str(e)))
+    pg.goto(f'{BASE}?tier={tier}#{pad}'); pg.wait_for_timeout(1600)
+    return ctx,pg
+def txt(pg): return pg.locator('body').inner_text().replace('\xa0',' ')
+def nav(pg): return pg.locator('[data-testid="kompas-werknav"]')
+def geenhscroll(pg): return pg.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+def kpi(pg,naam):
+    return pg.locator(f'[data-testid="detail-kpi"][data-kpi="{naam}"]').inner_text().replace('\xa0',' ').replace('\n',' | ')
+def db(pg,tabel): return pg.evaluate(f'window.__DBL["{tabel}"]')
+def fr(pg,n): return pg.evaluate(f'window.__DBL.subsidie_kompas_program_funding.find(r=>r.id==="f0000000-0000-4000-8000-{n:012d}")')
+def regel(pg,naam): return pg.locator('[data-testid="pf-regel"]').filter(has=pg.locator(f'[data-testid="pf-regel-naam"]:text-is("{naam}")'))
+def kaart_waarden(pg,kaart):
+    t=kaart.inner_text().replace('\xa0',' ')
+    def g(l):
+        m=re.search(re.escape(l)+r'\s*\n?\s*€\s*([\d\.]+)',t); return m.group(1) if m else None
+    return [g('Toegekend'),g('Aangevraagd'),g('Overige dekking'),g('Nog te financieren')]
+with sync_playwright() as p:
+    b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
+    # ============ Desktop Pro: dossier
+    vp={'width':1280,'height':900}
+    ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}')
+    t=txt(pg)
+    ok('dossier: naam in kop', pg.locator('[data-testid="project-detail-naam"]').inner_text()=='Buurtkeuken De Brug')
+    ok('dossier: locatie en periode in kop', pg.locator('[data-testid="project-detail-meta"]').inner_text()=='Utrecht-Noord · jan 2027 – dec 2027')
+    labels=[a.inner_text().strip() for a in nav(pg).locator('.fwk-wn-items a').all()]
+    ok('dossier: hoofdmenu ongewijzigd (geen Projectdossier-item)', labels==['Dashboard','Chat','Projecten','Deadlines','Documenten'], str(labels))
+    a=nav(pg).locator('a[aria-current="page"]')
+    ok('dossier: Projecten blijft actief', a.count()==1 and a.first.inner_text().strip()=='Projecten')
+    ok('dossier: 6 KPI-kaarten', pg.locator('[data-testid="detail-kpi"]').count()==6)
+    ok('dossier KPI: Totale begroting € 100.000', '€ 100.000' in kpi(pg,'Totale begroting'), kpi(pg,'Totale begroting'))
+    ok('dossier KPI: Toegekend € 30.000 (toegekend leeg -> aangevraagd telt)', '€ 30.000' in kpi(pg,'Toegekend'))
+    ok('dossier KPI: Aangevraagd € 15.000', '€ 15.000' in kpi(pg,'Aangevraagd'))
+    ok('dossier KPI: Overige dekking € 20.000', '€ 20.000' in kpi(pg,'Overige dekking'))
+    ok('dossier KPI: Nog te financieren € 35.000', '€ 35.000' in kpi(pg,'Nog te financieren'))
+    ok('dossier KPI: eerstvolgende deadline = Oranje Fonds Burenhulp', 'Oranje Fonds Burenhulp' in kpi(pg,'Eerstvolgende deadline'), kpi(pg,'Eerstvolgende deadline'))
+    tabs=[x.inner_text().strip() for x in pg.locator('[role="tab"]').all()]
+    ok('dossier: 4 tabs in juiste volgorde', tabs==['Overzicht','Projectfinanciering','Documenten','Gesprekken'], str(tabs))
+    ok('dossier: Overzicht standaard geselecteerd', pg.locator('[data-testid="tab-btn-overzicht"]').get_attribute('aria-selected')=='true')
+    ov=pg.locator('[data-testid="tab-overzicht"]').inner_text()
+    ok('dossier Overzicht: projectgegevens uit subsidie_kompas_programs', 'Wekelijks een warme maaltijd.' in ov and 'Wijkcentrum' in ov and 'Gemeente Utrecht' in ov)
+    ok('dossier Overzicht: gebruikt geen financieringsregels', 'Buurtbudget' not in ov and 'Oranje Fonds' not in ov and 'LEGACY' not in t)
+    ok('dossier: geen GEHEIM, geen legacy', 'GEHEIM' not in t and 'LEGACY' not in t)
+    ok('dossier: RPC kompas_dekkingsplan voor eigen project aangeroepen', pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan' && l.filters[0].includes('%s'))"%P1))
+    pg.screenshot(path='shots/f2_desktop_overzicht.png', full_page=True)
+    # --- Projectfinanciering
+    pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(500)
+    ok('tab Projectfinanciering: hash bevat ?tab=projectfinanciering', 'tab=projectfinanciering' in pg.evaluate('location.hash'))
+    regels=pg.locator('[data-testid="pf-regel"]')
+    ok('Projectfinanciering: 8 eigen regels (andermans/ander project niet)', regels.count()==8, str(regels.count()))
+    t=txt(pg)
+    ok('maskering Pro: label "Premium-fonds, niet zichtbaar in uw abonnement"', 'Premium-fonds, niet zichtbaar in uw abonnement' in t)
+    ok('maskering Pro: naam/funder/website van Premium-bron niet in de pagina', 'PREMIUMFONDS' not in t and 'Geheim Premium' not in t and not pg.evaluate("[...document.querySelectorAll('a')].some(a=>a.href.includes('geheim.test'))"))
+    h=pg.locator('[data-testid="pf-regel"][data-bron-status="verborgen"]')
+    ok('maskering Pro: eigen bedrag, notitie en eigen deadline blijven zichtbaar', h.count()==1 and h.locator('input[aria-label^="Aangevraagd"]').input_value()=='2.000' and h.locator('textarea').input_value()=='Mijn eigen notitie' and h.locator('input[type="date"]').input_value()!='', h.inner_text()[:200])
+    ok('maskering Pro: geen website/regeling-info bij gemaskeerde regel', h.locator('a').count()==0 and 'Regeling' not in h.locator('[data-testid="pf-regel-deadline"]').inner_text())
+    v=pg.locator('[data-testid="pf-regel"][data-bron-status="verwijderd"]')
+    ok('verwijderde bron: label "Bron niet meer beschikbaar", eigen gegevens blijven', v.count()==1 and 'Bron niet meer beschikbaar' in v.inner_text() and v.locator('textarea').input_value()=='Bron verdwenen' and v.locator('input[aria-label^="Aangevraagd"]').input_value()=='1.000')
+    ok('Projectfinanciering: samenvatting Nog te financieren € 35.000', '35.000' in pg.locator('[data-testid="pf-samenvatting"]').inner_text())
+    segs=pg.locator('[data-testid="tab-projectfinanciering"] [data-seg]').evaluate_all('els=>els.map(e=>e.style.width)')
+    ok('Projectfinanciering: voortgangsbalk 30/15/20%', segs==['30%','15%','20%'], str(segs))
+    ok('Projectfinanciering: geen chartbibliotheek (geen canvas/svg-chart)', pg.locator('[data-testid="tab-projectfinanciering"] canvas').count()==0)
+    ok('Projectfinanciering: statuslabels Nederlands', all(l in t for l in ['Interessant','In voorbereiding','Aangevraagd','Toegekend','Afgewezen']))
+    pg.screenshot(path='shots/f2_desktop_projectfinanciering.png', full_page=True)
+    # --- bewerken: status naar Toegekend op Oranje (8000, toegekend leeg -> fallback)
+    o=regel(pg,'Oranje Fonds Burenhulp')
+    o.get_by_label('Status, Oranje Fonds Burenhulp').select_option('awarded'); pg.wait_for_timeout(400)
+    ok('bewerken: status opgeslagen in database (awarded)', fr(pg,3)['status']=='awarded')
+    ok('bewerken: KPI Toegekend = 30.000 + 8.000 (fallback op aangevraagd)', '€ 38.000' in kpi(pg,'Toegekend'), kpi(pg,'Toegekend'))
+    ok('bewerken: Nog te financieren € 27.000', '€ 27.000' in kpi(pg,'Nog te financieren'), kpi(pg,'Nog te financieren'))
+    # expliciet toegekend bedrag wint van aangevraagd
+    o.get_by_label('Toegekend bedrag, Oranje Fonds Burenhulp').fill('5.000'); o.get_by_label('Toegekend bedrag, Oranje Fonds Burenhulp').blur(); pg.wait_for_timeout(400)
+    ok('bewerken: expliciet toegekend 5.000 opgeslagen en geteld (30.000 + 5.000)', fr(pg,3)['awarded_amount']==5000 and '€ 35.000' in kpi(pg,'Toegekend'), kpi(pg,'Toegekend'))
+    # ongeldig bedrag
+    f2=regel(pg,'Wijkfonds Noord')
+    f2.get_by_label('Aangevraagd bedrag, Wijkfonds Noord').fill('abc'); f2.get_by_label('Aangevraagd bedrag, Wijkfonds Noord').blur(); pg.wait_for_timeout(300)
+    ok('bewerken: ongeldig bedrag geeft foutmelding en wijzigt niets', f2.locator('[data-testid="pf-regel-fout"]').count()==1 and fr(pg,2)['requested_amount']==15000)
+    f2.get_by_label('Aangevraagd bedrag, Wijkfonds Noord').fill('25.000'); f2.get_by_label('Aangevraagd bedrag, Wijkfonds Noord').blur(); pg.wait_for_timeout(400)
+    ok('bewerken: aangevraagd 25.000 opgeslagen, KPI Aangevraagd € 25.000, foutmelding weg', fr(pg,2)['requested_amount']==25000 and '€ 25.000' in kpi(pg,'Aangevraagd') and f2.locator('[data-testid="pf-regel-fout"]').count()==0)
+    # eigen deadline zonder snapshot
+    f8=regel(pg,'Overschreven Regeling')
+    ok('deadline: eigen datum (40 dagen) wint van regelingsdatum; beide getoond', 'Uw datum' in f8.locator('[data-testid="pf-regel-deadline"]').inner_text() and 'Regeling' in f8.locator('[data-testid="pf-regel-deadline"]').inner_text())
+    nieuwe=pg.evaluate('window.__SEED_DAG(5)')
+    f8.get_by_label('Eigen deadline, Overschreven Regeling').fill(nieuwe); pg.wait_for_timeout(400)
+    ok('deadline: eigen datum opgeslagen als eigen_deadline, regelingsdatum niet gekopieerd', fr(pg,8)['eigen_deadline']==nieuwe and 'deadline' not in fr(pg,8) and 'name' not in fr(pg,8))
+    ok('deadline: KPI Eerstvolgende deadline volgt de eigen datum', 'Overschreven Regeling' in kpi(pg,'Eerstvolgende deadline'), kpi(pg,'Eerstvolgende deadline'))
+    # wijziging van de bron na het opslaan werkt direct door (live, geen snapshot)
+    pg.evaluate('window.__SEED.bronnen.s8.deadline=window.__SEED_DAG(2)'); pg.evaluate('window.__SEED.bronnen.s3.deadline=window.__SEED_DAG(1)')
+    f8.get_by_label('Eigen deadline, Overschreven Regeling').fill(''); pg.wait_for_timeout(400)
+    ok('deadline: eigen datum leeg -> live regelingsdatum (2 dagen) zonder snapshot', fr(pg,8)['eigen_deadline'] is None and 'Overschreven Regeling' in kpi(pg,'Eerstvolgende deadline') and '2 dagen' in kpi(pg,'Eerstvolgende deadline'), kpi(pg,'Eerstvolgende deadline'))
+    # herinnering en notitie
+    f8.get_by_label('Herinnering, Overschreven Regeling').click(); pg.wait_for_timeout(300)
+    ok('herinnering: uitgezet en opgeslagen', fr(pg,8)['reminder_enabled'] is False)
+    f8.get_by_label('Notitie, Overschreven Regeling').fill('Bellen met Jan'); f8.get_by_label('Notitie, Overschreven Regeling').blur(); pg.wait_for_timeout(300)
+    ok('notitie opgeslagen', fr(pg,8)['notes']=='Bellen met Jan')
+    # verwijderen
+    f5=regel(pg,'Verstreken Regeling')
+    f5.get_by_role('button',name='Verwijderen uit dekkingsplan, Verstreken Regeling').click(); pg.wait_for_timeout(150)
+    ok('verwijderen: eerst bevestiging', f5.get_by_role('button',name='Ja, verwijderen').count()==1 and fr(pg,5) is not None)
+    f5.get_by_role('button',name='Annuleren').click(); pg.wait_for_timeout(100)
+    ok('verwijderen: annuleren laat regel staan', fr(pg,5) is not None)
+    f5.get_by_role('button',name='Verwijderen uit dekkingsplan, Verstreken Regeling').click(); f5.get_by_role('button',name='Ja, verwijderen').click(); pg.wait_for_timeout(400)
+    ok('verwijderen: regel weg uit database en scherm, andere regels onaangeroerd', fr(pg,5) is None and pg.locator('[data-testid="pf-regel"]').count()==7 and fr(pg,10) is not None)
+    ok('bewerken: geen pageerrors', not pg.errs, '; '.join(pg.errs)[:300])
+    # --- Dashboard = detail
+    detail={k:kpi(pg,k) for k in ['Toegekend','Aangevraagd','Overige dekking','Nog te financieren']}
+    dw=[re.search(r'€ ([\d\.]+)',v).group(1) for v in detail.values()]
+    pg.locator('a[href="#/kompas/dashboard"]').first.click(); pg.wait_for_timeout(1500)
+    k1=pg.locator('[data-testid="dashboard-project"]').filter(has_text='Buurtkeuken De Brug').first
+    ok('Dashboard = dossier: Toegekend/Aangevraagd/Overige/Nog te financieren identiek', kaart_waarden(pg,k1)==dw, f'{kaart_waarden(pg,k1)} vs {dw}')
+    ok('Dashboard = dossier: eerstvolgende deadline identiek (Overschreven Regeling)', 'Overschreven Regeling' in k1.locator('[data-testid="project-deadline"]').inner_text())
+    ok('Dashboard: geen GEHEIM en geen LEGACY na wijzigingen', 'GEHEIM' not in txt(pg) and 'LEGACY' not in txt(pg))
+    ctx.close()
+    # --- Gesprekken / Documenten / toetsenbord
+    ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}?tab=gesprekken')
+    ok('deeplink ?tab=gesprekken opent het tabblad', pg.locator('[data-testid="tab-btn-gesprekken"]').get_attribute('aria-selected')=='true')
+    ok('Gesprekken: alleen eigen gesprek van dit project', pg.locator('[data-testid="detail-gesprek"]').count()==1 and 'Projectplan Buurtkeuken' in txt(pg) and 'Losse vraag' not in txt(pg) and 'GEHEIM' not in txt(pg))
+    pg.locator('[data-testid="detail-gesprek"]').get_by_role('button',name='Open gesprek').click(); pg.wait_for_timeout(1500)
+    ok('Gesprekken: Open gesprek -> chat met actief project', pg.evaluate('location.hash')=='#/kompas' and 'Actief project: Buurtkeuken De Brug' in txt(pg) and 'Kun je me helpen met een projectplan?' in txt(pg))
+    ctx.close()
+    ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}')
+    pg.locator('[data-testid="tab-btn-documenten"]').click(); pg.wait_for_timeout(200)
+    ok('Documenten: eigen projectdocument zichtbaar', 'Projectplan - concept' in pg.locator('[data-testid="tab-documenten"]').inner_text() and pg.locator('[data-testid="detail-document"]').count()==1)
+    pg.locator('[data-testid="tab-btn-overzicht"]').focus(); pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(150)
+    ok('toetsenbord: pijl rechts -> Projectfinanciering geselecteerd en gefocust', pg.locator('[data-testid="tab-btn-projectfinanciering"]').get_attribute('aria-selected')=='true' and pg.evaluate("document.activeElement.dataset.testid")=='tab-btn-projectfinanciering')
+    pg.keyboard.press('End'); pg.wait_for_timeout(100)
+    ok('toetsenbord: End -> laatste tab', pg.locator('[data-testid="tab-btn-gesprekken"]').get_attribute('aria-selected')=='true')
+    ctx.close()
+    # --- Bespreek met Subsidiekompas
+    ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P2}')
+    ok('project zonder financiering: dossier werkt, KPI\'s € 0 en Nog te financieren —', '—' in kpi(pg,'Totale begroting') and '€ 0' in kpi(pg,'Toegekend'))
+    pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(300)
+    ok('project zonder financiering: lege staat, geen fout', pg.locator('[data-testid="pf-leeg"]').count()==1 and pg.locator('[data-testid="pf-fout"]').count()==0)
+    pg.get_by_role('button',name='Bespreek met Subsidiekompas').click(); pg.wait_for_timeout(1500)
+    ok('Bespreek met Subsidiekompas -> chat met Actief project: Taalcafe Zuid', pg.evaluate('location.hash')=='#/kompas' and 'Actief project: Taalcafe Zuid' in txt(pg))
+    ctx.close()
+    # --- isolatie
+    for naam,pad in [('ander project',f'/kompas/projecten/{PX}'),('onbekend id','/kompas/projecten/00000000-0000-4000-8000-0000000000aa')]:
+        ctx,pg=nieuw(b,vp,'pro',pad)
+        ok(f'isolatie {naam}: "Project niet gevonden", geen data', pg.locator('[data-testid="project-niet-gevonden"]').count()==1 and 'GEHEIM' not in txt(pg) and '777' not in txt(pg))
+        ok(f'isolatie {naam}: RPC niet aangeroepen', not pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan')"))
+        ctx.close()
+    ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P3}')
+    ok('gearchiveerd project: dossier toont banner', pg.locator('[data-testid="project-gearchiveerd"]').count()==1)
+    ctx.close()
+    # --- Premium: bron zichtbaar
+    ctx,pg=nieuw(b,vp,'premium',f'/kompas/projecten/{P1}?tab=projectfinanciering')
+    t=txt(pg)
+    ok('Premium: Premium-bron toont naam en funder, geen masker-label', 'PREMIUMFONDS Geheimnaam' in t and 'Geheim Premium Fonds' in t and 'Premium-fonds, niet zichtbaar' not in t)
+    ctx.close()
+    # --- Free: ongewijzigd
+    ctx,pg=nieuw(b,vp,'free',f'/kompas/projecten/{P1}')
+    ok('Free: dossier = upsell, geen data, geen werknav, geen RPC', 'Buurtkeuken' not in txt(pg) and nav(pg).count()==0 and pg.get_by_role('button',name='Bekijk de abonnementen').count()==1 and not pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan')"))
+    ctx.close()
+    ctx,pg=nieuw(b,vp,'free','/kompas')
+    ok('Free chat: geen RPC en geen funding-queries', not pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan'||l.tabel==='subsidie_kompas_program_funding')"))
+    ctx.close()
+    ctx,pg=nieuw(b,vp,'free','/kompas/projecten')
+    ok('Free Projecten: geen RPC, geen Open project-link, geen funding-queries', not pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan'||l.tabel==='subsidie_kompas_program_funding')") and pg.locator('[data-testid="open-project"]').count()==0, txt(pg)[:200])
+    ctx.close()
+    # --- RPC niet beschikbaar / fout
+    for fout,meld in [('niet-beschikbaar','nog niet beschikbaar'),('fout','kon niet worden geladen')]:
+        ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}?tab=projectfinanciering',init=f"window.__RPCFOUT='{fout}'")
+        ok(f'RPC {fout}: duidelijke melding in dossier, geen crash', pg.locator('[data-testid="pf-fout"]').count()==1 and meld in pg.locator('[data-testid="pf-fout"]').inner_text() and not pg.errs, '; '.join(pg.errs)[:200])
+        ok(f'RPC {fout}: begroting en projectgegevens blijven werken', '€ 100.000' in kpi(pg,'Totale begroting'))
+        pg.goto(f'{BASE}?tier=pro#/kompas/dashboard'); pg.wait_for_timeout(1500)
+        ok(f'RPC {fout}: Dashboard toont melding, project blijft zichtbaar', pg.locator('[data-testid="financiering-fout"]').count()==1 and pg.locator('[data-testid="dashboard-project"]').count()==2 and not pg.errs)
+        ctx.close()
+    # --- ProjectenPage
+    ctx,pg=nieuw(b,vp,'pro','/kompas/projecten')
+    t=txt(pg)
+    k=pg.locator('[data-testid="open-project"]')
+    ok('Projecten: Open project-link per actief project met UUID (3 eigen)', k.count()==3 and k.first.get_attribute('href').startswith('#/kompas/projecten/'), str(k.count()))
+    ok('Projecten: aantal regelingen komt uit het dekkingsplan (8)', '8 regelingen in het dekkingsplan' in t, t[:400])
+    ok('Projecten: komende deadlines uit het dekkingsplan, niet uit legacy', pg.locator('[data-testid="projecten-komende-deadline"]').count()==3 and 'Oranje Fonds Burenhulp' in t and 'LEGACY' not in t)
+    pg.get_by_role('button',name='Bewerken').first.click(); pg.wait_for_timeout(400)
+    ok('Projecten formulier: dekkingsplan-verwijzing naar projectfinancieringstab, geen oude regelingen-editor', pg.locator('[data-testid="form-dekkingsplan-verwijzing"]').count()==1 and 'Aan te vragen bedrag' not in pg.content() and 'LEGACY' not in txt(pg))
+    # linked_schemes wordt niet meer geschreven
+    ctx.close()
+    ctx,pg=nieuw(b,vp,'pro','/kompas/projecten')
+    pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{P1}").linked_schemes=["SENTINEL"]')
+    pg.locator('div').filter(has_text=re.compile(r'^Buurtkeuken De Brug')).get_by_role('button',name='Bewerken').last.click(); pg.wait_for_timeout(300)
+    naam=pg.locator('input[value="Buurtkeuken De Brug"]').first
+    naam.fill('Buurtkeuken De Brug 2'); pg.get_by_role('button',name=re.compile('Project opslaan|Opslaan',re.I)).first.click(); pg.wait_for_timeout(900)
+    rij=pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{P1}")')
+    ok('linked_schemes: opslaan van project schrijft de kolom niet meer (sentinel onaangeroerd)', rij['name']=='Buurtkeuken De Brug 2' and rij['linked_schemes']==['SENTINEL'], str(rij['linked_schemes']))
+    ctx.close()
+    ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten?bewerk={P2}')
+    ok('Projecten: ?bewerk=<id> opent het formulier van dat project', pg.locator('input[value="Taalcafe Zuid"]').count()>=1)
+    ctx.close()
+    # --- Deadlines: "Opnemen in een project" schrijft naar de fundingtabel (geen linked_schemes)
+    NIEUW='b0000000-0000-4000-8000-000000000001'
+    ctx,pg=nieuw(b,vp,'pro','/kompas/deadlines')
+    pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{P2}").linked_schemes=["SENTINEL"]')
+    pg.get_by_text('Nieuwe Testregeling').first.click(); pg.wait_for_timeout(500)
+    pg.get_by_label('Kies een project').select_option(label='Taalcafe Zuid')
+    pg.get_by_role('button',name='Toevoegen').click(); pg.wait_for_timeout(600)
+    rijen=pg.evaluate(f'window.__DBL.subsidie_kompas_program_funding.filter(r=>r.program_id==="{P2}")')
+    ok('Deadlines: regel opgeslagen als verwijzing (scheme_id, status interesting, geen kopie van naam/bedrag/deadline)', len(rijen)==1 and rijen[0]['scheme_id']==NIEUW and rijen[0]['status']=='interesting' and rijen[0]['user_id']=='u1' and not any(k in rijen[0] for k in ['naam','name','deadline','budget','funder']), str(rijen))
+    ok('Deadlines: bevestiging getoond', 'is opgenomen in het dekkingsplan van Taalcafe Zuid' in txt(pg), txt(pg)[-300:])
+    ok('Deadlines: project.linked_schemes niet geschreven', pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{P2}").linked_schemes')==['SENTINEL'])
+    pg.get_by_role('button',name='Toevoegen').click(); pg.wait_for_timeout(600)
+    ok('Deadlines: dubbel toevoegen -> vriendelijke melding, geen tweede regel', 'staat al in het dekkingsplan' in txt(pg) and pg.evaluate(f'window.__DBL.subsidie_kompas_program_funding.filter(r=>r.program_id==="{P2}").length')==1)
+    ok('Deadlines: geen pageerrors', not pg.errs, '; '.join(pg.errs)[:200])
+    pg.evaluate(f"location.hash='#/kompas/projecten/{P2}?tab=projectfinanciering'"); pg.wait_for_timeout(1200)
+    ok('na toevoegen: dossier toont de regel met live bronnaam en brondeadline (status Interessant)', pg.locator('[data-testid="pf-regel"]').count()==1 and 'Nieuwe Testregeling' in pg.locator('[data-testid="pf-regel-naam"]').inner_text() and 'Datum van de regeling' in pg.locator('[data-testid="pf-regel-deadline"]').inner_text(), txt(pg)[:300])
+    ctx.close()
+    # --- Fase 1-regressie: werknav mag het contextpaneel niet afdekken; organisatiemenu blijft boven de pagina
+    ctx,pg=nieuw(b,vp,'pro','/kompas')
+    pg.get_by_role('button',name=re.compile('Eerdere gesprekken')).first.click(); pg.wait_for_timeout(500)
+    pg.get_by_label('Sluiten').first.click(timeout=3000); pg.wait_for_timeout(400)
+    ok('werknav: "Sluiten" van het contextpaneel is klikbaar (nav ligt niet erover)', pg.locator('[role=dialog]').count()==0)
+    nav(pg).locator('.fwk-wn-org').click(); pg.wait_for_timeout(200)
+    bb=pg.locator('#fwk-wn-menu').bounding_box()
+    ok('werknav: organisatiemenu ligt boven de pagina-inhoud', pg.evaluate("(([x,y])=>{const e=document.elementFromPoint(x,y);return !!(e&&e.closest('#fwk-wn-menu'))})", [bb['x']+bb['width']/2, bb['y']+bb['height']-10]))
+    ctx.close()
+    # ============ Mobiel
+    vm={'width':375,'height':812}
+    for tab in ['overzicht','projectfinanciering','documenten','gesprekken']:
+        ctx,pg=nieuw(b,vm,'pro',f'/kompas/projecten/{P1}?tab={tab}')
+        ok(f'mobiel {tab}: geen horizontale scroll', geenhscroll(pg), str(pg.evaluate('document.documentElement.scrollWidth')))
+        ok(f'mobiel {tab}: geen pageerrors', not pg.errs, '; '.join(pg.errs)[:200])
+        if tab=='projectfinanciering':
+            r0=pg.locator('[data-testid="pf-regel"]').first
+            ok('mobiel: regels als kaarten (kopregel verborgen, labels per veld zichtbaar)', pg.locator('.fwk-pf-kop').is_hidden() and r0.locator('.fwk-pf-label').first.is_visible())
+            bb=[r.bounding_box() for r in pg.locator('[data-testid="pf-regel"]').all()]
+            ok('mobiel: kaarten passen in de breedte', all(x['x']>=0 and x['x']+x['width']<=375 for x in bb))
+            pg.screenshot(path='shots/f2_mobile_projectfinanciering.png', full_page=True)
+        if tab=='overzicht': pg.screenshot(path='shots/f2_mobile_overzicht.png', full_page=True)
+        ctx.close()
+    ctx,pg=nieuw(b,vm,'pro','/kompas/dashboard')
+    ok('mobiel dashboard: geen horizontale scroll', geenhscroll(pg))
+    ctx.close()
+    # bureaublad extra: geen horizontale scroll
+    ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}?tab=projectfinanciering')
+    ok('bureaublad: geen horizontale scroll', geenhscroll(pg))
+    ctx.close()
+    b.close()
+srv.terminate()
+f=[r for r in res if not r[1]]
+print(f'\n{len(res)-len(f)}/{len(res)} geslaagd')
+sys.exit(1 if f else 0)

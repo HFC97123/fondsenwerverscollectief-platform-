@@ -18,7 +18,7 @@ with sync_playwright() as p:
                 ok(f'{label}/free chat: geen Exporteren', pg.locator('button[aria-haspopup="menu"]').count()==0 and pg.locator('text=Context').count()>=0)
                 ok(f'{label}/free: geen pageerrors', not errs, '; '.join(errs)[:200]); ctx.close(); continue
             pg.get_by_role('button',name=re.compile('Eerdere gesprekken')).first.click(); pg.wait_for_timeout(600)
-            ex=pg.locator('button[aria-haspopup="menu"]')
+            ex=pg.locator('button[aria-haspopup="menu"]:not(.fwk-wn-org)')
             ok(f'{label}/{tier} Eerdere gesprekken: 1 exportknop, geen gesprek van ander', ex.count()==1 and pg.locator('text=GEHEIM').count()==0, str(ex.count()))
             pg.screenshot(path=f'shot2_{label}_{tier}_historie.png')
             ex.first.click()

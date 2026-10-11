@@ -155,7 +155,8 @@ function naarKolomPatch(project) {
     own_contribution: getal(project.eigenBijdrage),
     previous_grants: project.eerder || [],
     cofinanciers: project.cofin || [],
-    linked_schemes: project.regelingen || [],
+    // linked_schemes wordt sinds Fase 2 niet meer geschreven: het dekkingsplan staat in
+    // subsidie_kompas_program_funding. De kolom blijft bestaan en wordt nog gelezen (legacy/rollback).
     activities: project.activiteiten || null,
     impact_description: project.impact || null,
     planning: project.planning || null,

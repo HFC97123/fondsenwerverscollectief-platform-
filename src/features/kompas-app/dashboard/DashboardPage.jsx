@@ -13,9 +13,9 @@ import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
 import { useApp } from '../useKompasApp.js';
 import { useKompas } from '../KompasStore.jsx';
-import { bouwDashboard, dagenTekst, formatDatum, formatEuro, formatTijd, STATUS_LABEL } from './dashboardData.js';
-
-const KLEUR = { toegekend: '#4E9A6C', aangevraagd: '#7FB3D5', overige: '#A8D5BA', nogNodig: '#E9EFEB' };
+import { bouwDashboard, dagenTekst, formatDatum, formatEuro, formatTijd } from './dashboardData.js';
+import { useDekkingsplannen } from '../financiering/useProjectFinanciering.js';
+import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 
 const MAX_PROJECTEN = 6;
 
@@ -23,28 +23,6 @@ const kaartStijl = css('box-sizing: border-box; padding: 20px 22px; border: 1px 
 const labelStijl = css("font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;");
 const linkStijl = css("font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #4E9A6C; text-decoration: none; cursor: pointer; background: none; border: none; padding: 0;");
 const tekstStijl = css("font-family: 'Mulish', sans-serif; font-size: 14.5px; line-height: 1.55; color: #4B5C58;");
-
-const STATUS_CHIP = {
-  interesting: { bg: '#EAF1F6', color: '#2C4A5E', border: '#CFDFEA' },
-  preparing: { bg: '#FBF1E3', color: '#8A5A16', border: '#EEDCC0' },
-  submitted: { bg: '#EAF4EE', color: '#2F6D47', border: '#CFE4D7' },
-  awarded: { bg: '#EAF4EE', color: '#2F6D47', border: '#CFE4D7' },
-  rejected: { bg: '#F9ECEA', color: '#9E3B2C', border: '#EDD3CE' },
-};
-
-function StatusChip({ status }) {
-  const s = STATUS_CHIP[status] || STATUS_CHIP.interesting;
-
-  return (
-    <span
-      style={css(
-        `display: inline-flex; padding: 3px 10px; border: 1px solid ${s.border}; border-radius: 999px; background: ${s.bg}; color: ${s.color}; font-family: 'Mulish', sans-serif; font-size: 12px; font-weight: 800; white-space: nowrap;`,
-      )}
-    >
-      {STATUS_LABEL[status] || status}
-    </span>
-  );
-}
 
 function Sectie({ titel, actie, children, testid }) {
   return (
@@ -70,24 +48,6 @@ function Kpi({ label, waarde, kleur }) {
         <span>{label}</span>
       </div>
       <div style={css("margin-top: 2px; font-family: 'Newsreader', serif; font-size: 20px; font-weight: 600; color: #2C4A5E; white-space: nowrap;")}>{waarde}</div>
-    </div>
-  );
-}
-
-function Voortgangsbalk({ dekking, projectNaam }) {
-  const s = dekking.segmenten;
-  const beschrijving = `Financiering van ${projectNaam}: toegekend ${formatEuro(dekking.toegekend)}, aangevraagd ${formatEuro(dekking.aangevraagd)}, overige dekking ${formatEuro(dekking.overige)}, nog te financieren ${formatEuro(dekking.nogNodig)}.`;
-
-  return (
-    <div
-      role="img"
-      aria-label={beschrijving}
-      data-testid="voortgangsbalk"
-      style={css(`display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: ${KLEUR.nogNodig};`)}
-    >
-      <span data-seg="toegekend" style={css(`width: ${s.toegekend}%; background: ${KLEUR.toegekend};`)} />
-      <span data-seg="aangevraagd" style={css(`width: ${s.aangevraagd}%; background: ${KLEUR.aangevraagd};`)} />
-      <span data-seg="overige" style={css(`width: ${s.overige}%; background: ${KLEUR.overige};`)} />
     </div>
   );
 }
@@ -184,9 +144,20 @@ export default function DashboardPage() {
   // Zelfde regel als hasPlanTools in KompasToolPage en de navigatie in KompasApp.
   const paid = app.isAdmin || tier === 'pro' || tier === 'premium';
 
+  // Financiering: dezelfde bron (kompas_dekkingsplan) en dezelfde rekenmodule als het projectdossier.
+  const projectIds = useMemo(() => (paid ? (store.projects || []).filter((p) => !p.gearchiveerd).map((p) => p.id) : []), [paid, store.projects]);
+  const financiering = useDekkingsplannen(projectIds);
+
   const data = useMemo(
-    () => bouwDashboard({ projects: store.projects, conversations: store.conversations, orgProfile: store.orgProfile, nu: new Date() }),
-    [store.projects, store.conversations, store.orgProfile],
+    () =>
+      bouwDashboard({
+        projects: store.projects,
+        funding: financiering.perProject,
+        conversations: store.conversations,
+        orgProfile: store.orgProfile,
+        nu: new Date(),
+      }),
+    [store.projects, financiering.perProject, store.conversations, store.orgProfile],
   );
 
   if (!paid) {
@@ -223,6 +194,14 @@ export default function DashboardPage() {
           </Button>
         </div>
       </Kop>
+
+      {financiering.status === 'fout' && (
+        <div role="status" data-testid="financiering-fout" style={{ ...tekstStijl, marginBottom: '12px', padding: '10px 14px', border: '1px solid #EEDCC0', borderRadius: '12px', background: '#FBF1E3', color: '#8A5A16' }}>
+          {financiering.fout === 'niet-beschikbaar'
+            ? 'Projectfinanciering is nog niet beschikbaar; de financieringsbedragen staan daarom tijdelijk op nul.'
+            : 'De projectfinanciering kon niet worden geladen; de financieringsbedragen zijn daarom nog niet volledig.'}
+        </div>
+      )}
 
       <Sectie
         testid="dashboard-projecten"

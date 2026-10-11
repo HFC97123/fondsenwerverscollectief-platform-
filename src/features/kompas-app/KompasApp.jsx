@@ -10,6 +10,7 @@ import ProjectenPage from './ProjectenPage.jsx';
 import DocumentatiePage from './DocumentatiePage.jsx';
 import AccountPage from './AccountPage.jsx';
 import DashboardPage from './dashboard/DashboardPage.jsx';
+import ProjectDetailPage from './projectdossier/ProjectDetailPage.jsx';
 import KompasWerkNav from './KompasWerkNav.jsx';
 import { WerkNavContext } from './werkNavContext.js';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
@@ -29,7 +30,9 @@ const PAGINAS = {
 // hier dezelfde Subsidie Kompas-kop, zodat de knop naar de chatbot overal bereikbaar is.
 const KOP_VAN_KOMPASAPP = new Set(['/kompas/dashboard', '/kompas/organisatie', '/kompas/projecten', '/kompas/documentatie', '/kompas/account']);
 
-export default function KompasApp({ route }) {
+export default function KompasApp({ route, param }) {
+  // /kompas/projecten/<id> is het projectdossier (geen eigen menu-item: Projecten blijft actief).
+  const projectId = route.pad === '/kompas/projecten' && param ? String(param).split('/')[0] : null;
   const Pagina = PAGINAS[route.pad] || KompasToolPage;
   const auth = useAuth();
   const userId = (auth.user && auth.user.id) || null;
@@ -47,7 +50,7 @@ export default function KompasApp({ route }) {
       <WerkNavContext.Provider value={heeftWerkNav}>
         <div style={{ fontFamily: "'Mulish', sans-serif" }}>
           {heeftWerkNav ? <KompasWerkNav pad={route.pad} /> : KOP_VAN_KOMPASAPP.has(route.pad) && <KompasSubnav toonPlan />}
-          <Pagina />
+          {projectId ? <ProjectDetailPage projectId={projectId} /> : <Pagina />}
         </div>
       </WerkNavContext.Provider>
     </KompasProvider>

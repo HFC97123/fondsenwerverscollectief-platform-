@@ -1,5 +1,6 @@
-// Node-tests voor de Fase 1-werkruimte: de pure rekenregels van het Dashboard en statische controles
-// op navigatie, route, Free-gedrag en "geen eigen opslag".
+// Node-tests voor het Dashboard van de werkruimte (Fase 1, bijgewerkt voor Fase 2): rekenregels via de gedeelde module,
+// afleidingen en statische controles op navigatie, route, Free-gedrag en "geen eigen opslag".
+// De rekenmodule zelf en het dossier worden uitgebreid getest in dekkingsplan.test.mjs.
 //   node tests/werkruimte/run.mjs   (vanuit de repo-root)
 import { readFileSync } from 'node:fs';
 import {
@@ -12,9 +13,7 @@ import {
   eerstvolgendeDeadline,
   formatDatum,
   formatTijd,
-  fundingRegelsVanProject,
   komendeDeadlines,
-  naarBedrag,
   organisatieVolledigheid,
   overigeDekkingVanProject,
   recenteDocumenten,
@@ -33,14 +32,6 @@ const check = (naam, cond, extra = '') => {
 const gelijk = (naam, a, b) => check(naam, JSON.stringify(a) === JSON.stringify(b), `${JSON.stringify(a)} !== ${JSON.stringify(b)}`);
 
 const NU = new Date(2026, 9, 11, 10, 0, 0); // 11 okt 2026, lokale tijd
-
-// ---------- bedragen ----------
-gelijk('bedrag: getal', naarBedrag(85000), 85000);
-gelijk('bedrag: NL tekst', naarBedrag('€ 85.000'), 85000);
-gelijk('bedrag: NL decimalen', naarBedrag('85.000,50'), 85000.5);
-gelijk('bedrag: kaal', naarBedrag('85000'), 85000);
-gelijk('bedrag: decimaal getal uit DB', naarBedrag(85000.5), 85000.5);
-gelijk('bedrag: leeg/null/ongeldig/negatief', [naarBedrag(''), naarBedrag(null), naarBedrag(undefined), naarBedrag('abc'), naarBedrag(-5), naarBedrag(NaN)], [0, 0, 0, 0, 0, 0]);
 
 // ---------- rekenregels: het voorbeeld uit de opdracht ----------
 const regel = (status, requested, awarded = null, extra = {}) => ({ status, requested, awarded, ...extra });
@@ -93,7 +84,14 @@ const regel = (status, requested, awarded = null, extra = {}) => ({ status, requ
   gelijk('overige dekking apart getoond', d.overige, 15000);
 }
 
-// ---------- legacy project -> regels ----------
+// ---------- project + dekkingsplan (bron: subsidie_kompas_program_funding) ----------
+const rg = (id, naam, status, requested, deadline, extra = {}) => ({ id, naam, funder: `Fonds ${naam}`, status, requested, awarded: null, deadline, reminder: true, ...extra });
+const REGELS_P1 = [
+  rg('r1', 'Regeling A', 'awarded', 30000, '2026-10-01'),
+  rg('r2', 'Regeling B', 'submitted', 20000, '2026-11-20'),
+  rg('r3', 'Regeling C', 'preparing', null, '2026-11-12', { reminder: false }),
+  rg('r4', 'Regeling D', 'rejected', 99999, '2026-12-01'),
+];
 const project = (extra = {}) => ({
   id: 'p1',
   naam: 'Buurtkeuken De Brug',
@@ -107,27 +105,20 @@ const project = (extra = {}) => ({
     { naam: 'Gemeente', bedrag: '5000', status: 'Toegezegd' },
     { naam: 'Bank', bedrag: '9000', status: 'Aangevraagd' },
   ],
-  regelingen: [
-    { id: 'r1', naam: 'Regeling A', funder: 'Fonds A', plan: 'Toegekend', aangevraagd: '30000', deadline: '2026-10-01', herinner: true },
-    { id: 'r2', naam: 'Regeling B', funder: 'Fonds B', plan: 'Aangevraagd', aangevraagd: '20000', deadline: '2026-11-20' },
-    { id: 'r3', naam: 'Regeling C', funder: 'Fonds C', plan: 'Gepland', aangevraagd: '', deadline: '2026-11-12', herinner: false },
-    { id: 'r4', naam: 'Regeling D', funder: 'Fonds D', plan: 'Afgewezen', aangevraagd: '99999', deadline: '2026-12-01' },
-  ],
+  // Legacy-kolom: wordt niet meer gelezen voor financiering (moet de uitkomst niet beïnvloeden).
+  regelingen: [{ id: 'l1', naam: 'LEGACY', plan: 'Toegekend', aangevraagd: '99999', deadline: '2026-10-15' }],
   docs: [],
   gearchiveerd: false,
   ...extra,
 });
 {
-  const regels = fundingRegelsVanProject(project());
-  gelijk('legacy: 4 regels', regels.length, 4);
-  gelijk('legacy: statusmapping', regels.map((r) => r.status), ['awarded', 'submitted', 'preparing', 'rejected']);
-  check('legacy: herinnering standaard aan, uit bij herinner:false', regels[1].reminder === true && regels[2].reminder === false);
-  gelijk('legacy: overige dekking = eigen bijdrage + toegezegde co-financiers (eerdere subsidies en niet-toegezegd tellen niet)', overigeDekkingVanProject(project()), 15000);
-  const d = dekkingVanProject(project());
-  gelijk('legacy: dekking toegekend/aangevraagd/overige/nog', [d.toegekend, d.aangevraagd, d.overige, d.nogNodig], [30000, 20000, 15000, 35000]);
-  gelijk('project zonder regelingen werkt', fundingRegelsVanProject({ id: 'x' }).length, 0);
+  gelijk('overige dekking = alleen eigen bijdrage (co-financiers met tekstbedragen en eerdere subsidies tellen niet)', overigeDekkingVanProject(project()), 10000);
+  const d = dekkingVanProject(project(), REGELS_P1);
+  gelijk('dekking toegekend/aangevraagd/overige/nog', [d.toegekend, d.aangevraagd, d.overige, d.nogNodig], [30000, 20000, 10000, 40000]);
+  gelijk('legacy linked_schemes (project.regelingen) beïnvloedt de dekking niet', dekkingVanProject(project(), []).toegekend, 0);
+  gelijk('project zonder regels werkt', dekkingVanProject(project(), undefined).nogNodig, 90000);
   gelijk('project zonder alles werkt', dekkingVanProject({ id: 'x' }).nogNodig, 0);
-  gelijk('regelingen is geen array -> geen crash', fundingRegelsVanProject({ id: 'x', regelingen: 'kapot' }).length, 0);
+  gelijk('co-financiers worden gemeld als niet meegeteld', dekkingVanProject(project(), REGELS_P1).cofinNietMeegeteld, 2);
 }
 
 // ---------- deadlines ----------
@@ -139,7 +130,7 @@ gelijk('datumnotatie', formatDatum('2026-11-12'), '12 nov 2026');
 gelijk('dagentekst', [dagenTekst(0), dagenTekst(1), dagenTekst(5), dagenTekst(-2), dagenTekst(null)], ['vandaag', 'morgen', 'over 5 dagen', 'verstreken', '']);
 gelijk('actieve statussen', ACTIEVE_STATUSSEN, ['interesting', 'preparing']);
 {
-  const kd = komendeDeadlines([project()], NU);
+  const kd = komendeDeadlines([project()], { p1: REGELS_P1 }, NU);
   gelijk('komend: alleen actieve regel met toekomstige deadline', kd.map((x) => x.naam), ['Regeling C']);
   check('komend: verstreken deadline (Regeling A) niet getoond', !kd.some((x) => x.naam === 'Regeling A'));
   check('komend: aangevraagde regel niet getoond', !kd.some((x) => x.naam === 'Regeling B'));
@@ -150,20 +141,21 @@ gelijk('actieve statussen', ACTIEVE_STATUSSEN, ['interesting', 'preparing']);
   const p2 = project({
     id: 'p2',
     naam: 'Tweede',
-    regelingen: [
-      { id: 'a', naam: 'Vandaag open', plan: 'Gepland', aangevraagd: '1', deadline: '2026-10-11' },
-      { id: 'b', naam: 'Kapotte datum', plan: 'Gepland', aangevraagd: '1', deadline: '31-12-2026' },
-      { id: 'c', naam: 'Geen datum', plan: 'Gepland', aangevraagd: '1' },
-      { id: 'd', naam: 'Later', plan: 'Gepland', aangevraagd: '1', deadline: '2027-01-05' },
-    ],
   });
-  const archief = project({ id: 'p3', naam: 'Archief', gearchiveerd: true, regelingen: [{ id: 'z', naam: 'Archief regeling', plan: 'Gepland', deadline: '2026-10-20' }] });
-  const kd = komendeDeadlines([project(), p2, archief], NU);
+  const REGELS_P2 = [
+    rg('a', 'Vandaag open', 'interesting', 1, '2026-10-11'),
+    rg('b', 'Kapotte datum', 'interesting', 1, '31-12-2026'),
+    rg('c', 'Geen datum', 'interesting', 1, null),
+    rg('d', 'Later', 'preparing', 1, '2027-01-05'),
+  ];
+  const archief = project({ id: 'p3', naam: 'Archief', gearchiveerd: true });
+  const FUND = { p1: REGELS_P1, p2: REGELS_P2, p3: [rg('z', 'Archief regeling', 'interesting', 1, '2026-10-20')] };
+  const kd = komendeDeadlines([project(), p2, archief], FUND, NU);
   gelijk('komend: gesorteerd, vandaag telt, kapotte/ontbrekende datum niet, archief niet', kd.map((x) => x.naam), ['Vandaag open', 'Regeling C', 'Later']);
-  gelijk('komend: max wordt gerespecteerd', komendeDeadlines([project(), p2], NU, 1).length, 1);
-  const ed = eerstvolgendeDeadline(fundingRegelsVanProject(project()), NU);
+  gelijk('komend: max wordt gerespecteerd', komendeDeadlines([project(), p2], FUND, NU, 1).length, 1);
+  const ed = eerstvolgendeDeadline(REGELS_P1, NU);
   gelijk('eerstvolgende deadline van project', [ed.datum, ed.naam, ed.dagen], ['2026-11-12', 'Regeling C', 32]);
-  gelijk('geen komende deadline -> null', eerstvolgendeDeadline(fundingRegelsVanProject({ id: 'x', regelingen: [{ id: 1, naam: 'Oud', plan: 'Gepland', deadline: '2026-01-01' }] }), NU), null);
+  gelijk('geen komende deadline -> null', eerstvolgendeDeadline([rg('o', 'Oud', 'interesting', 1, '2026-01-01')], NU), null);
 }
 
 // ---------- gesprekken ----------
@@ -217,12 +209,14 @@ gelijk('tijd: ongeldig/leeg', [formatTijd('', NU), formatTijd('geen-datum', NU),
 {
   const d = bouwDashboard({
     projects: [project(), project({ id: 'p2', naam: 'Zonder financiering', regelingen: [], begroting: '', eigenBijdrage: '', cofin: [] }), project({ id: 'p3', naam: 'Archief', gearchiveerd: true })],
+    funding: { p1: REGELS_P1 },
     conversations: [],
     orgProfile: {},
     nu: NU,
   });
   gelijk('dashboard: gearchiveerd project niet getoond', d.projecten.map((p) => p.id), ['p1', 'p2']);
   gelijk('dashboard: project zonder funding werkt', [d.projecten[1].aantalRegels, d.projecten[1].volgendeDeadline, d.projecten[1].dekking.heeftBegroting], [0, null, false]);
+  gelijk('dashboard: dekking identiek aan dekkingVanProject (één rekenmodule)', d.projecten[0].dekking, dekkingVanProject(project(), REGELS_P1));
   gelijk('dashboard: periode en locatie', [d.projecten[0].periode, d.projecten[0].locatie], ['jan 2027 – dec 2027', 'Utrecht-Noord']);
   check('dashboard: leeg alles crasht niet', (() => { try { bouwDashboard({}); bouwDashboard({ projects: null, conversations: null, orgProfile: null }); return true; } catch (e) { return false; } })());
 }
@@ -256,7 +250,8 @@ const lees = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8')
   check('dashboard: geen AI-aanroep', !/askKompas|askKompasStream|functions\.invoke/.test(dash));
   check('dashboard: alleen leesacties op de store (geen save/delete)', !/store\.(saveProject|deleteProject|archiveProject|werkProjectBij|setOrgField|verwijderGesprek)/.test(dash));
   const data = lees('src/features/kompas-app/dashboard/dashboardData.js');
-  check('dashboardData: puur (geen imports)', !/^\s*import\s/m.test(data));
+  check('dashboardData: puur (alleen de gedeelde rekenmodule als import)', (data.match(/^\s*import\s/gm) || []).length === 1 && data.includes("from '../financiering/dekkingsplan.js'"));
+  check('dashboardData: geen eigen financiële rekenlogica meer (geen reduce/sommen)', !/reduce\(|\+= |Math\.max/.test(data));
 
   const store = lees('src/features/kompas-app/KompasStore.jsx');
   check('store: chatverzoek is een ref (geen opslag) en wordt eenmalig overgenomen', /chatVerzoekRef = useRef\(null\)/.test(store) && /neemChatVerzoek: \(\) => \{[\s\S]*?chatVerzoekRef\.current = null;/.test(store));

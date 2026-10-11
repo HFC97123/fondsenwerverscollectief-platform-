@@ -5,22 +5,45 @@ var tier=q.get('tier')||'pro';
 window.__TIER=tier;
 var P1='11111111-1111-4111-8111-111111111111',P2='22222222-2222-4222-8222-222222222222',P3='33333333-3333-4333-8333-333333333333',PX='99999999-9999-4999-8999-999999999999';
 var P=function(id,naam,extra){return Object.assign({id:id,user_id:'u1',organization_id:'o1',name:naam,program_label:'Samen Eten',target_groups:'Ouderen',location:'Utrecht-Noord',period_start:'jan 2027',period_end:'dec 2027',description:'Wekelijks een warme maaltijd.',goals:'40 gasten.',partners:'Wijkcentrum',results:null,budget_total:null,requested_amount:null,own_contribution:null,previous_grants:[],cofinanciers:[],linked_schemes:[],activities:'Koken.',impact_description:'Minder eenzaamheid.',planning:'Q1',writing_preferences:null,field_sources:{},archived_at:null,created_at:'2026-09-01T10:00:00Z'},extra||{});};
+var dag=function(n){var d=new Date();d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+var F=function(n){return 'f0000000-0000-4000-8000-'+String(n).padStart(12,'0');};
+var FR=function(n,prog,extra){return Object.assign({id:F(n),user_id:'u1',program_id:prog,scheme_id:null,funder_id:null,requested_amount:null,awarded_amount:null,status:'interesting',eigen_deadline:null,reminder_enabled:true,notes:null,created_at:'2026-10-0'+Math.min(n,9)+'T10:00:00Z'},extra);};
+window.__SEED_DAG=dag;
 var AI='# Projectplan Buurtkeuken\n\n## Aanleiding\nVeel buurtbewoners eten alleen.\n';
-window.__SEED={tables:{
+window.__SEED={bronnen:{
+ s1:{naam:'Buurtbudget Utrecht',funder:'Gemeente Utrecht',website:'https://utrecht.test',deadline:'2027-03-01'},
+ s2:{naam:'Wijkfonds Noord',funder:'Wijkstichting',deadline:'2027-02-01'},
+ s3:{naam:'Oranje Fonds Burenhulp',funder:'Oranje Fonds',website:'https://oranje.test',deadline:dag(9)},
+ s4:{naam:'Afgewezen Regeling',funder:'Fonds Y',deadline:'2027-05-01'},
+ s5:{naam:'Verstreken Regeling',funder:'Fonds Z',deadline:dag(-40)},
+ s6:{naam:'PREMIUMFONDS Geheimnaam',funder:'Geheim Premium Fonds',website:'https://geheim.test',deadline:dag(35),premium:true},
+ s8:{naam:'Overschreven Regeling',funder:'Fonds Over',deadline:dag(60)},
+ s9:{naam:'GEARCHIVEERDE REGELING',funder:'Fonds G',deadline:dag(20)},
+ 'b0000000-0000-4000-8000-000000000001':{naam:'Nieuwe Testregeling',funder:'Testfonds',website:'https://test.test',deadline:dag(50)}},tables:{
+ subsidieregelingen_deadlines:[{id:'b0000000-0000-4000-8000-000000000001',naam:'Nieuwe Testregeling',thema:'Welzijn',werkgebied:'Landelijk',data_tier:'open',source_type:'officieel',status:'Open',status_ruw:'open',volledig_zichtbaar:true,deadline_datum:dag(50),dagen_resterend:50,deadline_periode:null,bedrag_min:1000,bedrag_max:25000,voorwaarden:'Voor buurtinitiatieven.',funder_naam:'Testfonds',funder_website:'https://test.test',funder_type:'Fonds',themas_namen:[],doelgroepen_namen:[],werkgebieden_namen:[],bandbreedte_bijdrage_naam:null,beoordelingsdatum:null,beoordelingsperiode:null,rondes_aantal:0}],
+ funder_deadlines:[],
  profiles:[{id:'u1',first_name:'Lid',last_name:'Test',email:'lid@test.nl',member_type:'lid',status:'approved',role:tier==='admin'?'admin':'member',subscription_tier:tier==='admin'?'premium':tier,subscription_active:tier!=='free'}],
  subsidie_kompas_organizations:[{id:'o1',user_id:'u1',organization_name:'Stichting Buurtkracht',legal_form:'Stichting',mission:'Verbinden van buurtbewoners.',working_area:'Utrecht',themes:'Welzijn',target_groups:'Ouderen',annual_revenue:null,staff_count:null,contact_persons:[],social_media:[]},
    {id:'o2',user_id:'u2',organization_name:'GEHEIM Andere Organisatie',mission:'MAG NIET ZICHTBAAR'}],
  subsidie_kompas_programs:[
   P(P1,'Buurtkeuken De Brug',{budget_total:100000,own_contribution:20000,cofinanciers:[{naam:'Gemeente Utrecht',bedrag:'€ 10.000',status:'Toegezegd'},{naam:'Fonds X',bedrag:'€ 5.000',status:'Aangevraagd'}],
     linked_schemes:[
-     {id:'r1',naam:'Buurtbudget Utrecht',funder:'Gemeente Utrecht',deadline:'2027-03-01',aangevraagd:30000,plan:'Toegekend'},
-     {id:'r2',naam:'Wijkfonds Noord',funder:'Wijkstichting',deadline:'2027-02-01',aangevraagd:15000,plan:'Aangevraagd'},
-     {id:'r3',naam:'Oranje Fonds Burenhulp',funder:'Oranje Fonds',deadline:'2026-10-20',aangevraagd:8000,plan:'Gepland'},
-     {id:'r4',naam:'Afgewezen Regeling',funder:'Fonds Y',deadline:'2027-05-01',aangevraagd:5000,plan:'Afgewezen'},
-     {id:'r5',naam:'Verstreken Regeling',funder:'Fonds Z',deadline:'2026-09-01',aangevraagd:4000,plan:'Gepland'}]}),
+     {id:'l1',naam:'LEGACY REGELING',funder:'Legacy Fonds',deadline:'2026-10-15',aangevraagd:99999,plan:'Toegekend'},
+     {id:'l2',naam:'LEGACY TWEE',funder:'Legacy Fonds',deadline:'2026-10-16',aangevraagd:88888,plan:'Aangevraagd'}]}),
   P(P2,'Taalcafe Zuid',{}),
-  P(P3,'Oud Gearchiveerd Project',{archived_at:'2026-08-01T10:00:00Z',budget_total:1234,linked_schemes:[{id:'g1',naam:'GEARCHIVEERDE REGELING',deadline:'2026-12-01',aangevraagd:1,plan:'Gepland'}]}),
-  P(PX,'GEHEIM Ander Project',{user_id:'u2',organization_id:'o2',description:'MAG NIET',budget_total:777777,linked_schemes:[{id:'x1',naam:'GEHEIM REGELING',deadline:'2026-10-15',aangevraagd:1,plan:'Gepland'}]})],
+  P(P3,'Oud Gearchiveerd Project',{archived_at:'2026-08-01T10:00:00Z',budget_total:1234}),
+  P(PX,'GEHEIM Ander Project',{user_id:'u2',organization_id:'o2',description:'MAG NIET',budget_total:777777})],
+ subsidie_kompas_program_funding:[
+  FR(1,P1,{scheme_id:'s1',status:'awarded',requested_amount:30000,awarded_amount:null}),
+  FR(2,P1,{scheme_id:'s2',status:'submitted',requested_amount:15000}),
+  FR(3,P1,{scheme_id:'s3',status:'preparing',requested_amount:8000,notes:'Intake gehad'}),
+  FR(4,P1,{scheme_id:'s4',status:'rejected',requested_amount:5000}),
+  FR(5,P1,{scheme_id:'s5',status:'interesting',requested_amount:4000}),
+  FR(6,P1,{scheme_id:'s6',status:'interesting',requested_amount:2000,eigen_deadline:dag(30),notes:'Mijn eigen notitie',reminder_enabled:false}),
+  FR(7,P1,{status:'interesting',requested_amount:1000,notes:'Bron verdwenen'}),
+  FR(8,P1,{scheme_id:'s8',status:'interesting',requested_amount:3000,eigen_deadline:dag(40)}),
+  FR(9,P3,{scheme_id:'s9',status:'interesting',requested_amount:1}),
+  FR(10,PX,{user_id:'u2',scheme_id:'s1',status:'awarded',requested_amount:777777,notes:'GEHEIM funding'})],
  subsidie_kompas_knowledge_items:[
   {id:'a0000000-0000-4000-8000-000000000001',program_id:P1,file_name:'Projectplan - concept',title:null,notes:null,extracted_text:AI,doc_type:'Projectplan',version:1,document_context:{},superseded_at:null,created_at:'2026-10-01T10:00:00Z',source_type:'generated'},
   {id:'a0000000-0000-4000-8000-000000000002',program_id:P2,file_name:'Begroting Taalcafe',title:null,notes:null,extracted_text:'x',doc_type:'Begroting',version:1,document_context:{},superseded_at:null,created_at:'2026-10-03T10:00:00Z',source_type:'generated'},

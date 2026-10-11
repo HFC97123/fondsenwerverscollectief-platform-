@@ -104,11 +104,14 @@ export default function KompasWerkNav({ pad }) {
     Promise.resolve(app.logout()).finally(() => app.goHome());
   };
 
+  // Bewust geen z-index op de balk zelf: een eigen stapelcontext boven de chatpagina (z-index 1) legde de
+  // nav over het contextpaneel (Eerdere gesprekken, Organisatie, ...) en maakte "Sluiten" onbereikbaar.
+  // Het organisatiemenu hieronder heeft zijn eigen z-index en blijft boven de pagina.
   return (
     <nav
       aria-label="Hoofdnavigatie Subsidie Kompas"
       data-testid="kompas-werknav"
-      style={css('position: relative; z-index: 5; border-bottom: 1px solid #E1EAE4; background: rgba(247,249,248,0.96);')}
+      style={css('position: relative; border-bottom: 1px solid #E1EAE4; background: rgba(247,249,248,0.96);')}
     >
       <style>{NAV_CSS}</style>
       <div

@@ -1,0 +1,381 @@
+// Projectdossier: één project met zijn financiering, documenten en gesprekken (/kompas/projecten/<id>).
+// Bewust GEEN hoofdmenu-item: u komt hier vanuit Projecten of het Dashboard.
+//
+// - Overzicht gebruikt uitsluitend projectgegevens uit subsidie_kompas_programs (via de store).
+// - Projectfinanciering gebruikt subsidie_kompas_program_funding (via kompas_dekkingsplan) en dezelfde
+//   rekenmodule als het Dashboard; er is geen tweede waarheid.
+// - Documenten en Gesprekken tonen bestaande gegevens van dit project (geen nieuwe opslag).
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { css } from '../../../shared/lib/css.js';
+import { Button } from '../../../shared/ui/index.js';
+import { useApp } from '../useKompasApp.js';
+import { useKompas } from '../KompasStore.jsx';
+import { useProjectFinanciering } from '../financiering/useProjectFinanciering.js';
+import { KLEUR } from '../financiering/FinancieringUi.jsx';
+import { dagenTekst, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, formatTijd } from '../financiering/dekkingsplan.js';
+import ProjectfinancieringTab from './ProjectfinancieringTab.jsx';
+
+const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14.5px; line-height: 1.6; color: #4B5C58;";
+const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;";
+const KAART = 'box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF; min-width: 0;';
+const LINK = "font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #4E9A6C; text-decoration: none; cursor: pointer; background: none; border: none; padding: 0;";
+
+const TABS = [
+  { id: 'overzicht', label: 'Overzicht' },
+  { id: 'projectfinanciering', label: 'Projectfinanciering' },
+  { id: 'documenten', label: 'Documenten' },
+  { id: 'gesprekken', label: 'Gesprekken' },
+];
+
+const CSS_PAGINA = `
+.fwk-pd-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid #E1EAE4; margin: 22px 0 18px; scrollbar-width: thin; }
+.fwk-pd-tab { flex: none; cursor: pointer; min-height: 44px; padding: 10px 16px; border: none; border-bottom: 3px solid transparent; background: none; font-family: 'Mulish', sans-serif; font-size: 14.5px; font-weight: 800; color: #687974; }
+.fwk-pd-tab[aria-selected="true"] { color: #2C4A5E; border-bottom-color: #4E9A6C; }
+.fwk-pd-tab:focus-visible, .fwk-pd-pagina a:focus-visible, .fwk-pd-pagina button:focus-visible { outline: 2px solid #4E9A6C; outline-offset: 2px; }
+.fwk-pd-kpis { display: grid; gap: 12px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1019px) { .fwk-pd-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 599px) { .fwk-pd-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+`;
+
+// ?tab=<id> in de hash, zodat een tab gedeeld/herladen kan worden.
+function leesTab() {
+  const m = /[?&]tab=([a-z]+)/.exec(window.location.hash || '');
+
+  return m && TABS.some((t) => t.id === m[1]) ? m[1] : 'overzicht';
+}
+
+function zetTabInUrl(id) {
+  try {
+    const [pad] = String(window.location.hash || '').replace(/^#/, '').split('?');
+    const nieuw = `#${pad}${id === 'overzicht' ? '' : `?tab=${id}`}`;
+
+    // replaceState: geen hashchange, dus geen herrender van de hele route en geen extra historie-item.
+    window.history.replaceState(null, '', nieuw);
+  } catch (e) {
+    // Zonder history API blijft de tab gewoon in de component-state.
+  }
+}
+
+function Pagina({ children }) {
+  return (
+    <div className="fwk-pd-pagina" style={css('min-height: 100vh; background: #F7F9F8;')}>
+      <style>{CSS_PAGINA}</style>
+      <div style={css('max-width: 1120px; margin: 0 auto; padding: clamp(20px, 3vw, 36px) clamp(16px, 4vw, 24px) 64px;')}>{children}</div>
+    </div>
+  );
+}
+
+function Kpi({ naam, waarde, sub, kleur }) {
+  return (
+    <div data-testid="detail-kpi" data-kpi={naam} style={css(`${KAART} padding: 14px 16px; border-radius: 16px;`)}>
+      <div style={css(`display: flex; align-items: center; gap: 6px; ${TEKST} font-size: 12.5px; font-weight: 700; color: #7B8985;`)}>
+        {kleur && <span aria-hidden="true" style={css(`display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: ${kleur}; border: 1px solid #CFDDD5; flex: none;`)} />}
+        <span>{naam}</span>
+      </div>
+      <div style={css("margin-top: 4px; font-family: 'Newsreader', serif; font-size: 20px; font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere;")}>{waarde}</div>
+      {sub && <div style={css(`${TEKST} margin-top: 2px; font-size: 12.5px; color: #7B8985; overflow-wrap: anywhere;`)}>{sub}</div>}
+    </div>
+  );
+}
+
+function Veld({ label, children }) {
+  if (children == null || children === '' || (Array.isArray(children) && !children.length)) {
+    return null;
+  }
+
+  return (
+    <div style={css('min-width: 0;')}>
+      <div style={css(LABEL)}>{label}</div>
+      <div style={css(`${TEKST} margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere;`)}>{children}</div>
+    </div>
+  );
+}
+
+function OverzichtTab({ project }) {
+  const doelgroep = Array.isArray(project.doelgroep) ? project.doelgroep.join(', ') : project.doelgroep;
+  const eerder = Array.isArray(project.eerder) ? project.eerder.filter((x) => x && (x.fonds || x.bedrag)) : [];
+  const cofin = Array.isArray(project.cofin) ? project.cofin.filter((x) => x && (x.naam || x.bedrag)) : [];
+  const periode = [project.periodeVan, project.periodeTot].filter(Boolean).join(' – ');
+  const heeftInhoud = [project.omschrijving, project.doelstellingen, project.activiteiten, project.impact, project.planning, project.partners, project.resultaten, doelgroep, project.programma].some(Boolean);
+
+  return (
+    <div data-testid="tab-overzicht" style={css('display: flex; flex-direction: column; gap: 18px;')}>
+      <section style={css(KAART)}>
+        <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;')}>
+          <h2 style={css(`${LABEL} margin: 0;`)}>Over dit project</h2>
+          <a href={`#/kompas/projecten?bewerk=${project.id}`} style={css(LINK)}>
+            Projectgegevens bewerken
+          </a>
+        </div>
+        {heeftInhoud || periode || project.regio ? (
+          <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px 24px;')}>
+            <Veld label="Programma of onderdeel">{project.programma}</Veld>
+            <Veld label="Doelgroep">{doelgroep}</Veld>
+            <Veld label="Locatie">{project.regio}</Veld>
+            <Veld label="Looptijd">{periode}</Veld>
+            <Veld label="Partners">{project.partners}</Veld>
+            <Veld label="Omschrijving">{project.omschrijving}</Veld>
+            <Veld label="Doelstellingen">{project.doelstellingen}</Veld>
+            <Veld label="Activiteiten">{project.activiteiten}</Veld>
+            <Veld label="Beoogde impact">{project.impact}</Veld>
+            <Veld label="Planning">{project.planning}</Veld>
+            <Veld label="Resultaten">{project.resultaten}</Veld>
+          </div>
+        ) : (
+          <div style={css(`${TEKST} color: #7B8985;`)}>Er zijn nog geen projectgegevens ingevuld. Vul ze aan via “Projectgegevens bewerken”.</div>
+        )}
+      </section>
+
+      {(eerder.length > 0 || cofin.length > 0) && (
+        <section style={css(`${KAART} display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px 24px;`)}>
+          {eerder.length > 0 && (
+            <div data-testid="overzicht-eerder">
+              <h2 style={css(`${LABEL} margin: 0 0 8px;`)}>Eerdere toekenningen en aanvragen</h2>
+              <ul style={css(`${TEKST} margin: 0; padding-left: 18px;`)}>
+                {eerder.map((x, i) => (
+                  <li key={i}>{[x.fonds, x.jaar, x.bedrag, x.uitkomst].filter(Boolean).join(' · ')}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {cofin.length > 0 && (
+            <div data-testid="overzicht-cofin">
+              <h2 style={css(`${LABEL} margin: 0 0 8px;`)}>Co-financiers</h2>
+              <ul style={css(`${TEKST} margin: 0; padding-left: 18px;`)}>
+                {cofin.map((x, i) => (
+                  <li key={i}>{[x.naam, x.bedrag, x.status].filter(Boolean).join(' · ')}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function DocumentenTab({ project }) {
+  const docs = (project.docs || []).filter((d) => d && !d.vervangen);
+
+  return (
+    <section data-testid="tab-documenten" style={css(KAART)}>
+      <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;')}>
+        <h2 style={css(`${LABEL} margin: 0;`)}>Documenten bij dit project</h2>
+        <a href="#/kompas/documentatie" style={css(LINK)}>
+          Naar Documentatie
+        </a>
+      </div>
+      {docs.length ? (
+        <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px;')}>
+          {docs.map((d) => (
+            <li key={d.id || d.naam} data-testid="detail-document">
+              <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{d.naam}</div>
+              <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>
+                {d.soort || 'Overig'}
+                {d.versie > 1 ? ` · versie ${d.versie}` : ''}
+                {d.gemaakt ? ` · ${formatTijd(d.gemaakt, new Date())}` : ''}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div style={css(`${TEKST} color: #7B8985;`)}>Nog geen documenten bij dit project. Documenten die u uploadt of in de chat opslaat, verschijnen hier.</div>
+      )}
+    </section>
+  );
+}
+
+function GesprekkenTab({ project, gesprekken, onOpen, onBespreek }) {
+  return (
+    <section data-testid="tab-gesprekken" style={css(KAART)}>
+      <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;')}>
+        <h2 style={css(`${LABEL} margin: 0;`)}>Gesprekken over dit project</h2>
+        <button type="button" onClick={() => onBespreek(project.id)} style={css(LINK)}>
+          Bespreek met Subsidiekompas
+        </button>
+      </div>
+      {gesprekken.length ? (
+        <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px;')}>
+          {gesprekken.map((g) => (
+            <li key={g.id} data-testid="detail-gesprek" style={css('display: flex; gap: 12px; align-items: center;')}>
+              <div style={css('min-width: 0; flex: 1;')}>
+                <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{g.titel || 'Gesprek'}</div>
+                {g.tijd && <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>{formatTijd(g.tijd, new Date())}</div>}
+              </div>
+              <button type="button" onClick={() => onOpen(g)} style={css(LINK)}>
+                Open gesprek
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div style={css(`${TEKST} color: #7B8985;`)}>Nog geen opgeslagen gesprekken over dit project.</div>
+      )}
+    </section>
+  );
+}
+
+export default function ProjectDetailPage({ projectId }) {
+  const app = useApp();
+  const store = useKompas();
+  const tier = app.subscriptionTier || 'free';
+  // Zelfde regel als hasPlanTools in KompasToolPage en de navigatie in KompasApp.
+  const paid = app.isAdmin || tier === 'pro' || tier === 'premium';
+
+  const project = (store.projects || []).find((p) => p.id === projectId) || null;
+  // Altijd aanroepen (hooks); voor een onbekend of lokaal project doet dit niets.
+  const financiering = useProjectFinanciering(project && paid ? projectId : null);
+  const [tab, setTab] = useState(leesTab);
+  const tabRefs = useRef({});
+
+  const kies = useCallback((id) => {
+    setTab(id);
+    zetTabInUrl(id);
+  }, []);
+
+  const toetsen = (e, index) => {
+    const volgende = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 }[e.key];
+
+    if (volgende == null) {
+      return;
+    }
+
+    e.preventDefault();
+
+    const doel = TABS[(volgende + TABS.length) % TABS.length].id;
+
+    kies(doel);
+
+    if (tabRefs.current[doel]) {
+      tabRefs.current[doel].focus();
+    }
+  };
+
+  const regels = financiering.status === 'klaar' ? financiering.regels : [];
+  const dekking = useMemo(() => dekkingVanProject(project || {}, regels), [project, regels]);
+  const volgende = useMemo(() => eerstvolgendeDeadline(regels, new Date()), [regels]);
+
+  const gesprekken = useMemo(
+    () =>
+      (store.conversations || [])
+        .filter((g) => g && g.id && g.projectId === projectId)
+        .slice()
+        .sort((a, b) => String(b.tijd || '').localeCompare(String(a.tijd || ''))),
+    [store.conversations, projectId],
+  );
+
+  if (!paid) {
+    return (
+      <Pagina>
+        <h1 style={css("margin: 0 0 8px; font-family: 'Newsreader', serif; font-size: 30px; font-weight: 600; color: #2C4A5E;")}>Projectdossier</h1>
+        <p style={css(`${TEKST} max-width: 640px; margin: 0 0 16px;`)}>Met Pro en Premium legt u per project de begroting en het dekkingsplan vast en volgt u de financiering.</p>
+        <Button variant="dark" onClick={app.goAbonnementen}>
+          Bekijk de abonnementen
+        </Button>
+      </Pagina>
+    );
+  }
+
+  if (!project) {
+    return (
+      <Pagina>
+        {store.projectenKlaar ? (
+          <div data-testid="project-niet-gevonden" style={css(KAART)}>
+            <h1 style={css("margin: 0 0 8px; font-family: 'Newsreader', serif; font-size: 26px; font-weight: 600; color: #2C4A5E;")}>Project niet gevonden</h1>
+            <p style={css(`${TEKST} margin: 0 0 14px;`)}>Dit project bestaat niet (meer) in uw account.</p>
+            <a href="#/kompas/projecten" style={css(LINK)}>
+              Naar Projecten
+            </a>
+          </div>
+        ) : (
+          <div data-testid="project-laden" style={css(`${TEKST} color: #7B8985;`)}>Project wordt geladen…</div>
+        )}
+      </Pagina>
+    );
+  }
+
+  const meta = [project.regio, [project.periodeVan, project.periodeTot].filter(Boolean).join(' – ')].filter(Boolean).join(' · ');
+
+  const bespreek = (id) => {
+    store.zetChatVerzoek({ type: 'project', projectId: id });
+    app.goKompas();
+  };
+
+  const openGesprek = (g) => {
+    store.zetChatVerzoek({ type: 'gesprek', gesprekId: g.id, projectId: g.projectId });
+    app.goKompas();
+  };
+
+  return (
+    <Pagina>
+      <div data-testid="project-detail" data-project-id={project.id}>
+        <a href="#/kompas/projecten" style={css(LINK)}>
+          ← Alle projecten
+        </a>
+
+        <div style={css('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin: 10px 0 20px;')}>
+          <div style={css('min-width: 0; flex: 1 1 320px;')}>
+            <h1 data-testid="project-detail-naam" style={css("margin: 0 0 4px; font-family: 'Newsreader', serif; font-size: clamp(26px, 3.6vw, 34px); font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere;")}>
+              {project.naam || 'Naamloos project'}
+            </h1>
+            {meta && <div data-testid="project-detail-meta" style={css(`${TEKST} color: #7B8985;`)}>{meta}</div>}
+          </div>
+          <Button onClick={() => bespreek(project.id)}>Bespreek met Subsidiekompas</Button>
+        </div>
+
+        {project.gearchiveerd && (
+          <div role="status" data-testid="project-gearchiveerd" style={css(`${TEKST} margin-bottom: 14px; padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #EEF3F0; color: #4B5C58;`)}>
+            Dit project is gearchiveerd. U kunt het terugzetten bij Projecten.
+          </div>
+        )}
+
+        <div className="fwk-pd-kpis">
+          <Kpi naam="Totale begroting" waarde={dekking.heeftBegroting ? formatEuro(dekking.begroting) : '—'} kleur="#C5D2CB" />
+          <Kpi naam="Toegekend" waarde={formatEuro(dekking.toegekend)} kleur={KLEUR.toegekend} />
+          <Kpi naam="Aangevraagd" waarde={formatEuro(dekking.aangevraagd)} kleur={KLEUR.aangevraagd} />
+          <Kpi naam="Overige dekking" waarde={formatEuro(dekking.overige)} kleur={KLEUR.overige} />
+          <Kpi
+            naam="Nog te financieren"
+            waarde={dekking.heeftBegroting ? (dekking.volledigGedekt ? 'Volledig gedekt' : formatEuro(dekking.nogNodig)) : '—'}
+            kleur="#E1EAE4"
+          />
+          <Kpi
+            naam="Eerstvolgende deadline"
+            waarde={volgende ? formatDatum(volgende.datum) : 'Geen'}
+            sub={volgende ? `${dagenTekst(volgende.dagen)} · ${volgende.naam}` : null}
+          />
+        </div>
+
+        <div className="fwk-pd-tabs" role="tablist" aria-label="Projectdossier">
+          {TABS.map((t, i) => (
+            <button
+              key={t.id}
+              ref={(el) => {
+                tabRefs.current[t.id] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`pd-tab-${t.id}`}
+              data-testid={`tab-btn-${t.id}`}
+              aria-selected={tab === t.id}
+              aria-controls={`pd-paneel-${t.id}`}
+              tabIndex={tab === t.id ? 0 : -1}
+              className="fwk-pd-tab"
+              onClick={() => kies(t.id)}
+              onKeyDown={(e) => toetsen(e, i)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div role="tabpanel" id={`pd-paneel-${tab}`} aria-labelledby={`pd-tab-${tab}`}>
+          {tab === 'overzicht' && <OverzichtTab project={project} />}
+          {tab === 'projectfinanciering' && <ProjectfinancieringTab project={project} financiering={financiering} dekking={dekking} />}
+          {tab === 'documenten' && <DocumentenTab project={project} />}
+          {tab === 'gesprekken' && <GesprekkenTab project={project} gesprekken={gesprekken} onOpen={openGesprek} onBespreek={bespreek} />}
+        </div>
+      </div>
+    </Pagina>
+  );
+}

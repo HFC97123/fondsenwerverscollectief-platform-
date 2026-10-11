@@ -6,39 +6,17 @@ import { useApp } from './useKompasApp.js';
 import {
   COFIN_STATUSSEN,
   DOC_SOORTEN,
-  PLAN_STATUSSEN,
   PROJECT_EMPTY,
   UITKOMSTEN,
-  berekenDekking,
   useKompas,
 } from './KompasStore.jsx';
 import { haalClassificatiesOp } from '../../data/services/classificaties.js';
 import { Button, ClassificatieSelect, Field, EmptyState, Notice, Panel, PanelHeader, SectionHeading, Toggle, veldStijl, selectStijl } from '../../shared/ui/index.js';
 import ExportMenu from '../../shared/ui/ExportMenu.jsx';
+import { isEchtId } from '../../data/services/projecten.js';
 import { projectExport } from './exportBronnen.js';
-
-const MAANDEN = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
-
-function formatDate(iso) {
-  if (!iso) {
-    return 'doorlopend';
-  }
-
-  const d = new Date(`${iso}T00:00:00`);
-
-  return `${d.getDate()} ${MAANDEN[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
-}
-
-function dagenTot(iso) {
-  if (!iso) {
-    return null;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return Math.round((new Date(`${iso}T00:00:00`) - today) / 86400000);
-}
+import { useDekkingsplannen } from './financiering/useProjectFinanciering.js';
+import { STATUS_LABEL, formatDatum, komendeDeadlines } from './financiering/dekkingsplan.js';
 
 const VELDEN = [
   { n: 'naam', l: 'Naam van het project', p: 'Bijvoorbeeld: Buurtkeuken De Brug', breed: true },
@@ -96,27 +74,32 @@ export default function ProjectenPage({ embedded = false } = {}) {
     };
   }, []);
 
-  const komende = useMemo(() => {
-    const uit = [];
+  // Dekkingsplannen: dezelfde bron (kompas_dekkingsplan) als het projectdossier en het Dashboard.
+  const projectIds = useMemo(() => (paid ? (store.projects || []).filter((p) => !p.gearchiveerd).map((p) => p.id) : []), [paid, store.projects]);
+  const financiering = useDekkingsplannen(projectIds);
 
-    store.projects.forEach((pr) => {
-      (pr.regelingen || []).forEach((r) => {
-        if (!r.deadline || r.plan === 'Toegekend' || r.plan === 'Afgewezen') {
-          return;
-        }
+  const komende = useMemo(() => komendeDeadlines(store.projects, financiering.perProject, new Date(), 6), [store.projects, financiering.perProject]);
 
-        const dagen = dagenTot(r.deadline);
+  // Deep link vanuit het projectdossier: #/kompas/projecten?bewerk=<id> opent het bewerkformulier.
+  const bewerkId = useMemo(() => {
+    const m = /[?&]bewerk=([^&]+)/.exec(window.location.hash || '');
 
-        if (dagen == null || dagen < 0) {
-          return;
-        }
+    return m ? decodeURIComponent(m[1]) : null;
+  }, []);
 
-        uit.push({ ...r, project: pr.naam || 'Naamloos project', dagen });
-      });
-    });
+  useEffect(() => {
+    if (!bewerkId || form) {
+      return;
+    }
 
-    return uit.sort((a, b) => a.dagen - b.dagen).slice(0, 6);
-  }, [store.projects]);
+    const doel = (store.projects || []).find((p) => p.id === bewerkId);
+
+    if (doel) {
+      setForm(JSON.parse(JSON.stringify(doel)));
+      setMelding('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bewerkId, store.projects]);
 
   if (!paid) {
     return (
@@ -240,8 +223,6 @@ export default function ProjectenPage({ embedded = false } = {}) {
     e.target.value = '';
   };
 
-  const dekking = form ? berekenDekking(form) : null;
-
   const rijStyle = css('display: flex; gap: 10px; flex-wrap: wrap; align-items: center;');
   const kaartRij = css('display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 13px 16px; border: 1px solid #E1EAE4; border-radius: 14px; background: #F7F9F8;');
   const verwijderStyle = css('cursor: pointer; min-height: 44px; display: flex; align-items: center; padding: 0 6px; border: none; background: none; color: #9E3B2C; font-size: 13.5px; font-weight: 700;');
@@ -283,13 +264,13 @@ export default function ProjectenPage({ embedded = false } = {}) {
           </div>
 
           <div style={css('display: flex; flex-direction: column; gap: 8px;')}>
-            {komende.map((k, i) => (
-              <div key={`${k.id}-${i}`} style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 12px 16px; border-radius: 14px; background: #FFFFFF;')}>
+            {komende.map((k) => (
+              <div key={k.sleutel} data-testid="projecten-komende-deadline" style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 12px 16px; border-radius: 14px; background: #FFFFFF;')}>
                 <span style={css('flex: 1 1 220px; min-width: 0;')}>
                   <span style={css('display: block; font-size: 14px; font-weight: 700; color: #2C4A5E;')}>{k.naam}</span>
                   <span style={css('display: block; margin-top: 3px; font-size: 12.5px; color: #7B8985;')}>
-                    {`${k.project} · ${k.plan || 'Gepland'} · ${
-                      k.herinner === false ? 'geen herinnering' : `herinnering ${store.reminderDays} dagen ervoor`
+                    {`${k.projectNaam} · ${STATUS_LABEL[k.status] || k.status} · ${
+                      k.reminder === false ? 'geen herinnering' : `herinnering ${store.reminderDays} dagen ervoor`
                     }`}
                   </span>
                 </span>
@@ -298,7 +279,7 @@ export default function ProjectenPage({ embedded = false } = {}) {
                     {k.dagen} dagen
                   </span>
                   <span style={css('display: block; margin-top: 2px; font-size: 12.5px; color: #7B8985;')}>
-                    {formatDate(k.deadline)}
+                    {formatDatum(k.datum)}
                   </span>
                 </span>
               </div>
@@ -326,12 +307,22 @@ export default function ProjectenPage({ embedded = false } = {}) {
                   <div style={css('margin-top: 6px; font-size: 13px; color: #7B8985;')}>
                     {`${p.gevraagd ? `Gevraagd ${p.gevraagd}` : 'Gevraagd bedrag nog niet ingevuld'}  ·  ${toegekend} eerdere ${
                       toegekend === 1 ? 'toekenning' : 'toekenningen'
-                    }  ·  ${(p.cofin || []).length} co-financiers  ·  ${(p.docs || []).length} documenten  ·  ${
-                      (p.regelingen || []).length
-                    } regelingen in het plan`}
+                    }  ·  ${(p.cofin || []).length} co-financiers  ·  ${(p.docs || []).length} documenten`}
+                    {Array.isArray(financiering.perProject[p.id]) && (
+                      <span data-testid="projecten-regels-aantal">{`  ·  ${financiering.perProject[p.id].length} ${financiering.perProject[p.id].length === 1 ? 'regeling' : 'regelingen'} in het dekkingsplan`}</span>
+                    )}
                   </div>
                 </div>
                 <div style={css('display: flex; gap: 8px; flex-wrap: wrap; align-items: center;')}>
+                  {isEchtId(p.id) && (
+                    <a
+                      href={`#/kompas/projecten/${p.id}`}
+                      data-testid="open-project"
+                      style={css("display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 8px 18px; border-radius: 999px; background: #4E9A6C; color: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; text-decoration: none;")}
+                    >
+                      Open project
+                    </a>
+                  )}
                   <ExportMenu
                     toegestaan={paid}
                     uitlijnen="rechts"
@@ -464,66 +455,19 @@ export default function ProjectenPage({ embedded = false } = {}) {
 
             <div>
               <SectionHeading>Regelingen in het dekkingsplan</SectionHeading>
-              {(form.regelingen || []).length ? (
-                <>
-                  <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-                    {(form.regelingen || []).map((r, i) => (
-                      <div key={`${r.id}-${i}`} style={kaartRij}>
-                        <div style={css('flex: 1 1 200px; min-width: 0;')}>
-                          <div style={css('font-size: 14.5px; font-weight: 700; color: #2C4A5E;')}>{r.naam}</div>
-                          <div style={css('margin-top: 3px; font-size: 12.5px; color: #7B8985;')}>
-                            {[r.funder, formatDate(r.deadline)].filter(Boolean).join('  ·  ')}
-                          </div>
-                        </div>
-                        <input
-                          value={r.aangevraagd != null && r.aangevraagd !== '' ? String(r.aangevraagd) : r.bedragMax ? String(r.bedragMax) : ''}
-                          onChange={(e) => setRij('regelingen', i, 'aangevraagd', e.target.value)}
-                          placeholder="Aan te vragen"
-                          aria-label="Aan te vragen bedrag"
-                          style={{ ...veldStijl, flex: '0 1 140px' }}
-                        />
-                        <select value={r.plan || 'Gepland'} onChange={(e) => setRij('regelingen', i, 'plan', e.target.value)} aria-label="Status van de aanvraag" style={{ ...selectStijl, flex: '0 1 160px' }}>
-                          {PLAN_STATUSSEN.map((o) => (
-                            <option key={o} value={o}>{o}</option>
-                          ))}
-                        </select>
-                        <Toggle
-                          on={r.herinner !== false}
-                          onChange={() => setRij('regelingen', i, 'herinner', r.herinner === false)}
-                          label={r.herinner === false ? 'Herinnering uit' : 'Herinnering aan'}
-                        />
-                        <button type="button" onClick={() => verwijderRij('regelingen', i)} style={verwijderStyle}>Verwijderen</button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={css('margin-top: 14px; padding: 14px 18px; border: 1px solid #D5E6DB; border-radius: 18px; background: #EAF4EE;')}>
-                    <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px;')}>
-                      <span style={css('font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>Dekking van de begroting</span>
-                      <span style={css('font-size: 14px; font-weight: 700; color: #2F6D47;')}>{dekking.begroting}</span>
-                    </div>
-                    {dekking.heeftBegroting && (
-                      <>
-                        <div style={css('margin-bottom: 14px; display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: #FFFFFF;')}>
-                          <span style={css(`width: ${dekking.pctToegekend}; background: #4E9A6C;`)} />
-                          <span style={css(`width: ${dekking.pctAanvraag}; background: #A9C9DE;`)} />
-                          <span style={css(`width: ${dekking.pctOpen}; background: #E4EBE7;`)} />
-                        </div>
-                        <div style={css('display: flex; flex-wrap: wrap; gap: 10px 26px; margin-bottom: 12px;')}>
-                          <span style={css('font-size: 13.5px; color: #2C4A5E;')}><strong>{dekking.toegekend}</strong> toegekend</span>
-                          <span style={css('font-size: 13.5px; color: #2C4A5E;')}><strong>{dekking.inAanvraag}</strong> in aanvraag</span>
-                          <span style={css('font-size: 13.5px; color: #2C4A5E;')}><strong>{dekking.open}</strong> nog te dekken</span>
-                        </div>
-                      </>
-                    )}
-                    <div style={css('font-size: 14px; line-height: 1.65; color: #4B5C58;')}>{dekking.samenvatting}</div>
-                  </div>
-                </>
-              ) : (
-                <div style={css('font-size: 14.5px; line-height: 1.65; color: #7B8985;')}>
-                  Nog geen regelingen opgenomen. Op de pagina Deadlines opent u een regeling en voegt u die toe aan dit project.
-                </div>
-              )}
+              <div data-testid="form-dekkingsplan-verwijzing" style={css('font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
+                Het dekkingsplan van dit project (fondsen en regelingen, bedragen, status, eigen deadline en herinnering) beheert u in het projectdossier, op het tabblad Projectfinanciering.
+                {isEchtId(form.id) ? (
+                  <>
+                    {' '}
+                    <a href={`#/kompas/projecten/${form.id}?tab=projectfinanciering`} style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>
+                      Open het projectfinancieringstabblad
+                    </a>
+                  </>
+                ) : (
+                  ' Sla het project eerst op om een dekkingsplan op te bouwen.'
+                )}
+              </div>
             </div>
 
             <div>

@@ -17,6 +17,7 @@ import {
   verwijderOrganisatieprofiel,
   wisOrganisatieVeld,
 } from '../../data/services/organisatieprofiel.js';
+import { voegRegelToe } from '../../data/services/projectFinanciering.js';
 import { archiveerProject, bewaarProject, haalProjectenOp, isEchtId, verwijderProject } from '../../data/services/projecten.js';
 import { markeerHandmatigeWijzigingen, pasUpdatesToe } from './projectKoppeling.js';
 import {
@@ -148,12 +149,21 @@ export function KompasProvider({ children, userId = null }) {
   // Projecten: ook al op de echte tabel (subsidie_kompas_programs), los van
   // haalWerkomgevingOp() hierboven.
   const projectenBron = useRef('lokaal');
+  // Pas true als de eerste poging om de projecten uit de database te halen is afgerond (ook zonder resultaat);
+  // het projectdossier toont tot dan 'laden' in plaats van 'project niet gevonden'.
+  const [projectenKlaar, setProjectenKlaar] = useState(false);
 
   useEffect(() => {
     let actief = true;
 
     haalProjectenOp().then((lijst) => {
-      if (!actief || lijst === null) {
+      if (!actief) {
+        return;
+      }
+
+      setProjectenKlaar(true);
+
+      if (lijst === null) {
         return;
       }
 
@@ -298,6 +308,7 @@ export function KompasProvider({ children, userId = null }) {
   const value = useMemo(
     () => ({
       ...st,
+      projectenKlaar,
       patch,
       orgBronnen,
 
@@ -454,20 +465,27 @@ export function KompasProvider({ children, userId = null }) {
         return verzoek;
       },
 
-      addRegelingToProject: (regeling, projectId) => {
-        const bijgewerkt = pasProjectToe(projectId, (huidig) => {
-          const bestaand = huidig.regelingen || [];
-
-          if (bestaand.some((r) => String(r.id) === String(regeling.id))) {
-            return huidig;
-          }
-
-          return { ...huidig, regelingen: bestaand.concat([{ ...regeling, plan: 'Gepland', herinner: true }]) };
-        });
-
-        if (bijgewerkt) {
-          persistProject(bijgewerkt, projectId);
+      // Sinds Fase 2 schrijft dit niet meer naar project.regelingen/linked_schemes, maar naar
+      // subsidie_kompas_program_funding (status "interesting"). Het wordt een bron-verwijzing: er worden
+      // geen namen, bedragen of deadlines gekopieerd. Geeft { ok, reden } terug.
+      addRegelingToProject: async (regeling, projectId) => {
+        if (projectenBron.current !== 'supabase' || !isEchtId(projectId)) {
+          return { ok: false, reden: 'niet-opgeslagen' };
         }
+
+        const isFonds = regeling && regeling.bronType === 'funder';
+        const bronId = isFonds ? regeling.funderId : regeling && regeling.id;
+
+        if (!isEchtId(String(bronId || ''))) {
+          return { ok: false, reden: 'geen-bron' };
+        }
+
+        return voegRegelToe({
+          projectId,
+          schemeId: isFonds ? null : bronId,
+          funderId: isFonds ? bronId : null,
+          status: 'interesting',
+        });
       },
 
       // Vervolgopdracht, prioriteit 7 (Export - "Opslaan bij project"): voegt
@@ -587,7 +605,7 @@ export function KompasProvider({ children, userId = null }) {
 
       clearRegelingen: () => patch({ deadlines: [] }),
     }),
-    [st, patch, orgBronnen, bewaarOrgVeldGedebiend, persistProject, pasProjectToe],
+    [st, projectenKlaar, patch, orgBronnen, bewaarOrgVeldGedebiend, persistProject, pasProjectToe],
   );
 
   return <KompasContext.Provider value={value}>{children}</KompasContext.Provider>;

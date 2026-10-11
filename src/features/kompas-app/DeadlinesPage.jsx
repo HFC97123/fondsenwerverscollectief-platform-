@@ -1233,23 +1233,20 @@ export default function DeadlinesPage() {
                     </select>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const id = projectId || store.projects[0].id;
                         const naam = (store.projects.find((p) => p.id === id) || {}).naam || 'uw project';
+                        const res = await store.addRegelingToProject(detail, id);
 
-                        store.addRegelingToProject(
-                          {
-                            id: detail.id,
-                            naam: detail.naam,
-                            funder: detail.funder,
-                            deadline: detail.deadline,
-                            status: detail.status,
-                            bedragMax: detail.bedragMax,
-                          },
-                          id,
-                        );
-
-                        setAddMsg(`${detail.naam} is opgenomen in ${naam}.`);
+                        if (res && res.ok) {
+                          setAddMsg(`${detail.naam} is opgenomen in het dekkingsplan van ${naam}.`);
+                        } else if (res && res.reden === 'bestaat-al') {
+                          setAddMsg(`${detail.naam} staat al in het dekkingsplan van ${naam}.`);
+                        } else if (res && (res.reden === 'niet-opgeslagen' || res.reden === 'geen-bron')) {
+                          setAddMsg('Dit project of deze regeling kan nog niet aan het dekkingsplan worden toegevoegd.');
+                        } else {
+                          setAddMsg('Opnemen in het dekkingsplan is niet gelukt. Probeer het opnieuw.');
+                        }
                       }}
                       style={css(`
                         cursor: pointer;

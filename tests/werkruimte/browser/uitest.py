@@ -43,20 +43,23 @@ with sync_playwright() as p:
         ok(f'{label}: Begroting 100000', bedrag('Begroting','100000'), k1t[:200])
         ok(f'{label}: Toegekend 30000', bedrag('Toegekend','30000'))
         ok(f'{label}: Aangevraagd 15000', bedrag('Aangevraagd','15000'))
-        ok(f'{label}: Overige dekking 30000 (eigen 20k + toegezegd 10k, niet de aangevraagde 5k)', bedrag('Overige dekking','30000'))
-        ok(f'{label}: Nog te financieren 25000', bedrag('Nog te financieren','25000'))
-        ok(f'{label}: samenvatting "Nog te financieren: € 25.000"', '25.000' in k1.locator('[data-testid="dekking-samenvatting"]').inner_text())
+        ok(f'{label}: Overige dekking 20000 (alleen eigen bijdrage; co-financiers met tekstbedragen tellen niet mee)', bedrag('Overige dekking','20000'))
+        ok(f'{label}: Nog te financieren 35000', bedrag('Nog te financieren','35000'))
+        ok(f'{label}: samenvatting "Nog te financieren: € 35.000"', '35.000' in k1.locator('[data-testid="dekking-samenvatting"]').inner_text())
+        ok(f'{label}: legacy linked_schemes (LEGACY, 99999) telt NIET mee en is nergens zichtbaar', 'LEGACY' not in t and '99.999' not in t and '88.888' not in t)
         ok(f'{label}: voortgangsbalk aanwezig met aria-label', 'toegekend' in (k1.locator('[data-testid="voortgangsbalk"]').get_attribute('aria-label') or ''))
         segs=k1.locator('[data-seg]').evaluate_all('els=>els.map(e=>e.style.width)')
-        ok(f'{label}: segmenten 30/15/30%', segs==['30%','15%','30%'], str(segs))
+        ok(f'{label}: segmenten 30/15/20%', segs==['30%','15%','20%'], str(segs))
         ok(f'{label}: eerstvolgende deadline = Oranje Fonds Burenhulp', 'Oranje Fonds Burenhulp' in k1.locator('[data-testid="project-deadline"]').inner_text())
         k2=kaarten.filter(has_text='Taalcafe Zuid').first
         ok(f'{label}: project zonder begroting toont uitnodiging, geen balk', k2.locator('[data-testid="voortgangsbalk"]').count()==0 and 'begroting' in k2.inner_text().lower())
         ok(f'{label}: project zonder regelingen: geen komende deadline', 'geen komende deadline' in k2.locator('[data-testid="project-deadline"]').inner_text())
         dl=pg.locator('[data-testid="dashboard-deadline"]')
-        ok(f'{label}: 1 komende deadline (aangevraagd/toegekend/afgewezen/verstreken/gearchiveerd/andermans tellen niet)', dl.count()==1, str(dl.count()))
-        if dl.count()==1:
-            ok(f'{label}: deadline = Oranje Fonds Burenhulp, status In voorbereiding', 'Oranje Fonds Burenhulp' in dl.nth(0).inner_text() and 'In voorbereiding' in dl.nth(0).inner_text())
+        ok(f'{label}: 3 komende deadlines (aangevraagd/toegekend/afgewezen/verstreken/gearchiveerd/andermans/legacy tellen niet)', dl.count()==3, str(dl.count()))
+        if dl.count()==3:
+            ok(f'{label}: eerste deadline = Oranje Fonds Burenhulp, status In voorbereiding', 'Oranje Fonds Burenhulp' in dl.nth(0).inner_text() and 'In voorbereiding' in dl.nth(0).inner_text())
+            ok(f'{label}: Pro: Premium-bron gemaskeerd met label, eigen deadline blijft zichtbaar', 'Premium-fonds, niet zichtbaar in uw abonnement' in dl.nth(1).inner_text() and 'PREMIUMFONDS' not in txt(pg) and 'Geheim Premium' not in txt(pg))
+            ok(f'{label}: eigen deadline (40 dagen) wint van regelingsdatum (60 dagen), geen snapshot', 'Overschreven Regeling' in dl.nth(2).inner_text() and '40 dagen' in dl.nth(2).inner_text().replace('\xa0',' '), dl.nth(2).inner_text().replace('\n',' | '))
         ok(f'{label}: 2 eigen gesprekken', pg.locator('[data-testid="dashboard-gesprek"]').count()==2)
         ok(f'{label}: 2 eigen documenten', pg.locator('[data-testid="dashboard-document"]').count()==2, str(pg.locator('[data-testid="dashboard-document"]').count()))
         ot=pg.locator('[data-testid="org-volledigheid"]').inner_text()
@@ -120,6 +123,7 @@ with sync_playwright() as p:
         # Admin ziet werknav
         ctx,pg=nieuw(b,vp,'admin','/kompas/dashboard')
         ok(f'{label}/Admin: werknav + dashboard', nav(pg).count()==1 and pg.locator('[data-testid="dashboard-project"]').count()==2, str(pg.locator('[data-testid="dashboard-project"]').count()))
+        ok(f'{label}/Admin: Premium-bron zichtbaar met naam', 'PREMIUMFONDS Geheimnaam' in txt(pg))
         ctx.close()
 
         # ---------- Overdracht naar chat
