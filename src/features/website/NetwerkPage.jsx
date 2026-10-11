@@ -282,7 +282,10 @@ export default function NetwerkPage() {
           {hasResources && (
           <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 24px;')}>
             {(resources || []).map((r, i) => (
-              <div key={i} style={css('background: #FFFFFF; border-radius: 18px; padding: clamp(20px, 3vw, 26px); display: flex; flex-direction: column; gap: 12px;')}>
+              <div
+                key={i}
+                style={css('background: #FFFFFF; border-radius: 18px; padding: clamp(20px, 3vw, 26px); display: flex; flex-direction: column; gap: 12px;')}
+              >
                 <div style={css('display: flex; align-items: center; justify-content: space-between;')}>
                   <div style={css('font-size: 13px; font-weight: 700; color: #4E9A6C;')}>{r.type}</div>
                   <div style={css('font-size: 11.5px; font-weight: 700; color: #2C4A5E; background: #EAF1F6; padding: 3px 9px; border-radius: 6px;')}>
@@ -292,7 +295,19 @@ export default function NetwerkPage() {
                 <div style={css("font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E; line-height: 1.35; flex-grow: 1;")}>
                   {r.title}
                 </div>
-                <div style={css('font-weight: 700; color: #2C4A5E; font-size: 14px;')}>Downloaden ↓</div>
+                {r.description && (
+                  <div style={css('font-size: 14px; line-height: 1.55; color: #4B5C58;')}>{r.description}</div>
+                )}
+                {r.url && (
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={css('font-weight: 700; color: #2C4A5E; font-size: 14px;')}
+                  >
+                    Downloaden ↓
+                  </a>
+                )}
               </div>
             ))}
           </div>
@@ -332,9 +347,16 @@ export default function NetwerkPage() {
                     <div style={css('font-size: 12px; font-weight: 700; color: #2C4A5E; background: #EAF4EE; padding: 5px 12px; border-radius: 999px; white-space: nowrap;')}>
                       {s.mode}
                     </div>
-                    <div style={css('padding: 9px 18px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 13.5px; white-space: nowrap;')}>
-                      Aanmelden
-                    </div>
+                    {s.url && (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={css('padding: 9px 18px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 13.5px; white-space: nowrap;')}
+                      >
+                        Aanmelden
+                      </a>
+                    )}
                   </div>
                 </div>
               ))}
@@ -344,7 +366,9 @@ export default function NetwerkPage() {
           <div style={css('padding: clamp(20px, 3vw, 28px); border: 1px solid #E1EAE4; border-radius: 18px; background: #FFFFFF;')}>
             <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;')}>
               <div style={css('flex: 1 1 320px; min-width: 0; font-size: 15px; line-height: 1.65; color: #4B5C58;')}>
-                Er zijn nog geen intervisie &amp; bijeenkomsten gepland. Wilt u er een op de agenda zetten?
+                {hasSessions
+                  ? 'Wilt u zelf een bijeenkomst op de agenda zetten?'
+                  : 'Er zijn nog geen intervisie & bijeenkomsten gepland. Wilt u er een op de agenda zetten?'}
               </div>
               <div onClick={openSessionDraft} role="button" style={{ ...knopGroen, flexShrink: 0 }}>
                 Bijeenkomst voorstellen
@@ -412,8 +436,12 @@ export default function NetwerkPage() {
                 </div>
                 <div style={css('font-size: 14.5px; line-height: 1.55; color: #4B5C58; flex-grow: 1;')}>{post.excerpt}</div>
                 <div style={css('font-size: 13px; color: #4B5C58; border-top: 1px solid #EEF2F0; padding-top: 12px;')}>
-                  door <strong style={css('color: #2C4A5E;')}>{post.author}</strong> · {post.role}
+                  door <strong style={css('color: #2C4A5E;')}>{post.author}</strong>
+                  {post.role ? ` · ${post.role}` : ''}
                 </div>
+                {post.open && (
+                  <div style={css('font-weight: 700; color: #2C4A5E; font-size: 14px;')}>Lees verder →</div>
+                )}
               </div>
             ))}
           </div>

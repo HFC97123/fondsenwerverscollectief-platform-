@@ -50,7 +50,13 @@ export default function OrientPage() {
         {hasVideos && (
         <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 24px;')}>
           {(videos || []).map((v, i) => (
-            <div key={v.title || i} style={css('background: #FFFFFF; border-radius: 18px; overflow: hidden;')}>
+            <a
+              key={v.title || i}
+              href={v.url || undefined}
+              target={v.url ? '_blank' : undefined}
+              rel={v.url ? 'noopener noreferrer' : undefined}
+              style={css(`display: block; background: #FFFFFF; border-radius: 18px; overflow: hidden; ${v.url ? 'cursor: pointer;' : 'cursor: default;'}`)}
+            >
               <div
                 style={css(
                   'width: 100%; aspect-ratio: 16/9; background: repeating-linear-gradient(135deg, #A9C9DE, #A9C9DE 10px, #C6DDEA 10px, #C6DDEA 20px); display: flex; align-items: center; justify-content: center; position: relative;',
@@ -67,26 +73,33 @@ export default function OrientPage() {
                     )}
                   />
                 </div>
-                <div
-                  style={css(
-                    'position: absolute; top: 10px; left: 10px; background: #F1EDE3; color: #8A6D3B; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px;',
-                  )}
-                >
-                  Binnenkort
-                </div>
-                <div
-                  style={css(
-                    'position: absolute; bottom: 10px; right: 10px; background: rgba(44,74,94,0.85); color: #FFFFFF; font-size: 12px; padding: 3px 8px; border-radius: 6px;',
-                  )}
-                >
-                  {v.duration}
-                </div>
+                {!v.url && (
+                  <div
+                    style={css(
+                      'position: absolute; top: 10px; left: 10px; background: #F1EDE3; color: #8A6D3B; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px;',
+                    )}
+                  >
+                    Binnenkort
+                  </div>
+                )}
+                {v.duration && (
+                  <div
+                    style={css(
+                      'position: absolute; bottom: 10px; right: 10px; background: rgba(44,74,94,0.85); color: #FFFFFF; font-size: 12px; padding: 3px 8px; border-radius: 6px;',
+                    )}
+                  >
+                    {v.duration}
+                  </div>
+                )}
               </div>
               <div style={css('padding: 18px;')}>
                 <div style={css('font-size: 12.5px; font-weight: 700; color: #4E9A6C; margin-bottom: 6px;')}>{v.level}</div>
                 <div style={css('font-weight: 700; font-size: 15.5px; color: #2C4A5E; line-height: 1.4;')}>{v.title}</div>
+                {v.description && (
+                  <div style={css('margin-top: 6px; font-size: 14px; line-height: 1.55; color: #4B5C58;')}>{v.description}</div>
+                )}
               </div>
-            </div>
+            </a>
           ))}
         </div>
         )}

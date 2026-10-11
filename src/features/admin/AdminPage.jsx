@@ -1288,21 +1288,23 @@ function FieldInput({ field, value, onChange, notify, folder }) {
             type="text"
             value={value || ''}
             onChange={(event) => onChange(event.target.value)}
-            placeholder="https://... of upload een bestand"
+            placeholder={field.upload === false ? 'https://...' : 'https://... of upload een bestand'}
             style={inputStyle}
           />
 
           <div style={css(`display: flex; align-items: center; gap: 12px; flex-wrap: wrap;`)}>
-            <label style={uploadButtonStyle}>
-              {uploading ? 'Uploaden...' : 'Bestand kiezen'}
+            {field.upload === false ? null : (
+              <label style={uploadButtonStyle}>
+                {uploading ? 'Uploaden...' : 'Bestand kiezen'}
 
-              <input
-                type="file"
-                accept={field.type === 'image' ? 'image/*' : undefined}
-                onChange={handleUpload}
-                style={css(`display: none;`)}
-              />
-            </label>
+                <input
+                  type="file"
+                  accept={field.type === 'image' ? 'image/*' : undefined}
+                  onChange={handleUpload}
+                  style={css(`display: none;`)}
+                />
+              </label>
+            )}
 
             {value && field.type === 'image' ? (
               <img

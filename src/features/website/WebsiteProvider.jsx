@@ -617,14 +617,21 @@ export function WebsiteProvider({ children, route, param }) {
     try {
       const results = await Promise.all(
         collections.map(async (collection) => {
-          const { data, error } = await supabase
+          let query = supabase
             .from(collection.table)
             .select('*')
-            .eq('status', 'published')
-            .order(collection.order.column, {
-              ascending: collection.order.ascending,
+            .eq('status', 'published');
+
+          // Publieke sortering: eigen volgorde per onderdeel (publicOrder),
+          // anders dezelfde volgorde als in de beheerlijst.
+          (collection.publicOrder || [collection.order]).forEach((order) => {
+            query = query.order(order.column, {
+              ascending: order.ascending,
               nullsFirst: false,
             });
+          });
+
+          const { data, error } = await query;
 
           if (error) {
             console.warn(
@@ -635,10 +642,11 @@ export function WebsiteProvider({ children, route, param }) {
             return [collection.key, []];
           }
 
-          return [
-            collection.key,
-            (data || []).map((row) => collection.mapForSite(row)),
-          ];
+          const rows = collection.sortRows
+            ? collection.sortRows(data || [])
+            : data || [];
+
+          return [collection.key, rows.map((row) => collection.mapForSite(row))];
         }),
       );
 
@@ -784,10 +792,17 @@ export function WebsiteProvider({ children, route, param }) {
     },
   });
 
+  // Blogposts met een volledige tekst openen op dezelfde artikelpagina als nieuws.
+  const blogForSite = siteBlogPosts.map((post) =>
+    post.fromBlog && post.hasBody ? withOpen({ ...post, cursor: 'pointer' }) : post,
+  );
+
   const article = (() => {
-    const selectedArticle = siteNews.find(
-      (item) => item.id === st.activeArticleId,
-    );
+    const selectedArticle =
+      siteNews.find((item) => item.id === st.activeArticleId) ||
+      siteBlogPosts.find(
+        (item) => item.fromBlog && item.id === st.activeArticleId,
+      );
 
     if (!selectedArticle) return null;
 
@@ -905,6 +920,10 @@ export function WebsiteProvider({ children, route, param }) {
     isSubpage: st.page !== 'home',
 
     article,
+
+    articleBackLabel: article?.fromBlog
+      ? 'Terug naar het ledengedeelte'
+      : 'Terug naar Actueel',
 
     openArticle: (id) => {
       update({ activeArticleId: id });
@@ -1292,7 +1311,7 @@ export function WebsiteProvider({ children, route, param }) {
     hasResources: siteResources.length > 0,
     sessions: alleSessies.filter((s) => s.status !== 'Voorstel'),
     hasSessions: alleSessies.some((s) => s.status !== 'Voorstel'),
-    blogPosts: siteBlogPosts,
+    blogPosts: blogForSite,
     hasBlogPosts: siteBlogPosts.length > 0,
     noBlogPosts: siteBlogPosts.length === 0,
     questions: zichtbareVragen,

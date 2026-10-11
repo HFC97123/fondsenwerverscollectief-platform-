@@ -6,13 +6,16 @@ import { useApp } from './WebsiteProvider.jsx';
 
 export default function ArticlePage() {
   const app = useApp();
-  const { isArticle, article, goActueel } = app;
+  const { isArticle, article, goActueel, goNetwerk, articleBackLabel } = app;
 
   if (!isArticle || !article) return null;
 
   const terug = (
-    <div onClick={goActueel} style={css('cursor: pointer; font-weight: 700; color: #4E9A6C; font-size: 14.5px;')}>
-      ← Terug naar Actueel
+    <div
+      onClick={article.fromBlog ? goNetwerk : goActueel}
+      style={css('cursor: pointer; font-weight: 700; color: #4E9A6C; font-size: 14.5px;')}
+    >
+      ← {articleBackLabel}
     </div>
   );
 

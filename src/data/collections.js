@@ -89,6 +89,29 @@ function splitTags(value) {
     .filter(Boolean);
 }
 
+// Link uit de admin -> veilige link voor de website. Alleen http(s); een
+// adres zonder protocol (www.voorbeeld.nl/pagina) krijgt https://. Alles
+// anders (javascript:, tekst zonder domein) wordt een lege link.
+export function veiligeLink(value) {
+  const url = String(value || '').trim();
+
+  if (/^https?:\/\/\S+$/i.test(url)) return url;
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(url)) return `https://${url}`;
+
+  return '';
+}
+
+// Publicatie- en wijzigingsdatum voor de adminlijst van de contentonderdelen
+// met eigen beheertabel (video's, templates, agenda, blog).
+function beheerDatums(row) {
+  return [
+    row.status === 'published' && row.published_at
+      ? `Gepubliceerd ${formatDate(row.published_at)}`
+      : '',
+    row.updated_at ? `Gewijzigd ${formatDate(row.updated_at)}` : '',
+  ];
+}
+
 export const STATUS_LABELS = {
   draft: 'Concept',
   published: 'Gepubliceerd',
@@ -144,6 +167,11 @@ export const collections = [
     newLabel: '+ Nieuwe video',
     intro: "Video's voor de oriëntatiepagina. Upload een videobestand of gebruik een YouTube- of Vimeo-link. Cursusvideo's horen bij Basiscursus.",
     order: { column: 'sort_order', ascending: true },
+    // Publiek: eerst op volgorde, daarna nieuwste publicatie.
+    publicOrder: [
+      { column: 'sort_order', ascending: true },
+      { column: 'published_at', ascending: false },
+    ],
     fields: [
       { name: 'title', label: 'Titel', type: 'text', required: true },
       { name: 'description', label: 'Korte omschrijving', type: 'textarea', rows: 3 },
@@ -156,20 +184,21 @@ export const collections = [
       },
       {
         name: 'url',
-        label: 'Videolink of videobestand',
+        label: 'Videolink',
         type: 'file',
-        help: 'Plak een YouTube- of Vimeo-link, of upload een MP4 met "Bestand kiezen".',
+        upload: false,
+        help: 'Plak de link naar de video (YouTube, Vimeo of een directe link). Direct uploaden volgt later.',
       },
       { name: 'sort_order', label: 'Volgorde', type: 'number' },
     ],
     title: (row) => row.title,
     subtitle: (row) => row.description || '',
-    meta: (row) => [row.level, row.duration],
+    meta: (row) => [row.level, row.duration, ...beheerDatums(row)],
     mapForSite: (row) => ({
       title: row.title,
       duration: row.duration || '',
       level: row.level || 'Introductie',
-      url: row.url || '',
+      url: veiligeLink(row.url),
       description: row.description || '',
     }),
   },
@@ -182,6 +211,11 @@ export const collections = [
     newLabel: '+ Nieuwe template',
     intro: 'Praktijkgidsen en templates die leden kunnen downloaden op de netwerkpagina.',
     order: { column: 'sort_order', ascending: true },
+    // Publiek: eerst op volgorde, daarna alfabetisch op titel.
+    publicOrder: [
+      { column: 'sort_order', ascending: true },
+      { column: 'title', ascending: true },
+    ],
     fields: [
       { name: 'title', label: 'Titel', type: 'text', required: true },
       {
@@ -197,17 +231,24 @@ export const collections = [
         options: ['DOCX', 'XLSX', 'PDF', 'PPTX', 'ZIP'],
       },
       { name: 'description', label: 'Omschrijving', type: 'textarea', rows: 3 },
-      { name: 'file_url', label: 'Bestand', type: 'file', required: true },
+      {
+        name: 'file_url',
+        label: 'Documentlink',
+        type: 'file',
+        upload: false,
+        required: true,
+        help: 'Plak de link naar het document (PDF, Word, Excel, enz.) dat elders bereikbaar is. Direct uploaden volgt later.',
+      },
       { name: 'sort_order', label: 'Volgorde', type: 'number' },
     ],
     title: (row) => row.title,
     subtitle: (row) => row.description || '',
-    meta: (row) => [row.type, row.format],
+    meta: (row) => [row.type, row.format, ...beheerDatums(row)],
     mapForSite: (row) => ({
       type: row.type || 'Template',
       format: row.format || '',
       title: row.title,
-      url: row.file_url || '',
+      url: veiligeLink(row.file_url),
       description: row.description || '',
     }),
   },
@@ -220,6 +261,18 @@ export const collections = [
     newLabel: '+ Nieuwe bijeenkomst',
     intro: 'Intervisies en werksessies op de netwerkpagina.',
     order: { column: 'session_date', ascending: true },
+    // Publiek: eerstvolgende bijeenkomst eerst; bijeenkomsten uit het verleden
+    // (indien nog gepubliceerd) komen daarna, meest recente eerst.
+    publicOrder: [
+      { column: 'session_date', ascending: true },
+      { column: 'session_time', ascending: true },
+    ],
+    sortRows: (rows) => {
+      const vandaag = new Date().toISOString().slice(0, 10);
+      const komend = rows.filter((row) => String(row.session_date || '') >= vandaag);
+      const voorbij = rows.filter((row) => String(row.session_date || '') < vandaag);
+      return komend.concat(voorbij.reverse());
+    },
     fields: [
       { name: 'title', label: 'Titel', type: 'text', required: true },
       { name: 'session_date', label: 'Datum', type: 'date', required: true },
@@ -230,7 +283,7 @@ export const collections = [
     ],
     title: (row) => row.title,
     subtitle: (row) => [row.session_time, row.host].filter(Boolean).join(' · '),
-    meta: (row) => [formatDate(row.session_date), row.mode],
+    meta: (row) => [formatDate(row.session_date), row.mode, ...beheerDatums(row)],
     mapForSite: (row) => {
       const date = row.session_date ? new Date(row.session_date) : null;
 
@@ -241,7 +294,7 @@ export const collections = [
         time: row.session_time || '',
         host: row.host || '',
         mode: row.mode || 'Online',
-        url: row.signup_url || '',
+        url: veiligeLink(row.signup_url),
       };
     },
   },
@@ -254,6 +307,8 @@ export const collections = [
     newLabel: '+ Nieuwe blog',
     intro: 'Kennisdeling en praktijkverhalen op de netwerkpagina.',
     order: { column: 'created_at', ascending: false },
+    // Publiek: nieuwste publicatie eerst.
+    publicOrder: [{ column: 'published_at', ascending: false }],
     fields: [
       { name: 'title', label: 'Titel', type: 'text', required: true },
       { name: 'tag', label: 'Categorie', type: 'text', placeholder: 'Kennisdeling, Praktijk...' },
@@ -264,13 +319,20 @@ export const collections = [
     ],
     title: (row) => row.title,
     subtitle: (row) => row.excerpt || '',
-    meta: (row) => [row.tag, row.author],
+    meta: (row) => [row.tag, row.author, ...beheerDatums(row)],
     mapForSite: (row) => ({
+      id: row.id,
       tag: row.tag || 'Kennisdeling',
+      date: formatDate(row.published_at || row.created_at),
       title: row.title,
       excerpt: row.excerpt || '',
       author: row.author || 'Redactie',
       role: row.author_role || '',
+      // Volledige tekst: leest de lezer op de artikelpagina (zelfde opmaak
+      // als nieuws: lege regel = nieuwe alinea, # = tussenkop).
+      body: parseArticleBody(row.content),
+      hasBody: Boolean(String(row.content || '').trim()),
+      fromBlog: true,
     }),
   },
 
