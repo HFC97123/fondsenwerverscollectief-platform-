@@ -11,8 +11,8 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const hier = dirname(fileURLToPath(import.meta.url));
-const migratie = resolve(hier, '../../supabase/voorstel-niet-uitgevoerd/20261011130000_project_funding.sql');
-const rollback = resolve(hier, '../../supabase/voorstel-niet-uitgevoerd/20261011130000_project_funding_rollback.sql');
+const migratie = resolve(hier, '../../supabase/migrations/20261011104804_project_funding_fase2.sql');
+const rollback = resolve(hier, '../../supabase/voorstel-niet-uitgevoerd/20261011104804_project_funding_fase2_rollback.sql');
 const BIN = ['/usr/lib/postgresql/16/bin', '/usr/lib/postgresql/15/bin', '/usr/lib/postgresql/14/bin', '/opt/homebrew/bin', '/usr/local/bin'].find((d) => existsSync(join(d, 'initdb')));
 const psqlBin = process.env.PSQL || (spawnSync('which', ['psql']).stdout.toString().trim() || (BIN && join(BIN, 'psql')));
 

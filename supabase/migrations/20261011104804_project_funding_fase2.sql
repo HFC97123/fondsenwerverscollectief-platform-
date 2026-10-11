@@ -1,6 +1,6 @@
--- PROJECTFINANCIERING (Werkruimte Fase 2) - voorstel, NIET toegepast op de live database.
--- Verplaats dit bestand naar supabase/migrations/ zodra de toepassing is goedgekeurd.
--- Rollback: supabase/voorstel-niet-uitgevoerd/20261011130000_project_funding_rollback.sql
+-- PROJECTFINANCIERING (Werkruimte Fase 2) - TOEGEPAST op de live database als migratie project_funding_fase2 (versie 20261011104804).
+-- Bestandsnaam = live migratieversie. De DDL is statement-voor-statement gelijk aan wat live is toegepast (zonder begin/commit en commentaarregels).
+-- Rollback (bewust apart, niet automatisch uitvoerbaar): supabase/voorstel-niet-uitgevoerd/20261011104804_project_funding_fase2_rollback.sql
 --
 -- Eén nieuwe tabel: subsidie_kompas_program_funding = de ENIGE bron voor financieringsregels,
 -- aanvraagstatussen, aangevraagde/toegekende bedragen, eigen deadlines, herinneringen en notities
@@ -84,8 +84,6 @@ language plpgsql
 set search_path = public, pg_temp
 as $$
 begin
-  -- Bij het aanmaken precies één bron. (De CHECK staat "beide leeg" toe voor regels waarvan de
-  -- bron later verdween; een NIEUWE regel zonder bron is nooit zinvol.)
   if (new.scheme_id is null) = (new.funder_id is null) then
     raise exception 'Een financieringsregel verwijst naar precies een regeling of een fonds'
       using errcode = '23514';
@@ -115,8 +113,6 @@ begin
       using errcode = '23514';
   end if;
 
-  -- scheme_id/funder_id: alleen gevuld -> NULL (bron verwijderd, ON DELETE SET NULL). Nooit een
-  -- andere bron, en een bron die weg is komt niet terug.
   if new.scheme_id is distinct from old.scheme_id
      and not (old.scheme_id is not null and new.scheme_id is null) then
     raise exception 'scheme_id van een financieringsregel is onveranderlijk' using errcode = '23514';
@@ -250,7 +246,6 @@ begin
       sr.id as sr_id, sr.naam as sr_naam, sr.website as sr_website, sr.deadline_datum as sr_deadline,
       fs.naam as fs_naam, fs.website as fs_website,
       f.id as f_id, f.naam as f_naam, f.website as f_website,
-      -- bron zichtbaar voor deze tier?
       case
         when sr.id is not null then
           sr.classification_reviewed

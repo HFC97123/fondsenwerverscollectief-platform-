@@ -216,7 +216,8 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
   const raak = bestanden.filter((f) => nieuweBron.test(zonderCommentaar(readFileSync(f, 'utf8'))));
   check('23: geen enkele matching-/fondsadvies-/export-/documentgeneratiecode gebruikt de nieuwe fundingbron (alleen KompasStore.addRegelingToProject is ook de bron)', raak.length === 0, raak.join(', '));
   const migraties = loop('supabase/migrations').filter((f) => f.endsWith('.sql'));
-  check('24: de migratie is niet toegepast (staat alleen als voorstel, niet in supabase/migrations)', migraties.every((f) => !/program_funding/.test(readFileSync(f, 'utf8'))) && existsSync('supabase/voorstel-niet-uitgevoerd/20261011130000_project_funding.sql'));
+  const metFunding = migraties.filter((f) => /create table[^;]*subsidie_kompas_program_funding/i.test(readFileSync(f, 'utf8')));
+  check('24: de migratie staat precies één keer in supabase/migrations onder de live versie (20261011104804), niet meer als voorstel; rollback apart', metFunding.length === 1 && metFunding[0].endsWith('20261011104804_project_funding_fase2.sql') && !existsSync('supabase/voorstel-niet-uitgevoerd/20261011130000_project_funding.sql') && existsSync('supabase/voorstel-niet-uitgevoerd/20261011104804_project_funding_fase2_rollback.sql'));
   check('25: Edge Function subsidie-kompas houdt verify_jwt=false', !/subsidie-kompas[\s\S]{0,200}verify_jwt\s*=\s*true/.test(existsSync('supabase/config.toml') ? readFileSync('supabase/config.toml', 'utf8') : ''));
   check('26: geen secrets of Stripe-sleutels in de nieuwe bestanden', ['src/features/kompas-app/financiering', 'src/features/kompas-app/projectdossier'].flatMap(loop).every((f) => !/sk_live_|whsec_|sk_test_/.test(readFileSync(f, 'utf8'))));
 }

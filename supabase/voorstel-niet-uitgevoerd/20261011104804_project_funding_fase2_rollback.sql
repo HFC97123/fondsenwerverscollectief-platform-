@@ -1,4 +1,4 @@
--- Rollback van 20261011130000_project_funding.sql (Werkruimte Fase 2).
+-- Rollback van 20261011104804_project_funding_fase2.sql (staat in supabase/migrations/) (Werkruimte Fase 2).
 -- LET OP: dit verwijdert alle projectfinancieringsregels. linked_schemes op subsidie_kompas_programs is
 -- in Fase 2 niet aangeraakt en bevat dus nog de oorspronkelijke (legacy) data.
 begin;
