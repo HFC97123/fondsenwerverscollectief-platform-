@@ -6,7 +6,7 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './WebsiteProvider.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import MemberCount from '../../shared/ui/MemberCount.jsx';
-import LedenReviews from '../../shared/ui/LedenReviews.jsx';
+import LedenWaardering from '../../shared/ui/LedenWaardering.jsx';
 
 const zwevendeVorm = (positie, animatie) =>
   css(`position: absolute; ${positie} opacity: ${animatie.opacity}; animation: ${animatie.naam} ${animatie.duur} ease-in-out infinite;`);
@@ -478,25 +478,27 @@ export default function HomePage() {
               <div style={css('font-size: 14px; color: #2C4A5E; line-height: 1.4;')}>fondsenwervers aangesloten</div>
             </div>
 
-            {["video's in de bibliotheek", 'waardering door leden'].map((label) => (
-              <div key={label} style={css('background: #DCEFE3; border-radius: 16px; padding: 24px;')}>
-                <div
-                  style={css(
-                    'display: inline-flex; align-items: center; gap: 6px; background: rgba(78,154,108,0.12); color: #4E9A6C; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 5px 11px; border-radius: 999px; margin-bottom: 10px;',
-                  )}
-                >
-                  <span style={css('width: 6px; height: 6px; border-radius: 50%; background: #4E9A6C;')} />
-                  Binnenkort
-                </div>
-                <div style={css('font-size: 14px; color: #2C4A5E; line-height: 1.4;')}>{label}</div>
+            <div style={css('background: #DCEFE3; border-radius: 16px; padding: 24px;')}>
+              <div
+                style={css(
+                  'display: inline-flex; align-items: center; gap: 6px; background: rgba(78,154,108,0.12); color: #4E9A6C; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 5px 11px; border-radius: 999px; margin-bottom: 10px;',
+                )}
+              >
+                <span style={css('width: 6px; height: 6px; border-radius: 50%; background: #4E9A6C;')} />
+                Binnenkort
               </div>
-            ))}
+              <div style={css('font-size: 14px; color: #2C4A5E; line-height: 1.4;')}>video's in de bibliotheek</div>
+            </div>
+
+            <div style={css('background: #DCEFE3; border-radius: 16px; padding: 24px;')}>
+              <div style={css("font-family: 'Newsreader', serif; font-size: 32px; font-weight: 700; color: #2C4A5E; margin-bottom: 8px;")}>
+                <LedenWaardering />
+              </div>
+              <div style={css('font-size: 14px; color: #2C4A5E; line-height: 1.4;')}>gemiddelde waardering door leden</div>
+            </div>
           </div>
         </div>
       </div>
-
-      {/* WAARDERING DOOR LEDEN (verborgen zolang er geen goedgekeurde reviews zijn) */}
-      <LedenReviews />
 
       {/* NIEUWS */}
       <div id="nieuws" style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 76px;')}>
