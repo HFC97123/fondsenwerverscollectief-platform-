@@ -21,6 +21,20 @@ export const STATUS_LABEL = {
   rejected: 'Afgewezen',
 };
 // Alleen regels in deze statussen tellen mee als "komende deadline".
+// Deadlineveld bij snelle financieringsinvoer, afhankelijk van de status:
+//   'standaard' = interesting/preparing (de aanvraag moet nog worden voorbereid: een deadline is relevant)
+//   'optioneel' = submitted (alleen als u zelf een interne datum wilt bijhouden)
+//   'geen'      = awarded/rejected (geen deadline nodig)
+// Voor regelingen en fondsen uit de catalogus blijft de live brondeadline leidend; dit gaat alleen over de
+// eigen deadline van een financier op naam.
+export function deadlineVeldBij(status) {
+  if (status === 'interesting' || status === 'preparing') {
+    return 'standaard';
+  }
+
+  return status === 'submitted' ? 'optioneel' : 'geen';
+}
+
 export const ACTIEVE_STATUSSEN = ['interesting', 'preparing'];
 
 export const LABEL_BRON_VERBORGEN = 'Premium-fonds, niet zichtbaar in uw abonnement';

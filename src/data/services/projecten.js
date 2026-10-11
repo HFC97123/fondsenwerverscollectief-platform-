@@ -102,6 +102,8 @@ function naarProjectVeld(rij, docs) {
     naam: rij.name || '',
     programma: rij.program_label || '',
     doelgroep: doelgroepUitKolom(rij.target_groups),
+    // Discipline = de themas-taxonomie (tabel themas); opgeslagen in de bestaande kolom themes als kommagescheiden tekst.
+    discipline: doelgroepUitKolom(rij.themes),
     regio: rij.location || '',
     periodeVan: rij.period_start || '',
     periodeTot: rij.period_end || '',
@@ -144,6 +146,7 @@ export function naarKolomPatch(project) {
     name: project.naam || 'Naamloos project',
     program_label: project.programma || null,
     target_groups: doelgroepNaarKolom(project.doelgroep),
+    themes: doelgroepNaarKolom(project.discipline),
     location: project.regio || null,
     period_start: project.periodeVan || null,
     period_end: project.periodeTot || null,

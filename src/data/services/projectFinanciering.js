@@ -86,7 +86,7 @@ export async function voegRegelToe({ projectId, schemeId = null, funderId = null
 // een fonds of regeling uit de catalogus. Bij status 'awarded' staat het bedrag in awarded_amount,
 // anders in requested_amount. Dezelfde naam twee keer in één project kan niet (unieke index).
 // -> { ok: true, id } | { ok: false, reden: 'bestaat-al' | 'geen-sessie' | 'ongeldig' | 'fout' }
-export async function voegFinancierToe({ projectId, naam, bedrag = null, status = 'submitted' }) {
+export async function voegFinancierToe({ projectId, naam, bedrag = null, status = 'submitted', deadline = null, notitie = '' }) {
   const userId = await huidigeGebruiker();
 
   if (!userId || !supabase) {
@@ -108,6 +108,9 @@ export async function voegFinancierToe({ projectId, naam, bedrag = null, status 
       requested_amount: status === 'awarded' ? null : bedrag,
       awarded_amount: status === 'awarded' ? bedrag : null,
       status,
+      // Eigen deadline alleen waar die logisch is (niet bij Toegekend/Afgewezen) en alleen als echte datum.
+      eigen_deadline: ['interesting', 'preparing', 'submitted'].indexOf(status) !== -1 && /^\d{4}-\d{2}-\d{2}$/.test(String(deadline || '')) ? deadline : null,
+      notes: String(notitie || '').trim().slice(0, 4000) || null,
     })
     .select('id')
     .single();

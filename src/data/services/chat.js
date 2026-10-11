@@ -416,12 +416,16 @@ export function buildContext({ activeDoc, projects, linkedProjectId }) {
 */
 export function buildMatchSignalen({ orgProfile, projects, linkedProjectId }) {
   const profiel = orgProfile || {};
-  const themas = Array.isArray(profiel.themas) ? profiel.themas : [];
+  const profielThemas = Array.isArray(profiel.themas) ? profiel.themas : [];
 
   // Het ACTIEVE project is leidend; zonder actief project bestaat er geen
   // projectcriterium (dus ook geen terugval op "het eerste project").
   const project = linkedProjectId ? (projects || []).find((p) => p.id === linkedProjectId && !p.gearchiveerd) || null : null;
 
+  // Discipline van het project = dezelfde themas-taxonomie als het profiel; is die ingevuld, dan is het project leidend
+  // (zoals bij doelgroep), anders blijven de themas van het organisatieprofiel gelden.
+  const projectDisciplines = project && Array.isArray(project.discipline) ? project.discipline.filter(Boolean) : [];
+  const themas = projectDisciplines.length ? projectDisciplines : profielThemas;
   const projectDoelgroepen = project && Array.isArray(project.doelgroep) ? project.doelgroep.filter(Boolean) : [];
   const doelgroepen = project && projectDoelgroepen.length ? projectDoelgroepen : Array.isArray(profiel.doelgroepen) ? profiel.doelgroepen : [];
   const werkgebied = (project && String(project.regio || '').trim()) || profiel.regio || '';

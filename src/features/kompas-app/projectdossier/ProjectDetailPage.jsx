@@ -14,6 +14,7 @@ import { useProjectFinanciering } from '../financiering/useProjectFinanciering.j
 import { KLEUR } from '../financiering/FinancieringUi.jsx';
 import { dagenTekst, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, formatTijd, periodeTekst } from '../financiering/dekkingsplan.js';
 import ProjectfinancieringTab from './ProjectfinancieringTab.jsx';
+import CofinanciersSectie from './CofinanciersSectie.jsx';
 import ConversationsList from '../chat/ConversationsList.jsx';
 import ProjectgegevensAanvullen from './ProjectgegevensAanvullen.jsx';
 import { isEchtId } from '../../../data/services/projecten.js';
@@ -94,10 +95,11 @@ function Veld({ label, children }) {
   );
 }
 
-function OverzichtTab({ project }) {
+function OverzichtTab({ project, financiering }) {
   const doelgroep = Array.isArray(project.doelgroep) ? project.doelgroep.join(', ') : project.doelgroep;
+  const discipline = Array.isArray(project.discipline) ? project.discipline.join(', ') : project.discipline;
   const periode = periodeTekst(project.periodeVan, project.periodeTot);
-  const heeftInhoud = [project.omschrijving, project.doelstellingen, project.activiteiten, project.impact, project.planning, project.partners, project.resultaten, doelgroep, project.programma].some(Boolean);
+  const heeftInhoud = [discipline, project.omschrijving, project.doelstellingen, project.activiteiten, project.impact, project.planning, project.partners, project.resultaten, doelgroep, project.programma].some(Boolean);
 
   return (
     <div data-testid="tab-overzicht" style={css('display: flex; flex-direction: column; gap: 18px;')}>
@@ -112,7 +114,8 @@ function OverzichtTab({ project }) {
           <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px 24px;')}>
             <Veld label="Programma of onderdeel">{project.programma}</Veld>
             <Veld label="Doelgroep">{doelgroep}</Veld>
-            <Veld label="Locatie">{project.regio}</Veld>
+            <Veld label="Discipline">{discipline}</Veld>
+            <Veld label="Werkgebied / locatie">{project.regio}</Veld>
             <Veld label="Looptijd">{periode}</Veld>
             <Veld label="Partners">{project.partners}</Veld>
             <Veld label="Omschrijving">{project.omschrijving}</Veld>
@@ -127,14 +130,7 @@ function OverzichtTab({ project }) {
         )}
       </section>
 
-      <section data-testid="overzicht-financiering-verwijzing" style={css(`${KAART} display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;`)}>
-        <div style={css(`${TEKST} min-width: 0; flex: 1 1 320px;`)}>
-          Toegekende en aangevraagde bijdragen, ook van cofinanciers en andere financiering, staan bij Projectfinanciering.
-        </div>
-        <a href={`#/kompas/projecten/${project.id}?tab=projectfinanciering`} style={css(LINK)}>
-          Naar Projectfinanciering
-        </a>
-      </section>
+      <CofinanciersSectie project={project} financiering={financiering} />
     </div>
   );
 }
@@ -349,7 +345,7 @@ export default function ProjectDetailPage({ projectId }) {
         </div>
 
         <div role="tabpanel" id={`pd-paneel-${tab}`} aria-labelledby={`pd-tab-${tab}`}>
-          {tab === 'overzicht' && <OverzichtTab project={project} />}
+          {tab === 'overzicht' && <OverzichtTab project={project} financiering={financiering} />}
           {tab === 'projectfinanciering' && <ProjectfinancieringTab project={project} financiering={financiering} dekking={dekking} />}
           {tab === 'documenten' && <DocumentenTab project={project} store={store} />}
           {tab === 'gesprekken' && <GesprekkenTab project={project} gesprekken={gesprekken} onOpen={openGesprek} onBespreek={bespreek} />}

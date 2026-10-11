@@ -32,6 +32,7 @@ export const PROJECT_EMPTY = {
   periodeVan: '',
   periodeTot: '',
   doelgroep: [],
+  discipline: [],
   regio: '',
   omschrijving: '',
   doelstellingen: '',

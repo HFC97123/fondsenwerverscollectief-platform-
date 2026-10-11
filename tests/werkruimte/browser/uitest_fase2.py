@@ -54,7 +54,7 @@ with sync_playwright() as p:
     ok('dossier: Overzicht standaard geselecteerd', pg.locator('[data-testid="tab-btn-overzicht"]').get_attribute('aria-selected')=='true')
     ov=pg.locator('[data-testid="tab-overzicht"]').inner_text()
     ok('dossier Overzicht: projectgegevens uit subsidie_kompas_programs', 'Wekelijks een warme maaltijd.' in ov and 'Wijkcentrum' in ov)
-    ok('dossier Overzicht: geen oude lijsten Co-financiers/Eerdere toekenningen meer; verwijzing naar Projectfinanciering', 'Co-financiers' not in ov and 'Eerdere toekenningen' not in ov and 'Naar Projectfinanciering' in ov, ov[-300:])
+    ok('dossier Overzicht: geen oude lijsten Co-financiers/Eerdere toekenningen meer; verwijzing naar Projectfinanciering', 'Co-financiers' not in ov and 'Eerdere toekenningen' not in ov and 'Cofinanciers en andere financiering'.lower() in ov.lower() and 'Projectfinanciering' in ov, ov[-300:])
     ok('dossier Overzicht: gebruikt geen financieringsregels', 'Buurtbudget' not in ov and 'Oranje Fonds' not in ov and 'LEGACY' not in t)
     ok('dossier: geen GEHEIM, geen legacy', 'GEHEIM' not in t and 'LEGACY' not in t)
     ok('dossier: RPC kompas_dekkingsplan voor eigen project aangeroepen', pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan' && l.filters[0].includes('%s'))"%P1))

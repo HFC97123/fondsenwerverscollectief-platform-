@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
-import { voegFinancierToe } from '../../../data/services/projectFinanciering.js';
+import FinancierFormulier from '../financiering/FinancierFormulier.jsx';
 import {
   STATUSSEN,
   STATUS_LABEL,
@@ -268,116 +268,6 @@ function Regel({ regel, onWijzig, onVerwijder }) {
   );
 }
 
-// Cofinancier of andere financiering op naam toevoegen (financier_naam). Geen koppeling aan een fonds of
-// regeling uit de catalogus; het bedrag telt mee volgens de status: Toegekend of Aangevraagd.
-function FinancierToevoegen({ projectId, onKlaar }) {
-  const [open, setOpen] = useState(false);
-  const [naam, setNaam] = useState('');
-  const [bedrag, setBedrag] = useState('');
-  const [status, setStatus] = useState('awarded');
-  const [bezig, setBezig] = useState(false);
-  const [fout, setFout] = useState('');
-
-  const sluit = () => {
-    setOpen(false);
-    setNaam('');
-    setBedrag('');
-    setStatus('awarded');
-    setFout('');
-  };
-
-  const bewaar = async (e) => {
-    e.preventDefault();
-
-    const gelezen = leesBedragInvoer(bedrag);
-
-    if (!naam.trim()) {
-      setFout('Vul de naam van de cofinancier in.');
-
-      return;
-    }
-
-    if (!gelezen.ok) {
-      setFout('Vul een bedrag in, bijvoorbeeld 12.500.');
-
-      return;
-    }
-
-    setBezig(true);
-
-    const res = await voegFinancierToe({ projectId, naam, bedrag: gelezen.waarde, status });
-
-    setBezig(false);
-
-    if (!res.ok) {
-      setFout(res.reden === 'bestaat-al' ? 'Deze cofinancier staat al bij dit project.' : 'Toevoegen is niet gelukt. Probeer het opnieuw.');
-
-      return;
-    }
-
-    sluit();
-    await onKlaar();
-  };
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        data-testid="pf-financier-open"
-        onClick={() => setOpen(true)}
-        style={css("cursor: pointer; min-height: 40px; padding: 0 16px; border: 1px solid #CFDDD5; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800;")}
-      >
-        + Cofinancier of andere financiering toevoegen
-      </button>
-    );
-  }
-
-  return (
-    <form
-      data-testid="pf-financier-form"
-      onSubmit={bewaar}
-      style={css('box-sizing: border-box; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px 14px; padding: 16px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF;')}
-    >
-      <label style={css('min-width: 0;')}>
-        <span style={css(LABEL)}>Naam</span>
-        <input data-testid="pf-financier-naam" value={naam} maxLength={200} onChange={(e) => setNaam(e.target.value)} placeholder="Bijvoorbeeld Stichting DOCO" style={css(INVOER)} />
-      </label>
-      <label style={css('min-width: 0;')}>
-        <span style={css(LABEL)}>Bedrag</span>
-        <input data-testid="pf-financier-bedrag" inputMode="decimal" value={bedrag} onChange={(e) => setBedrag(e.target.value)} placeholder="€" style={css(INVOER)} />
-      </label>
-      <label style={css('min-width: 0;')}>
-        <span style={css(LABEL)}>Status</span>
-        <select data-testid="pf-financier-status" value={status} onChange={(e) => setStatus(e.target.value)} style={css(INVOER)}>
-          {STATUSSEN.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABEL[s]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div style={css('grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;')}>
-        <button
-          type="submit"
-          disabled={bezig}
-          data-testid="pf-financier-opslaan"
-          style={css("cursor: pointer; min-height: 40px; padding: 0 18px; border: none; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800;")}
-        >
-          {bezig ? 'Opslaan…' : 'Toevoegen'}
-        </button>
-        <button type="button" onClick={sluit} style={css("cursor: pointer; min-height: 40px; padding: 0 14px; border: none; background: none; color: #4B5C58; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 700;")}>
-          Annuleren
-        </button>
-        {fout && (
-          <span role="alert" data-testid="pf-financier-fout" style={css(`${TEKST} font-size: 13px; font-weight: 700; color: #9E3B2C;`)}>
-            {fout}
-          </span>
-        )}
-      </div>
-    </form>
-  );
-}
-
 export default function ProjectfinancieringTab({ project, financiering, dekking }) {
   const { status, fout, regels, wijzig, verwijder, laad } = financiering;
 
@@ -426,7 +316,7 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
 
         {status === 'klaar' && project && project.id && (
           <div style={css('margin-bottom: 12px;')}>
-            <FinancierToevoegen projectId={project.id} onKlaar={laad} />
+            <FinancierFormulier projectId={project.id} onKlaar={laad} />
           </div>
         )}
 

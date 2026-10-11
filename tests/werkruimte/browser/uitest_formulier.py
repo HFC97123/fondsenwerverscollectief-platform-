@@ -15,6 +15,9 @@ os.makedirs('shots',exist_ok=True)
 SEED_PATCH = """
 window.__SEED_PATCH=function(seed,h){
   var t=seed.tables;
+  t.doelgroepen=['Buurtbewoners','Jongeren','Kinderen','Ouderen','Vluchtelingen'].map(function(n){return {naam:n};});
+  t.themas=['Cultuur','Eenzaamheid','Onderwijs','Sport','Welzijn'].map(function(n){return {naam:n};});
+  t.regios=['Amsterdam','Caribisch gebied','Landelijk','Rotterdam','Utrecht'].map(function(n){return {naam:n};});
   t.subsidie_kompas_programs.push(h.P('%(P4)s','Fondsenwerving Hulp Na Onderzoek',{budget_total:420000,own_contribution:80000,requested_amount:340000,description:null,
      cofinanciers:[{naam:'LEGACY JSON NAAM',bedrag:'999999',status:'Toegezegd'}]}));
   [['Stichting Hulp Na Onderzoek','awarded',null,25000],['Stichting DOCO','awarded',null,5000],['Gemeente Amsterdam','submitted',160000,null]].forEach(function(x,i){
@@ -46,11 +49,11 @@ with sync_playwright() as p:
     ctx,pg=nieuw(b,{'width':1280,'height':1000},'pro','/kompas/projecten')
     pg.get_by_role('button',name='+ Nieuw project').click(); pg.wait_for_timeout(500)
     f=pg.locator('[data-testid="nieuw-project-formulier"]'); ft=f.inner_text().replace('\xa0',' ')
-    ok('formulier: gewenste velden zichtbaar', all(x in ft for x in ['Projectnaam','Doelgroep','Looptijd van','Looptijd tot','Projectlocatie','Projectomschrijving','Totale projectbegroting','Eigen bijdrage','Te financieren bedrag']), ft)
+    ok('formulier: gewenste velden zichtbaar', all(x in ft for x in ['Projectnaam','Doelgroep','Discipline','Looptijd','Startdatum','Einddatum','Werkgebied / locatie','Projectomschrijving','Totale projectbegroting','Eigen bijdrage','Te financieren bedrag']), ft)
     ok('formulier: verwijderde velden niet zichtbaar', not any(x in ft for x in VERWIJDERD), ft)
     ok('formulier: knop "Project aanmaken"', f.get_by_role('button',name='Project aanmaken').count()==1)
     ok('formulier: hulptekst bij omschrijving', 'Heb je al een projectplan of two-pager? Voeg die toe en laat Subsidie Kompas je projectomschrijving aanvullen.' in ft)
-    ok('formulier: twee native datumvelden', f.locator('input[type="date"]').count()==2)
+    ok('formulier: twee native datumvelden (Startdatum → Einddatum)', f.locator('input[type="date"]').count()==2 and '→' in f.locator('[data-testid="np-looptijd"]').inner_text())
     ok('formulier: te financieren is read-only (geen invoerveld) en toont €0 zonder begroting', pg.locator('input[data-testid="np-te-financieren"]').count()==0 and waar(pg,'np-te-financieren')=='0')
     pg.screenshot(path='shots/formulier_1_desktop.png', full_page=True)
     # ================= 2. Automatische berekening
@@ -206,6 +209,105 @@ with sync_playwright() as p:
     ctx,pg=nieuw(b,{'width':1280,'height':900},'free','/kompas/projecten')
     ok('Free: geen projectformulier en geen financiering', pg.locator('[data-testid="nieuw-project-formulier"]').count()==0 and pg.get_by_role('button',name='+ Nieuw project').count()==0)
     ctx.close()
+
+    # ================= 8. Discipline, werkgebied, looptijd en snelle financiering
+    ctx,pg=nieuw(b,{'width':1280,'height':1100},'pro','/kompas/projecten')
+    pg.get_by_role('button',name='+ Nieuw project').click(); pg.wait_for_timeout(500)
+    f=pg.locator('[data-testid="nieuw-project-formulier"]')
+    ok('A1 alleen de gewenste velden (incl. Discipline), oude velden weg', all(x in f.inner_text() for x in ['Projectnaam','Doelgroep','Discipline','Looptijd','Werkgebied / locatie','Projectomschrijving','Totale projectbegroting','Eigen bijdrage','Te financieren bedrag']) and not any(x in f.inner_text() for x in VERWIJDERD+['Projectlocatie','Looptijd van']))
+    dg=f.get_by_role('button',name='Doelgroep',exact=True); ds=f.get_by_role('button',name='Discipline',exact=True)
+    bx1=dg.bounding_box(); bx2=ds.bounding_box()
+    ok('A2 desktop: Doelgroep en Discipline naast elkaar', abs(bx1['y']-bx2['y'])<4 and bx2['x']>bx1['x'])
+    dg.click(); pg.wait_for_timeout(250)
+    opts=[o.inner_text().replace('\n','').replace('✓','').strip() for o in pg.get_by_role('option').all()]
+    ok('A3 Doelgroep toont exact de databasewaarden (tabel doelgroepen), geen "Anders"', opts==['Buurtbewoners','Jongeren','Kinderen','Ouderen','Vluchtelingen'] and 'Anders' not in txt(pg), str(opts))
+    pg.screenshot(path='shots/uitbreiding_3_doelgroep_open.png', full_page=True)
+    pg.get_by_role('option',name='Jongeren').click(); pg.get_by_role('option',name='Ouderen').click(); pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
+    ds.click(); pg.wait_for_timeout(250)
+    opts=[o.inner_text().replace('\n','').replace('✓','').strip() for o in pg.get_by_role('option').all()]
+    ok('A4 Discipline toont exact de databasewaarden (tabel themas), geen "Anders"', opts==['Cultuur','Eenzaamheid','Onderwijs','Sport','Welzijn'] and 'Anders' not in txt(pg), str(opts))
+    pg.screenshot(path='shots/uitbreiding_4_discipline_open.png', full_page=True)
+    pg.get_by_role('option',name='Sport').click(); pg.get_by_role('option',name='Welzijn').click(); pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
+    ok('A5 meerdere selecties als chips', f.get_by_text('Jongeren').count()>=1 and f.get_by_text('Ouderen').count()>=1 and f.get_by_text('Sport').count()>=1 and f.get_by_text('Welzijn').count()>=1)
+    vul(pg,'np-naam','Voedselhuis Amsterdam'); vul(pg,'np-periode-van','2027-01-01'); vul(pg,'np-periode-tot','2027-12-31'); vul(pg,'np-regio','Amsterdam')
+    vul(pg,'np-omschrijving','Een voedselhuis voor buurtbewoners.'); vul(pg,'np-begroting','200.000'); vul(pg,'np-eigen','20.000')
+    ok('A6 regio-suggesties uit de tabel regios (datalist)', pg.evaluate("Array.from(document.querySelectorAll('#np-regio-opties option')).map(o=>o.value).join('|')")=='Amsterdam|Caribisch gebied|Landelijk|Rotterdam|Utrecht')
+    ok('A7 te financieren € 180.000 automatisch', waar(pg,'np-te-financieren')=='180000')
+    pg.screenshot(path='shots/uitbreiding_1_nieuw_project_desktop.png', full_page=True)
+    f.get_by_role('button',name='Project aanmaken').click(); pg.wait_for_timeout(1500)
+    nid=re.match(r'#/kompas/projecten/([0-9a-f-]{36})$',pg.evaluate('location.hash')).group(1)
+    r=prog(pg,nid)
+    ok('A8 opgeslagen: exacte taxonomiewaarden (target_groups, themes), location, start/einde', (r.get('target_groups'),r.get('themes'),r.get('location'),r.get('period_start'),r.get('period_end'))==('Jongeren, Ouderen','Sport, Welzijn','Amsterdam','2027-01-01','2027-12-31'), str(r))
+    ok('A9 dossier toont Discipline en Werkgebied / locatie', 'Sport, Welzijn' in txt(pg) and 'werkgebied / locatie' in txt(pg).lower())
+    # chat/matching gebruikt de projectwaarden
+    ok('A10 geen paginafouten', not pg.errs, str(pg.errs)); ctx.close()
+    ctx,pg=nieuw(b,{'width':390,'height':844},'pro','/kompas/projecten')
+    pg.get_by_role('button',name='+ Nieuw project').click(); pg.wait_for_timeout(500)
+    f=pg.locator('[data-testid="nieuw-project-formulier"]')
+    b1=f.get_by_role('button',name='Doelgroep',exact=True).bounding_box(); b2=f.get_by_role('button',name='Discipline',exact=True).bounding_box()
+    ok('A11 mobiel: Doelgroep en Discipline onder elkaar, geen horizontale scroll', b2['y']>b1['y']+20 and geenhscroll(pg))
+    ok('A12 mobiel: datums onder elkaar', f.locator('[data-testid="np-periode-tot"]').bounding_box()['y']>f.locator('[data-testid="np-periode-van"]').bounding_box()['y']+20)
+    pg.screenshot(path='shots/uitbreiding_2_nieuw_project_mobiel.png', full_page=True); ctx.close()
+    # bewerkformulier: discipline bewaren zonder dataverlies
+    ctx,pg=nieuw(b,{'width':1280,'height':1100},'pro',f'/kompas/projecten?bewerk={P4}')
+    pg.wait_for_timeout(500)
+    ok('B1 bewerken: Discipline en Werkgebied / locatie aanwezig', 'Discipline' in txt(pg) and 'Werkgebied / locatie' in txt(pg) and 'Projectlocatie' not in txt(pg))
+    pg.get_by_role('button',name='Discipline',exact=True).click(); pg.get_by_role('option',name='Cultuur').click(); pg.keyboard.press('Escape')
+    pg.get_by_role('button',name='Project opslaan').click(); pg.wait_for_timeout(1000)
+    ok('B2 bewerken: discipline bewaard in themes; budget onaangeroerd', prog(pg,P4).get('themes')=='Cultuur' and prog(pg,P4).get('budget_total')==420000, str(prog(pg,P4).get('themes')))
+    ctx.close()
+
+    # ---- snelle financiering in het projectoverzicht
+    ctx,pg=nieuw(b,{'width':1280,'height':1300},'pro',f'/kompas/projecten/{P4}')
+    sec=pg.locator('[data-testid="cofinanciers-sectie"]')
+    ok('C1 overzicht heeft "Cofinanciers en andere financiering" met de drie bestaande financiers', sec.count()==1 and sec.locator('[data-testid="cofin-regel"]').count()==3 and 'Gemeente Amsterdam' in sec.inner_text())
+    ok('C2 per regel Bewerken en Bespreek met Subsidie Kompas', sec.locator('[data-testid="cofin-bewerk"]').count()==3 and sec.locator('[data-testid="bespreek-link"]').count()==3)
+    pg.screenshot(path='shots/uitbreiding_8_projectdetail_cofinanciers.png', full_page=True)
+    sec.locator('[data-testid="pf-financier-open"]').click(); pg.wait_for_timeout(250)
+    sel=sec.locator('[data-testid="pf-financier-status"]')
+    ok('C3 status Toegekend (standaard): geen deadlineveld', sel.input_value()=='awarded' and sec.locator('[data-testid="pf-financier-deadline"]').count()==0)
+    vul(pg,'pf-financier-naam','Stichting X'); vul(pg,'pf-financier-bedrag','30.000')
+    pg.screenshot(path='shots/uitbreiding_9_financier_toevoegen.png', full_page=True)
+    sec.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(900)
+    rij=[x for x in db(pg,'subsidie_kompas_program_funding') if x.get('financier_naam')=='Stichting X']
+    ok('C4 Toegekend: opgeslagen in program_funding (awarded_amount 30.000, geen eigen_deadline), geen tweede bron', len(rij)==1 and rij[0].get('awarded_amount')==30000 and rij[0].get('status')=='awarded' and not rij[0].get('eigen_deadline') and not rij[0].get('scheme_id') and not rij[0].get('funder_id'), str(rij))
+    ok('C5 verschijnt direct in de lijst en in KPI Toegekend (€ 60.000)', sec.get_by_text('Stichting X').count()==1 and '€ 60.000' in kpi(pg,'Toegekend'), kpi(pg,'Toegekend'))
+    pg.screenshot(path='shots/uitbreiding_10_toegekend.png', full_page=True)
+    sec.locator('[data-testid="pf-financier-open"]').click(); vul(pg,'pf-financier-naam','Fonds Y'); vul(pg,'pf-financier-bedrag','15.000')
+    sel=sec.locator('[data-testid="pf-financier-status"]'); sel.select_option('submitted'); pg.wait_for_timeout(200)
+    ok('C6 Aangevraagd: deadline alleen optioneel (knop "Eigen datum bijhouden")', sec.locator('[data-testid="pf-financier-deadline"]').count()==0 and sec.locator('[data-testid="pf-financier-deadline-toon"]').count()==1)
+    sec.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(900)
+    rij=[x for x in db(pg,'subsidie_kompas_program_funding') if x.get('financier_naam')=='Fonds Y']
+    ok('C7 Aangevraagd telt als submitted (requested 15.000) en KPI Aangevraagd € 175.000', len(rij)==1 and rij[0].get('requested_amount')==15000 and rij[0].get('status')=='submitted' and '€ 175.000' in kpi(pg,'Aangevraagd'), str(rij)+kpi(pg,'Aangevraagd'))
+    pg.screenshot(path='shots/uitbreiding_11_aangevraagd.png', full_page=True)
+    for stat,naam in [('interesting','Lokaal Fonds Z'),('preparing','Familiefonds W')]:
+        sec.locator('[data-testid="pf-financier-open"]').click(); vul(pg,'pf-financier-naam',naam); vul(pg,'pf-financier-bedrag','5.000')
+        sec.locator('[data-testid="pf-financier-status"]').select_option(stat); pg.wait_for_timeout(200)
+        ok(f'C8 {stat}: deadlineveld zichtbaar', sec.locator('[data-testid="pf-financier-deadline"]').count()==1)
+        if stat=='interesting': pg.screenshot(path='shots/uitbreiding_12_deadline_interessant.png', full_page=True)
+        vul(pg,'pf-financier-deadline','2026-11-15')
+        sec.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(900)
+        rij=[x for x in db(pg,'subsidie_kompas_program_funding') if x.get('financier_naam')==naam]
+        ok(f'C9 {stat}: eigen_deadline 2026-11-15 opgeslagen, status {stat}', len(rij)==1 and rij[0].get('eigen_deadline')=='2026-11-15' and rij[0].get('status')==stat, str(rij))
+    ok('C10 deadline zichtbaar in de lijst bij Interessant/In voorbereiding, niet bij Toegekend', sec.locator('[data-testid="cofin-deadline"]').count()==2)
+    sec.locator('[data-testid="pf-financier-open"]').click(); vul(pg,'pf-financier-naam','stichting x'); vul(pg,'pf-financier-bedrag','1'); sec.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(700)
+    ok('C11 dubbele invoer geweigerd (geen dubbele fundingregel)', 'staat al bij dit project' in txt(pg) and len([x for x in db(pg,'subsidie_kompas_program_funding') if (x.get('financier_naam') or '').lower()=='stichting x'])==1)
+    # dezelfde regels elders
+    pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(600)
+    ok('D1 Projectfinanciering toont dezelfde nieuwe regels', all(x in txt(pg) for x in ['Stichting X','Fonds Y','Lokaal Fonds Z','Familiefonds W']))
+    pg.screenshot(path='shots/uitbreiding_14_projectfinanciering.png', full_page=True)
+    pg.goto(f'{BASE}?tier=pro#/kompas/dashboard'); pg.wait_for_timeout(1800)
+    kt=pg.locator('[data-testid="dashboard-project"]').filter(has_text='Fondsenwerving Hulp Na Onderzoek').inner_text().replace('\xa0',' ')
+    ok('D2 Dashboard: zelfde totalen (toegekend € 60.000, aangevraagd € 175.000)', '€ 60.000' in kt and '€ 175.000' in kt, kt)
+    pg.screenshot(path='shots/uitbreiding_13_dashboard.png', full_page=True)
+    pg.goto(f'{BASE}?tier=pro#/kompas/projecten'); pg.wait_for_timeout(1800)
+    kf=' || '.join(re.sub(r'\s+',' ',x.replace('\xa0',' ')) for x in pg.locator('[data-testid="projecten-kaart-financiering"]').all_inner_texts())
+    ok('D3 Projecten: zelfde totalen', 'Toegekend € 60.000 · Aangevraagd € 175.000' in kf, kf)
+    ok('D4 geen paginafouten', not pg.errs, str(pg.errs)); ctx.close()
+    ctx,pg=nieuw(b,{'width':390,'height':844},'pro',f'/kompas/projecten/{P4}')
+    pg.locator('[data-testid="cofinanciers-sectie"] [data-testid="pf-financier-open"]').click(); pg.wait_for_timeout(250)
+    ok('E1 mobiel: snelle financierinvoer zonder horizontale scroll', geenhscroll(pg))
+    pg.screenshot(path='shots/uitbreiding_15_mobiel_financier.png', full_page=True); ctx.close()
     b.close()
 srv.terminate()
 f=[r for r in res if not r[1]]

@@ -19,10 +19,11 @@ import { STATUS_LABEL, bedragenVoorOpslaan, dekkingVanProject, formatDatum, form
 const VELDEN = [
   { n: 'naam', l: 'Naam van het project', p: 'Bijvoorbeeld: Buurtkeuken De Brug', breed: true },
   { n: 'programma', l: 'Programma of onderdeel', p: 'Waar valt het project onder?' },
-  { n: 'doelgroep', l: 'Doelgroep', p: 'Voor wie is het project bedoeld?', classificatie: true },
-  { n: 'periodeVan', l: 'Looptijd van', p: '', datum: true },
-  { n: 'periodeTot', l: 'Looptijd tot', p: '', datum: true },
-  { n: 'regio', l: 'Projectlocatie', p: 'Waar vindt dit project plaats? Bijvoorbeeld: Accra, Ghana' },
+  { n: 'doelgroep', l: 'Doelgroep', p: 'Selecteer doelgroep(en)', classificatie: 'doelgroepen' },
+  { n: 'discipline', l: 'Discipline', p: 'Selecteer discipline(s)', classificatie: 'themas' },
+  { n: 'periodeVan', l: 'Looptijd: startdatum', p: '', datum: true },
+  { n: 'periodeTot', l: 'Looptijd: einddatum', p: '', datum: true },
+  { n: 'regio', l: 'Werkgebied / locatie', p: 'Bijvoorbeeld: Amsterdam, Landelijk of Accra, Ghana', regios: true },
   { n: 'partners', l: 'Partners', p: 'Met welke andere organisaties werkt u samen?' },
   { n: 'omschrijving', l: 'Projectomschrijving', p: 'Wat gaat er gebeuren en wat levert het op?', breed: true, area: true },
   { n: 'doelstellingen', l: 'Doelstellingen', p: 'Wat wilt u met dit project bereiken?', breed: true, area: true },
@@ -78,6 +79,8 @@ export default function ProjectenPage({ embedded = false } = {}) {
   // organisatieprofiel (zie data/services/classificaties.js) in plaats van
   // vrije tekst, zodat er maar één plek is waar doelgroepen worden beheerd.
   const [doelgroepen, setDoelgroepen] = useState([]);
+  const [themas, setThemas] = useState([]);
+  const [regios, setRegios] = useState([]);
 
   useEffect(() => {
     let actief = true;
@@ -85,6 +88,8 @@ export default function ProjectenPage({ embedded = false } = {}) {
     haalClassificatiesOp().then((lijst) => {
       if (actief) {
         setDoelgroepen(lijst.doelgroepen || []);
+        setThemas(lijst.themas || []);
+        setRegios(lijst.regios || []);
       }
     });
 
@@ -424,6 +429,8 @@ export default function ProjectenPage({ embedded = false } = {}) {
           form={form}
           setVeld={setVeld}
           doelgroepen={doelgroepen}
+          themas={themas}
+          regios={regios}
           fout={fout}
           bezig={bezig}
           onOpslaan={opslaan}
@@ -444,11 +451,10 @@ export default function ProjectenPage({ embedded = false } = {}) {
                   {f.l}
                   {f.classificatie ? (
                     <ClassificatieSelect
-                      opties={doelgroepen}
+                      opties={f.classificatie === 'themas' ? themas : doelgroepen}
                       waarde={Array.isArray(form[f.n]) ? form[f.n] : form[f.n] ? [form[f.n]] : []}
                       onChange={(nieuw) => setVeld(f.n, nieuw)}
                       multi
-                      metAnders
                       placeholder={f.p}
                       ariaLabel={f.l}
                     />
@@ -462,6 +468,15 @@ export default function ProjectenPage({ embedded = false } = {}) {
                       rows={4}
                       style={{ ...veldStijl, lineHeight: 1.6, resize: 'vertical' }}
                     />
+                  ) : f.regios ? (
+                    <>
+                      <input value={form[f.n] || ''} list="bewerk-regio-opties" onChange={(e) => setVeld(f.n, e.target.value)} placeholder={f.p} style={veldStijl} autoComplete="off" />
+                      <datalist id="bewerk-regio-opties">
+                        {regios.map((r) => (
+                          <option key={r} value={r} />
+                        ))}
+                      </datalist>
+                    </>
                   ) : (
                     <input value={form[f.n] || ''} onChange={(e) => setVeld(f.n, e.target.value)} placeholder={f.p} style={veldStijl} />
                   )}

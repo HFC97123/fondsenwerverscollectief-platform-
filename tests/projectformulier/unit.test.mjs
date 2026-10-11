@@ -9,6 +9,8 @@ import { berekenBudget } from '../../src/shared/budget/berekenBudget.js';
 import { cofinanciersVoorBegroting } from '../../src/features/kompas-app/financiering/exportFinanciering.js';
 import { STATUS_LABEL } from '../../src/features/kompas-app/financiering/dekkingsplan.js';
 import { NIEUW_PROJECT_VELDEN, OMSCHRIJVING_HULPTEKST, teFinancierenUitFormulier } from '../../src/features/kompas-app/NieuwProjectFormulier.jsx';
+import { deadlineVeldBij } from '../../src/features/kompas-app/financiering/dekkingsplan.js';
+import { buildMatchSignalen } from '../../src/data/services/chat.js';
 import { meldingVoorReden, MELDING_GEEN_TEKST, MELDING_TE_WEINIG } from '../../src/features/kompas-app/projectdossier/ProjectgegevensAanvullen.jsx';
 
 let ok = 0; let fail = 0;
@@ -53,8 +55,8 @@ const projectenSrc = lees('src/data/services/projecten.js');
 // ============================================================ 3. Aanmaakformulier
 console.log('\n== 3. Aanmaakformulier (alleen gewenste velden)');
 const formSrc = lees('src/features/kompas-app/NieuwProjectFormulier.jsx');
-gelijk('velden in volgorde', NIEUW_PROJECT_VELDEN, ['naam', 'doelgroep', 'periodeVan', 'periodeTot', 'regio', 'omschrijving', 'begroting', 'eigenBijdrage']);
-['Projectnaam', 'Doelgroep', 'Looptijd van', 'Looptijd tot', 'Projectlocatie', 'Projectomschrijving', 'Totale projectbegroting', 'Eigen bijdrage', 'Te financieren bedrag', 'Project aanmaken'].forEach((l) =>
+gelijk('velden in volgorde', NIEUW_PROJECT_VELDEN, ['naam', 'doelgroep', 'discipline', 'periodeVan', 'periodeTot', 'regio', 'omschrijving', 'begroting', 'eigenBijdrage']);
+['Projectnaam', 'Doelgroep', 'Discipline', 'Looptijd', 'Startdatum', 'Einddatum', 'Werkgebied / locatie', 'Projectomschrijving', 'Totale projectbegroting', 'Eigen bijdrage', 'Te financieren bedrag', 'Project aanmaken'].forEach((l) =>
   check(`formulier toont "${l}"`, formSrc.includes(l)));
 ['Programma of onderdeel', 'Partners', 'Doelstellingen', 'Activiteiten', 'Beoogde impact', 'Resultaten', 'Schrijfvoorkeur', 'Eerdere', 'Co-financier', 'Cofinancier'].forEach((l) =>
   check(`formulier toont "${l}" NIET`, !zonderCommentaar(formSrc).includes(l)));
@@ -150,6 +152,43 @@ const detail = lees('src/features/kompas-app/projectdossier/ProjectDetailPage.js
 check('Documenten-tab: actie per eigen document met echte id (isEchtId)', /ProjectgegevensAanvullen/.test(detail) && /isEchtId\(d\.id\)/.test(detail));
 check('opslaan via bestaande store-route werkProjectBij met herkomst "upload" (uit een document), alleen omschrijving', /werkProjectBij\(project\.id, \{ vulling: \{\}, bijwerking: \{ omschrijving: tekst \}, bronnen: \{ omschrijving: 'upload' \}/.test(detail));
 check('chat.js: aanroep stelProjectOmschrijvingVoor stuurt alleen twee id\'s', /body: \{ mode: 'project-omschrijving', projectId, documentId \}/.test(lees('src/data/services/chat.js')));
+
+// ============================================================ 4. Discipline, werkgebied en looptijd (taxonomie = matching)
+console.log('\n== 4. Doelgroep, discipline, werkgebied en looptijd');
+const patchD = naarKolomPatch({ ...nieuw, discipline: ['Sport', 'Welzijn'] });
+gelijk('discipline wordt bewaard in de bestaande kolom themes (kommagescheiden, geen nieuwe kolom)', patchD.themes, 'Sport, Welzijn');
+gelijk('geen discipline -> themes leeg (geen dataverlies, kolom bestond al)', naarKolomPatch(nieuw).themes, null);
+check('projecten.js leest discipline terug uit themes', /discipline: doelgroepUitKolom\(rij\.themes\)/.test(projectenSrc));
+check('Doelgroep en Discipline: geen vrije-tekstinvoer (geen metAnders) in het aanmaakformulier', !/metAnders/.test(zonderCommentaar(formSrc)));
+check('Discipline gebruikt de lijst themas, Doelgroep de lijst doelgroepen (opties via props, geen eigen lijsten)', /opties=\{themas\}/.test(formSrc) && /opties=\{doelgroepen\}/.test(formSrc) && !/const\s+(THEMAS|DOELGROEPEN|DISCIPLINES)\s*=/.test(formSrc));
+check('pagina haalt themas/doelgroepen/regios uit haalClassificatiesOp (één bron voor matching en project)', /setThemas\(lijst\.themas/.test(pagina) && /setRegios\(lijst\.regios/.test(pagina) && /themas=\{themas\}/.test(pagina));
+check('Werkgebied / locatie: bestaande regio-waarden als suggesties (datalist), bestaande kolom location', /list="np-regio-opties"/.test(formSrc) && /location: project\.regio/.test(projectenSrc));
+check('Looptijd: twee native datumvelden Startdatum en Einddatum, opslag in period_start/period_end', /aria-label="Startdatum"/.test(formSrc) && /aria-label="Einddatum"/.test(formSrc) && /period_start: project\.periodeVan/.test(projectenSrc));
+check('bewerkformulier: Discipline en Werkgebied / locatie, geen metAnders', /n: 'discipline'/.test(pagina) && /Werkgebied \/ locatie/.test(pagina) && !/metAnders/.test(pagina));
+check('bestaande looptijd als vrije tekst blijft zichtbaar en laadbaar (LooptijdInvoer)', /ISO_DATUM\.test\(v\)/.test(pagina));
+const sig = buildMatchSignalen({ orgProfile: { themas: ['Cultuur'], doelgroepen: ['Jongeren'], regio: 'Utrecht' }, projects: [{ id: 'p1', discipline: ['Sport'], doelgroep: ['Ouderen'], regio: 'Rotterdam', gevraagd: 50000 }], linkedProjectId: 'p1' });
+gelijk('matchsignalen: project-discipline, -doelgroep en -werkgebied zijn leidend (exacte taxonomiewaarden)', [sig.themas, sig.doelgroepen, sig.werkgebied], [['Sport'], ['Ouderen'], 'Rotterdam']);
+gelijk('matchsignalen: zonder project-discipline blijven de themas van het organisatieprofiel gelden', buildMatchSignalen({ orgProfile: { themas: ['Cultuur'] }, projects: [{ id: 'p1', discipline: [] }], linkedProjectId: 'p1' }).themas, ['Cultuur']);
+gelijk('matchsignalen: zonder actief project geen projectcriterium', buildMatchSignalen({ orgProfile: { themas: ['Cultuur'] }, projects: [{ id: 'p1', discipline: ['Sport'] }], linkedProjectId: null }).themas, ['Cultuur']);
+
+// ============================================================ 5. Snelle financieringsinvoer
+console.log('\n== 5. Snelle financiering in het projectoverzicht (zelfde fundingtabel)');
+gelijk('deadline: Interessant -> standaard', deadlineVeldBij('interesting'), 'standaard');
+gelijk('deadline: In voorbereiding -> standaard', deadlineVeldBij('preparing'), 'standaard');
+gelijk('deadline: Aangevraagd -> optioneel', deadlineVeldBij('submitted'), 'optioneel');
+gelijk('deadline: Toegekend -> geen', deadlineVeldBij('awarded'), 'geen');
+gelijk('deadline: Afgewezen -> geen', deadlineVeldBij('rejected'), 'geen');
+const finSrc = zonderCommentaar(lees('src/data/services/projectFinanciering.js'));
+const insertBlok = finSrc.slice(finSrc.indexOf('export async function voegFinancierToe'), finSrc.indexOf('export async function werkRegelBij'));
+check('voegFinancierToe schrijft alleen naar subsidie_kompas_program_funding (geen tweede structuur)', (insertBlok.match(/\.from\('([a-z_]+)'\)/g) || []).join() === ".from('subsidie_kompas_program_funding')");
+check('financier op naam: financier_naam, geen scheme_id/funder_id (geen fuzzy koppeling)', /financier_naam: schoon/.test(insertBlok) && !/scheme_id|funder_id/.test(insertBlok));
+check('eigen deadline alleen bij Interessant/In voorbereiding/Aangevraagd en alleen als echte datum', /\['interesting', 'preparing', 'submitted'\]\.indexOf\(status\)/.test(insertBlok) && /\\d\{4\}-\\d\{2\}-\\d\{2\}/.test(insertBlok));
+const cofSrc = lees('src/features/kompas-app/projectdossier/CofinanciersSectie.jsx');
+check('Projectoverzicht toont "Cofinanciers en andere financiering" met snelle invoer, uit dezelfde financiering als Projectfinanciering', /Cofinanciers en andere financiering/.test(cofSrc) && /FinancierFormulier/.test(cofSrc) && /<CofinanciersSectie project=\{project\} financiering=\{financiering\}/.test(detail));
+check('lijst: Bewerken (naar Projectfinanciering) en Bespreek met Subsidie Kompas per financieringsregel (focus = fundingId)', /cofin-bewerk/.test(cofSrc) && /<BespreekLink[^>]*fundingId=\{r\.id\}/.test(cofSrc));
+check('geen eigen berekening in de sectie (alleen weergave van regels)', !/berekenDekking|dekkingVanProject|teFinancieren/.test(cofSrc));
+const tabSrc = lees('src/features/kompas-app/projectdossier/ProjectfinancieringTab.jsx');
+check('Projectfinanciering gebruikt hetzelfde formulier (één implementatie)', /FinancierFormulier/.test(tabSrc) && !/function FinancierToevoegen/.test(tabSrc));
 
 console.log(`\n${ok} geslaagd, ${fail} mislukt`);
 process.exit(fail ? 1 : 0);
