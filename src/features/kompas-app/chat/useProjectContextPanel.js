@@ -1,5 +1,5 @@
-// Compositiehook voor de rechter contextkolom. ALLEEN LEZEN:
-//   - gebruikt de bestaande store (projecten, organisatieprofiel) en de bestaande funding-hook
+// Compositiehook voor het Projectoverzicht rechts van de chat. ALLEEN LEZEN:
+//   - gebruikt de bestaande store (projecten) en de bestaande funding-hook
 //     (kompas_dekkingsplan); er is geen nieuwe bron, geen eigen opslag en geen localStorage;
 //   - ontvangt uitsluitend het gevalideerde project-id van het gesprek (geen projectobject);
 //   - stuurt niets naar askKompas: dit is weergave, geen modelcontext.
@@ -35,9 +35,8 @@ export function useProjectContextPanel({ projectId, actief = true, versie = 0 })
         project,
         regels,
         fundingStatus: financiering.status,
-        orgProfile: store.orgProfile,
         nu: new Date(),
       }),
-    [project, regels, financiering.status, store.orgProfile],
+    [project, regels, financiering.status],
   );
 }

@@ -36,19 +36,20 @@ import {
   haalBerichtenOp,
   haalGesprekModusEnDossier,
   haalGesprekRij, // FASE5
+  hernoemGesprek,
   koppelGesprekAanProject,
   maakGesprekAan,
   voegBerichtToe,
 } from '../../data/services/gesprekken.js';
 import { VELDEN } from './OrganisatieprofielPage.jsx';
 import KompasContextDrawer from './KompasContextDrawer.jsx';
-// Fase 4: de Pro/Premium-chatwerkruimte (Gesprekken | Chat | Context). De chatlogica hieronder is ongewijzigd;
+// Fase 4: de Pro/Premium-chatwerkruimte (Gesprekken | Chat, plus rechts het Projectoverzicht zodra er een actief project is). De chatlogica hieronder is ongewijzigd;
 // deze modules verzorgen alleen de plaatsing en de weergave van gesprekken en context.
 import ChatWerkruimte, { useWerkruimteModus } from './chat/ChatWerkruimte.jsx';
 import ConversationsList from './chat/ConversationsList.jsx';
 import GegevensVerwijderen from './chat/GegevensVerwijderen.jsx';
 import ProjectContextPanel from './chat/ProjectContextPanel.jsx';
-import { projectVoorBestaandGesprek, projectVoorChatVerzoek, projectVoorWeergave } from './chat/actiefProject.js';
+import { geldigProjectId, projectVoorBestaandGesprek, projectVoorChatVerzoek, projectVoorWeergave } from './chat/actiefProject.js';
 // FASE5-BEGIN
 import FondsMatchKaart from './chat/FondsMatchKaart.jsx';
 import { kaartVoorBericht } from './chat/fondsMatches.js';
@@ -1068,12 +1069,13 @@ export default function KompasToolPage() {
   const kiesbareProjecten = (store.projects || []).filter((p) => !p.gearchiveerd);
   const modusLabel = { projectplan: 'Projectplan', begroting: 'Begroting' }[kompasMode] || '';
 
-  // Op desktop >= 1200 px staan Gesprekken en Context als vaste kolommen; dan bestaat de lade niet.
+  // Op desktop >= 1200 px staat Gesprekken als vaste kolom (en Projectoverzicht zodra er een actief project is);
+  // dan bestaat de lade niet. Zonder actief project bestaat het paneel 'project' niet.
   useEffect(() => {
-    if (drie && paneel) {
+    if ((drie && paneel) || (paneel === 'project' && !actiefProject)) {
       setPaneel(null);
     }
-  }, [drie, paneel]);
+  }, [drie, paneel, actiefProject]);
 
   // Wisselen van gesprek tijdens een lopend antwoord zou berichten van twee gesprekken door elkaar halen
   // (het antwoord komt binnen op het scherm van een ander gesprek). Daarom is de gesprekslijst op slot
@@ -1104,10 +1106,62 @@ export default function KompasToolPage() {
     }
   };
 
-  const projectNaamVan = (id) => {
-    const p = (store.projects || []).find((x) => x.id === id);
+  // "+ Nieuw" in een projectgroep: een nieuw gesprek met dat project als startcontext. Zodra het gesprek bestaat,
+  // staat active_program_id op dat project (verstuur() maakt het gesprek aan met gekoppeldProjectId).
+  const nieuwInProject = (projectId) => {
+    if (vergrendeld) return;
 
-    return p ? p.naam || 'Naamloos project' : '';
+    const id = geldigProjectId(projectId, store.projects);
+
+    if (!id) return;
+
+    setPaneel(null);
+    nieuweChat();
+    setGekoppeldProjectId(id);
+  };
+
+  // Rijmenu: naam wijzigen (alleen de titel van een eigen gesprek).
+  const hernoemUitLijst = async (h, titel) => {
+    if (vergrendeld) return;
+
+    const ok = await hernoemGesprek(h.id, titel);
+
+    if (ok) {
+      store.upsertGesprekInLijst({ id: h.id, titel, tijd: h.tijd });
+    }
+  };
+
+  // Rijmenu: gesprek koppelen aan een project (of losmaken). Gebruikt alleen de bestaande koppeling
+  // active_program_id; de nieuwe waarde wordt eerst gevalideerd tegen de eigen, niet-gearchiveerde projecten.
+  // Het projectdossier van het gesprek hoort bij het vorige project en wordt dus leeggemaakt.
+  const verplaatsUitLijst = async (h, projectId) => {
+    if (vergrendeld) return;
+
+    const doel = projectId ? geldigProjectId(projectId, store.projects) : null;
+
+    if (projectId && !doel) return;
+
+    if ((h.projectId || null) === doel) return;
+
+    const ok = await koppelGesprekAanProject(h.id, doel);
+
+    if (!ok) {
+      setProjectMelding('Het gesprek kon niet aan dit project worden gekoppeld.');
+
+      return;
+    }
+
+    await bijwerkenGesprekModusEnDossier({ conversationId: h.id, wisDossier: true });
+    store.upsertGesprekInLijst({ id: h.id, projectId: doel, tijd: new Date().toISOString() });
+
+    if (h.id === conversationId) {
+      setGekoppeldProjectId(doel);
+      setProjectDossier(null);
+      dossierBronnenRef.current = {};
+      setProjectKeuze(null);
+      setProjectConflicten(null);
+      setFocus(null);
+    }
   };
 
   const gesprekkenInhoud = (
@@ -1115,14 +1169,16 @@ export default function KompasToolPage() {
       <ConversationsList
         gesprekken={gesprekken}
         actiefGesprekId={conversationId}
+        projecten={store.projects}
         actiefProjectId={actiefProject ? actiefProject.id : null}
-        actiefProjectNaam={actiefProjectNaam}
         onOpen={openUitLijst}
         onNieuw={nieuwUitLijst}
+        onNieuwInProject={nieuwInProject}
         onVerwijder={verwijderUitLijst}
+        onHernoem={hernoemUitLijst}
+        onVerplaats={verplaatsUitLijst}
         laadId={historieLaadId}
         vergrendeld={vergrendeld}
-        projectNaamVan={projectNaamVan}
         renderExport={(h) => (
           <ExportMenu
             toegestaan={hasPlanTools}
@@ -1163,20 +1219,21 @@ export default function KompasToolPage() {
           <button type="button" data-testid="open-gesprekken" aria-haspopup="dialog" aria-expanded={paneel === 'gesprekken'} onClick={() => setPaneel(paneel === 'gesprekken' ? null : 'gesprekken')} style={toolbarKnop(paneel === 'gesprekken')}>
             Gesprekken <span style={css('font-size: 12px; opacity: 0.7;')}>{gesprekken.length}</span>
           </button>
-          <button type="button" data-testid="open-context" aria-haspopup="dialog" aria-expanded={paneel === 'context'} onClick={() => setPaneel(paneel === 'context' ? null : 'context')} style={toolbarKnop(paneel === 'context')}>
-            Context
-          </button>
-          <button type="button" data-testid="nieuw-gesprek-kop" aria-label="Nieuw gesprek" onClick={nieuwUitLijst} disabled={vergrendeld} style={toolbarKnop(false)}>
-            + Nieuw
-          </button>
+          {actiefProject && (
+            <button type="button" data-testid="open-project" aria-haspopup="dialog" aria-expanded={paneel === 'project'} onClick={() => setPaneel(paneel === 'project' ? null : 'project')} style={toolbarKnop(paneel === 'project')}>
+              Project
+            </button>
+          )}
         </div>
       )}
       <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap;')}>
         <img src="/uploads/kompas-logo.png" alt="Subsidie Kompas" style={css('width: 32px; height: 32px; border-radius: 50%; object-fit: contain; display: block; flex: 0 0 auto;')} />
         <div style={css('flex: 1 1 220px; min-width: 0;')}>
-          <div data-testid="actief-project-kop" style={css("font-family: 'Mulish', sans-serif; font-size: 14.5px; color: #2C4A5E; overflow-wrap: anywhere;")}>
-            Actief in dit gesprek: <strong data-testid="actief-project-naam">{actiefProjectNaam || 'geen project'}</strong>
-          </div>
+          {actiefProject && (
+            <div data-testid="actief-project-kop" style={css("font-family: 'Mulish', sans-serif; font-size: 14.5px; color: #2C4A5E; overflow-wrap: anywhere;")}>
+              Actief in dit gesprek: <strong data-testid="actief-project-naam">{actiefProjectNaam}</strong>
+            </div>
+          )}
           {modusLabel && (
             <div data-testid="werkkop-modus" style={css('margin-top: 2px; font-size: 12px; font-weight: 700; color: #7B8985;')}>
               Modus: {modusLabel}
@@ -1203,16 +1260,6 @@ export default function KompasToolPage() {
                 </option>
               ))}
             </select>
-            {(messages.length > 0 || conversationId) && (
-              <span className="fwk-cw-hint" style={css('font-size: 11.5px; color: #7B8985;')}>
-                Wisselen start een nieuw gesprek
-              </span>
-            )}
-          </div>
-        )}
-        {toonStatusBadge && (
-          <div style={css('padding: 5px 10px; border: 1px solid #DCE5E1; border-radius: 999px; background: #F7F9F8; color: #6B7B77; font-size: 10.5px; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase;')}>
-            {planLabel}
           </div>
         )}
       </div>
@@ -1832,7 +1879,8 @@ export default function KompasToolPage() {
     );
   }
 
-  // PRO/PREMIUM/ADMIN: werkruimte Gesprekken | Chat | Context (zie chat/ChatWerkruimte.jsx).
+  // PRO/PREMIUM/ADMIN: werkruimte Gesprekken | Chat, plus rechts het Projectoverzicht zodra er een actief project is
+  // (zie chat/ChatWerkruimte.jsx).
   // Geen min-height: 100vh: de werkruimte gebruikt zelf de viewporthoogte onder de navigatie (geen dubbele paginascroll).
   return (
     <div data-screen-label="Subsidie Kompas" style={css(drie ? 'position: relative; z-index: 1;' : 'min-height: 100vh; position: relative; z-index: 1;')}>
@@ -1842,13 +1890,13 @@ export default function KompasToolPage() {
       <ChatWerkruimte
         modus={modus}
         links={gesprekkenInhoud}
-        rechts={<ProjectContextPanel projectId={actiefProject ? actiefProject.id : null} versie={fundingVersie} />}
+        rechts={actiefProject ? <ProjectContextPanel projectId={actiefProject.id} versie={fundingVersie} /> : null}
       >
         {chatVenster}
       </ChatWerkruimte>
 
       {/* LADE / BOTTOM SHEET (alleen tablet en mobiel): de bestaande KompasContextDrawer. Op desktop >= 1200 px
-          staan Gesprekken en Context als vaste kolommen; er is dan geen lade (geen dubbele ingangen). */}
+          staat Gesprekken als vaste kolom (en rechts het Projectoverzicht bij een actief project); er is dan geen lade. */}
       {!drie && (
         <KompasContextDrawer
           active={paneel}
@@ -1856,7 +1904,7 @@ export default function KompasToolPage() {
           onClose={() => setPaneel(null)}
           tabs={{
             gesprekken: { label: 'Gesprekken', badge: gesprekken.length, content: gesprekkenInhoud },
-            context: { label: 'Context', content: <ProjectContextPanel projectId={actiefProject ? actiefProject.id : null} versie={fundingVersie} /> },
+            ...(actiefProject ? { project: { label: 'Project', content: <ProjectContextPanel projectId={actiefProject.id} versie={fundingVersie} /> } } : {}),
           }}
         />
       )}

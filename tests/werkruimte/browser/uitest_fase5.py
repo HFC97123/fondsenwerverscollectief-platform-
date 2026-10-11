@@ -231,7 +231,7 @@ try:
     ok('E3 focus op een fundingregel van een ANDER project/gebruiker: geen chip (niet gevonden in mijn dekkingsplan)', 'Kun je me helpen met een projectplan?' in txt(pg) and pg.get_by_test_id('chat-focus').count()==0 and 'GEHEIM' not in html(pg))
     ctx.close()
     ctx,pg=nieuw(b,DESK,'pro',f'/kompas?project={PX}')
-    ok('E4 ?project= van een ander: genegeerd', pg.get_by_test_id('actief-project-naam').inner_text()!='GEHEIM Ander Project' and 'GEHEIM' not in html(pg))
+    ok('E4 ?project= van een ander: genegeerd', 'GEHEIM' not in html(pg) and (pg.get_by_test_id('actief-project-naam').count()==0 or pg.get_by_test_id('actief-project-naam').inner_text()!='GEHEIM Ander Project'))
     ctx.close()
     ctx,pg=nieuw(b,DESK,'pro',f'/kompas?project={P2}')
     ok('E5 ?project= van een eigen project: nieuw gesprek met dat project als start', pg.get_by_test_id('actief-project-naam').inner_text()=='Taalcafe Zuid')
@@ -294,7 +294,7 @@ try:
     pg.get_by_text('Opslaan bij project').first.click(); pg.wait_for_timeout(1500)
     docs=[d for d in db(pg,'subsidie_kompas_knowledge_items') if d.get('program_id')==P4]
     ok('H10 document opgeslagen via de bestaande knowledge_items-opslag met program_id (geen nieuwe applicatietabel)', len(db(pg,'subsidie_kompas_knowledge_items'))==nd+1 and len(docs)==1, str(len(docs)))
-    ok('H11 het document staat in het contextpaneel van dit project', 'Conceptaanvraag' in pg.get_by_test_id('project-context-panel').inner_text() or '1 document' in pg.get_by_test_id('project-context-panel').inner_text(), pg.get_by_test_id('project-context-panel').inner_text()[-300:])
+    ok('H11 projectoverzicht blijft zichtbaar zonder documentenlijst (documenten staan bij Documenten)', pg.get_by_test_id('project-context-panel').count()>=1 and 'Hushu House 2027' in pg.get_by_test_id('project-context-panel').inner_text(), pg.get_by_test_id('project-context-panel').inner_text()[-300:])
     pg.goto(f'{BASE}?tier=pro#/kompas/documentatie'); pg.wait_for_timeout(1500)
     ok('H12 het document staat bij Documenten', 'Conceptaanvraag' in txt(pg) or 'Hushu House 2027' in txt(pg))
     pg.goto(f'{BASE}?tier=pro#/kompas/deadlines'); pg.wait_for_timeout(1500)

@@ -1,16 +1,18 @@
-// Rechter contextkolom van de chatwerkruimte (Pro/Premium): welke context is relevant voor dit gesprek.
+// Projectoverzicht rechts van de chat (Pro/Premium): verschijnt ALLEEN als het gesprek een actief project heeft
+// (conversation.active_program_id, gevalideerd door de aanroeper) en toont dan een compacte samenvatting van dat ene
+// project: gegevens, financiering (toegekend, aangevraagd, nog te financieren), volgende deadline en maximaal drie
+// financieringsregels, met doorverwijzingen.
 //
 // Dit is UITLEG, geen editor: het paneel toont, vat samen en verwijst door (deeplinks). Er wordt niets bewerkt
-// en er gaat niets naar het model: de Edge Function leest project en organisatie zelf uit de database; dit
-// paneel is alleen weergave. Elke functie houdt zijn ene primaire plek (Projecten, Projectfinanciering,
-// Documenten, Organisatieprofiel).
+// en er gaat niets naar het model. Elke functie houdt zijn ene primaire plek (Projecten, Projectfinanciering,
+// Deadlines, Documenten, Organisatieprofiel); documenten en organisatie staan hier bewust niet meer.
 //
-// Fail-safe: een fout in één blok toont dat blok als leeg/foutstatus; een renderfout in het hele paneel wordt
-// afgevangen door ContextFoutgrens zodat de chat nooit stuk gaat door contextweergave.
+// Fail-safe: een fout in de financieringsbron toont dat blok als leeg/foutstatus; een renderfout in het hele paneel
+// wordt afgevangen door ContextFoutgrens zodat de chat nooit stuk gaat door deze weergave.
 import React from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
-import { dagenTekst, formatDatum, formatEuro } from '../financiering/dekkingsplan.js';
+import { dagenTekst, formatDatumLang, formatEuro } from '../financiering/dekkingsplan.js';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
 import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { MAX_REGELS } from './contextPanelData.js';
@@ -45,7 +47,7 @@ export class ContextFoutgrens extends React.Component {
     if (this.state.fout) {
       return (
         <div data-testid="ctx-fout-grens" style={css(`${TEKST} ${BLOK} color: #7B8985;`)}>
-          De context kan nu niet worden getoond. U kunt gewoon verder chatten.
+          Het projectoverzicht kan nu niet worden getoond. U kunt gewoon verder chatten.
         </div>
       );
     }
@@ -63,47 +65,27 @@ function Blok({ testid, titel, children }) {
   );
 }
 
-function ProjectBlok({ data, project }) {
-  if (!project) {
-    return (
-      <Blok testid="ctx-project" titel="Project">
-        <div data-testid="ctx-geen-project" style={css(TEKST)}>
-          Geen actief project in dit gesprek. Kies een project in de kop van de chat om de financiering en documenten van dat project hier te zien.
-        </div>
-        <a href="#/kompas/projecten" style={css(LINK)}>
-          Naar Projecten →
-        </a>
-      </Blok>
-    );
-  }
+function Rij({ label, children, testid }) {
+  return (
+    <div style={css('display: flex; flex-direction: column; gap: 1px; min-width: 0;')}>
+      <dt style={css(`${TEKST} font-size: 11.5px; font-weight: 700; color: #7B8985;`)}>{label}</dt>
+      <dd data-testid={testid} style={css(`${TEKST} margin: 0; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{children}</dd>
+    </div>
+  );
+}
 
-  const d = project.dekking;
-  const v = project.volgendeDeadline;
-
+function ProjectBlok({ project }) {
   return (
     <Blok testid="ctx-project" titel="Project">
-      <div data-testid="ctx-project-naam" style={css("font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; line-height: 1.25; color: #2C4A5E; overflow-wrap: anywhere;")}>
+      <div data-testid="ctx-project-naam" style={css("font-family: 'Newsreader', serif; font-size: 19px; font-weight: 600; line-height: 1.25; color: #2C4A5E; overflow-wrap: anywhere;")}>
         {project.naam}
       </div>
-      {project.meta && <div style={css(`${TEKST} margin-top: 2px; color: #7B8985;`)}>{project.meta}</div>}
-
-      {d && d.heeftBegroting ? (
-        <div data-testid="ctx-dekking" style={css('margin-top: 12px;')}>
-          <Voortgangsbalk dekking={d} projectNaam={project.naam} hoogte={8} />
-          <div style={css(`${TEKST} margin-top: 6px;`)}>
-            Begroting <span style={css('white-space: nowrap;')}>{formatEuro(d.begroting)}</span> · nog te financieren <strong style={css('white-space: nowrap;')}>{formatEuro(d.nogNodig)}</strong>
-          </div>
-        </div>
-      ) : d ? (
-        <div data-testid="ctx-dekking" style={css(`${TEKST} margin-top: 10px; color: #7B8985;`)}>Nog geen begroting ingevuld.</div>
-      ) : null}
-
-      {v && (
-        <div data-testid="ctx-deadline" style={css(`${TEKST} margin-top: 10px;`)}>
-          Volgende deadline: <strong>{formatDatum(v.datum)}</strong> ({dagenTekst(v.dagen)}) · {v.naam}
-        </div>
+      {(project.locatie || project.looptijd) && (
+        <dl style={css('margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px;')}>
+          {project.locatie && <Rij label="Locatie" testid="ctx-locatie">{project.locatie}</Rij>}
+          {project.looptijd && <Rij label="Looptijd" testid="ctx-looptijd">{project.looptijd}</Rij>}
+        </dl>
       )}
-
       <a data-testid="ctx-open-project" href={`#/kompas/projecten/${project.id}`} style={css(LINK)}>
         Open project →
       </a>
@@ -118,32 +100,26 @@ function bedragVan(regel) {
 }
 
 function FinancieringBlok({ data, project }) {
-  if (!project) {
-    return (
-      <Blok testid="ctx-financiering" titel="Projectfinanciering">
-        <div style={css(`${TEKST} color: #7B8985;`)}>Zodra dit gesprek een project heeft, ziet u hier de financiering van dat project.</div>
-      </Blok>
-    );
-  }
-
   const f = data.financiering;
+  const d = project.dekking;
+  const v = project.volgendeDeadline;
   const href = projectFinancieringHref(project.id);
-  let inhoud;
+  let regels;
 
   if (f.status === 'laden') {
-    inhoud = <div data-testid="ctx-financiering-laden" style={css(`${TEKST} color: #7B8985;`)}>Projectfinanciering wordt geladen…</div>;
+    regels = <div data-testid="ctx-financiering-laden" style={css(`${TEKST} color: #7B8985;`)}>Projectfinanciering wordt geladen…</div>;
   } else if (f.status === 'fout') {
-    inhoud = (
+    regels = (
       <div data-testid="ctx-financiering-fout" role="status" style={css(`${TEKST} color: #7B8985;`)}>
         Projectfinanciering kan nu niet worden geladen. De chat werkt gewoon door.
       </div>
     );
   } else if (f.status !== 'klaar') {
-    inhoud = <div data-testid="ctx-financiering-leeg" style={css(`${TEKST} color: #7B8985;`)}>Financiering is voor dit project nog niet beschikbaar.</div>;
+    regels = <div data-testid="ctx-financiering-leeg" style={css(`${TEKST} color: #7B8985;`)}>Financiering is voor dit project nog niet beschikbaar.</div>;
   } else if (f.regels.length === 0) {
-    inhoud = <div data-testid="ctx-financiering-leeg" style={css(`${TEKST} color: #7B8985;`)}>Nog geen financieringsregels bij dit project.</div>;
+    regels = <div data-testid="ctx-financiering-leeg" style={css(`${TEKST} color: #7B8985;`)}>Nog geen financieringsregels bij dit project.</div>;
   } else {
-    inhoud = (
+    regels = (
       <>
         <ul style={css('margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px;')}>
           {f.regels.map((r) => {
@@ -174,65 +150,39 @@ function FinancieringBlok({ data, project }) {
   }
 
   return (
-    <Blok testid="ctx-financiering" titel="Projectfinanciering">
-      {inhoud}
-      <a data-testid="ctx-naar-financiering" href={href} style={css(LINK)}>
-        Naar projectfinanciering →
-      </a>
-    </Blok>
-  );
-}
-
-function DocumentenBlok({ data, project }) {
-  const docs = data.documenten;
-
-  return (
-    <Blok testid="ctx-documenten" titel="Documenten">
-      {!project ? (
-        <div style={css(`${TEKST} color: #7B8985;`)}>Documenten van het actieve project verschijnen hier.</div>
-      ) : docs.totaal === 0 ? (
-        <div data-testid="ctx-doc-leeg" style={css(`${TEKST} color: #7B8985;`)}>Nog geen documenten bij dit project.</div>
-      ) : (
-        <>
-          <ul style={css('margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;')}>
-            {docs.laatste.map((d) => (
-              <li key={d.id} data-testid="ctx-doc" style={css('list-style: none; margin: 0; padding: 0; min-width: 0;')}>
-                <div style={css("font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 700; color: #2C4A5E; overflow-wrap: anywhere;")}>{d.naam}</div>
-                <div style={css(`${TEKST} font-size: 12px; color: #7B8985;`)}>
-                  {d.soort}
-                  {d.versie > 1 ? ` · versie ${d.versie}` : ''}
-                </div>
-              </li>
-            ))}
-          </ul>
-          <div data-testid="ctx-doc-totaal" style={css(`${TEKST} margin-top: 8px; color: #7B8985;`)}>
-            {docs.totaal} {docs.totaal === 1 ? 'document' : 'documenten'} bij dit project
-          </div>
-        </>
+    <Blok testid="ctx-financiering" titel="Financiering">
+      {d && (
+        <div data-testid="ctx-dekking">
+          <dl style={css('margin: 0; display: flex; flex-direction: column; gap: 8px;')}>
+            <Rij label="Toegekend" testid="ctx-toegekend">{formatEuro(d.toegekend)}</Rij>
+            <Rij label="Aangevraagd" testid="ctx-aangevraagd">{formatEuro(d.aangevraagd)}</Rij>
+            <Rij label="Nog te financieren" testid="ctx-nog-nodig">
+              {!d.heeftBegroting ? 'Begroting nog niet ingevuld' : d.volledigGedekt ? 'Volledig gedekt' : formatEuro(d.nogNodig)}
+            </Rij>
+          </dl>
+          {d.heeftBegroting && (
+            <div style={css('margin-top: 10px;')}>
+              <Voortgangsbalk dekking={d} projectNaam={project.naam} hoogte={8} />
+            </div>
+          )}
+        </div>
       )}
-      <a data-testid="ctx-naar-documenten" href="#/kompas/documentatie" style={css(LINK)}>
-        Documenten →
-      </a>
-    </Blok>
-  );
-}
 
-function OrganisatieBlok({ data }) {
-  const o = data.organisatie;
+      {v && (
+        <div data-testid="ctx-deadline" style={css('margin-top: 12px;')}>
+          <dl style={css('margin: 0;')}>
+            <Rij label="Volgende deadline">
+              {formatDatumLang(v.datum)} <span style={css('font-weight: 600; color: #7B8985;')}>({dagenTekst(v.dagen)})</span>
+              <div style={css(`${TEKST} font-weight: 600;`)}>{v.naam}</div>
+            </Rij>
+          </dl>
+        </div>
+      )}
 
-  return (
-    <Blok testid="ctx-organisatie" titel="Organisatie">
-      <div data-testid="ctx-org-naam" style={css("font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;")}>
-        {o.naam || 'Organisatienaam nog niet ingevuld'}
-      </div>
-      <div data-testid="ctx-org-volledigheid" style={css(`${TEKST} margin-top: 4px;`)}>
-        Profiel {o.pct}% compleet ({o.ingevuld} van {o.totaal} kernvelden)
-      </div>
-      <div style={css('margin-top: 6px; height: 6px; border-radius: 999px; background: #E9EFEB; overflow: hidden;')} aria-hidden="true">
-        <span style={css(`display: block; height: 100%; width: ${o.pct}%; background: #4E9A6C;`)} />
-      </div>
-      <a data-testid="ctx-naar-organisatie" href="#/kompas/organisatie" style={css(LINK)}>
-        Organisatieprofiel →
+      <div style={css('margin-top: 12px;')}>{regels}</div>
+
+      <a data-testid="ctx-naar-financiering" href={href} style={css(LINK)}>
+        Projectfinanciering →
       </a>
     </Blok>
   );
@@ -242,13 +192,17 @@ function PaneelInhoud({ projectId, versie }) {
   const data = useProjectContextPanel({ projectId, versie }); // FASE5: versie = herlaadteller na een toevoeging in de chat
   const project = data.project;
 
+  // Zonder geldig project bestaat er geen projectoverzicht (de aanroeper toont dan ook geen kolom).
+  if (!project) {
+    return null;
+  }
+
   return (
-    <div className="fwk-cp" data-testid="project-context-panel" data-project-id={project ? project.id : ''} style={css('display: flex; flex-direction: column; gap: 12px; min-width: 0;')}>
+    <div className="fwk-cp" data-testid="project-context-panel" data-project-id={project.id} style={css('display: flex; flex-direction: column; gap: 12px; min-width: 0;')}>
       <style>{CSS_PANEEL}</style>
-      <ProjectBlok data={data} project={project} />
+      <h2 data-testid="projectoverzicht-titel" style={css(`${LABEL} margin: 2px 4px 0;`)}>Projectoverzicht</h2>
+      <ProjectBlok project={project} />
       <FinancieringBlok data={data} project={project} />
-      <DocumentenBlok data={data} project={project} />
-      <OrganisatieBlok data={data} />
     </div>
   );
 }

@@ -1,13 +1,15 @@
-// Layout van de Pro/Premium-chatwerkruimte: GESPREKKEN | CHAT | CONTEXT.
+// Layout van de Pro/Premium-chatwerkruimte: GESPREKKEN | CHAT, en alleen bij een actief project ook PROJECTOVERZICHT.
 //
 // Dit bestand bepaalt UITSLUITEND de plaatsing. De chat zelf (berichten, streaming, invoer, exports,
 // documentgeneratie, bevestigingen) blijft in KompasToolPage en wordt hier alleen als `children` in het
 // midden gerenderd.
 //
-//   modus 'drie'    (>= 1200 px)  : vaste linkerkolom (gesprekken), chat midden, vaste rechterkolom (context);
-//                                    geen lade (dat zou dubbele ingangen geven);
-//   modus 'tablet'  (900-1199 px) : chat bijna volledige breedte; de knoppen Gesprekken en Context openen de
-//                                    bestaande KompasContextDrawer;
+//   modus 'drie'    (>= 1200 px)  : vaste linkerkolom (gesprekken) en chat; ALLEEN als `rechts` is meegegeven
+//                                    (er is een actief project) ook een vaste rechterkolom met het projectoverzicht.
+//                                    Zonder `rechts` bestaat die kolom niet: geen lege kolom, de chat krijgt de ruimte.
+//                                    Geen lade (dat zou dubbele ingangen geven);
+//   modus 'tablet'  (900-1199 px) : chat bijna volledige breedte; de knoppen Gesprekken en (bij een actief project)
+//                                    Project openen de bestaande KompasContextDrawer;
 //   modus 'mobiel'  (< 900 px)    : idem, de drawer is dan het bestaande bottom-sheet-patroon.
 // Nooit een vaste zijbalk en een sheet tegelijk.
 import React, { useEffect, useState } from 'react';
@@ -38,7 +40,8 @@ export function useWerkruimteModus() {
 
 const CSS_WERKRUIMTE = `
 .fwk-cw-drie { display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; gap: 16px; align-items: stretch; height: calc(100vh - 92px); min-height: 560px; }
-@media (min-width: 1400px) { .fwk-cw-drie { grid-template-columns: 260px minmax(0, 1fr) 320px; gap: 20px; } }
+.fwk-cw-drie[data-kolommen="2"] { grid-template-columns: 240px minmax(0, 1fr); }
+@media (min-width: 1400px) { .fwk-cw-drie { grid-template-columns: 260px minmax(0, 1fr) 320px; gap: 20px; } .fwk-cw-drie[data-kolommen="2"] { grid-template-columns: 260px minmax(0, 1fr); } }
 .fwk-cw-kolom { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .fwk-cw-midden { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .fwk-cw-midden-binnen { width: 100%; max-width: 820px; margin: 0 auto; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
@@ -59,16 +62,18 @@ export default function ChatWerkruimte({ modus, links, rechts, children }) {
   return (
     <div data-testid="chat-werkruimte" data-modus="drie" style={css('position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; padding: 14px 20px 0; box-sizing: border-box;')}>
       <style>{CSS_WERKRUIMTE}</style>
-      <div className="fwk-cw-drie">
+      <div className="fwk-cw-drie" data-kolommen={rechts ? '3' : '2'}>
         <aside className="fwk-cw-kolom" data-testid="kolom-gesprekken" aria-label="Gesprekken">
           {links}
         </aside>
         <main className="fwk-cw-midden" data-testid="kolom-chat">
           <div className="fwk-cw-midden-binnen">{children}</div>
         </main>
-        <aside className="fwk-cw-kolom" data-testid="kolom-context" aria-label="Context bij dit gesprek">
-          {rechts}
-        </aside>
+        {rechts && (
+          <aside className="fwk-cw-kolom" data-testid="kolom-project" aria-label="Projectoverzicht">
+            {rechts}
+          </aside>
+        )}
       </div>
     </div>
   );

@@ -23,10 +23,10 @@ import { css } from '../../shared/lib/css.js';
 // per ongeluk geraakte achtergrond nooit onbedoeld een paneel met ingevulde
 // gegevens sluit.
 
-// Fase 4: de chatwerkruimte gebruikt de tabbladen 'gesprekken' en 'context' (tablet/mobiel; op desktop >= 1200 px
+// Fase 4: de chatwerkruimte gebruikt de tabbladen 'gesprekken' en (bij een actief project) 'project' (tablet/mobiel; op desktop >= 1200 px
 // staan die als vaste kolommen naast de chat en wordt deze lade niet getoond). De overige sleutels blijven
 // ondersteund voor aanroepers die ze nog aanleveren.
-const TAB_VOLGORDE = ['gesprekken', 'context', 'org', 'proj', 'doc', 'historie'];
+const TAB_VOLGORDE = ['gesprekken', 'project', 'context', 'org', 'proj', 'doc', 'historie'];
 
 export default function KompasContextDrawer({ active, onSelect, onClose, tabs }) {
   const [desktop, setDesktop] = useState(() => window.innerWidth >= 900);

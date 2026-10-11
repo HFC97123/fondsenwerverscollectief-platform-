@@ -237,6 +237,22 @@ export async function koppelGesprekAanProject(conversationId, projectId) {
   return !error;
 }
 
+// Wijzigt alleen de titel van een eigen gesprek (rijmenu "Naam wijzigen"). Zelfde rechten als de andere
+// gesprekswijzigingen: user_id-filter bovenop RLS ("Users can update own conversations"); er verandert niets aan
+// berichten, project of modus, en updated_at blijft staan zodat de volgorde van de lijst gelijk blijft.
+export async function hernoemGesprek(conversationId, titel) {
+  const userId = await huidigeGebruiker();
+  const schoon = String(titel == null ? '' : titel).trim().slice(0, 120);
+
+  if (!userId || !supabase || !conversationId || !schoon) {
+    return false;
+  }
+
+  const { error } = await supabase.from('subsidie_kompas_conversations').update({ title: schoon }).eq('id', conversationId).eq('user_id', userId);
+
+  return !error;
+}
+
 export async function voegBerichtToe({ conversationId, role, content, projectId }) {
   const userId = await huidigeGebruiker();
 

@@ -1,13 +1,14 @@
-// Fase 4: node-tests voor de chatwerkruimte (Gesprekken | Chat | Context): actief project (gesprek leidend), groepering van
-// gesprekken, contextpaneel-afleidingen (top 3 financiering, documenten, organisatie, maskering) en statische
+// Fase 4 (bijgewerkt): node-tests voor de chatwerkruimte (Gesprekken | Chat, plus rechts het Projectoverzicht alleen bij een actief project):
+// actief project (gesprek leidend), groepering van gesprekken per project, projectoverzicht-afleidingen (top 3 financiering,
+// maskering) en statische
 // controles dat de chatruntime (askKompas, Edge Function, matching, prompt, documentgeneratie) niet is aangeraakt.
 //   node tests/werkruimte/fase4.test.mjs   (vanuit de repo-root)
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { geldigProjectId, projectVoorBestaandGesprek, projectVoorChatVerzoek, projectVoorWeergave, vindGesprek } from '../../src/features/kompas-app/chat/actiefProject.js';
-import { groepeerGesprekken } from '../../src/features/kompas-app/chat/gesprekGroepen.js';
-import { bouwContextPanel, documentenVanProject, topFinancieringsregels, MAX_REGELS } from '../../src/features/kompas-app/chat/contextPanelData.js';
+import { groepeerGesprekken, groepeerPerProject } from '../../src/features/kompas-app/chat/gesprekGroepen.js';
+import { bouwContextPanel, topFinancieringsregels, MAX_REGELS } from '../../src/features/kompas-app/chat/contextPanelData.js';
 import { LABEL_BRON_VERBORGEN, regelUitRpc } from '../../src/features/kompas-app/financiering/dekkingsplan.js';
 
 let gefaald = 0;
@@ -65,7 +66,33 @@ const projecten = [{ id: PA, naam: 'Project A' }, { id: PB, naam: 'Project B' },
   check('14: lege lijst en undefined breken niet', groepeerGesprekken({ gesprekken: undefined, actiefProjectId: PA }).totaal === 0 && groepeerGesprekken({ gesprekken: [], actiefProjectId: PA }).eerder.length === 0);
 }
 
-// ---- contextpaneel: top 3, maskering, documenten, organisatie
+// ---- groepering per project: PROJECTEN en LOSSE GESPREKKEN (op active_program_id)
+{
+  const G = [
+    { id: '1', titel: 'Begroting Brug', tijd: '2026-10-08T09:00:00Z', projectId: PA },
+    { id: '2', titel: 'Projectplan Buurtkeuken', tijd: '2026-10-10T09:00:00Z', projectId: PA },
+    { id: '3', titel: 'Losse vraag', tijd: '2026-10-09T09:00:00Z', projectId: null },
+    { id: '4', titel: 'Taalcafe plannen', tijd: '2026-10-07T09:00:00Z', projectId: PB },
+    { id: '5', titel: 'Van een project dat niet (meer) bestaat', tijd: '2026-10-06T09:00:00Z', projectId: 'weg' },
+    { id: '6', titel: 'Oud archief', tijd: '2026-10-05T09:00:00Z', projectId: PC },
+    null,
+    { titel: 'zonder id' },
+  ];
+  const pp = groepeerPerProject({ gesprekken: G, projecten, actiefProjectId: null });
+  check('43: groepen op active_program_id: A (laatste activiteit 10 okt) vóór B vóór het gearchiveerde project; nieuwste gesprek eerst', pp.groepen.map((x) => x.project.id).join() === `${PA},${PB},${PC}` && pp.groepen[0].gesprekken.map((x) => x.id).join() === '2,1');
+  check('44: LOSSE GESPREKKEN = geen project, of een project dat niet (meer) van deze gebruiker is; ongeldige rijen genegeerd', pp.los.map((x) => x.id).join() === '3,5' && pp.totaal === 6);
+  check('45: gearchiveerd project blijft zichtbaar als groep met vlag (geen verlies van gesprekken)', pp.groepen[2].project.gearchiveerd === true && pp.groepen[2].gesprekken.length === 1);
+  const act = groepeerPerProject({ gesprekken: G, projecten, actiefProjectId: PB });
+  check('46: het actieve project staat bovenaan', act.groepen[0].project.id === PB);
+  const leegActief = groepeerPerProject({ gesprekken: [], projecten, actiefProjectId: PB });
+  check('47: actief project zonder gesprekken is toch een (lege) groep, zodat daar "+ Nieuw" kan staan; zonder actief project niet', leegActief.groepen.length === 1 && leegActief.groepen[0].gesprekken.length === 0 && groepeerPerProject({ gesprekken: [], projecten, actiefProjectId: null }).groepen.length === 0);
+  const zk = groepeerPerProject({ gesprekken: G, projecten, actiefProjectId: PB, zoek: 'begroting' });
+  check('48: zoeken filtert op titel in alle groepen; lege groepen verdwijnen tijdens zoeken', zk.groepen.length === 1 && zk.groepen[0].project.id === PA && zk.groepen[0].gesprekken.length === 1 && zk.los.length === 0 && zk.gefilterd === true);
+  check('49: geen duplicaat: elk gesprek staat in precies één groep of bij Los (geen tweede koppeling)', (() => { const ids = [...pp.groepen.flatMap((x) => x.gesprekken), ...pp.los].map((x) => x.id); return ids.length === new Set(ids).size && ids.length === 6; })());
+  check('50: undefined/lege invoer breekt niet', groepeerPerProject({ gesprekken: undefined, projecten: undefined, actiefProjectId: PA }).totaal === 0);
+}
+
+// ---- projectoverzicht: top 3, maskering
 const rpc = (id, extra) => regelUitRpc({ id, program_id: PA, bron_type: 'regeling', bron_status: 'zichtbaar', bron_naam: `Regeling ${id}`, funder_naam: 'Fonds', status: 'interesting', reminder_enabled: true, ...extra });
 {
   const regels = [
@@ -86,28 +113,24 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: PA, bron_type: 'regelin
   check('18: gemaskeerde Premium-regel: alleen het vaste label, geen naam/fonds/website/systeemdeadline; eigen bedrag, status en eigen deadline blijven', masked.naam === LABEL_BRON_VERBORGEN && masked.funder === '' && masked.website === '' && masked.systeemDeadline === null && masked.requested === 2000 && masked.status === 'preparing' && masked.deadline === iso(12) && !/PREMIUMFONDS|Geheim|geheim/.test(JSON.stringify(top)));
 
   const project = { id: PA, naam: 'Project A', regio: 'Utrecht', periodeVan: 'jan 2027', periodeTot: 'dec 2027', begroting: 100000, docs: [] };
-  const paneel = bouwContextPanel({ project, regels, fundingStatus: 'klaar', orgProfile: { name: 'Stichting X', website: 'https://x.nl' }, nu: NU });
-  check('19: paneel: project met locatie/periode, dekking via de bestaande rekenmodule, eerstvolgende deadline', paneel.project.naam === 'Project A' && paneel.project.meta === 'Utrecht · jan 2027 – dec 2027' && paneel.project.dekking.begroting === 100000 && paneel.project.dekking.toegekend === 25000 && paneel.project.dekking.aangevraagd === 15000 && paneel.project.volgendeDeadline.datum === iso(5));
+  const paneel = bouwContextPanel({ project, regels, fundingStatus: 'klaar', nu: NU });
+  check('19: paneel: project met locatie/periode, dekking via de bestaande rekenmodule, eerstvolgende deadline', paneel.project.naam === 'Project A' && paneel.project.locatie === 'Utrecht' && paneel.project.looptijd === 'jan 2027 – dec 2027' && paneel.project.dekking.begroting === 100000 && paneel.project.dekking.toegekend === 25000 && paneel.project.dekking.aangevraagd === 15000 && paneel.project.volgendeDeadline.datum === iso(5));
   check('20: paneel: financiering toont top 3 en het totaal aantal regels', paneel.financiering.regels.length === 3 && paneel.financiering.totaal === 7 && paneel.financiering.status === 'klaar');
-  const fout = bouwContextPanel({ project, regels: null, fundingStatus: 'fout', orgProfile: {}, nu: NU });
-  check('21: fail-safe: funding faalt -> status fout, geen regels, geen dekking; project, documenten en organisatie blijven bestaan', fout.financiering.status === 'fout' && fout.financiering.regels.length === 0 && fout.project.dekking === null && fout.project.naam === 'Project A' && fout.documenten.totaal === 0 && fout.organisatie.totaal === 8);
-  const laden = bouwContextPanel({ project, regels: null, fundingStatus: 'laden', orgProfile: {}, nu: NU });
+  const fout = bouwContextPanel({ project, regels: null, fundingStatus: 'fout', nu: NU });
+  check('21: fail-safe: funding faalt -> status fout, geen regels, geen dekking; het project zelf blijft bestaan', fout.financiering.status === 'fout' && fout.financiering.regels.length === 0 && fout.project.dekking === null && fout.project.naam === 'Project A');
+  const laden = bouwContextPanel({ project, regels: null, fundingStatus: 'laden', nu: NU });
   check('22: tijdens laden geen dekking/regels (geen half resultaat)', laden.financiering.status === 'laden' && laden.project.dekking === null && laden.financiering.regels.length === 0);
-  const geen = bouwContextPanel({ project: null, regels: [], fundingStatus: 'geen-database', orgProfile: { name: 'Stichting X' }, nu: NU });
-  check('23: zonder project: geen project/financiering/documenten, organisatie blijft', geen.project === null && geen.financiering === null && geen.documenten === null && geen.organisatie.naam === 'Stichting X');
-  check('24: organisatie: volledigheid uit dezelfde kernvelden als het Dashboard', paneel.organisatie.naam === 'Stichting X' && paneel.organisatie.ingevuld === 2 && paneel.organisatie.pct === 25);
+  const geen = bouwContextPanel({ project: null, regels: [], fundingStatus: 'geen-database', nu: NU });
+  check('23: zonder project: geen overzicht (geen project, geen financiering, geen organisatie, geen documenten)', geen.project === null && geen.financiering === null && !('organisatie' in geen) && !('documenten' in geen));
+  check('24: het overzicht bevat geen organisatie- en documentgegevens meer (die hebben hun eigen plek)', !('organisatie' in paneel) && !('documenten' in paneel) && !('organisatie' in fout));
 }
 {
-  const p = { id: PA, docs: [
-    { id: 'd1', naam: 'Oud', soort: 'Begroting', gemaakt: '2026-09-01T10:00:00Z' },
-    { id: 'd2', naam: 'Nieuw', soort: 'Projectplan', versie: 2, gemaakt: '2026-10-05T10:00:00Z' },
-    { id: 'd3', naam: 'Vervangen', soort: 'Projectplan', gemaakt: '2026-10-09T10:00:00Z', vervangen: true },
-    { id: 'd4', naam: 'Midden', gemaakt: '2026-09-20T10:00:00Z' },
-    { id: 'd5', naam: 'Tweede', soort: 'Overig', gemaakt: '2026-09-25T10:00:00Z' },
-  ] };
-  const d = documentenVanProject(p);
-  check('25: documenten: laatste 3 van dit project, nieuwste eerst, vervangen versies tellen niet; totaal klopt', d.laatste.map((x) => x.id).join() === 'd2,d5,d4' && d.totaal === 4);
-  check('26: project zonder documenten of zonder project: leeg', documentenVanProject({ id: PB }).totaal === 0 && documentenVanProject(null).laatste.length === 0);
+  // Het overzicht toont toegekend/aangevraagd/nog te financieren uit de gedeelde rekenmodule, compact.
+  const rpc2 = (id, extra) => regelUitRpc({ id, program_id: PA, bron_type: 'regeling', bron_status: 'zichtbaar', bron_naam: `Regeling ${id}`, funder_naam: 'Fonds', status: 'interesting', reminder_enabled: true, ...extra });
+  const regels2 = [rpc2('a', { status: 'awarded', requested_amount: 30000, awarded_amount: 30000 }), rpc2('b', { status: 'submitted', requested_amount: 20000 })];
+  const pr = bouwContextPanel({ project: { id: PA, naam: 'P', begroting: 100000 }, regels: regels2, fundingStatus: 'klaar', nu: NU });
+  check('25: overzicht financiering: toegekend 30.000, aangevraagd 20.000, nog nodig 50.000 (zelfde rekenmodule als Dashboard)', pr.project.dekking.toegekend === 30000 && pr.project.dekking.aangevraagd === 20000 && pr.project.dekking.nogNodig === 50000);
+  check('26: project zonder locatie/looptijd geeft lege strings (geen "undefined")', bouwContextPanel({ project: { id: PA, naam: 'P' }, regels: [], fundingStatus: 'klaar', nu: NU }).project.locatie === '' && bouwContextPanel({ project: { id: PA, naam: 'P' }, regels: [], fundingStatus: 'klaar', nu: NU }).project.looptijd === '');
 }
 
 // ---- statische controles
@@ -145,6 +168,14 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: PA, bron_type: 'regelin
   const matching = [...loop('src/data'), ...loop('src/shared')].filter((f) => /\.(js|jsx|ts)$/.test(f));
   check('40: matching/fondsadvies/export/documentgeneratie gebruiken geen Fase 4-code', matching.every((f) => !nieuweBron.test(zonderCommentaar(lees(f)))));
   check('41: geen migratie en geen secrets in de Fase 4-bestanden', chat.every((f) => !/sk_live_|whsec_|sk_test_|create table|alter table/i.test(lees(f))));
+  const tp = toolCode;
+  check('51: geen algemene Context-kolom of Context-knop meer: kolom heet projectoverzicht, knop heet Project (alleen bij actief project)', !/open-context|kolom-context|Context bij dit gesprek/.test(tp + code('src/features/kompas-app/chat/ChatWerkruimte.jsx')) && /data-testid="open-project"/.test(tp) && /\{actiefProject && \(\s*<button type="button" data-testid="open-project"/.test(tp));
+  check('52: rechterkolom alleen bij actief project; drawer-tab project alleen bij actief project', /rechts=\{actiefProject \? <ProjectContextPanel/.test(tp) && /\.\.\.\(actiefProject \? \{ project:/.test(tp) && /\{rechts && \(\s*<aside/.test(code('src/features/kompas-app/chat/ChatWerkruimte.jsx')));
+  check('53: projectoverzicht toont geen organisatie- of documentenblok meer', !/ctx-organisatie|ctx-documenten|OrganisatieBlok|DocumentenBlok|Organisatieprofiel →|Documenten →/.test(panel));
+  check('54: AI-runtime ongewijzigd in gebruik: de Edge Function leest organisatie en documenten zelf uit de database; buildContext bevat nog het actieve document', /subsidie_kompas_organizations/.test(lees('supabase/functions/subsidie-kompas/index.ts')) && /knowledge_items/.test(lees('supabase/functions/subsidie-kompas/index.ts')) && /export function buildContext/.test(lees('src/data/services/chat.js')) && /buildProjectFundingContext|projectFundingContext|fundingContext/i.test(lees('supabase/functions/subsidie-kompas/index.ts')));
+  check('55: werkkop: geen status-/contextbadges meer boven de chat; "Actief in dit gesprek" alleen met actief project', !/Wisselen start een nieuw gesprek<\/span>/.test(tp) && /\{actiefProject && \(\s*<div data-testid="actief-project-kop"/.test(tp));
+  check('56: projectkoppeling van een gesprek loopt alleen via active_program_id (koppelGesprekAanProject); verplaatsen valideert tegen de eigen projecten en maakt het dossier van het vorige project leeg', /const verplaatsUitLijst/.test(tp) && /geldigProjectId\(projectId, store\.projects\)/.test(tp) && /koppelGesprekAanProject\(h\.id, doel\)/.test(tp) && /wisDossier: true/.test(tp));
+  check('57: hernoemen schrijft alleen title (eigen gesprek, user_id-filter); geen schemawijziging', /update\(\{ title: schoon \}\)\.eq\('id', conversationId\)\.eq\('user_id', userId\)/.test(lees('src/data/services/gesprekken.js').replace(/\s+/g, ' ').replace(/\(\{ title: schoon \}\) \./, '({ title: schoon }).')));
   const drawer = lees('src/features/kompas-app/KompasContextDrawer.jsx');
   check('42: drawer: Escape, focus trap (ook summary en verborgen elementen), scroll lock en sluitknop aanwezig', /Escape/.test(drawer) && /summary/.test(drawer) && /checkVisibility/.test(drawer) && /body\.style\.overflow = 'hidden'/.test(drawer) && /aria-label="Sluiten"/.test(drawer));
 }
