@@ -90,6 +90,10 @@ export function KompasProvider({ children, userId = null }) {
   // "Bespreek met Subsidiekompas"). Bewust een ref: geen extra render, geen
   // opslag, en de chat neemt het verzoek maar één keer over.
   const chatVerzoekRef = useRef(null);
+  // FASE5: welk gesprek de chat het laatst open had, alleen zolang de app geladen is, zodat "Chat" in de navigatie na een
+  // bezoek aan Projecten/Deadlines terugkeert naar hetzelfde gesprek. Bewust een ref: NIET in `st` en dus NIET in
+  // localStorage (de browser is geen bron van waarheid); de chat valideert het gesprek bij het hervatten opnieuw server-side.
+  const laatsteGesprekRef = useRef(null);
 
   // Projecten/documentatie/gesprekken/voorkeuren: nog het oude spoor
   // (workspace.js), dat vooralsnog altijd stil terugvalt op localStorage
@@ -455,6 +459,12 @@ export function KompasProvider({ children, userId = null }) {
       zetChatVerzoek: (verzoek) => {
         chatVerzoekRef.current = verzoek || null;
       },
+
+      zetLaatsteGesprek: (id) => {
+        laatsteGesprekRef.current = id || null;
+      },
+
+      laatsteGesprek: () => laatsteGesprekRef.current,
 
       neemChatVerzoek: () => {
         const verzoek = chatVerzoekRef.current;

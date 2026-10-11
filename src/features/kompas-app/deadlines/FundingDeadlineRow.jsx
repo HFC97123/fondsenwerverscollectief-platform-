@@ -6,6 +6,7 @@ import { css } from '../../../shared/lib/css.js';
 import { DeadlineWeergave, HerinneringKnop, StatusChip } from '../financiering/FinancieringUi.jsx';
 import { deadlineWeergave, formatEuro } from '../financiering/dekkingsplan.js';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
+import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 
 export const CSS_RIJ = `
 .fwk-md-rij { display: grid; grid-template-columns: 168px minmax(0, 1fr) auto; gap: 10px 20px; align-items: center; box-sizing: border-box; padding: 16px 20px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF; }
@@ -65,6 +66,8 @@ export default function FundingDeadlineRow({ rij, nu, onHerinnering }) {
         >
           Open projectfinanciering →
         </a>
+        {/* FASE5 */}
+        <BespreekLink projectId={project.id} fundingId={regel.id} naam={regel.naam} />
       </div>
     </article>
   );

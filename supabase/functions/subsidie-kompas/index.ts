@@ -2019,6 +2019,498 @@ function projectContextBlok(p: ActiefProject | null): string | null {
 const GEEN_ACTIEF_PROJECT_TEKST =
   'GEEN ACTIEF PROJECT: er is geen project aan dit gesprek gekoppeld. Gebruik geen projectgegevens uit andere gesprekken, uit eerdere projecten of uit een gok. Heeft het lid het over een project, werk dan uitsluitend met wat in dit gesprek is gezegd, en bied hooguit aan om er een project van te maken.';
 
+// FASE5-BEGIN
+// ---------------------------------------------------------------------------
+// WERKRUIMTE FASE 5: de financieringsstand van het ACTIEVE project als chatcontext.
+//
+// Bron: uitsluitend de database-functie kompas_dekkingsplan(p_program_id) - dezelfde functie als de
+// Projectfinanciering-tab, Mijn deadlines, het Dashboard en het contextpaneel. Die functie leest
+// auth.uid(), controleert het projecteigenaarschap, maskeert bronnen die buiten het abonnement vallen
+// en bepaalt de effectieve deadline live (eigen datum, anders de datum van de regeling/het fonds). Er
+// is hier dus GEEN tweede fundingquery, geen tweede maskeringsregel en geen deadline-snapshot.
+//
+// Omdat de functie auth.uid() gebruikt, wordt zij aangeroepen met de JWT van de gebruiker zelf (een
+// aparte client met alleen de anon-key); de service-role-client van deze functie heeft geen auth.uid().
+//
+// Wat de browser stuurt: alleen identifiers (conversationId, activeProgramId, focusFundingId). Er wordt
+// nooit een project- of fundingobject uit de browser gelezen. De server bepaalt zelf de gebruiker (JWT),
+// het gesprek (user_id-filter), het actieve project van dat gesprek en de financieringsregels.
+//
+// FAIL-SAFE: elke fout in dit blok (RPC, rekenen, deadlines, maskering) levert een lege tekst op en een
+// logregel met alleen een code. Een chatverzoek wordt hierdoor nooit geblokkeerd of veranderd.
+// ---------------------------------------------------------------------------
+type FundingRegel = {
+  id: string;
+  bronStatus: 'zichtbaar' | 'verborgen' | 'verwijderd';
+  bronType: 'regeling' | 'fonds' | null;
+  schemeId: string | null;
+  funderId: string | null;
+  naam: string;
+  funder: string;
+  status: string;
+  requested: number | null;
+  awarded: number | null;
+  eigenDeadline: string | null;
+  deadline: string | null;
+};
+
+// programId: het door de server bevestigde project (gesprek en project kloppen; nooit uit de browser overgenomen).
+// regelsBekend: false als de regels niet gelezen konden worden (dan geen tekst en geen 'staat al'-markering).
+type FundingVerzoek = { tekst: string; regels: FundingRegel[]; programId: string | null; regelsBekend: boolean };
+
+const LEGE_FUNDING: FundingVerzoek = { tekst: '', regels: [], programId: null, regelsBekend: false };
+const FUNDING_CONTEXT_KOP = 'FINANCIERING VAN DIT PROJECT';
+const FUNDING_STATUSSEN = ['interesting', 'preparing', 'submitted', 'awarded', 'rejected'];
+const FUNDING_STATUS_TEKST: Record<string, string> = {
+  interesting: 'Interessant',
+  preparing: 'In voorbereiding',
+  submitted: 'Aangevraagd',
+  awarded: 'Toegekend',
+  rejected: 'Afgewezen',
+};
+// Alleen regels in deze statussen tellen mee als "komende deadline" (zelfde regel als de UI).
+const FUNDING_ACTIEVE_STATUSSEN = ['interesting', 'preparing'];
+const FUNDING_MAX_REGELS = 40;
+const FUNDING_RPC_TIMEOUT_MS = 4000;
+const FUNDING_BRON_VERBORGEN = 'Een bron die niet zichtbaar is in dit abonnement (naam niet beschikbaar)';
+const FUNDING_BRON_VERWIJDERD = 'Een bron die niet meer beschikbaar is (naam niet beschikbaar)';
+
+// Een bedrag van een financieringsregel (numeric uit de database): getal of null. Gelijk aan regelBedrag() in de UI.
+function fundingRegelBedrag(v: unknown): number | null {
+  if (v == null || v === '') {
+    return null;
+  }
+
+  const n = Number(v);
+
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+// Een projectbedrag (begroting, eigen bijdrage). Gelijk aan projectBedrag() in de UI.
+function fundingProjectBedrag(v: unknown): number {
+  if (typeof v === 'number') {
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+
+  const cijfers = String(v == null ? '' : v).replace(/[^0-9]/g, '');
+  const n = cijfers ? Number(cijfers) : 0;
+
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function fundingEuro(n: number): string {
+  return `€ ${Math.round(Number(n) || 0).toLocaleString('nl-NL')}`;
+}
+
+function fundingDatum(iso: unknown): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+
+  if (!m) {
+    return null;
+  }
+
+  const t = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+
+  return t.getUTCFullYear() === Number(m[1]) && t.getUTCMonth() === Number(m[2]) - 1 && t.getUTCDate() === Number(m[3]) ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+function fundingDagenTot(iso: string | null, vandaag: string): number | null {
+  const doel = fundingDatum(iso);
+  const nu = fundingDatum(vandaag);
+
+  if (!doel || !nu) {
+    return null;
+  }
+
+  return Math.round((Date.parse(`${doel}T00:00:00Z`) - Date.parse(`${nu}T00:00:00Z`)) / 86400000);
+}
+
+function fundingDatumTekst(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('nl-NL', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${iso}T12:00:00Z`));
+  } catch (_) {
+    return iso;
+  }
+}
+
+function fundingDagenTekst(dagen: number | null): string {
+  if (dagen == null) return '';
+  if (dagen < 0) return 'verstreken';
+  if (dagen === 0) return 'vandaag';
+  if (dagen === 1) return 'morgen';
+
+  return `over ${dagen} dagen`;
+}
+
+// Een rij uit kompas_dekkingsplan() -> de vorm waarmee deze functie werkt (zelfde afleiding als regelUitRpc()
+// in de UI). Van een verborgen of verwijderde bron wordt NIETS overgenomen behalve de eigen velden van het lid:
+// ook als de database ooit wel een naam of brondatum zou meesturen, bereikt die het model hier niet.
+function fundingRegelUitRpc(rij: any): FundingRegel | null {
+  if (!rij || typeof rij !== 'object' || typeof rij.id !== 'string') {
+    return null;
+  }
+
+  const bronStatus: FundingRegel['bronStatus'] = rij.bron_status === 'verborgen' || rij.bron_status === 'verwijderd' ? rij.bron_status : 'zichtbaar';
+  const zichtbaar = bronStatus === 'zichtbaar';
+  const eigen = fundingDatum(rij.eigen_deadline);
+  const uuidOfNull = (v: unknown) => (typeof v === 'string' && UUID_RE.test(v) ? v : null);
+
+  return {
+    id: rij.id,
+    bronStatus,
+    bronType: zichtbaar && (rij.bron_type === 'regeling' || rij.bron_type === 'fonds') ? rij.bron_type : null,
+    schemeId: zichtbaar ? uuidOfNull(rij.scheme_id) : null,
+    funderId: zichtbaar ? uuidOfNull(rij.funder_id) : null,
+    naam: zichtbaar ? String(rij.bron_naam || 'Onbekende bron').slice(0, 200) : '',
+    funder: zichtbaar ? String(rij.funder_naam || '').slice(0, 200) : '',
+    status: FUNDING_STATUSSEN.includes(rij.status) ? rij.status : 'interesting',
+    requested: fundingRegelBedrag(rij.requested_amount),
+    awarded: fundingRegelBedrag(rij.awarded_amount),
+    eigenDeadline: eigen,
+    deadline: zichtbaar ? fundingDatum(rij.effectieve_deadline) || eigen : eigen,
+  };
+}
+
+// Dezelfde rekenregels als berekenDekking() in src/features/kompas-app/financiering/dekkingsplan.js (de UI-module);
+// een pariteitstest (tests/fase5) draait beide op dezelfde invoer.
+//   Toegekend          = som van awarded_amount (terugval: requested_amount) bij status awarded
+//   Aangevraagd        = som van requested_amount bij status submitted
+//   Nog te financieren = max(0, begroting - toegekend - aangevraagd - overige dekking)
+function berekenFundingDekking(begroting: unknown, overige: unknown, regels: FundingRegel[]) {
+  const budget = fundingProjectBedrag(begroting);
+  const toegekend = regels
+    .filter((r) => r.status === 'awarded')
+    .reduce((t, r) => t + (r.awarded != null ? r.awarded : r.requested != null ? r.requested : 0), 0);
+  const aangevraagd = regels.filter((r) => r.status === 'submitted').reduce((t, r) => t + (r.requested != null ? r.requested : 0), 0);
+  const overig = fundingProjectBedrag(overige);
+
+  return { begroting: budget, toegekend, aangevraagd, overige: overig, nogNodig: Math.max(0, budget - (toegekend + aangevraagd + overig)) };
+}
+
+function fundingRegelNaam(r: FundingRegel): string {
+  if (r.bronStatus === 'verborgen') return FUNDING_BRON_VERBORGEN;
+  if (r.bronStatus === 'verwijderd') return FUNDING_BRON_VERWIJDERD;
+
+  return r.funder && r.funder !== r.naam && r.bronType === 'regeling' ? `${r.naam} (${r.funder})` : r.naam;
+}
+
+function fundingRegelTekst(r: FundingRegel, vandaag: string): string {
+  const delen = [fundingRegelNaam(r), FUNDING_STATUS_TEKST[r.status] || 'Interessant'];
+
+  if (r.requested != null) delen.push(`gevraagd ${fundingEuro(r.requested)}`);
+  if (r.awarded != null) delen.push(`toegekend ${fundingEuro(r.awarded)}`);
+
+  if (r.deadline) {
+    const dagen = fundingDagenTot(r.deadline, vandaag);
+    const eigen = r.eigenDeadline && r.eigenDeadline === r.deadline;
+
+    delen.push(`${eigen ? 'eigen deadline' : 'deadline'} ${fundingDatumTekst(r.deadline)}${dagen != null ? ` (${fundingDagenTekst(dagen)})` : ''}`);
+  }
+
+  return `- ${delen.join(' — ')}`;
+}
+
+// De financieringsstand als compacte, leesbare tekst voor het hoofdmodel. ALLEEN gevalideerde, server-side
+// gelezen gegevens van het actieve project gaan erin; geen tabellen, geen database-dump, geen notities, geen
+// websites, geen missies. Geen financieringsregels = geen blok (lege tekst): het gesprek verloopt dan exact
+// als voorheen.
+function buildProjectFundingContext(opties: {
+  projectNaam: string;
+  begroting: unknown;
+  overigeDekking: unknown;
+  regels: FundingRegel[];
+  vandaag: string;
+  focusRegel?: FundingRegel | null;
+}): string {
+  const regels = (opties.regels || []).slice();
+
+  if (!regels.length) {
+    return '';
+  }
+
+  const rang = (s: string) => FUNDING_STATUSSEN.indexOf(s);
+
+  regels.sort(
+    (a, b) =>
+      String(a.deadline || '9999-12-31').localeCompare(String(b.deadline || '9999-12-31')) ||
+      rang(a.status) - rang(b.status) ||
+      fundingRegelNaam(a).localeCompare(fundingRegelNaam(b), 'nl'),
+  );
+
+  const dekking = berekenFundingDekking(opties.begroting, opties.overigeDekking, regels);
+  const getoond = regels.slice(0, FUNDING_MAX_REGELS);
+  const komend = regels
+    .filter((r) => FUNDING_ACTIEVE_STATUSSEN.includes(r.status) && r.deadline && (fundingDagenTot(r.deadline, opties.vandaag) ?? -1) >= 0)
+    .sort((a, b) => String(a.deadline).localeCompare(String(b.deadline)) || fundingRegelNaam(a).localeCompare(fundingRegelNaam(b), 'nl'))[0];
+
+  const delen = [
+    `${FUNDING_CONTEXT_KOP} (actuele stand uit Projectfinanciering, uitsluitend van het project "${String(opties.projectNaam || 'Naamloos project').slice(0, 200)}"; peildatum ${opties.vandaag})`,
+    dekking.begroting > 0 ? `Totale begroting: ${fundingEuro(dekking.begroting)}` : 'Totale begroting: niet ingevuld',
+    `Toegekend: ${fundingEuro(dekking.toegekend)}`,
+    `Aangevraagd: ${fundingEuro(dekking.aangevraagd)}`,
+    `Overige dekking (eigen bijdrage): ${fundingEuro(dekking.overige)}`,
+    dekking.begroting > 0 ? `Nog te financieren: ${fundingEuro(dekking.nogNodig)}` : '',
+    `Financieringsregels (${regels.length}${regels.length > getoond.length ? `, hier de eerste ${getoond.length} op deadline` : ''}):`,
+    ...getoond.map((r) => fundingRegelTekst(r, opties.vandaag)),
+    komend && komend.deadline
+      ? `Eerstvolgende deadline: ${fundingRegelNaam(komend)}, ${fundingDatumTekst(komend.deadline)} (${fundingDagenTekst(fundingDagenTot(komend.deadline, opties.vandaag))})`
+      : 'Eerstvolgende deadline: geen komende deadline bij een interessante of in voorbereiding zijnde regel.',
+  ];
+
+  if (opties.focusRegel) {
+    delen.push(
+      `FOCUS: het lid opent dit gesprek vanuit deze ene financieringsregel; vragen als "deze aanvraag" of "dit fonds" gaan hierover. ${fundingRegelTekst(opties.focusRegel, opties.vandaag).replace(/^- /, '')}`,
+    );
+  }
+
+  delen.push(
+    'REGELS: dit blok is de enige bron voor de financieringsstand van dit project; gebruik geen andere bron en geen andere projecten. Je kunt zelf niets toevoegen, wijzigen of verwijderen in Projectfinanciering: dat doet het lid zelf, of met de knoppen die het systeem onder een fondsenscan toont. Zeg dus nooit dat je iets hebt toegevoegd of opgeslagen. Bij een regel waarvan de bron niet zichtbaar of niet meer beschikbaar is, noem of raad je nooit een naam, gever, missie, website of brondeadline; alleen de eigen status, de eigen bedragen en de eigen deadline van het lid mag je noemen. Deadlines zijn live: de datum in dit blok is leidend, verzin of kopieer er geen. Adviseer alleen vanuit dit project (geen overzicht over andere projecten).',
+  );
+
+  return delen.filter(Boolean).join('\n').slice(0, 9000);
+}
+
+// Een promise met een tijdslimiet: dit blok mag het chatverzoek nooit ophouden.
+function metFundingTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+// De regels van het actieve project, gelezen als DE ingelogde gebruiker (JWT), via dezelfde RPC als de UI.
+async function laadProjectFinanciering(authHeader: string, programId: string): Promise<FundingRegel[] | null> {
+  const url = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+  if (!url || !anonKey || !authHeader.startsWith('Bearer ')) {
+    console.error('[subsidie-kompas] fundingcontext_niet_geconfigureerd');
+
+    return null;
+  }
+
+  try {
+    const client = createClient(url, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data, error } = await metFundingTimeout(Promise.resolve(client.rpc('kompas_dekkingsplan', { p_program_id: programId })), FUNDING_RPC_TIMEOUT_MS);
+
+    if (error || !Array.isArray(data)) {
+      console.error('[subsidie-kompas] fundingcontext_rpc_mislukt');
+
+      return null;
+    }
+
+    return data.map(fundingRegelUitRpc).filter((r: FundingRegel | null): r is FundingRegel => r !== null);
+  } catch (_e) {
+    console.error('[subsidie-kompas] fundingcontext_rpc_fout');
+
+    return null;
+  }
+}
+
+// Welk gesprek is dit en bij welk project hoort het? Server-side, met user_id-filter: een conversationId van een
+// ander (of een onbekend id) levert 'onbekend' op en dus geen enkele fundingcontext.
+async function gesprekProject(admin: any, userId: string, conversationId: unknown): Promise<{ status: 'geen' | 'ok' | 'onbekend'; programId: string | null }> {
+  if (conversationId == null || conversationId === '') {
+    return { status: 'geen', programId: null };
+  }
+
+  if (typeof conversationId !== 'string' || !UUID_RE.test(conversationId)) {
+    return { status: 'onbekend', programId: null };
+  }
+
+  try {
+    const { data, error } = await admin
+      .from('subsidie_kompas_conversations')
+      .select('id, active_program_id')
+      .eq('id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { status: 'onbekend', programId: null };
+    }
+
+    return { status: 'ok', programId: typeof data.active_program_id === 'string' ? data.active_program_id : null };
+  } catch (_e) {
+    return { status: 'onbekend', programId: null };
+  }
+}
+
+// Bouwt de fundingcontext voor dit verzoek. conversation.active_program_id is LEIDEND: de regels worden alleen
+// gelezen als het gesprek (van deze gebruiker) bij precies het door de server gevalideerde actieve project hoort.
+// Zonder gesprek (nieuw gesprek, nog niet aangemaakt) geldt het gevalideerde project als startwaarde.
+// De browser kan hier niets aan veranderen: een afwijkend project of gesprek geeft GEEN fundingcontext.
+async function laadFundingVoorVerzoek(
+  admin: any,
+  opties: { userId: string | null; authHeader: string; actiefProject: ActiefProject | null; conversationId: unknown; focusFundingId: unknown },
+): Promise<FundingVerzoek> {
+  try {
+    const { userId, authHeader, actiefProject, conversationId, focusFundingId } = opties;
+
+    if (!userId || !actiefProject) {
+      return LEGE_FUNDING;
+    }
+
+    const [gesprek, regels] = await Promise.all([gesprekProject(admin, userId, conversationId), laadProjectFinanciering(authHeader, actiefProject.id)]);
+
+    if (gesprek.status === 'onbekend') {
+      console.error('[subsidie-kompas] fundingcontext_gesprek_ongeldig');
+
+      return LEGE_FUNDING;
+    }
+
+    if (gesprek.status === 'ok' && gesprek.programId !== actiefProject.id) {
+      console.error('[subsidie-kompas] fundingcontext_project_wijkt_af_van_gesprek');
+
+      return LEGE_FUNDING;
+    }
+
+    if (!regels) {
+      return { tekst: '', regels: [], programId: actiefProject.id, regelsBekend: false };
+    }
+
+    // focusFundingId: de regel moet in de zojuist gelezen regels van DIT project staan (die zijn door de RPC al beperkt
+    // tot auth.uid() en het projecteigenaarschap; het gesprek hoort bij dit project; de maskering is al toegepast).
+    let focusRegel: FundingRegel | null = null;
+
+    if (focusFundingId != null && focusFundingId !== '') {
+      focusRegel = typeof focusFundingId === 'string' && UUID_RE.test(focusFundingId) ? regels.find((r) => r.id === focusFundingId) || null : null;
+
+      if (!focusRegel) {
+        console.error('[subsidie-kompas] focus_funding_ongeldig');
+      }
+    }
+
+    const tekst = buildProjectFundingContext({
+      projectNaam: actiefProject.naam,
+      begroting: actiefProject.velden.begroting,
+      overigeDekking: actiefProject.velden.eigenBijdrage,
+      regels,
+      vandaag: vandaagIso(),
+      focusRegel,
+    });
+
+    return { tekst, regels, programId: actiefProject.id, regelsBekend: true };
+  } catch (_e) {
+    console.error('[subsidie-kompas] fundingcontext_fout');
+
+    return LEGE_FUNDING;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Intentie van het laatste bericht, ALLEEN om de browser te laten weten welke knoppen passen. De AI schrijft nooit
+// naar de database: opslaan gebeurt altijd door de gebruiker (knop) of door een expliciete opdracht in dit bericht,
+// uitgevoerd door de browser via de gedeelde fundingservice. Gewoon advies slaat NIETS op.
+//   'scan'              : "Zoek passende fondsen voor dit project" -> resultaten + aanbod om toe te voegen
+//   'scan_en_toevoegen' : "Scan passende fondsen en zet de kansrijke in mijn dekkingsplan" -> expliciet
+//   'toevoegen'         : "Zet deze vier in mijn dekkingsplan" -> verwijst naar eerdere resultaten
+//   'advies'            : al het andere
+// ---------------------------------------------------------------------------
+type FondsIntentie = 'scan' | 'scan_en_toevoegen' | 'toevoegen' | 'advies';
+
+const FONDS_NAAMWOORD = '(?:fondsen|fonds|financiers|financier|regelingen|regeling|subsidies|subsidie)';
+const SCAN_RE = new RegExp(
+  [
+    '\\b(?:fondsenscan|projectscan|financieringsscan)\\b',
+    `\\b(?:zoek|vind|scan|geef|toon|laat|doe|maak)\\b[^.?!\\n]{0,60}\\b(?:passende?|geschikte?|kansrijke?|relevante?|bijpassende?)\\b[^.?!\\n]{0,40}\\b${FONDS_NAAMWOORD}\\b`,
+    `\\bwelke ${FONDS_NAAMWOORD}\\b[^.?!\\n]{0,40}\\bpass(?:en|end)\\b[^.?!\\n]{0,40}\\b(?:dit|ons|mijn|het)\\s+project\\b`,
+    `\\bpassende ${FONDS_NAAMWOORD}\\b[^.?!\\n]{0,30}\\b(?:voor|bij)\\s+(?:dit|ons|mijn|het)\\s+project\\b`,
+    `\\b(?:scan|zoek)\\b[^.?!\\n]{0,40}\\b${FONDS_NAAMWOORD}\\b[^.?!\\n]{0,30}\\b(?:voor|bij)\\s+(?:dit|ons|mijn|het)\\s+project\\b`,
+  ].join('|'),
+  'i',
+);
+const TOEVOEGEN_RE = /\b(?:zet|zeg|voeg|plaats|neem|breng|stop|sla)\b[^.?!\n]{0,80}\b(?:in|aan|op|bij|naar|onder)\b[^.?!\n]{0,30}\b(?:mijn|ons|het|de|onze)?\s*(?:dekkingsplan|projectfinanciering|financieringsplan|projectfinancieringen)\b/i;
+
+function bepaalFondsIntentie(tekst: string): FondsIntentie {
+  const t = String(tekst || '').slice(0, 2000);
+  const scan = SCAN_RE.test(t);
+  const toevoegen = TOEVOEGEN_RE.test(t);
+
+  if (scan && toevoegen) return 'scan_en_toevoegen';
+  if (scan) return 'scan';
+  if (toevoegen) return 'toevoegen';
+
+  return 'advies';
+}
+
+// De kansrijke financiers van deze beurt, als gestructureerde lijst voor de browser. Uitsluitend:
+//  - kandidaten die de bestaande engine (ongewijzigd) als getoond heeft gekozen, in dezelfde volgorde;
+//  - databaserecords met een geldig id (online gevonden kandidaten hebben dat niet en kunnen niet worden toegevoegd);
+//  - die de centrale entitlementlaag volledig toont (applyEntitlementsAndSanitize: niveau 'volledig').
+// Er gaat geen interne informatie mee: alleen type, id, naam, gever, de live deadline als weergave en maximaal twee korte
+// redenen die de engine al aan het model gaf. Het toevoegen zelf gebeurt in de browser via de gedeelde fundingservice.
+type FondsMatchItem = { type: 'regeling' | 'fonds'; id: string; naam: string; funder: string; deadline: string | null; waarom: string[]; staatAl: boolean };
+type FondsMatches = { intentie: FondsIntentie; projectId: string; items: FondsMatchItem[] };
+
+const FONDSMATCH_MAX_ITEMS = 12;
+
+function bouwFondsMatches(
+  getoond: Kandidaat[],
+  rechten: Rechten,
+  exclusiviteit: ExclusiviteitIndex,
+  regels: FundingRegel[],
+  projectId: string,
+  intentie: FondsIntentie,
+): FondsMatches | null {
+  try {
+    const ctx = nieuweEntitlementCtx(false, exclusiviteit);
+    const items: FondsMatchItem[] = [];
+
+    for (const k of getoond) {
+      if (items.length >= FONDSMATCH_MAX_ITEMS) break;
+      if (!k || k.row?._extern) continue;
+
+      const { entitlement, row } = applyEntitlementsAndSanitize(k.bron, k.row, rechten, ctx);
+
+      if (!row || entitlement.niveau !== 'volledig') continue;
+
+      const regeling = k.bron === 'regeling';
+      const id = String(regeling ? k.row?.regeling_id ?? '' : k.row?.funder_id ?? '');
+
+      if (!UUID_RE.test(id) || items.some((x) => x.id === id && x.type === (regeling ? 'regeling' : 'fonds'))) continue;
+
+      const naam = String((regeling ? row.naam : row.funder_naam) || '').trim();
+
+      if (!naam) continue;
+
+      const deadline = k.bron === 'funder' ? null : fundingDatum(row.deadline_datum);
+      const type: 'regeling' | 'fonds' = regeling ? 'regeling' : 'fonds';
+
+      items.push({
+        type,
+        id,
+        naam: naam.slice(0, 200),
+        funder: regeling ? String(row.funder_naam || '').slice(0, 200) : '',
+        deadline,
+        waarom: (Array.isArray(k.waarom) ? k.waarom : []).map((w) => String(w).slice(0, 160)).slice(0, 2),
+        staatAl: regels.some((r) => (type === 'regeling' ? r.schemeId === id : r.funderId === id)),
+      });
+    }
+
+    return items.length ? { intentie, projectId, items } : null;
+  } catch (_e) {
+    console.error('[subsidie-kompas] fondsmatches_fout');
+
+    return null;
+  }
+}
+
+// FASE5-END
+
 const NIVEAUS_INSTRUCTIE =
   'DRIE NIVEAUS, STRIKT GESCHEIDEN. (1) ORGANISATIE: blijvende gegevens over de organisatie zelf (rechtsvorm, ANBI, vestigingsplaats, missie). (2) PROJECT: alles wat bij één specifiek project hoort (doelgroep van dat project, projectlocatie, aantallen, looptijd, begroting, activiteiten). (3) DOCUMENT OF FONDSAANVRAAG: wensen voor één document of één fonds (bijvoorbeeld maximaal twee pagina\'s, "voor Fonds X leggen we extra nadruk op onderwijs", een bepaalde hoofdstukindeling). Behandel een gegeven nooit als een hoger niveau dan het is: een projectgegeven is geen organisatiegegeven, en een fonds- of documentwens is geen projectgegeven. Zeg zelf nooit dat je iets hebt opgeslagen: het systeem bewaart gegevens apart en toont dat aan het lid.';
 
@@ -5564,6 +6056,13 @@ Deno.serve(async (req) => {
   const matchContext = magOrganisatiegeheugen ? matchContextTeksten(orgProfile, actiefProject) : null;
   const matchSignalen = magOrganisatiegeheugen ? pasMatchSignalenToe(leesMatchSignalen(body), actiefProject) : null;
 
+  // Werkruimte Fase 5: de financieringsstand van het actieve project, server-side gelezen (zie laadFundingVoorVerzoek).
+  // Fail-safe: bij elke fout is dit leeg en verloopt het gesprek exact als voorheen.
+  const fundingVerzoek = magOrganisatiegeheugen && actiefProject
+    ? await laadFundingVoorVerzoek(admin, { userId: profileId, authHeader, actiefProject, conversationId: body.conversationId, focusFundingId: body.focusFundingId })
+    : LEGE_FUNDING;
+  const fondsIntentie = bepaalFondsIntentie(laatsteGebruikersTekst);
+
   const VRIJE_TIER_MAX_VOLLEDIG = 3;
 
   // Expliciet exclusieve fondsen (funders.premium_exclusive): voor Free/Pro volledig verborgen, via
@@ -5776,12 +6275,26 @@ Deno.serve(async (req) => {
     ...(magOrganisatiegeheugen ? [{ role: 'system', content: NIVEAUS_INSTRUCTIE }] : []),
     ...(orgContextBericht ? [{ role: 'system', content: orgContextBericht }] : []),
     ...(projectBericht ? [{ role: 'system', content: projectBericht }] : []),
+    ...(fundingVerzoek.tekst ? [{ role: 'system', content: fundingVerzoek.tekst }] : []),
     ...(contextTekst ? [{ role: 'system', content: contextTekst }] : []),
     ...berichten
       .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && m.content)
       .slice(-20)
       .map((m: any) => ({ role: m.role, content: String(m.content).slice(0, 12000) })),
   ];
+
+  // Werkruimte Fase 5: de kansrijke financiers van deze beurt als gestructureerde lijst (alleen wat dit lid volledig
+  // mag zien), zodat de browser ze met de gedeelde fundingservice kan toevoegen. Alleen voor Pro/Premium met een
+  // bevestigd actief project; nooit in een documentmodus. De engine zelf is hierboven ongewijzigd uitgevoerd.
+  const fondsMatches: FondsMatches | null =
+    magOrganisatiegeheugen && actiefProject && fundingVerzoek.programId && !documentModus
+      ? fondsIntentie === 'toevoegen'
+        ? { intentie: fondsIntentie, projectId: fundingVerzoek.programId, items: [] }
+        : fondsadviesEngineActief && freeSelectie
+          ? bouwFondsMatches(freeSelectie.getoond, rechtenVerzoek, exclusiviteit, fundingVerzoek.regelsBekend ? fundingVerzoek.regels : [], fundingVerzoek.programId, fondsIntentie)
+          : null
+      : null;
+  const fondsMatchesVeld = fondsMatches ? { fondsMatches } : {};
 
   const wilStream = body.stream === true;
 
@@ -6019,7 +6532,7 @@ Deno.serve(async (req) => {
       ? nabewerkAntwoord(tekst, { selectie: freeSelectie, taal: fondsadviesTaal, gebruikersTekst: laatsteGebruikersTekst, aantalBronnen: bronnen.length, metVerkoopzin: !documentModus }).tekst
       : verwijderTrackingParams(tekst);
 
-    return json({ answer: eindTekst, sources: schoneBronnen(bronnen), veldVoorstellen, projectDossier, projectDossierBronnen });
+    return json({ answer: eindTekst, sources: schoneBronnen(bronnen), veldVoorstellen, projectDossier, projectDossierBronnen, ...fondsMatchesVeld });
   }
 
   // Antwoord woord voor woord. De frontend leest dit met een EventSource-achtige
@@ -6245,7 +6758,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          stuur({ done: true, answer: volledig, sources: schoneBronnen(bronnen), veldVoorstellen, projectDossier, projectDossierBronnen });
+          stuur({ done: true, answer: volledig, sources: schoneBronnen(bronnen), veldVoorstellen, projectDossier, projectDossierBronnen, ...fondsMatchesVeld });
 
           // Zelfde voorwaarde als het niet-streamende pad hierboven: dat pad
           // registreert verbruik alleen op de volledige-succespad (nooit bij

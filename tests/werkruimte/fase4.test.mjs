@@ -123,7 +123,15 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: PA, bron_type: 'regelin
   const tool = lees('src/features/kompas-app/KompasToolPage.jsx');
   const toolCode = zonderCommentaar(tool);
   check('31: Free-pad: KompasToolPage keert voor !hasPlanTools terug vóór de werkruimte (geen kolommen/contextpaneel voor Free)', toolCode.indexOf('if (!hasPlanTools) {') > 0 && toolCode.indexOf('if (!hasPlanTools) {') < toolCode.indexOf('<ChatWerkruimte'));
-  const blok = (a, b) => { const i = tool.indexOf(a); const j = tool.indexOf(b, i); return i < 0 || j < 0 ? '' : tool.slice(i, j); };
+  // Fase 5 voegt bewust code toe aan deze pagina, altijd gemarkeerd (FASE5-BEGIN/END of een regel eindigend op "// FASE5") met
+  // één uitzondering: het bericht-object krijgt het veld fondsMatches. Voor de Fase 4-bewaking wordt dat eerst weggehaald,
+  // zodat de oorspronkelijke chatruntime (verstuur, dossier, nieuweChat, koppelProject, opslaan) bewijsbaar ongewijzigd blijft.
+  const zonderFase5 = (t) => t
+    .replace(/^[ \t]*\/\/ FASE5-BEGIN[\s\S]*?\/\/ FASE5-END\n/gm, '')
+    .replace(/^.*\/\/ FASE5\n/gm, '')
+    .replace(', ...(fondsKaart ? { fondsMatches: fondsKaart } : {}) }]', ' }]');
+  const toolF4 = zonderFase5(tool);
+  const blok = (a, b) => { const i = toolF4.indexOf(a); const j = toolF4.indexOf(b, i); return i < 0 || j < 0 ? '' : toolF4.slice(i, j); };
   check('32: chatruntime ongewijzigd t.o.v. Fase 3: verstuur() (incl. askKompasStream-aanroep, modusdetectie, opslag)', h(blok('  const verstuur = async', '  const linkHuidigGesprekAanProject')) === '0d617b71b2ac341d');
   check('33: projectdossier-verwerking, nieuweChat() en koppelProject() ongewijzigd (koppelProject: alleen de verwijzing in de melding "onder Eerdere gesprekken" -> "onder Gesprekken", omdat die pil niet meer bestaat)', h(blok('  const verwerkProjectDossier = async', '  const kiesBestaandProject')) === 'e998fe7eaf643a9f' && h(blok('  const nieuweChat = () => {', '  // Haalt de berichten van een eerder gesprek op')) === '4931d69b6be1866c' && h(blok('  const koppelProject = async', '  // Is het gekoppelde project verwijderd').split('onder Gesprekken.').join('onder Eerdere gesprekken.')) === 'c82fdcee0e7ab699');
   check('34: opslaan bij project / kopiëren / bewerk-verder ongewijzigd', h(blok('  const kopieerBericht = async', '  // Neemt de aangevinkte velden')) === 'e8874af8a543bcb5');

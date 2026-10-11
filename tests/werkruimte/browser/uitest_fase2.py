@@ -68,7 +68,7 @@ with sync_playwright() as p:
     ok('maskering Pro: naam/funder/website van Premium-bron niet in de pagina', 'PREMIUMFONDS' not in t and 'Geheim Premium' not in t and not pg.evaluate("[...document.querySelectorAll('a')].some(a=>a.href.includes('geheim.test'))"))
     h=pg.locator('[data-testid="pf-regel"][data-bron-status="verborgen"]')
     ok('maskering Pro: eigen bedrag, notitie en eigen deadline blijven zichtbaar', h.count()==1 and h.locator('input[aria-label^="Aangevraagd"]').input_value()=='2.000' and h.locator('textarea').input_value()=='Mijn eigen notitie' and h.locator('input[type="date"]').input_value()!='', h.inner_text()[:200])
-    ok('maskering Pro: geen website/regeling-info bij gemaskeerde regel', h.locator('a').count()==0 and 'Regeling' not in h.locator('[data-testid="pf-regel-deadline"]').inner_text())
+    ok('maskering Pro: geen website/regeling-info bij gemaskeerde regel', h.locator('a:not([data-testid="bespreek-link"])').count()==0 and 'Regeling' not in h.locator('[data-testid="pf-regel-deadline"]').inner_text())
     v=pg.locator('[data-testid="pf-regel"][data-bron-status="verwijderd"]')
     ok('verwijderde bron: label "Bron niet meer beschikbaar", eigen gegevens blijven', v.count()==1 and 'Bron niet meer beschikbaar' in v.inner_text() and v.locator('textarea').input_value()=='Bron verdwenen' and v.locator('input[aria-label^="Aangevraagd"]').input_value()=='1.000')
     ok('Projectfinanciering: samenvatting Nog te financieren € 35.000', '35.000' in pg.locator('[data-testid="pf-samenvatting"]').inner_text())
@@ -131,7 +131,7 @@ with sync_playwright() as p:
     ok('deeplink ?tab=gesprekken opent het tabblad', pg.locator('[data-testid="tab-btn-gesprekken"]').get_attribute('aria-selected')=='true')
     ok('Gesprekken: alleen eigen gesprek van dit project', pg.locator('[data-testid="tab-gesprekken"] [data-testid="gesprek-rij"]').count()==1 and 'Projectplan Buurtkeuken' in txt(pg) and 'Losse vraag' not in txt(pg) and 'GEHEIM' not in txt(pg))
     pg.locator('[data-testid="tab-gesprekken"] [data-testid="gesprek-open"]').click(); pg.wait_for_timeout(1500)
-    ok('Gesprekken: Open gesprek -> chat met actief project', pg.evaluate('location.hash')=='#/kompas' and 'Actief in dit gesprek: Buurtkeuken De Brug' in txt(pg) and 'Kun je me helpen met een projectplan?' in txt(pg))
+    ok('Gesprekken: Open gesprek -> chat met actief project', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Buurtkeuken De Brug' in txt(pg) and 'Kun je me helpen met een projectplan?' in txt(pg))
     ctx.close()
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}')
     pg.locator('[data-testid="tab-btn-documenten"]').click(); pg.wait_for_timeout(200)
@@ -147,7 +147,7 @@ with sync_playwright() as p:
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(300)
     ok('project zonder financiering: lege staat, geen fout', pg.locator('[data-testid="pf-leeg"]').count()==1 and pg.locator('[data-testid="pf-fout"]').count()==0)
     pg.get_by_role('button',name='Bespreek met Subsidiekompas').click(); pg.wait_for_timeout(1500)
-    ok('Bespreek met Subsidiekompas -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash')=='#/kompas' and 'Actief in dit gesprek: Taalcafe Zuid' in txt(pg))
+    ok('Bespreek met Subsidiekompas -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Taalcafe Zuid' in txt(pg))
     ctx.close()
     # --- isolatie
     for naam,pad in [('ander project',f'/kompas/projecten/{PX}'),('onbekend id','/kompas/projecten/00000000-0000-4000-8000-0000000000aa')]:

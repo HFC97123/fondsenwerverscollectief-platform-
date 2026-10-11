@@ -1,0 +1,231 @@
+{
+  "bron": "Edge Function na Fase 4",
+  "commit": "3635713",
+  "sha256": "7d530d6897faccc8308331e7c26db0e5c11916102cfda80a29f2870ea9405650",
+  "scenarios": {
+    "pro-scan-project": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).\n\nMet Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.",
+      "bronnen": [],
+      "aantalSysteemberichten": 7,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "7a0debbc17ca102a4236cdfe9c9277b550963930d9b4a37cd4f74ab772e5d447",
+        "c6b40bf84e0147f26926b025dc6dd21d78371c45726aa03161af57a0a6ca7226",
+        "b7b3a3a912b190e3fc35346820e84bdbab534fab64d274670e3ed6a58937e600",
+        "19be264e225ddf874697625c078cb13112c8da0eb53943ea147ad94ac24e0680",
+        "05b09f11dad494a02742514d4e5f0c4a0d309b384c8d731b5f211475b2b21aa9",
+        "29855a5c7af36e9d91e3ee49860287c7a3b3e888e48ae8d36f438ab659e2d0af"
+      ],
+      "gebruikersSha": [
+        "fdcd2242b1dec4286ace18ae58a3c678e424e2e9113d8bc7c01872b8a91f569e"
+      ],
+      "kandidaten": [
+        "Rotterdams Jongerencultuurfonds",
+        "Dansimpuls Nederland",
+        "Fonds Podiumkunsten",
+        "Jeugd en Talent Fonds"
+      ],
+      "metFundingBlok": 0
+    },
+    "premium-scan-project": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).",
+      "bronnen": [],
+      "aantalSysteemberichten": 7,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "647357b0d907909ccfd1180f3c3bf09362ba9dcfb29027d7e3188f905f7707c3",
+        "b5b4c87ae3fe17a6ede101acfc4130cc04c820ac86a91b210f92521704769c3d",
+        "198b3156dd8622ba1d0de62ddbca81505185d04747365ff223b23534c49712db",
+        "93a920717e3188342e994539646a0af4d1bc1b941785b015cadea4bedc22b4e1",
+        "05b09f11dad494a02742514d4e5f0c4a0d309b384c8d731b5f211475b2b21aa9",
+        "29855a5c7af36e9d91e3ee49860287c7a3b3e888e48ae8d36f438ab659e2d0af"
+      ],
+      "gebruikersSha": [
+        "fdcd2242b1dec4286ace18ae58a3c678e424e2e9113d8bc7c01872b8a91f569e"
+      ],
+      "kandidaten": [
+        "Rotterdams Jongerencultuurfonds",
+        "Dansimpuls Nederland",
+        "Talentprogramma Premium",
+        "Fonds Podiumkunsten",
+        "Jeugd en Talent Fonds"
+      ],
+      "metFundingBlok": 0
+    },
+    "pro-scan-met-funding": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).\n\nMet Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.",
+      "bronnen": [],
+      "aantalSysteemberichten": 7,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "7a0debbc17ca102a4236cdfe9c9277b550963930d9b4a37cd4f74ab772e5d447",
+        "8e2dca9e690a73c94f4ac77977548b7b68872de382fe274e565566817896560e",
+        "23b00b4ae4f2f0e6d4c33dc4cbfda06f27119105f8cc94982ec62289a2bc2d10",
+        "19be264e225ddf874697625c078cb13112c8da0eb53943ea147ad94ac24e0680",
+        "05b09f11dad494a02742514d4e5f0c4a0d309b384c8d731b5f211475b2b21aa9",
+        "29855a5c7af36e9d91e3ee49860287c7a3b3e888e48ae8d36f438ab659e2d0af"
+      ],
+      "gebruikersSha": [
+        "fdcd2242b1dec4286ace18ae58a3c678e424e2e9113d8bc7c01872b8a91f569e"
+      ],
+      "kandidaten": [
+        "Rotterdams Jongerencultuurfonds",
+        "Dansimpuls Nederland",
+        "Fonds Podiumkunsten",
+        "Jeugd en Talent Fonds"
+      ],
+      "metFundingBlok": 0
+    },
+    "premium-scan-en-toevoegen": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).",
+      "bronnen": [],
+      "aantalSysteemberichten": 7,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "647357b0d907909ccfd1180f3c3bf09362ba9dcfb29027d7e3188f905f7707c3",
+        "1b8bc615d16bc6b2a514a6e353131e6adfb93b0d44c61a5f1a99562fe428e9dd",
+        "2ef7c59c15f5be656e53d23ad7aed19d47d2ecbee25364a5b20a8b7447d229bc",
+        "93a920717e3188342e994539646a0af4d1bc1b941785b015cadea4bedc22b4e1",
+        "05b09f11dad494a02742514d4e5f0c4a0d309b384c8d731b5f211475b2b21aa9",
+        "29855a5c7af36e9d91e3ee49860287c7a3b3e888e48ae8d36f438ab659e2d0af"
+      ],
+      "gebruikersSha": [
+        "86f8387c4d51a8abb553300c68d0ad160ce6905dba4b00e83edfae609e7a083d"
+      ],
+      "kandidaten": [
+        "Rotterdams Jongerencultuurfonds",
+        "Dansimpuls Nederland",
+        "Talentprogramma Premium",
+        "Fonds Podiumkunsten",
+        "Jeugd en Talent Fonds"
+      ],
+      "metFundingBlok": 0
+    },
+    "free-scan-zonder-project": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).\n\nMet Pro of Premium krijgt u daarnaast toegang tot een uitgebreidere fondsendatabase.",
+      "bronnen": [],
+      "aantalSysteemberichten": 5,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "7d4487c7f66274210b818c6e7e93a71e03d2f6c3cebdc5293fe7515622421044",
+        "8d5d83594fbb83dc0af6e6a56e59a0ae53992835d808efb9d5553a82a288fd51",
+        "b7c30871aeec5c314b2a19e1fdb484a8379bb482811f3053e8056057eb558dc9",
+        "dddb0fe36d7c1070735deaaf33d21a6a56e11c66aed37394e7a72651a457abef"
+      ],
+      "gebruikersSha": [
+        "db814b626b16ed3fe566f29bb508c6278481a507b49943d5e3825fd669f3c6d6"
+      ],
+      "kandidaten": [
+        "Rotterdams Jongerencultuurfonds",
+        "Dansimpuls Nederland",
+        "Fonds Podiumkunsten"
+      ],
+      "metFundingBlok": 0
+    },
+    "pro-algemeen-advies-zonder-project": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).\n\nMet Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.",
+      "bronnen": [],
+      "aantalSysteemberichten": 7,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "7a0debbc17ca102a4236cdfe9c9277b550963930d9b4a37cd4f74ab772e5d447",
+        "33e14e8e7262f285500ef5ea4ee2f8d3b66a5755715831a3df4db072119632f5",
+        "4c8b12df5f84ae46ed0f483f5825e85ec599310c6296e16def84781c8208d3f1",
+        "ff785fd6bf082cf5473ced2aca48c48465228ddda6327086f6893a38e895e8dc",
+        "05b09f11dad494a02742514d4e5f0c4a0d309b384c8d731b5f211475b2b21aa9",
+        "caa4f465fbbf5f3791002ed5ed452619f069e8a03d7dc817b0b6dd052139a3f0"
+      ],
+      "gebruikersSha": [
+        "b9d2d28a713bc5cdac8e6861af83ce839296ff393b219aa8326f14a0bf0fa244"
+      ],
+      "kandidaten": [
+        "Dansimpuls Nederland",
+        "Rotterdams Jongerencultuurfonds",
+        "Fonds Podiumkunsten",
+        "Jeugd en Talent Fonds"
+      ],
+      "metFundingBlok": 0
+    },
+    "pro-vervolgvraag-met-funding": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).",
+      "bronnen": [],
+      "aantalSysteemberichten": 6,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "f5929d2cba9244f566946da1021f9e2bee9216d17993d4affb3be2741efc0a34",
+        "d6df2f67f2a1b163115d4a36a13dd52f94a8a4201ebad5f1e573f4f2417bb8a8",
+        "7f3621214a395cfd50f1ad5b8647d43c81d35d3c315b94497917d39ba558be84",
+        "05b09f11dad494a02742514d4e5f0c4a0d309b384c8d731b5f211475b2b21aa9",
+        "29855a5c7af36e9d91e3ee49860287c7a3b3e888e48ae8d36f438ab659e2d0af"
+      ],
+      "gebruikersSha": [
+        "1f25417ebf795963a9a45d95ba956f80ed1f69029da7956d521189271e4a96e4"
+      ],
+      "kandidaten": [
+        "Rotterdams Jongerencultuurfonds",
+        "Dansimpuls Nederland",
+        "Amsterdamse Cultuurregeling",
+        "Fonds Podiumkunsten",
+        "Jeugd en Talent Fonds"
+      ],
+      "metFundingBlok": 0
+    },
+    "pro-vervolgvraag-zonder-funding": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).\n\nMet Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.",
+      "bronnen": [],
+      "aantalSysteemberichten": 7,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "7a0debbc17ca102a4236cdfe9c9277b550963930d9b4a37cd4f74ab772e5d447",
+        "4cae44c2ef55c04da76d81adddf18b62b828d9e1d29852b0ba484af0ddc4cefc",
+        "0a754c8aefd359fcca559ed91c7fadb44357111494e386a5fc8ddfa6568cbb29",
+        "19be264e225ddf874697625c078cb13112c8da0eb53943ea147ad94ac24e0680",
+        "05b09f11dad494a02742514d4e5f0c4a0d309b384c8d731b5f211475b2b21aa9",
+        "29855a5c7af36e9d91e3ee49860287c7a3b3e888e48ae8d36f438ab659e2d0af"
+      ],
+      "gebruikersSha": [
+        "02fb3bea5828a74c0984428127c8a0ad228bcdc9e06dcef005bde92645d730dd"
+      ],
+      "kandidaten": [
+        "Rotterdams Jongerencultuurfonds",
+        "Dansimpuls Nederland",
+        "Fonds Podiumkunsten",
+        "Jeugd en Talent Fonds"
+      ],
+      "metFundingBlok": 0
+    },
+    "pro-stream-scan": {
+      "status": 200,
+      "antwoord": "Antwoord van het model (baseline).\n\nMet Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.",
+      "bronnen": [],
+      "aantalSysteemberichten": 7,
+      "systeemSha": [
+        "67258bfe308049c343739171a5939998fcd8b4a0458a04a0fc2dddaa61eabe55",
+        "7a0debbc17ca102a4236cdfe9c9277b550963930d9b4a37cd4f74ab772e5d447",
+        "2929ecb58a774783633c3635c25f8971b2cebf59a8c721b312dadda49f5bd2c5",
+        "ec36357b35d6bc5a2400579e2c8f36233aa4d9de5003add75d28f7de21053eb4",
+        "19be264e225ddf874697625c078cb13112c8da0eb53943ea147ad94ac24e0680",
+        "05b09f11dad494a02742514d4e5f0c4a0d309b384c8d731b5f211475b2b21aa9",
+        "29855a5c7af36e9d91e3ee49860287c7a3b3e888e48ae8d36f438ab659e2d0af"
+      ],
+      "gebruikersSha": [
+        "fdcd2242b1dec4286ace18ae58a3c678e424e2e9113d8bc7c01872b8a91f569e"
+      ],
+      "kandidaten": [
+        "Rotterdams Jongerencultuurfonds",
+        "Dansimpuls Nederland",
+        "Fonds Podiumkunsten",
+        "Jeugd en Talent Fonds"
+      ],
+      "metFundingBlok": 0
+    }
+  }
+}

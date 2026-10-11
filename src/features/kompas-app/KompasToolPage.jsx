@@ -35,6 +35,7 @@ import {
   bijwerkenGesprekModusEnDossier,
   haalBerichtenOp,
   haalGesprekModusEnDossier,
+  haalGesprekRij, // FASE5
   koppelGesprekAanProject,
   maakGesprekAan,
   voegBerichtToe,
@@ -48,6 +49,13 @@ import ConversationsList from './chat/ConversationsList.jsx';
 import GegevensVerwijderen from './chat/GegevensVerwijderen.jsx';
 import ProjectContextPanel from './chat/ProjectContextPanel.jsx';
 import { projectVoorBestaandGesprek, projectVoorChatVerzoek, projectVoorWeergave } from './chat/actiefProject.js';
+// FASE5-BEGIN
+import FondsMatchKaart from './chat/FondsMatchKaart.jsx';
+import { kaartVoorBericht } from './chat/fondsMatches.js';
+import { leesChatUrl, wisChatUrl, zetChatUrl } from './chat/gesprekUrl.js';
+import { haalDekkingsplan } from '../../data/services/projectFinanciering.js';
+import { regelUitRpc } from './financiering/dekkingsplan.js';
+// FASE5-END
 
 // RC1-acceptatietest, bevinding K3 (2026-10-01): vóór deze aanpassing
 // activeerde de frontend de 'projectplan'-modus (en daarmee het
@@ -231,6 +239,17 @@ export default function KompasToolPage() {
   // gesprek wordt pas aangemaakt bij het eerste bericht (zie verstuur()).
   const [conversationId, setConversationId] = useState(null);
   const [gekoppeldProjectId, setGekoppeldProjectId] = useState(null);
+  // FASE5-BEGIN
+  // Alleen weergave-/verzoekstaat van deze pagina, GEEN bron van waarheid: de teller ververst de contextkolom na een
+  // toevoeging; 'focus' is het id van een fundingregel dat alleen als verzoekveld meegaat (de server valideert eigenaar,
+  // project en rechten opnieuw). Niets hiervan gaat naar localStorage.
+  const [fundingVersie, setFundingVersie] = useState(0);
+  const [focus, setFocus] = useState(null);
+  const [urlVersie, setUrlVersie] = useState(0);
+  const verzoekGenomenRef = useRef(false);
+  const urlBezigRef = useRef('');
+  const gemountRef = useRef(true);
+  // FASE5-END
   // Verbetering Projectplan-workflow: welke Subsidie Kompas-modus dit gesprek
   // gebruikt (zie KOMPAS_MODES/resolveerModus() in de Edge Function - dat
   // mechanisme bestond al langer, maar werd tot nu toe nooit vanuit de
@@ -467,6 +486,9 @@ export default function KompasToolPage() {
       // organisatie) zelf uit de database, voor de ingelogde gebruiker.
       // Zonder actief project: geen projectcontext.
       activeProgramId: hasPlanTools && isEchtId(gekoppeldProjectId) ? gekoppeldProjectId : null,
+      // FASE5-BEGIN
+      focusFundingId: hasPlanTools && focus && isEchtId(gekoppeldProjectId) ? focus.fundingId : null,
+      // FASE5-END
       // AI Fundraising Assistant, fase 1: alleen zinvol voor leden met een
       // organisatieprofiel/project (Pro/Premium) - zelfde voorwaarde als
       // orgProfile hierboven, want Free heeft deze gegevens structureel niet.
@@ -509,7 +531,12 @@ export default function KompasToolPage() {
     // (chat.js gaf data.sources al door), maar werd tot nu toe nergens
     // vastgehouden of getoond. Alleen meegeven aan het berichtobject hier -
     // de weergave zelf staat verderop, direct onder de tekstballon.
-    setMessages(nieuw.concat([{ role: 'assistant', content: inhoud, sources: res.sources || [], fromUser: false }]));
+    // FASE5-BEGIN
+    // De kansrijke financiers van deze beurt (alleen Pro/Premium met actief project): uitsluitend weergave onder het
+    // antwoord. Niets wordt vanzelf opgeslagen; de kaart voegt toe via de gedeelde fundingservice.
+    const fondsKaart = hasPlanTools ? kaartVoorBericht(res.fondsMatches, messages, gekoppeldProjectId) : null;
+    // FASE5-END
+    setMessages(nieuw.concat([{ role: 'assistant', content: inhoud, sources: res.sources || [], fromUser: false, ...(fondsKaart ? { fondsMatches: fondsKaart } : {}) }]));
 
     // Verstevigen Projectplan-runtime, punten 2/3: alleen wanneer de Edge
     // Function daadwerkelijk een (nieuw of bijgewerkt) Projectdossier
@@ -699,6 +726,9 @@ export default function KompasToolPage() {
     setError('');
     setConversationId(null);
     setGekoppeldProjectId(null);
+    setFocus(null); // FASE5
+    wisChatUrl(); // FASE5
+    if (store.zetLaatsteGesprek) store.zetLaatsteGesprek(null); // FASE5
     setChatVoorstel(null);
     setKompasMode('algemeen');
     // Verstevigen Projectplan-runtime, punten 2/3: een nieuw gesprek begint
@@ -731,6 +761,7 @@ export default function KompasToolPage() {
 
     setMessages(berichten);
     setConversationId(h.id);
+    setFocus(null); // FASE5
     // Het project van de gesprekrij (active_program_id) is leidend; alleen een project dat nog bestaat
     // en niet gearchiveerd is blijft actief (zie chat/actiefProject.js).
     setGekoppeldProjectId(projectVoorBestaandGesprek(h, store.projects));
@@ -815,6 +846,8 @@ export default function KompasToolPage() {
       return;
     }
 
+    verzoekGenomenRef.current = true; // FASE5: een Dashboard-verzoek gaat voor op de URL
+
     // Fase 4: bij het openen van een bestaand gesprek is de gesprekrij leidend, niet het project uit het
     // verzoek (dat kan verouderd zijn). Een nieuw gesprek voor een project gebruikt dat project als startcontext.
     const projectId = projectVoorChatVerzoek({ verzoek, gesprekken: store.conversations, projecten: store.projects });
@@ -825,6 +858,130 @@ export default function KompasToolPage() {
       koppelProject(projectId);
     }
   }, []);
+
+  // FASE5-BEGIN
+  // Gesprek hervatten via de URL (#/kompas?conversation=<id>[&focus=<id>] of ?project=<id>[&focus=<id>]).
+  // De URL is een aanwijzing, geen bron: het gesprek moet van de ingelogde gebruiker zijn (haalGesprekRij), het project
+  // komt uit de gesprekrij (active_program_id) en een nieuw gesprek mag alleen starten met een eigen, niet-gearchiveerd
+  // project. Een dashboardverzoek (neemChatVerzoek) gaat voor. Ongeldig of vreemd -> stil een gewone, lege chat.
+  useEffect(() => {
+    gemountRef.current = true;
+
+    const onHash = () => setUrlVersie((v) => v + 1);
+
+    window.addEventListener('hashchange', onHash);
+
+    return () => {
+      gemountRef.current = false;
+      window.removeEventListener('hashchange', onHash);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasPlanTools || !store.projectenKlaar) {
+      return undefined;
+    }
+
+    let url = leesChatUrl(window.location.hash);
+
+    // Navigatie-"Chat" zonder parameters: terug naar het laatst geopende gesprek van deze sessie (zo nodig).
+    if (!url.conversation && !url.project && !conversationId && messages.length === 0 && !verzoekGenomenRef.current && store.laatsteGesprek) {
+      const laatste = store.laatsteGesprek();
+
+      if (laatste && /^#\/kompas\/?$/.test(window.location.hash || '#/kompas')) {
+        url = { conversation: laatste, project: null, focus: null };
+      }
+    }
+
+    const sleutel = `${url.conversation || ''}|${url.project || ''}|${url.focus || ''}`;
+
+    if (sleutel === '||' || urlBezigRef.current === sleutel) {
+      return undefined;
+    }
+
+    urlBezigRef.current = sleutel;
+
+    (async () => {
+      let nieuweFocusProject = null;
+
+      if (url.conversation && url.conversation === conversationId) {
+        // Zelfde gesprek (bijvoorbeeld een Bespreek-link in het contextpaneel): alleen de focus toepassen.
+        nieuweFocusProject = gekoppeldProjectId;
+      } else if (url.conversation) {
+        const rij = await haalGesprekRij(url.conversation);
+
+        if (!gemountRef.current) return;
+
+        if (!rij) {
+          wisChatUrl();
+          if (store.zetLaatsteGesprek) store.zetLaatsteGesprek(null);
+
+          return;
+        }
+
+        await openGesprek(rij);
+        nieuweFocusProject = projectVoorBestaandGesprek(rij, store.projects);
+      } else if (url.project) {
+        const p = (store.projects || []).find((x) => x.id === url.project && !x.gearchiveerd);
+
+        if (!p) {
+          wisChatUrl();
+
+          return;
+        }
+
+        await koppelProject(p.id);
+        nieuweFocusProject = p.id;
+      }
+
+      // Focus: alleen een regel die in het dekkingsplan van HET actieve project van dit gesprek staat (zelfde RPC als de UI).
+      // De naam komt uit die RPC (al gemaskeerd); de server valideert het id bij het versturen nogmaals.
+      if (url.focus && nieuweFocusProject && gemountRef.current) {
+        const res = await haalDekkingsplan(nieuweFocusProject);
+        const regel = !res.error && Array.isArray(res.regels) ? res.regels.map(regelUitRpc).find((r) => r.id === url.focus) : null;
+
+        if (regel && gemountRef.current) {
+          setFocus({ fundingId: regel.id, naam: regel.naam });
+          setDraft(`Vertel me meer over ${regel.naam} voor dit project.`);
+        }
+      }
+
+      // De focus is eenmalig gebruikt: de adresbalk houdt alleen het gesprek vast.
+      if (url.conversation && gemountRef.current) {
+        urlBezigRef.current = `${url.conversation}||`;
+        zetChatUrl(url.conversation);
+      }
+    })();
+
+    return undefined;
+  }, [store.projectenKlaar, hasPlanTools, urlVersie]);
+
+  // De adresbalk volgt het actieve gesprek (replaceState, geen extra geschiedenisstap) en de sessie onthoudt het alleen in
+  // het geheugen. Zo brengt "terug" of een klik op Chat de gebruiker bij hetzelfde gesprek.
+  useEffect(() => {
+    if (!hasPlanTools || !conversationId) {
+      return;
+    }
+
+    urlBezigRef.current = `${conversationId}||`;
+    zetChatUrl(conversationId);
+
+    if (store.zetLaatsteGesprek) store.zetLaatsteGesprek(conversationId);
+  }, [conversationId, hasPlanTools]);
+  // FASE5-END
+
+  // FASE5-BEGIN
+  // "Bespreek" bij een financier uit de kaart: staat die al in de projectfinanciering, dan gaat het id van die regel als
+  // focus mee (de server controleert het opnieuw); anders wordt alleen het invoerveld voorgevuld. Er wordt niets verstuurd.
+  const bespreekFinancier = ({ item, fundingId }) => {
+    setFocus(fundingId ? { fundingId, naam: item.naam } : null);
+    setDraft(`Vertel me meer over ${item.naam} voor dit project.`);
+
+    if (taRef.current) {
+      taRef.current.focus();
+    }
+  };
+  // FASE5-END
 
   // Vervolgopdracht, prioriteit 7 (Export). Vier acties onder een "groot"
   // AI-resultaat - hergebruikt bestaande mechanismen, geen nieuwe opslag:
@@ -1155,7 +1312,7 @@ export default function KompasToolPage() {
                     {m.content}
                   </div>
                 ) : (
-                  <div key={i} style={css('align-self: flex-start; max-width: 78%; display: flex; flex-direction: column; gap: 8px;')}>
+                  <div key={i} style={css(`align-self: flex-start; max-width: ${m.fondsMatches ? 'min(100%, 640px)' : '78%'}; display: flex; flex-direction: column; gap: 8px;`)}>
                     <div
                       style={css(
                         'padding: 20px 22px; border-radius: 24px 24px 24px 5px; background: #FFFFFF; color: #2E3A38; box-shadow: 0 2px 10px rgba(44,74,94,0.035); font-size: 15px; line-height: 1.68; white-space: pre-wrap;',
@@ -1191,6 +1348,19 @@ export default function KompasToolPage() {
                         </ul>
                       </div>
                     )}
+
+                    {/* FASE5-BEGIN: kansrijke financiers van deze beurt (compact, onder het antwoord). */}
+                    {m.fondsMatches && gekoppeldProjectId === m.fondsMatches.projectId && (
+                      <FondsMatchKaart
+                        lijst={m.fondsMatches}
+                        berichtId={`${conversationId || 'nieuw'}:${i}`}
+                        projectNaam={actiefProjectNaam}
+                        projecten={store.projects}
+                        onGewijzigd={() => setFundingVersie((v) => v + 1)}
+                        onBespreek={bespreekFinancier}
+                      />
+                    )}
+                    {/* FASE5-END */}
 
                     {/* Vervolgopdracht, prioriteit 7 (Export): alleen onder een
                         "groot" AI-resultaat, en alleen voor Pro/Premium/Admin -
@@ -1459,6 +1629,16 @@ export default function KompasToolPage() {
             )}
             </div>
 
+            {/* FASE5-BEGIN: zichtbaar welke financiering er besproken wordt; wissen kan altijd. */}
+            {focus && (
+              <div data-testid="chat-focus" style={css("display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 6px 12px; border-radius: 999px; background: #EAF3EE; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 12.5px; font-weight: 700; width: fit-content; max-width: 100%;")}>
+                <span style={css('overflow: hidden; text-overflow: ellipsis; white-space: nowrap;')}>We bespreken: {focus.naam}</span>
+                <button type="button" data-testid="chat-focus-wis" aria-label="Focus op deze financiering wissen" onClick={() => setFocus(null)} style={css('cursor: pointer; border: 0; background: transparent; color: #2C4A5E; font-size: 16px; line-height: 1; padding: 0 2px;')}>
+                  ×
+                </button>
+              </div>
+            )}
+            {/* FASE5-END */}
             <div style={css('display: flex; align-items: flex-end; gap: 10px; padding: 10px 10px 10px 20px; border-radius: 26px; background: #FFFFFF;')}>
               {app.canUploadFiles && (
                 <>
@@ -1662,7 +1842,7 @@ export default function KompasToolPage() {
       <ChatWerkruimte
         modus={modus}
         links={gesprekkenInhoud}
-        rechts={<ProjectContextPanel projectId={actiefProject ? actiefProject.id : null} />}
+        rechts={<ProjectContextPanel projectId={actiefProject ? actiefProject.id : null} versie={fundingVersie} />}
       >
         {chatVenster}
       </ChatWerkruimte>
@@ -1676,7 +1856,7 @@ export default function KompasToolPage() {
           onClose={() => setPaneel(null)}
           tabs={{
             gesprekken: { label: 'Gesprekken', badge: gesprekken.length, content: gesprekkenInhoud },
-            context: { label: 'Context', content: <ProjectContextPanel projectId={actiefProject ? actiefProject.id : null} /> },
+            context: { label: 'Context', content: <ProjectContextPanel projectId={actiefProject ? actiefProject.id : null} versie={fundingVersie} /> },
           }}
         />
       )}

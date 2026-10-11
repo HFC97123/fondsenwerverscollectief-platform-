@@ -162,7 +162,7 @@ try:
     # Dashboard -> Open gesprek: gesprekrij leidend
     ctx,pg=nieuw(b,DESK,'pro','/kompas/dashboard')
     pg.get_by_test_id('dashboard-gesprek').filter(has_text='Projectplan Buurtkeuken').get_by_role('button').click(); pg.wait_for_timeout(1500)
-    ok('C11 Dashboard -> Open gesprek: chat toont project van het gesprek', pg.evaluate('location.hash')=='#/kompas' and kop(pg)=='Buurtkeuken De Brug' and 'Kun je me helpen met een projectplan?' in txt(pg))
+    ok('C11 Dashboard -> Open gesprek: chat toont project van het gesprek', pg.evaluate('location.hash') in ('#/kompas', f'#/kompas?conversation={CA}') and kop(pg)=='Buurtkeuken De Brug' and 'Kun je me helpen met een projectplan?' in txt(pg))
     ctx.close()
     ctx,pg=nieuw(b,DESK,'pro','/kompas/dashboard')
     pg.evaluate("1"); 

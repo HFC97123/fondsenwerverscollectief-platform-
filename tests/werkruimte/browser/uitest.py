@@ -129,7 +129,7 @@ with sync_playwright() as p:
         # ---------- Overdracht naar chat
         ctx,pg=nieuw(b,vp,'pro','/kompas/dashboard')
         pg.locator('[data-testid="dashboard-gesprek"]').filter(has_text='Projectplan Buurtkeuken').get_by_role('button',name='Open gesprek').click(); pg.wait_for_timeout(1500)
-        ok(f'{label}: Open gesprek -> chat', pg.evaluate('location.hash')=='#/kompas', pg.evaluate('location.hash'))
+        ok(f'{label}: Open gesprek -> chat', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555'), pg.evaluate('location.hash'))
         t=txt(pg)
         ok(f'{label}: gesprek geladen (berichten zichtbaar)', 'Kun je me helpen met een projectplan?' in t, t[:300].replace('\n',' | '))
         ok(f'{label}: kop Actief in dit gesprek: Buurtkeuken De Brug', 'Actief in dit gesprek: Buurtkeuken De Brug' in t)

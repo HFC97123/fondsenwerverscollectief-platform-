@@ -210,7 +210,10 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
     'src/features/kompas-app/KompasToolPage.jsx',
     'src/features/kompas-app/useKompasApp.js',
   ];
-  verboden.forEach((f) => check(`22: ${f} verwijst niet naar de nieuwe fundingbron (askKompas/chat/Edge Function ongewijzigd)`, !nieuweBron.test(lees(f))));
+  // Fase 5 koppelt de chat bewust aan de fundingbron, maar uitsluitend binnen met FASE5-BEGIN/FASE5-END gemarkeerde
+  // blokken; daarbuiten (en in useKompasApp.js) blijft elke verwijzing verboden.
+  const zonderFase5 = (t) => t.replace(/\/\/ FASE5-BEGIN[\s\S]*?\/\/ FASE5-END/g, '').replace(/\{\/\* FASE5-BEGIN[\s\S]*?FASE5-END \*\/\}/g, '');
+  verboden.forEach((f) => check(`22: ${f} verwijst buiten de FASE5-blokken niet naar de nieuwe fundingbron (askKompas/chat/Edge Function ongewijzigd)`, !nieuweBron.test(zonderFase5(lees(f)))));
   const bestanden = [...loop('src/data'), ...loop('src/shared')].filter((f) => /\.(js|jsx|ts)$/.test(f) && !f.endsWith('projectFinanciering.js'));
   const raak = bestanden.filter((f) => nieuweBron.test(zonderCommentaar(readFileSync(f, 'utf8'))));
   check('23: geen enkele matching-/fondsadvies-/export-/documentgeneratiecode gebruikt de nieuwe fundingbron ', raak.length === 0, raak.join(', '));

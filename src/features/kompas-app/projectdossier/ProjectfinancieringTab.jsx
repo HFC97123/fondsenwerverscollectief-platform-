@@ -5,6 +5,7 @@
 // Toevoegen van regels gebeurt vanuit Deadlines (Fase 3); hier wijzig of verwijder je alleen.
 import React, { useEffect, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
+import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import {
   STATUSSEN,
@@ -226,6 +227,8 @@ function Regel({ regel, onWijzig, onVerwijder }) {
         </div>
 
         <div className="fwk-pf-acties">
+          {/* FASE5 */}
+          <BespreekLink projectId={regel.projectId} fundingId={regel.id} naam={naam} stijl="min-height: 40px; margin-right: 14px;" />
           {bevestig ? (
             <span style={css('display: inline-flex; gap: 8px; flex-wrap: wrap;')}>
               <button

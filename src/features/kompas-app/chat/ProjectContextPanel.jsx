@@ -12,6 +12,7 @@ import { css } from '../../../shared/lib/css.js';
 import { StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { dagenTekst, formatDatum, formatEuro } from '../financiering/dekkingsplan.js';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
+import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { MAX_REGELS } from './contextPanelData.js';
 import { useProjectContextPanel } from './useProjectContextPanel.js';
 
@@ -161,6 +162,8 @@ function FinancieringBlok({ data, project }) {
                   <StatusChip status={r.status} />
                   {bedragVan(r) && <span style={css(`${TEKST} font-weight: 700; white-space: nowrap;`)}>{bedragVan(r)}</span>}
                 </div>
+                {/* FASE5: zelfde gesprek, alleen de focus op deze regel (de chat valideert die server-side) */}
+                <BespreekLink projectId={project.id} fundingId={r.id} naam={r.naam} stijl="min-height: 28px; font-size: 12.5px;" />
               </li>
             );
           })}
@@ -235,8 +238,8 @@ function OrganisatieBlok({ data }) {
   );
 }
 
-function PaneelInhoud({ projectId }) {
-  const data = useProjectContextPanel({ projectId });
+function PaneelInhoud({ projectId, versie }) {
+  const data = useProjectContextPanel({ projectId, versie }); // FASE5: versie = herlaadteller na een toevoeging in de chat
   const project = data.project;
 
   return (
@@ -251,10 +254,10 @@ function PaneelInhoud({ projectId }) {
 }
 
 // projectId = het gevalideerde actieve project van het geopende gesprek (de enige invoer; geen projectobject).
-export default function ProjectContextPanel({ projectId = null }) {
+export default function ProjectContextPanel({ projectId = null, versie = 0 }) {
   return (
     <ContextFoutgrens key={projectId || 'geen-project'}>
-      <PaneelInhoud projectId={projectId} />
+      <PaneelInhoud projectId={projectId} versie={versie} />
     </ContextFoutgrens>
   );
 }

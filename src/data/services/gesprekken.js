@@ -11,6 +11,7 @@
 // berichten); de berichten van één gesprek worden pas geladen zodra het
 // lid dat gesprek daadwerkelijk opent (haalBerichtenOp).
 import { supabase } from '../client.js';
+import { isEchtId } from './projecten.js';
 
 async function huidigeGebruiker() {
   if (!supabase) {
@@ -55,6 +56,34 @@ export async function haalGesprekkenOp() {
   }
 
   return (data || []).map(naarGesprekVeld);
+}
+
+// FASE5: één gesprek van de ingelogde gebruiker, om een gesprek via de URL te hervatten. De rij moet van deze
+// gebruiker zijn (user_id-filter bovenop RLS); active_program_id komt uit deze rij en nergens anders vandaan.
+// -> { id, titel, tijd, projectId } of null (onbekend, niet van deze gebruiker, of geen verbinding).
+export async function haalGesprekRij(conversationId) {
+  const userId = await huidigeGebruiker();
+
+  if (!userId || !supabase || !isEchtId(String(conversationId || ''))) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('subsidie_kompas_conversations')
+      .select('id, title, active_program_id, updated_at')
+      .eq('id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return naarGesprekVeld(data);
+  } catch (e) {
+    return null;
+  }
 }
 
 export async function haalBerichtenOp(conversationId) {

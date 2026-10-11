@@ -10,6 +10,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
+import { chatHref } from './chat/gesprekUrl.js';
 
 export const WERKNAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', href: '#/kompas/dashboard', paden: ['/kompas/dashboard'] },
@@ -50,6 +51,14 @@ const linkBasis = 'font-family: \'Mulish\', sans-serif; font-size: 14.5px; font-
 const menuItemStijl = css(
   "display: block; width: 100%; box-sizing: border-box; padding: 10px 14px; border: none; border-radius: 10px; background: none; text-align: left; cursor: pointer; font-family: 'Mulish', sans-serif; font-size: 14.5px; font-weight: 700; color: #2C4A5E; text-decoration: none;",
 );
+
+// FASE5: de Chat-link brengt terug bij het laatst geopende gesprek van deze sessie (alleen in het geheugen bewaard);
+// zonder gesprek blijft het de gewone chatlink. De chat valideert het gesprek zelf opnieuw.
+function chatNavHref(store) {
+  const id = store && store.laatsteGesprek ? store.laatsteGesprek() : null;
+
+  return id ? chatHref({ conversationId: id }) : '#/kompas';
+}
 
 export default function KompasWerkNav({ pad }) {
   const app = useApp();
@@ -142,7 +151,7 @@ export default function KompasWerkNav({ pad }) {
               <a
                 key={item.key}
                 className="fwk-wn-link"
-                href={item.href}
+                href={item.key === 'chat' ? chatNavHref(store) : item.href} // FASE5: terug naar hetzelfde gesprek
                 aria-current={isActief ? 'page' : undefined}
                 style={css(`${linkBasis} color: ${isActief ? '#4E9A6C' : '#2C4A5E'}; border-bottom-color: ${isActief ? '#4E9A6C' : 'transparent'};`)}
               >

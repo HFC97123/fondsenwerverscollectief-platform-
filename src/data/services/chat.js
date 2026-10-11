@@ -46,7 +46,7 @@ const GEEN_VERBINDING =
 
   Geeft terug: { answer, sources, veldVoorstellen, projectDossier, error }
 */
-export async function askKompas({ messages, tier, permissions, context, conversationId, activeProgramId, matchSignalen, kompasMode, projectDossier }) {
+export async function askKompas({ messages, tier, permissions, context, conversationId, activeProgramId, focusFundingId, matchSignalen, kompasMode, projectDossier }) {
   if (!supabase) {
     return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
@@ -65,6 +65,8 @@ export async function askKompas({ messages, tier, permissions, context, conversa
         // database gelezen (per ingelogde gebruiker); de browser stuurt alleen
         // mee WELK project actief is. Zonder id: geen projectcontext.
         activeProgramId: activeProgramId || null,
+        // FASE5: alleen een id; de server valideert eigenaar, project en rechten (focusFundingId).
+        focusFundingId: focusFundingId || null,
         contextVersie: 2,
         matchSignalen: matchSignalen || null,
         kompasMode: kompasMode || null,
@@ -86,6 +88,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
       veldVoorstellen: data.veldVoorstellen || {},
       projectDossier: data.projectDossier || null,
       projectDossierBronnen: data.projectDossierBronnen || {},
+      fondsMatches: data.fondsMatches || null, // FASE5
       error: null,
     };
   } catch (e) {
@@ -110,7 +113,7 @@ export async function askKompas({ messages, tier, permissions, context, conversa
   oude versie nog draait — dan valt deze functie terug op askKompas(), zodat de
   gebruiker altijd een antwoord krijgt.
 */
-export async function askKompasStream({ messages, tier, permissions, context, conversationId, activeProgramId, matchSignalen, kompasMode, projectDossier, onDelta }) {
+export async function askKompasStream({ messages, tier, permissions, context, conversationId, activeProgramId, focusFundingId, matchSignalen, kompasMode, projectDossier, onDelta }) {
   if (!supabase) {
     return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }
@@ -137,6 +140,8 @@ export async function askKompasStream({ messages, tier, permissions, context, co
         // database gelezen (per ingelogde gebruiker); de browser stuurt alleen
         // mee WELK project actief is. Zonder id: geen projectcontext.
         activeProgramId: activeProgramId || null,
+        // FASE5: alleen een id; de server valideert eigenaar, project en rechten (focusFundingId).
+        focusFundingId: focusFundingId || null,
         contextVersie: 2,
         matchSignalen: matchSignalen || null,
         kompasMode: kompasMode || null,
@@ -149,7 +154,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
 
     // Geen stream: de functie ondersteunt het nog niet.
     if (!res.ok || soort.indexOf('text/event-stream') === -1) {
-      return askKompas({ messages, tier, permissions, context, conversationId, activeProgramId, matchSignalen, kompasMode, projectDossier });
+      return askKompas({ messages, tier, permissions, context, conversationId, activeProgramId, focusFundingId, matchSignalen, kompasMode, projectDossier });
     }
 
     const reader = res.body.getReader();
@@ -160,6 +165,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
     let veldVoorstellen = {};
     let projectDossierUit = null;
     let projectDossierBronnenUit = {};
+    let fondsMatchesUit = null; // FASE5
     let serverFout = null;
     // STAP 5 (gevonden tijdens de belastingstest met het zwaarste testgeval):
     // een verbroken verbinding gooit niet altijd een leesfout - bij een
@@ -212,6 +218,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
               veldVoorstellen = deel.veldVoorstellen || {};
               projectDossierUit = deel.projectDossier || null;
               projectDossierBronnenUit = deel.projectDossierBronnen || {};
+              fondsMatchesUit = deel.fondsMatches || null; // FASE5
             }
           } catch (e) {
             // onvolledig JSON-fragment (regel liep over twee chunks) - de
@@ -253,7 +260,7 @@ export async function askKompasStream({ messages, tier, permissions, context, co
       throw new Error('Leeg antwoord.');
     }
 
-    return { answer: volledig, sources, veldVoorstellen, projectDossier: projectDossierUit, projectDossierBronnen: projectDossierBronnenUit, error: null };
+    return { answer: volledig, sources, veldVoorstellen, projectDossier: projectDossierUit, projectDossierBronnen: projectDossierBronnenUit, fondsMatches: fondsMatchesUit, error: null };
   } catch (e) {
     return { answer: null, sources: [], veldVoorstellen: {}, projectDossier: null, error: GEEN_VERBINDING };
   }

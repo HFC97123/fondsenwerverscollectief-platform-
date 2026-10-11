@@ -17,6 +17,7 @@ import { bouwDashboard, dagenTekst, formatDatum, formatEuro, formatTijd } from '
 import { useDekkingsplannen } from '../financiering/useProjectFinanciering.js';
 import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
+import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 
 const MAX_PROJECTEN = 6;
 
@@ -257,6 +258,8 @@ export default function DashboardPage() {
                       {x.funder ? `${x.funder} · ` : ''}
                       {x.projectNaam}
                     </div>
+                    {/* FASE5 */}
+                    <BespreekLink projectId={x.projectId} fundingId={x.sleutel} naam={x.naam} stijl="min-height: 32px; font-size: 12.5px;" />
                   </div>
                   <StatusChip status={x.status} />
                 </li>
