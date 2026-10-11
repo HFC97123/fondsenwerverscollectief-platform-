@@ -1,8 +1,8 @@
-// React-haken voor de projectfinanciering. Alle gegevens komen rechtstreeks uit de database
+// React-haken voor de projectfinanciering (lezen, wijzigen, verwijderen; toevoegen loopt via toevoegen.js). Alle gegevens komen rechtstreeks uit de database
 // (kompas_dekkingsplan); er is hier geen eigen opslag en geen localStorage. Dashboard en
 // projectdossier lezen dezelfde bron en rekenen met dezelfde module (dekkingsplan.js).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { haalDekkingsplan, verwijderRegel, voegRegelToe, werkRegelBij } from '../../../data/services/projectFinanciering.js';
+import { haalDekkingsplan, verwijderRegel, werkRegelBij } from '../../../data/services/projectFinanciering.js';
 import { isEchtId } from '../../../data/services/projecten.js';
 import { pasWijzigingToe, patchVoorDatabase, regelUitRpc } from './dekkingsplan.js';
 
@@ -56,7 +56,28 @@ export function useDekkingsplannen(projectIds) {
     };
   }, [sleutel]);
 
-  return staat;
+  // Eén veld van één regel wijzigen (bijvoorbeeld de herinnering in Mijn deadlines): hetzelfde patch- en
+  // toepas-pad als in het projectdossier (patchVoorDatabase/pasWijzigingToe). Een mislukte wijziging laat de staat ongemoeid.
+  const wijzig = useCallback(async (projectId, regelId, wijziging) => {
+    const patch = patchVoorDatabase(wijziging);
+
+    if (!Object.keys(patch).length) {
+      return { ok: false };
+    }
+
+    const res = await werkRegelBij(regelId, patch);
+
+    if (res.ok) {
+      setStaat((cur) => ({
+        ...cur,
+        perProject: { ...cur.perProject, [projectId]: (cur.perProject[projectId] || []).map((r) => (r.id === regelId ? pasWijzigingToe(r, wijziging) : r)) },
+      }));
+    }
+
+    return res;
+  }, []);
+
+  return { ...staat, wijzig };
 }
 
 // Eén project, met wijzigen en verwijderen (projectdossier).
@@ -145,5 +166,5 @@ export function useProjectFinanciering(projectId) {
     [laad],
   );
 
-  return { ...staat, laad, wijzig, verwijder, voegToe: voegRegelToe };
+  return { ...staat, laad, wijzig, verwijder };
 }

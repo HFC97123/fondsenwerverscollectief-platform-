@@ -2,9 +2,9 @@
 import subprocess, time, sys, os, re
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-srv = subprocess.Popen(['python3','-m','http.server','8768','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3','-m','http.server','8780','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
-BASE='http://localhost:8768/index.html'
+BASE='http://localhost:8780/index.html'
 P1='11111111-1111-4111-8111-111111111111'; P2='22222222-2222-4222-8222-222222222222'; P3='33333333-3333-4333-8333-333333333333'; PX='99999999-9999-4999-8999-999999999999'
 res=[]
 def ok(n,c,d=''):
@@ -207,15 +207,19 @@ with sync_playwright() as p:
     NIEUW='b0000000-0000-4000-8000-000000000001'
     ctx,pg=nieuw(b,vp,'pro','/kompas/deadlines')
     pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{P2}").linked_schemes=["SENTINEL"]')
+    pg.get_by_test_id('segment-alle').click(); pg.wait_for_timeout(400)
     pg.get_by_text('Nieuwe Testregeling').first.click(); pg.wait_for_timeout(500)
-    pg.get_by_label('Kies een project').select_option(label='Taalcafe Zuid')
-    pg.get_by_role('button',name='Toevoegen').click(); pg.wait_for_timeout(600)
+    pg.get_by_test_id('detail-toevoegen').click(); pg.wait_for_timeout(300)
+    pg.get_by_test_id('add-project').select_option(label='Taalcafe Zuid')
+    pg.get_by_test_id('add-opslaan').click(); pg.wait_for_timeout(600)
     rijen=pg.evaluate(f'window.__DBL.subsidie_kompas_program_funding.filter(r=>r.program_id==="{P2}")')
     ok('Deadlines: regel opgeslagen als verwijzing (scheme_id, status interesting, geen kopie van naam/bedrag/deadline)', len(rijen)==1 and rijen[0]['scheme_id']==NIEUW and rijen[0]['status']=='interesting' and rijen[0]['user_id']=='u1' and not any(k in rijen[0] for k in ['naam','name','deadline','budget','funder']), str(rijen))
-    ok('Deadlines: bevestiging getoond', 'is opgenomen in het dekkingsplan van Taalcafe Zuid' in txt(pg), txt(pg)[-300:])
+    ok('Deadlines: bevestiging getoond', 'staat nu in de projectfinanciering van Taalcafe Zuid' in txt(pg), txt(pg)[-300:])
     ok('Deadlines: project.linked_schemes niet geschreven', pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{P2}").linked_schemes')==['SENTINEL'])
-    pg.get_by_role('button',name='Toevoegen').click(); pg.wait_for_timeout(600)
-    ok('Deadlines: dubbel toevoegen -> vriendelijke melding, geen tweede regel', 'staat al in het dekkingsplan' in txt(pg) and pg.evaluate(f'window.__DBL.subsidie_kompas_program_funding.filter(r=>r.program_id==="{P2}").length')==1)
+    pg.get_by_role('button',name='Sluiten').last.click(); pg.wait_for_timeout(200)
+    pg.get_by_test_id('detail-toevoegen').click(); pg.wait_for_timeout(300)
+    pg.get_by_test_id('add-project').select_option(label='Taalcafe Zuid'); pg.wait_for_timeout(500)
+    ok('Deadlines: dubbel toevoegen -> vriendelijke melding, geen tweede regel', 'Staat al in projectfinanciering' in txt(pg) and pg.evaluate(f'window.__DBL.subsidie_kompas_program_funding.filter(r=>r.program_id==="{P2}").length')==1)
     ok('Deadlines: geen pageerrors', not pg.errs, '; '.join(pg.errs)[:200])
     pg.evaluate(f"location.hash='#/kompas/projecten/{P2}?tab=projectfinanciering'"); pg.wait_for_timeout(1200)
     ok('na toevoegen: dossier toont de regel met live bronnaam en brondeadline (status Interessant)', pg.locator('[data-testid="pf-regel"]').count()==1 and 'Nieuwe Testregeling' in pg.locator('[data-testid="pf-regel-naam"]').inner_text() and 'Datum van de regeling' in pg.locator('[data-testid="pf-regel-deadline"]').inner_text(), txt(pg)[:300])

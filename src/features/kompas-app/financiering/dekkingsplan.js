@@ -329,6 +329,64 @@ export function komendeDeadlines(projecten, fundingPerProject, nu, max = 6) {
 }
 
 // ---------------------------------------------------------------------------
+// Weergave van de effectieve deadline van één regel (Projectfinanciering, Mijn deadlines, Dashboard)
+// ---------------------------------------------------------------------------
+// De ENE afleiding van wat er over een deadline getoond wordt. De effectieve deadline zelf is al
+// bepaald in regelUitRpc (eigen datum, anders de live brondatum); hier komt alleen de presentatie bij:
+// dagen, tekst, de vergelijking "Uw datum / Regeling" en de herkomstnotitie.
+export function deadlineWeergave(regel, nu) {
+  const r = regel || {};
+  const datum = r.deadline ? String(r.deadline).slice(0, 10) : null;
+  const dagen = datum ? dagenTot(datum, nu) : null;
+  const vergelijking = deadlineVergelijking(r);
+  const herkomst = !r.eigenDeadline && r.systeemDeadline ? (r.systeemDeadlineBron === 'fonds' ? 'Datum van het fonds' : 'Datum van de regeling') : null;
+
+  return {
+    heeftDeadline: Boolean(datum) && dagen != null,
+    datum,
+    dagen,
+    datumTekst: datum ? formatDatum(datum) : '',
+    dagenTekst: dagen != null ? dagenTekst(dagen) : '',
+    vergelijking,
+    herkomst,
+    verstreken: dagen != null && dagen < 0,
+    dringend: dagen != null && dagen >= 0 && dagen <= 14,
+  };
+}
+
+// Mijn deadlines: alle regels van de niet-gearchiveerde projecten van het lid, in drie groepen.
+//   komend      : actieve regel (interessant/in voorbereiding) met een deadline vandaag of later, eerstvolgende eerst
+//   eerder      : regels met een deadline die niet (meer) komend is (verstreken of al aangevraagd/toegekend/afgewezen)
+//   zonder      : regels zonder deadline
+// Geen eigen bron: uitsluitend de regels uit kompas_dekkingsplan (fundingPerProject = { [projectId]: regels[] }).
+export function mijnDeadlines(projecten, fundingPerProject, nu) {
+  const komend = [];
+  const eerder = [];
+  const zonder = [];
+
+  (projecten || [])
+    .filter((p) => p && !p.gearchiveerd)
+    .forEach((p) => {
+      ((fundingPerProject && fundingPerProject[p.id]) || []).forEach((regel) => {
+        const rij = { regel, project: { id: p.id, naam: p.naam || 'Naamloos project' } };
+
+        if (isKomendeDeadline(regel, nu)) komend.push(rij);
+        else if (dagenTot(regel.deadline, nu) != null) eerder.push(rij);
+        else zonder.push(rij);
+      });
+    });
+
+  const datum = (rij) => String(rij.regel.deadline).slice(0, 10);
+  const naam = (rij) => `${rij.regel.naam} ${rij.project.naam}`;
+
+  komend.sort((a, b) => datum(a).localeCompare(datum(b)) || naam(a).localeCompare(naam(b), 'nl'));
+  eerder.sort((a, b) => datum(b).localeCompare(datum(a)) || naam(a).localeCompare(naam(b), 'nl'));
+  zonder.sort((a, b) => naam(a).localeCompare(naam(b), 'nl'));
+
+  return { komend, eerder, zonder, totaal: komend.length + eerder.length + zonder.length };
+}
+
+// ---------------------------------------------------------------------------
 // Wijzigingen: alleen de velden die het lid mag aanpassen, in databasenamen.
 // ---------------------------------------------------------------------------
 const TOEGESTANE_VELDEN = {

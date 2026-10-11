@@ -16,6 +16,7 @@ import ExportMenu from '../../shared/ui/ExportMenu.jsx';
 import { isEchtId } from '../../data/services/projecten.js';
 import { projectExport } from './exportBronnen.js';
 import { useDekkingsplannen } from './financiering/useProjectFinanciering.js';
+import { projectFinancieringHref } from './financiering/deeplinks.js';
 import { STATUS_LABEL, formatDatum, komendeDeadlines } from './financiering/dekkingsplan.js';
 
 const VELDEN = [
@@ -267,7 +268,7 @@ export default function ProjectenPage({ embedded = false } = {}) {
             {komende.map((k) => (
               <div key={k.sleutel} data-testid="projecten-komende-deadline" style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 12px 16px; border-radius: 14px; background: #FFFFFF;')}>
                 <span style={css('flex: 1 1 220px; min-width: 0;')}>
-                  <span style={css('display: block; font-size: 14px; font-weight: 700; color: #2C4A5E;')}>{k.naam}</span>
+                  <a href={projectFinancieringHref(k.projectId)} style={css('display: block; font-size: 14px; font-weight: 700; color: #2C4A5E; text-decoration: none;')}>{k.naam}</a>
                   <span style={css('display: block; margin-top: 3px; font-size: 12.5px; color: #7B8985;')}>
                     {`${k.projectNaam} · ${STATUS_LABEL[k.status] || k.status} · ${
                       k.reminder === false ? 'geen herinnering' : `herinnering ${store.reminderDays} dagen ervoor`
@@ -460,7 +461,7 @@ export default function ProjectenPage({ embedded = false } = {}) {
                 {isEchtId(form.id) ? (
                   <>
                     {' '}
-                    <a href={`#/kompas/projecten/${form.id}?tab=projectfinanciering`} style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>
+                    <a href={projectFinancieringHref(form.id)} style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>
                       Open het projectfinancieringstabblad
                     </a>
                   </>

@@ -5,16 +5,11 @@
 // Toevoegen van regels gebeurt vanuit Deadlines (Fase 3); hier wijzig of verwijder je alleen.
 import React, { useEffect, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
-import { Toggle } from '../../../shared/ui/index.js';
-import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
+import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import {
   STATUSSEN,
   STATUS_LABEL,
   bedragVoorInvoer,
-  dagenTekst,
-  dagenTot,
-  deadlineVergelijking,
-  formatDatum,
   formatEuro,
   leesBedragInvoer,
 } from '../financiering/dekkingsplan.js';
@@ -103,8 +98,6 @@ function Regel({ regel, onWijzig, onVerwijder }) {
   };
 
   const naam = regel.naam;
-  const verschil = deadlineVergelijking(regel);
-  const dagen = regel.deadline ? dagenTot(regel.deadline, new Date()) : null;
   const heeftBron = regel.bronStatus === 'zichtbaar';
   const toegekendHint = regel.status === 'awarded' && regel.awarded == null && regel.requested != null ? 'Leeg: het aangevraagde bedrag telt als toegekend.' : '';
 
@@ -205,31 +198,13 @@ function Regel({ regel, onWijzig, onVerwijder }) {
             />
           </label>
           <div data-testid="pf-regel-deadline" style={css(`${TEKST} margin-top: 4px; font-size: 12.5px; color: #4B5C58;`)}>
-            {verschil ? (
-              <>
-                <div>Uw datum: {verschil.eigen}</div>
-                <div style={css('color: #7B8985;')}>{verschil.bronLabel}: {verschil.systeem}</div>
-              </>
-            ) : regel.deadline ? (
-              <>
-                {formatDatum(regel.deadline)}
-                {dagen != null && <span style={css('color: #7B8985;')}> ({dagenTekst(dagen)})</span>}
-                {!regel.eigenDeadline && regel.systeemDeadline && <div style={css('color: #7B8985;')}>{regel.systeemDeadlineBron === 'fonds' ? 'Datum van het fonds' : 'Datum van de regeling'}</div>}
-              </>
-            ) : (
-              <span style={css('color: #7B8985;')}>Geen deadline bekend</span>
-            )}
+            <DeadlineWeergave regel={regel} nu={new Date()} />
           </div>
         </div>
 
         <div>
           <span className="fwk-pf-label" style={css(LABEL)}>Herinnering</span>
-          <Toggle
-            on={regel.reminder}
-            onChange={() => bewaar({ reminder: !regel.reminder })}
-            label={regel.reminder ? 'Herinnering aan' : 'Herinnering uit'}
-            ariaLabel={`Herinnering, ${naam}`}
-          />
+          <HerinneringKnop aan={regel.reminder} naam={naam} onWissel={() => bewaar({ reminder: !regel.reminder })} />
         </div>
 
         <div className="fwk-pf-notitie">

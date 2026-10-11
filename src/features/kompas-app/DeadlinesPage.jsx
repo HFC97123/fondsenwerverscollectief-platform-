@@ -22,6 +22,9 @@ import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 // — dit component doet zijn eigen, aparte admin-only ophaal-/opslaanwerk pas
 // zodra een beheerder een kaart daadwerkelijk uitklapt.
 import AdminInlineEdit from './AdminInlineEdit.jsx';
+import AddToProjectFundingDialog from './deadlines/AddToProjectFundingDialog.jsx';
+import MijnDeadlines from './deadlines/MijnDeadlines.jsx';
+import { bronUitDeadlineRij } from './financiering/toevoegen.js';
 
 // Regelgebaseerde inschatting: discipline, werkgebied en omvang tegenover het profiel.
 // Geen score met valse precisie, alleen wat wel en niet aansluit.
@@ -238,8 +241,10 @@ export default function DeadlinesPage() {
   const tier = app.subscriptionTier || 'free';
   const premium = tier === 'premium';
   const paid = tier === 'pro' || premium;
-  const [projectId, setProjectId] = useState('');
-  const [addMsg, setAddMsg] = useState('');
+  // Pro/Premium: twee segmenten. Mijn deadlines (standaard) toont de deadlines uit de eigen projectfinanciering,
+  // Alle regelingen is het bestaande marktoverzicht. Free ziet alleen het marktoverzicht, ongewijzigd.
+  const [segment, setSegment] = useState('mijn');
+  const [addBron, setAddBron] = useState(null);
 
   const [supaRows, setSupaRows] = useState([]);
   // Funder-brede datamomenten (geen regelingkoppeling) — aparte feed, eigen
@@ -665,6 +670,41 @@ export default function DeadlinesPage() {
       </div>
 
       <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px) clamp(48px, 7vw, 90px);')}>
+        {paid && (
+          <div role="tablist" aria-label="Deadlines" data-testid="deadlines-segmenten" style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;')}>
+            {[['mijn', 'Mijn deadlines'], ['alle', 'Alle regelingen']].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={segment === id}
+                data-testid={`segment-${id}`}
+                onClick={() => setSegment(id)}
+                style={css(`
+                  cursor: pointer;
+                  box-sizing: border-box;
+                  min-height: 44px;
+                  padding: 10px 20px;
+                  border: 1.5px solid ${segment === id ? '#2C4A5E' : '#D5E0D9'};
+                  border-radius: 999px;
+                  background: ${segment === id ? '#2C4A5E' : '#FFFFFF'};
+                  color: ${segment === id ? '#FFFFFF' : '#2C4A5E'};
+                  font-family: 'Mulish', sans-serif;
+                  font-size: 14.5px;
+                  font-weight: 800;
+                `)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {paid && segment === 'mijn' && (
+          <MijnDeadlines projecten={store.projects} onNaarAlleRegelingen={() => setSegment('alle')} />
+        )}
+
+        {(!paid || segment === 'alle') && (
         <div style={css(`
           display: grid;
           grid-template-columns: ${desktop ? '250px minmax(0, 1fr)' : 'minmax(0, 1fr)'};
@@ -1019,6 +1059,7 @@ export default function DeadlinesPage() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {detail && (
@@ -1167,18 +1208,60 @@ export default function DeadlinesPage() {
               );
             })()}
 
-            {/* Een funder-breed datamoment (bronType 'funder') heeft geen eigen
-                regeling om in een project op te nemen — dekkingsplannen zijn
-                gekoppeld aan een subsidieregeling, niet aan een fonds als
-                geheel. Voor deze kaarten blijft alleen de bronlink hieronder
-                over. */}
-            {detail.bronType !== 'funder' && (
-            <div style={css('margin-bottom: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
-              <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
-                Opnemen in een project
+            {/* Toevoegen aan projectfinanciering (Pro/Premium) en Bespreek met Subsidiekompas: alleen voor
+                volledig zichtbare rijen (deze detailkaart opent alleen voor die), voor een regeling én voor een
+                fonds. Toevoegen loopt volledig via financiering/toevoegen.js; hier staat geen insertlogica.
+                Free ziet voor een regeling de bestaande uitleg en voor een fonds niets, zoals voorheen. */}
+            {paid && bronUitDeadlineRij(detail) && (
+              <div data-testid="detail-acties" style={css('margin-bottom: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4; display: flex; gap: 10px; flex-wrap: wrap;')}>
+                <button
+                  type="button"
+                  data-testid="detail-toevoegen"
+                  onClick={() => setAddBron(bronUitDeadlineRij(detail))}
+                  style={css(`
+                    cursor: pointer;
+                    box-sizing: border-box;
+                    min-height: 46px;
+                    padding: 12px 22px;
+                    border: none;
+                    border-radius: 999px;
+                    background: #4E9A6C;
+                    color: #FFFFFF;
+                    font-family: 'Mulish', sans-serif;
+                    font-size: 14.5px;
+                    font-weight: 800;
+                  `)}
+                >
+                  Toevoegen aan projectfinanciering
+                </button>
+                <button
+                  type="button"
+                  data-testid="detail-bespreek"
+                  onClick={app.goKompas}
+                  style={css(`
+                    cursor: pointer;
+                    box-sizing: border-box;
+                    min-height: 46px;
+                    padding: 12px 20px;
+                    border: 1.5px solid #A8D5BA;
+                    border-radius: 999px;
+                    background: #FFFFFF;
+                    color: #2C4A5E;
+                    font-family: 'Mulish', sans-serif;
+                    font-size: 14.5px;
+                    font-weight: 800;
+                  `)}
+                >
+                  Bespreek met Subsidiekompas
+                </button>
               </div>
+            )}
 
-              {!paid && (
+            {!paid && detail.bronType !== 'funder' && (
+              <div style={css('margin-bottom: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
+                <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
+                  Opnemen in een project
+                </div>
                 <div style={css('font-size: 14px; line-height: 1.65; color: #4B5C58;')}>
                   Met Pro en Premium legt u projecten vast en neemt u regelingen op in uw dekkingsplan.{' '}
                   <button
@@ -1189,91 +1272,7 @@ export default function DeadlinesPage() {
                     Bekijk de abonnementen
                   </button>
                 </div>
-              )}
-
-              {paid && !store.projects.length && (
-                <div style={css('font-size: 14px; line-height: 1.65; color: #4B5C58;')}>
-                  U heeft nog geen project vastgelegd. Maak er een aan bij Projecten, dan kunt u regelingen in het
-                  dekkingsplan opnemen.
-                </div>
-              )}
-
-              {paid && store.projects.length > 0 && (
-                <>
-                  <div style={css('margin-bottom: 14px; font-size: 14px; line-height: 1.65; color: #4B5C58;')}>
-                    Zet deze regeling in het dekkingsplan van een van uw projecten. Subsidie Kompas neemt de deadline en
-                    het bedrag mee.
-                  </div>
-                  <div style={css('display: flex; gap: 10px; flex-wrap: wrap;')}>
-                    <select
-                      value={projectId || store.projects[0].id}
-                      onChange={(e) => { setProjectId(e.target.value); setAddMsg(''); }}
-                      aria-label="Kies een project"
-                      style={css(`
-                        flex: 1 1 200px;
-                        min-width: 0;
-                        box-sizing: border-box;
-                        min-height: 46px;
-                        padding: 12px 14px;
-                        border: 1px solid #D5E0D9;
-                        border-radius: 12px;
-                        background: #FFFFFF;
-                        font-family: 'Mulish', sans-serif;
-                        font-size: 14.5px;
-                        font-weight: 700;
-                        color: #2C4A5E;
-                        outline: none;
-                      `)}
-                    >
-                      {store.projects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.naam || 'Naamloos project'}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const id = projectId || store.projects[0].id;
-                        const naam = (store.projects.find((p) => p.id === id) || {}).naam || 'uw project';
-                        const res = await store.addRegelingToProject(detail, id);
-
-                        if (res && res.ok) {
-                          setAddMsg(`${detail.naam} is opgenomen in het dekkingsplan van ${naam}.`);
-                        } else if (res && res.reden === 'bestaat-al') {
-                          setAddMsg(`${detail.naam} staat al in het dekkingsplan van ${naam}.`);
-                        } else if (res && (res.reden === 'niet-opgeslagen' || res.reden === 'geen-bron')) {
-                          setAddMsg('Dit project of deze regeling kan nog niet aan het dekkingsplan worden toegevoegd.');
-                        } else {
-                          setAddMsg('Opnemen in het dekkingsplan is niet gelukt. Probeer het opnieuw.');
-                        }
-                      }}
-                      style={css(`
-                        cursor: pointer;
-                        box-sizing: border-box;
-                        min-height: 46px;
-                        padding: 13px 22px;
-                        border: none;
-                        border-radius: 999px;
-                        background: #4E9A6C;
-                        color: #FFFFFF;
-                        font-family: 'Mulish', sans-serif;
-                        font-size: 14.5px;
-                        font-weight: 800;
-                      `)}
-                    >
-                      Toevoegen
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {addMsg && (
-                <div style={css('margin-top: 14px; padding: 13px 16px; border: 1px solid #BFD4C6; border-radius: 12px; background: #EAF4EE; font-size: 14.5px; font-weight: 700; color: #2F6D47;')}>
-                  {addMsg}
-                </div>
-              )}
-            </div>
+              </div>
             )}
 
             {detail.url && (
@@ -1288,6 +1287,10 @@ export default function DeadlinesPage() {
             )}
           </div>
         </div>
+      )}
+
+      {addBron && paid && (
+        <AddToProjectFundingDialog bron={addBron} projecten={store.projects} onClose={() => setAddBron(null)} />
       )}
 
       {/* Upgradekaart voor vergrendelde regelingen — bewust een volledig

@@ -182,8 +182,7 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
   check('18: geen enkele insert/update/upsert-payload bevat linked_schemes', !/^\s*linked_schemes\s*:/m.test(projecten.replace(/\/\/.*$/gm, '')));
 
   const store = lees('src/features/kompas-app/KompasStore.jsx');
-  const add = store.slice(store.indexOf('addRegelingToProject'), store.indexOf('addRegelingToProject') + 1200);
-  check('18: addRegelingToProject schrijft niet meer naar project.regelingen', !/regelingen\s*:/.test(add) && /voegRegelToe/.test(add));
+  check('18: de tijdelijke insert addRegelingToProject (Fase 2) bestaat niet meer; toevoegen loopt via financiering/toevoegen.js', !/addRegelingToProject|voegRegelToe/.test(store.replace(/\/\/.*$/gm, '')) && /voegRegelToe/.test(lees('src/features/kompas-app/financiering/toevoegen.js')));
 
   // Test 19: Overzicht gebruikt alleen projectgegevens
   const detail = lees('src/features/kompas-app/projectdossier/ProjectDetailPage.jsx');
@@ -214,7 +213,7 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
   verboden.forEach((f) => check(`22: ${f} verwijst niet naar de nieuwe fundingbron (askKompas/chat/Edge Function ongewijzigd)`, !nieuweBron.test(lees(f))));
   const bestanden = [...loop('src/data'), ...loop('src/shared')].filter((f) => /\.(js|jsx|ts)$/.test(f) && !f.endsWith('projectFinanciering.js'));
   const raak = bestanden.filter((f) => nieuweBron.test(zonderCommentaar(readFileSync(f, 'utf8'))));
-  check('23: geen enkele matching-/fondsadvies-/export-/documentgeneratiecode gebruikt de nieuwe fundingbron (alleen KompasStore.addRegelingToProject is ook de bron)', raak.length === 0, raak.join(', '));
+  check('23: geen enkele matching-/fondsadvies-/export-/documentgeneratiecode gebruikt de nieuwe fundingbron ', raak.length === 0, raak.join(', '));
   const migraties = loop('supabase/migrations').filter((f) => f.endsWith('.sql'));
   const metFunding = migraties.filter((f) => /create table[^;]*subsidie_kompas_program_funding/i.test(readFileSync(f, 'utf8')));
   check('24: de migratie staat precies één keer in supabase/migrations onder de live versie (20261011104804), niet meer als voorstel; rollback apart', metFunding.length === 1 && metFunding[0].endsWith('20261011104804_project_funding_fase2.sql') && !existsSync('supabase/voorstel-niet-uitgevoerd/20261011130000_project_funding.sql') && existsSync('supabase/voorstel-niet-uitgevoerd/20261011104804_project_funding_fase2_rollback.sql'));

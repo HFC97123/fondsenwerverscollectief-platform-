@@ -66,7 +66,7 @@ export const supabase = {
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     signOut: async () => ({ error: null }),
   },
-  functions: { invoke: async () => ({ data: null, error: null }) },
+  functions: { invoke: async (n) => { window.__LOG.push({ tabel: `functions:${n}`, op: 'invoke', filters: [] }); return { data: null, error: null }; } },
   rpc: async (naam, args) => {
     window.__LOG.push({ tabel: `rpc:${naam}`, op: 'rpc', filters: [JSON.stringify(args || {})] });
     if (naam !== 'kompas_dekkingsplan') return { data: null, error: null };
@@ -74,6 +74,8 @@ export const supabase = {
     if (window.__RPCFOUT === 'fout') return { data: null, error: { code: 'XX000', message: 'boem' } };
     const prog = tabel('subsidie_kompas_programs').find((p) => p.id === (args || {}).p_program_id);
     if (!window.__USER || !prog || prog.user_id !== me().id) return { data: null, error: { code: '42501', message: 'Project niet gevonden' } };
+    // Live-smoke: antwoorden die écht door kompas_dekkingsplan op de live database zijn teruggegeven (zie tests/werkruimte/live-smoke).
+    if (window.__LIVE_RPC) return { data: (window.__LIVE_RPC[prog.id] || []).map((x) => ({ ...x })), error: null };
     const premium = ['premium', 'admin'].includes(window.__TIER);
     const B = seed().bronnen || {};
     const rijen = tabel('subsidie_kompas_program_funding').filter((r) => r.program_id === prog.id && r.user_id === me().id);
@@ -82,7 +84,7 @@ export const supabase = {
       const basis = { id: r.id, program_id: r.program_id, scheme_id: null, funder_id: null, bron_type: r.scheme_id ? 'regeling' : r.funder_id ? 'fonds' : null, bron_status: 'zichtbaar', bron_naam: null, funder_naam: null, website: null, systeem_deadline: null, systeem_deadline_bron: null, requested_amount: r.requested_amount ?? null, awarded_amount: r.awarded_amount ?? null, status: r.status, eigen_deadline: r.eigen_deadline || null, effectieve_deadline: r.eigen_deadline || null, reminder_enabled: r.reminder_enabled !== false, notes: r.notes || null, created_at: r.created_at || '2026-10-01T10:00:00Z', updated_at: r.created_at || '2026-10-01T10:00:00Z' };
       if (!r.scheme_id && !r.funder_id) return { ...basis, bron_status: 'verwijderd' };
       if (!bron || (bron.premium && !premium)) return { ...basis, bron_status: 'verborgen' };
-      return { ...basis, scheme_id: r.scheme_id, funder_id: r.funder_id, bron_naam: bron.naam, funder_naam: bron.funder || null, website: bron.website || null, systeem_deadline: bron.deadline || null, systeem_deadline_bron: bron.deadline ? 'regeling' : null, effectieve_deadline: r.eigen_deadline || bron.deadline || null };
+      return { ...basis, scheme_id: r.scheme_id, funder_id: r.funder_id, bron_naam: bron.naam, funder_naam: bron.funder || null, website: bron.website || null, systeem_deadline: bron.deadline || null, systeem_deadline_bron: bron.deadline ? (r.funder_id ? 'fonds' : 'regeling') : null, effectieve_deadline: r.eigen_deadline || bron.deadline || null };
     });
     return { data: uit, error: null };
   },

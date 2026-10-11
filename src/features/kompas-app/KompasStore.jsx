@@ -17,7 +17,6 @@ import {
   verwijderOrganisatieprofiel,
   wisOrganisatieVeld,
 } from '../../data/services/organisatieprofiel.js';
-import { voegRegelToe } from '../../data/services/projectFinanciering.js';
 import { archiveerProject, bewaarProject, haalProjectenOp, isEchtId, verwijderProject } from '../../data/services/projecten.js';
 import { markeerHandmatigeWijzigingen, pasUpdatesToe } from './projectKoppeling.js';
 import {
@@ -465,33 +464,10 @@ export function KompasProvider({ children, userId = null }) {
         return verzoek;
       },
 
-      // Sinds Fase 2 schrijft dit niet meer naar project.regelingen/linked_schemes, maar naar
-      // subsidie_kompas_program_funding (status "interesting"). Het wordt een bron-verwijzing: er worden
-      // geen namen, bedragen of deadlines gekopieerd. Geeft { ok, reden } terug.
-      addRegelingToProject: async (regeling, projectId) => {
-        if (projectenBron.current !== 'supabase' || !isEchtId(projectId)) {
-          return { ok: false, reden: 'niet-opgeslagen' };
-        }
-
-        const isFonds = regeling && regeling.bronType === 'funder';
-        const bronId = isFonds ? regeling.funderId : regeling && regeling.id;
-
-        if (!isEchtId(String(bronId || ''))) {
-          return { ok: false, reden: 'geen-bron' };
-        }
-
-        return voegRegelToe({
-          projectId,
-          schemeId: isFonds ? null : bronId,
-          funderId: isFonds ? bronId : null,
-          status: 'interesting',
-        });
-      },
-
       // Vervolgopdracht, prioriteit 7 (Export - "Opslaan bij project"): voegt
       // een door de AI opgesteld resultaat (projectplan, begroting, ...) toe
       // aan de documenten van het gekoppelde project, en bewaart het project
-      // meteen - exact hetzelfde patroon als addRegelingToProject hierboven.
+      // meteen - exact hetzelfde patroon als de andere projectmutaties hierboven.
       // Bewust GEEN gebruik van genDocs/de Documentatie-opslag: die loopt op
       // tabellen (documentatie/documentatie_versies) die niet bestaan (zie
       // workspace.js) en valt daardoor altijd terug op localStorage. Deze

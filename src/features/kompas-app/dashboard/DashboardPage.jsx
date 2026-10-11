@@ -16,6 +16,7 @@ import { useKompas } from '../KompasStore.jsx';
 import { bouwDashboard, dagenTekst, formatDatum, formatEuro, formatTijd } from './dashboardData.js';
 import { useDekkingsplannen } from '../financiering/useProjectFinanciering.js';
 import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
+import { projectFinancieringHref } from '../financiering/deeplinks.js';
 
 const MAX_PROJECTEN = 6;
 
@@ -247,7 +248,11 @@ export default function DashboardPage() {
                     <div style={css('font-size: 12px; font-weight: 700; color: #7B8985;')}>{dagenTekst(x.dagen)}</div>
                   </div>
                   <div style={css('min-width: 120px; flex: 1 1 120px;')}>
-                    <div style={{ ...tekstStijl, fontWeight: 800, color: '#2C4A5E', overflowWrap: 'break-word' }}>{x.naam}</div>
+                    <div style={{ ...tekstStijl, fontWeight: 800, color: '#2C4A5E', overflowWrap: 'break-word' }}>
+                      <a href={projectFinancieringHref(x.projectId)} data-testid="dashboard-deadline-link" style={css('color: inherit; text-decoration: none;')}>
+                        {x.naam}
+                      </a>
+                    </div>
                     <div style={{ ...tekstStijl, fontSize: '13px', color: '#7B8985' }}>
                       {x.funder ? `${x.funder} · ` : ''}
                       {x.projectNaam}
