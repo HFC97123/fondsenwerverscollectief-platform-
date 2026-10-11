@@ -123,6 +123,7 @@ export default function NetwerkPage() {
     profileFullName,
     logout,
     resources,
+    hasResources,
     sessions,
     hasSessions,
     sessionDraftOpen,
@@ -258,21 +259,11 @@ export default function NetwerkPage() {
               <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(256px, 1fr)); gap: 20px;')}>
                 <div style={css('background: #F7F9F8; border-radius: 16px; padding: 22px;')}>
                   <div style={css('font-weight: 700; color: #2C4A5E; font-size: 15px; margin-bottom: 14px;')}>Mijn opgeslagen artikelen</div>
-                  <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-                    <div style={css('font-size: 14px; color: #4B5C58; line-height: 1.4; padding-bottom: 10px; border-bottom: 1px solid #E8EEEB;')}>
-                      Wat we leerden van vijf afgewezen aanvragen
-                    </div>
-                    <div style={css('font-size: 14px; color: #4B5C58; line-height: 1.4;')}>Major donors werven zonder groot netwerk</div>
-                  </div>
+                  <div style={css('font-size: 14px; color: #7B8985; line-height: 1.5;')}>Er is momenteel nog geen content beschikbaar.</div>
                 </div>
                 <div style={css('background: #F7F9F8; border-radius: 16px; padding: 22px;')}>
                   <div style={css('font-weight: 700; color: #2C4A5E; font-size: 15px; margin-bottom: 14px;')}>Mijn activiteiten</div>
-                  <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-                    <div style={css('font-size: 14px; color: #4B5C58; line-height: 1.4; padding-bottom: 10px; border-bottom: 1px solid #E8EEEB;')}>
-                      Aangemeld voor intervisie op 18 jul
-                    </div>
-                    <div style={css('font-size: 14px; color: #4B5C58; line-height: 1.4;')}>1 vraag gesteld in Vraag &amp; antwoord</div>
-                  </div>
+                  <div style={css('font-size: 14px; color: #7B8985; line-height: 1.5;')}>Er is momenteel nog geen activiteit.</div>
                 </div>
               </div>
             </div>
@@ -288,6 +279,7 @@ export default function NetwerkPage() {
             <div style={sectieKop}>Praktijkgidsen &amp; templates</div>
             <div style={sectieSub}>Kant-en-klare documenten om direct in uw aanvraag te gebruiken.</div>
           </div>
+          {hasResources && (
           <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 24px;')}>
             {(resources || []).map((r, i) => (
               <div key={i} style={css('background: #FFFFFF; border-radius: 18px; padding: clamp(20px, 3vw, 26px); display: flex; flex-direction: column; gap: 12px;')}>
@@ -304,6 +296,13 @@ export default function NetwerkPage() {
               </div>
             ))}
           </div>
+          )}
+
+          {!hasResources && (
+            <div style={css('padding: clamp(22px, 3vw, 30px); border: 1px dashed #D5E0D9; border-radius: 18px; background: #FFFFFF; text-align: center; font-size: 15px; line-height: 1.65; color: #4B5C58;')}>
+              Er is momenteel nog geen content beschikbaar.
+            </div>
+          )}
         </div>
       )}
 

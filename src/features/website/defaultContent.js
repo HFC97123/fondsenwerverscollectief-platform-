@@ -59,26 +59,15 @@ export const allNewsItems = [
         ] }
       ];
 
-export const resources = [
-        { type: 'Template', format: 'DOCX', title: 'Projectplan sjabloon' },
-        { type: 'Template', format: 'XLSX', title: 'Begrotingsmodel fondsaanvraag' },
-        { type: 'Praktijkgids', format: 'PDF', title: 'Particuliere fondsen benaderen' },
-        { type: 'Checklist', format: 'PDF', title: 'Aanvraag indienen zonder fouten' },
-        { type: 'Template', format: 'DOCX', title: 'Voorbeeld motivatiebrief' },
-        { type: 'Praktijkgids', format: 'PDF', title: 'Meerjarenbegroting opstellen' }
-      ];
+// Opschoning (oktober 2026): templates/praktijkgidsen, agenda, blog/kennisdeling en
+// video's hebben bewust GEEN voorbeeldinhoud meer. Deze lijsten blijven bestaan (leeg)
+// zodat WebsiteProvider niet hoeft te veranderen; de inhoud komt uitsluitend uit de
+// database/admin. Vacatures en nieuws (hieronder) blijven ongewijzigd.
+export const resources = [];
 
-export const sessions = [
-        { day: '18', month: 'jul', title: 'Intervisie: lastige casussen bespreken', time: '10:00', host: 'o.l.v. Aisha El Amrani', mode: 'Online' },
-        { day: '02', month: 'sep', title: 'Werksessie: begroting die aansluit bij fondseisen', time: '13:30', host: 'o.l.v. Jeroen Visscher', mode: 'Utrecht' },
-        { day: '24', month: 'sep', title: 'Kennistafel: major donors werven', time: '15:00', host: 'o.l.v. Bram Koster', mode: 'Online' }
-      ];
+export const sessions = [];
 
-export const blogPosts = [
-        { tag: 'Kennisdeling', title: 'Wat we leerden van vijf afgewezen aanvragen', excerpt: 'Een eerlijke terugblik op afwijzingen bij particuliere fondsen, en wat we de volgende keer anders deden.', author: 'Redactie', role: 'Het Fondsenwervers Collectief' },
-        { tag: 'Praktijk', title: 'Major donors werven zonder groot netwerk', excerpt: 'Praktische aanpak voor kleinere organisaties die net beginnen met grote-givers-strategie.', author: 'Redactie', role: 'Het Fondsenwervers Collectief' },
-        { tag: 'Intervisie', title: 'Omgaan met een subsidie die net te laat kwam', excerpt: 'Hoe je een gemiste deadline ombuigt naar een sterkere aanvraag voor de volgende ronde.', author: 'Redactie', role: 'Het Fondsenwervers Collectief' }
-      ];
+export const blogPosts = [];
 
 export const vacancies = [
         { title: 'Relatiemanager Fondsenwerving', org: 'Stichting AAP', location: 'Almere', type: 'Parttime', tags: ['Dierenwelzijn', 'Relatiebeheer'], url: 'https://www.aap.nl/vacatures-betaald-werken/vacature-relatiemanager-fondsenwerving/' },
@@ -95,14 +84,7 @@ export const newsItems = [
         { tag: 'Vakkennis', date: '19 jun 2026', title: 'Vijf trends in fondsenwerving voor 2026', excerpt: 'Van AI-ondersteuning tot kortere aanvraagtermijnen: dit zien we terug in de sector dit jaar.' }
       ];
 
-export const videos = [
-        { title: 'Wat doet een fondsenwerver eigenlijk?', duration: '6:12', level: 'Introductie' },
-        { title: 'De basis van een goed projectplan', duration: '9:45', level: 'Introductie' },
-        { title: 'Subsidie of particulier fonds: wat kies je?', duration: '8:03', level: 'Verdieping' },
-        { title: 'Een aanvraag schrijven die opvalt', duration: '11:20', level: 'Verdieping' },
-        { title: 'Omgaan met een afwijzing', duration: '5:37', level: 'Praktijk' },
-        { title: 'Relatiebeheer met fondsen op lange termijn', duration: '10:02', level: 'Praktijk' }
-      ];
+export const videos = [];
 
 export const CHAT_SYSTEM_PROMPT = `Je bent "Collie", de digitale assistent van Het Fondsenwervers Collectief \u2014 een Nederlands kennisplatform voor fondsenwerving en subsidies.
 

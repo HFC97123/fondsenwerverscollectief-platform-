@@ -674,8 +674,10 @@ export function WebsiteProvider({ children, route, param }) {
     }
   }, [st.chatMessages, st.chatLoading, st.chatOpen]);
 
-  // Database gaat voor; is er niets gepubliceerd, dan blijft de
-  // voorbeeldinhoud uit data.js staan.
+  // Database gaat voor. Is er niets gepubliceerd, dan geldt de (voor templates,
+  // agenda, blog en video's bewust lege) standaardlijst uit defaultContent.js:
+  // er verschijnt dus geen voorbeeldinhoud; alleen vacatures en nieuws hebben
+  // nog een standaardlijst.
   const fromDatabase = (key, fallback) => {
     const rows = st.content?.[key];
 
@@ -1287,6 +1289,7 @@ export function WebsiteProvider({ children, route, param }) {
     },
 
     resources: siteResources,
+    hasResources: siteResources.length > 0,
     sessions: alleSessies.filter((s) => s.status !== 'Voorstel'),
     hasSessions: alleSessies.some((s) => s.status !== 'Voorstel'),
     blogPosts: siteBlogPosts,
@@ -1389,6 +1392,7 @@ export function WebsiteProvider({ children, route, param }) {
     hasMasterclasses: siteMasterclasses.length > 0,
 
     videos: siteVideos,
+    hasVideos: siteVideos.length > 0,
 
     contentLoaded: st.contentLoaded,
     reloadContent: loadContent,

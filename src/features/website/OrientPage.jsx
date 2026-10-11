@@ -6,7 +6,7 @@ import { useApp } from './WebsiteProvider.jsx';
 
 export default function OrientPage() {
   const app = useApp();
-  const { isOrient, videos, goCursussen } = app;
+  const { isOrient, videos, hasVideos, goCursussen } = app;
 
   if (!isOrient) return null;
 
@@ -47,6 +47,7 @@ export default function OrientPage() {
           </a>
         </div>
 
+        {hasVideos && (
         <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 24px;')}>
           {(videos || []).map((v, i) => (
             <div key={v.title || i} style={css('background: #FFFFFF; border-radius: 18px; overflow: hidden;')}>
@@ -88,6 +89,13 @@ export default function OrientPage() {
             </div>
           ))}
         </div>
+        )}
+
+        {!hasVideos && (
+          <div style={css('padding: clamp(22px, 3vw, 30px); border: 1px dashed #D5E0D9; border-radius: 18px; background: #FFFFFF; text-align: center; font-size: 15px; line-height: 1.65; color: #4B5C58;')}>
+            Er is momenteel nog geen content beschikbaar.
+          </div>
+        )}
       </div>
 
       <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 76px;')}>
