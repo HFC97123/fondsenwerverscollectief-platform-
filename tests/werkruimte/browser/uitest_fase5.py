@@ -208,9 +208,9 @@ try:
     ok('D10 vanuit Mijn deadlines: chat met focus en gesprek van het juiste project', pg.get_by_test_id('chat-focus').count()==1 and hash(pg).startswith('#/kompas?conversation='), hash(pg))
     ctx.close()
     ctx,pg=nieuw(b,DESK,'pro','/kompas/dashboard')
-    ok('D11 Dashboard: Bespreek-link bij komende deadlines', pg.get_by_test_id('dashboard-deadline').first.get_by_test_id('bespreek-link').count()==1)
-    pg.get_by_test_id('dashboard-deadline').first.get_by_test_id('bespreek-link').click(); pg.wait_for_timeout(2000)
-    ok('D12 vanuit het Dashboard: chat met focus', pg.get_by_test_id('chat-focus').count()==1)
+    pg.wait_for_timeout(1500)
+    ok('D11 Dashboard: GEEN Bespreek-link bij individuele deadlines (planningsoverzicht)', pg.get_by_test_id('dashboard-deadline').count()>=1 and pg.get_by_test_id('dashboard-deadline').get_by_test_id('bespreek-link').count()==0, str((pg.get_by_test_id('dashboard-deadline').count(), pg.get_by_test_id('dashboard-deadline').get_by_test_id('bespreek-link').count())))
+    ok('D12 Dashboard: projectkaart houdt "Bespreek met Subsidie Kompas"', pg.locator('[data-testid="dashboard-project"]').first.get_by_role('button',name='Bespreek met Subsidie Kompas').count()==1)
     ctx.close()
 
     # context panel link, zelfde gesprek
