@@ -77,7 +77,13 @@ def kiezer(pg,naam): pg.get_by_test_id('project-kiezer').select_option(label=naa
 
 DESK={'width':1440,'height':900}; BREED={'width':1200,'height':800}; TAB={'width':1000,'height':800}; MOB={'width':390,'height':844}
 
-LEEG=''
+
+def midden(pg,tid):
+    b=pg.get_by_test_id(tid).bounding_box(); return b['x']+b['width']/2, b['y']+b['height']/2
+def sleep(pg,tid,naar_x,stappen=12):
+    x,y=midden(pg,tid); pg.mouse.move(x,y); pg.mouse.down(); pg.mouse.move(naar_x,y,steps=stappen); pg.mouse.up(); pg.wait_for_timeout(450)
+def sleep_delta(pg,tid,dx):
+    x,y=midden(pg,tid); sleep(pg,tid,x+dx)
 try:
   with sync_playwright() as p:
     b=p.chromium.launch()
@@ -85,61 +91,85 @@ try:
     open_rij(pg,'Projectplan Buurtkeuken')
     w=lambda t: pg.get_by_test_id(t).bounding_box()['width']
     dr=pg.locator('.fwk-cw-drie')
-    ok('K1 start: beide kolommen open, beide inklapknoppen zichtbaar, geen uitklapstrook', pg.get_by_test_id('kolom-gesprekken-inklappen').is_visible() and pg.get_by_test_id('kolom-project-inklappen').is_visible() and pg.get_by_test_id('kolom-gesprekken-uitklappen').count()==0 and dr.get_attribute('data-links')=='open' and dr.get_attribute('data-rechts')=='open')
-    breed0=w('kolom-chat'); links0=w('kolom-gesprekken'); rechts0=w('kolom-project')
-    pg.get_by_test_id('kolom-gesprekken-inklappen').click(); pg.wait_for_timeout(500)
-    ok('K2 links inklappen: strook van 36 px blijft zichtbaar met uitklapknop (aria-expanded=false, label Gesprekken)', 30<=w('kolom-gesprekken')<=40 and pg.get_by_test_id('kolom-gesprekken-uitklappen').is_visible() and pg.get_by_test_id('kolom-gesprekken-uitklappen').get_attribute('aria-expanded')=='false' and 'Gesprekken' in pg.get_by_test_id('kolom-gesprekken-uitklappen').inner_text(), str(w('kolom-gesprekken')))
-    ok('K3 gespreklijst verborgen maar nog aanwezig (inhoud blijft bestaan)', not pg.get_by_test_id('conversations-list').is_visible() and pg.get_by_test_id('conversations-list').count()==1)
-    ok('K4 chat wordt breder; projectoverzicht ongewijzigd', w('kolom-chat')>breed0+150 and abs(w('kolom-project')-rechts0)<2, f'{breed0}->{w("kolom-chat")}')
-    ok('K5 focus staat na het inklappen op de uitklapknop', pg.evaluate("document.activeElement && document.activeElement.getAttribute('data-testid')")=='kolom-gesprekken-uitklappen')
-    ok('K6 keuze onthouden in localStorage', pg.evaluate("localStorage.getItem('fwk-chat-links-ingeklapt')")=='1')
-    ok('K7 geen horizontale overflow na inklappen', geenhscroll(pg))
-    pg.get_by_test_id('kolom-project-inklappen').click(); pg.wait_for_timeout(500)
-    ok('K8 rechts ook inklappen: strook 36 px met Projectoverzicht-knop, chat nog breder', 30<=w('kolom-project')<=40 and pg.get_by_test_id('kolom-project-uitklappen').is_visible() and 'Projectoverzicht' in pg.get_by_test_id('kolom-project-uitklappen').inner_text() and w('kolom-chat')>breed0+350, str(w('kolom-chat')))
-    ok('K8b projectoverzicht blijft gemount, alleen verborgen', pg.get_by_test_id('project-context-panel').count()==1 and not pg.get_by_test_id('project-context-panel').is_visible())
-    pg.screenshot(path='shots/chat_4_beide_ingeklapt.png')
-    # de chat blijft bruikbaar
-    stuur(pg,'Hallo met ingeklapte kolommen',1500)
-    ok('K9 chat werkt met ingeklapte kolommen', 'Dit is het antwoord van de test.' in txt(pg) and len(posts(pg))==1)
-    ctx2=ctx
-    # onthouden na herladen
+    ok('D1 start: sleepgrepen links en rechts aanwezig; GEEN Inklappen-knoppen en geen strook', pg.get_by_test_id('kolom-gesprekken-handvat').is_visible() and pg.get_by_test_id('kolom-project-handvat').is_visible() and pg.get_by_text('Inklappen').count()==0 and pg.locator('[data-testid$="-inklappen"],[data-testid$="-uitklappen"]').count()==0)
+    ok('D1b grepen zijn toegankelijk: role=separator, verticaal, focusbaar, Nederlandse naam', pg.get_by_test_id('kolom-gesprekken-handvat').get_attribute('role')=='separator' and pg.get_by_test_id('kolom-gesprekken-handvat').get_attribute('aria-orientation')=='vertical' and pg.get_by_test_id('kolom-gesprekken-handvat').get_attribute('tabindex')=='0' and 'Gesprekken' in pg.get_by_test_id('kolom-gesprekken-handvat').get_attribute('aria-label'))
+    l0=w('kolom-gesprekken'); r0=w('kolom-project'); c0=w('kolom-chat')
+    # links verbreden
+    sleep_delta(pg,'kolom-gesprekken-handvat',+80)
+    ok('D2 links naar rechts slepen maakt de kolom breder (~+80 px), chat smaller', 70<=w('kolom-gesprekken')-l0<=90 and w('kolom-chat')<c0-60, f'{l0}->{w("kolom-gesprekken")}')
+    ok('D2b keuze onthouden (breedte in localStorage)', int(pg.evaluate("localStorage.getItem('fwk-chat-links-breedte')"))==round(w('kolom-gesprekken')))
+    breed_links=w('kolom-gesprekken')
+    # smaller maar niet onder het minimum
+    sleep_delta(pg,'kolom-gesprekken-handvat',-(breed_links-170))
+    ok('D3 naar links slepen tot net boven de inklapgrens: minimaal 200 px, nog open', 196<=w('kolom-gesprekken')<=204 and pg.locator('.fwk-cw-drie').get_attribute('data-links')=='open', str(w('kolom-gesprekken')))
+    # helemaal naar links = inklappen
+    sleep(pg,'kolom-gesprekken-handvat',5)
+    ok('D4 helemaal naar links slepen klapt de kolom in: strook van 36 px met label, chat veel breder', 30<=w('kolom-gesprekken')<=40 and pg.get_by_test_id('kolom-gesprekken-uitklappen').is_visible() and 'Gesprekken' in pg.get_by_test_id('kolom-gesprekken-uitklappen').inner_text() and w('kolom-chat')>c0+150, f'{w("kolom-gesprekken")} {w("kolom-chat")}')
+    ok('D4b gespreklijst blijft gemount (alleen verborgen), geen horizontale scroll, onthouden', pg.get_by_test_id('conversations-list').count()==1 and not pg.get_by_test_id('conversations-list').is_visible() and geenhscroll(pg) and pg.evaluate("localStorage.getItem('fwk-chat-links-ingeklapt')")=='1')
+    pg.screenshot(path='shots/chat_4_links_ingeklapt.png')
+    # klikken op de strook klapt uit
+    pg.get_by_test_id('kolom-gesprekken-uitklappen').click(); pg.wait_for_timeout(450)
+    ok('D5 klik op de strook klapt uit; lijst zichtbaar; focus op de greep', w('kolom-gesprekken')>190 and pg.get_by_test_id('conversations-list').is_visible() and pg.evaluate("document.activeElement.getAttribute('data-testid')")=='kolom-gesprekken-handvat', str(w('kolom-gesprekken')))
+    # inklappen en vanuit de ingeklapte staat terugslepen
+    sleep(pg,'kolom-gesprekken-handvat',3)
+    sleep_delta(pg,'kolom-gesprekken-handvat',+250)
+    ok('D6 vanuit de strook naar rechts slepen klapt uit en volgt de muis (~290 px)', 270<=w('kolom-gesprekken')<=310 and pg.get_by_test_id('conversations-list').is_visible(), str(w('kolom-gesprekken')))
+    # maximum
+    sleep_delta(pg,'kolom-gesprekken-handvat',+700)
+    ok('D7 niet breder dan 480 px', 476<=w('kolom-gesprekken')<=484, str(w('kolom-gesprekken')))
+    ok('D7b chat blijft bruikbaar breed genoeg en geen horizontale overflow', w('kolom-chat')>=400 and geenhscroll(pg), str(w('kolom-chat')))
+    # rechts
+    sleep_delta(pg,'kolom-project-handvat',-60)
+    ok('D8 rechterkolom: naar links slepen maakt hem breder (~+60 px)', 50<=w('kolom-project')-r0<=70, f'{r0}->{w("kolom-project")}')
+    sleep(pg,'kolom-project-handvat',1435)
+    ok('D9 rechterkolom helemaal naar rechts slepen klapt hem in: strook van 36 px met Projectoverzicht', 30<=w('kolom-project')<=40 and pg.get_by_test_id('kolom-project-uitklappen').is_visible() and 'Projectoverzicht' in pg.get_by_test_id('kolom-project-uitklappen').inner_text())
+    ok('D9b projectoverzicht blijft gemount, linkerkolom ongewijzigd', pg.get_by_test_id('project-context-panel').count()==1 and not pg.get_by_test_id('project-context-panel').is_visible() and 470<=w('kolom-gesprekken')<=490)
+    pg.screenshot(path='shots/chat_4_beide_aangepast.png')
+    # chat werkt
+    stuur(pg,'Hallo met aangepaste kolommen',1500)
+    ok('D10 chat werkt met aangepaste kolommen', 'Dit is het antwoord van de test.' in txt(pg) and len(posts(pg))==1)
+    # na herladen onthouden
     pg.reload(); pg.wait_for_timeout(1700)
-    ok('K10 na herladen blijven beide kolommen ingeklapt', pg.get_by_test_id('kolom-gesprekken-uitklappen').count()==1 and pg.locator('.fwk-cw-drie').get_attribute('data-links')=='dicht')
-    pg.get_by_test_id('kolom-gesprekken-uitklappen').click(); pg.wait_for_timeout(500)
-    ok('K11 links weer uitklappen: oorspronkelijke breedte terug, lijst zichtbaar, focus op inklapknop', abs(w('kolom-gesprekken')-links0)<2 and pg.get_by_test_id('conversations-list').is_visible() and pg.evaluate("document.activeElement.getAttribute('data-testid')")=='kolom-gesprekken-inklappen' and pg.evaluate("localStorage.getItem('fwk-chat-links-ingeklapt')")=='0')
-    pg.keyboard.press('Tab'); pg.keyboard.press('Shift+Tab')
-    pg.get_by_test_id('kolom-project-uitklappen').focus(); pg.keyboard.press('Enter'); pg.wait_for_timeout(500)
-    ok('K12 rechts uitklappen met het toetsenbord (Enter)', abs(w('kolom-project')-rechts0)<2 and pg.get_by_test_id('project-context-panel').is_visible())
-    ok('K13 geen pageerrors/console errors', not pg.errs and not pg.cons, str(pg.errs+pg.cons))
+    ok('D11 na herladen: links ~480 px breed, rechts ingeklapt', 470<=w('kolom-gesprekken')<=490 and pg.get_by_test_id('kolom-project-uitklappen').count()==1)
+    # loslaten stopt het slepen
+    x,y=midden(pg,'kolom-gesprekken-handvat'); pg.mouse.move(x,y); pg.mouse.down(); pg.mouse.move(x-60,y,steps=6); pg.mouse.up(); pg.wait_for_timeout(400); na=w('kolom-gesprekken'); pg.mouse.move(x-200,y,steps=6); pg.wait_for_timeout(300)
+    ok('D12 na loslaten volgt de kolom de muis niet meer; body-selectie en cursor hersteld', abs(w('kolom-gesprekken')-na)<2 and pg.evaluate("document.body.style.userSelect")=='' and pg.evaluate("document.body.style.cursor")=='')
+    # toetsenbord
+    pg.get_by_test_id('kolom-gesprekken-handvat').focus(); w0=w('kolom-gesprekken')
+    pg.keyboard.press('ArrowLeft'); pg.keyboard.press('ArrowLeft'); pg.wait_for_timeout(450)
+    ok('D13 toetsenbord: pijltje links maakt de kolom 24 px per druk smaller', 40<=w0-w('kolom-gesprekken')<=56, f'{w0}->{w("kolom-gesprekken")}')
+    pg.keyboard.press('Enter'); pg.wait_for_timeout(450)
+    ok('D14 Enter op de greep klapt de kolom in; nogmaals uit', 30<=w('kolom-gesprekken')<=40 and pg.evaluate("document.activeElement.getAttribute('data-testid')")=='kolom-gesprekken-handvat')
+    pg.keyboard.press('Enter'); pg.wait_for_timeout(450)
+    ok('D14b Enter klapt weer uit naar de laatst gekozen breedte', w('kolom-gesprekken')>190)
+    ok('D15 geen pageerrors/console errors', not pg.errs and not pg.cons, str(pg.errs+pg.cons))
     ctx.close()
 
-    # zonder project: geen rechterkolom, links kan nog wel inklappen
+    # zonder project: geen rechtergreep
     ctx,pg=nieuw(b,DESK,'pro')
-    ok('K14 zonder project: geen rechterkolom en geen rechter inklapknop', pg.get_by_test_id('kolom-project').count()==0 and pg.get_by_test_id('kolom-project-inklappen').count()==0)
-    pg.get_by_test_id('kolom-gesprekken-inklappen').click(); pg.wait_for_timeout(500)
-    ok('K15 zonder project: links inklappen geeft de chat de ruimte (geen overflow)', 30<=pg.get_by_test_id('kolom-gesprekken').bounding_box()['width']<=40 and pg.get_by_test_id('kolom-chat').bounding_box()['width']>1100 and geenhscroll(pg))
+    ok('D16 zonder project: geen rechterkolom en geen rechtergreep', pg.get_by_test_id('kolom-project').count()==0 and pg.get_by_test_id('kolom-project-handvat').count()==0)
+    sleep(pg,'kolom-gesprekken-handvat',4)
+    ok('D17 zonder project: links inklappen geeft de chat de ruimte (geen overflow)', 30<=pg.get_by_test_id('kolom-gesprekken').bounding_box()['width']<=40 and pg.get_by_test_id('kolom-chat').bounding_box()['width']>1100 and geenhscroll(pg))
     ctx.close()
 
-    # onthouden voorkeur uit eerder bezoek (rechts), localStorage geblokkeerd werkt ook
-    ctx,pg=nieuw(b,DESK,'pro',init="try{localStorage.setItem('fwk-chat-rechts-ingeklapt','1')}catch(e){}")
+    # opgeslagen voorkeur en geblokkeerde opslag
+    ctx,pg=nieuw(b,DESK,'pro',init="try{localStorage.setItem('fwk-chat-rechts-ingeklapt','1');localStorage.setItem('fwk-chat-links-breedte','999')}catch(e){}")
     open_rij(pg,'Projectplan Buurtkeuken')
-    ok('K16 opgeslagen voorkeur: rechts begint ingeklapt', pg.get_by_test_id('kolom-project-uitklappen').count()==1)
+    ok('D18 opgeslagen voorkeur: rechts begint ingeklapt; belachelijke opgeslagen breedte (999) wordt begrensd op 480', pg.get_by_test_id('kolom-project-uitklappen').count()==1 and 476<=pg.get_by_test_id('kolom-gesprekken').bounding_box()['width']<=484)
     ctx.close()
     ctx,pg=nieuw(b,DESK,'pro',init="Object.defineProperty(window,'localStorage',{get(){throw new Error('geblokkeerd')}})")
     open_rij(pg,'Projectplan Buurtkeuken')
-    pg.get_by_test_id('kolom-gesprekken-inklappen').click(); pg.wait_for_timeout(400)
-    ok('K17 localStorage geblokkeerd: inklappen werkt gewoon, geen fouten', pg.get_by_test_id('kolom-gesprekken-uitklappen').count()==1 and not pg.errs, str(pg.errs))
+    sleep(pg,'kolom-gesprekken-handvat',4)
+    ok('D19 localStorage geblokkeerd: slepen en inklappen werken, geen fouten', pg.get_by_test_id('kolom-gesprekken-uitklappen').count()==1 and not pg.errs, str(pg.errs))
     ctx.close()
 
-    # tablet en mobiel: geen vaste kolommen, dus ook geen inklapknoppen
+    # tablet en mobiel
     for naam,vp in [('tablet',TAB),('mobiel',MOB)]:
         ctx,pg=nieuw(b,vp,'pro')
-        ok(f'K18 {naam}: geen inklapknoppen of stroken (lade/sheet blijft zoals het was)', pg.locator('[data-testid$="-inklappen"],[data-testid$="-uitklappen"]').count()==0 and geenhscroll(pg))
+        ok(f'D20 {naam}: geen sleepgrepen of stroken (lade/sheet blijft zoals het was)', pg.locator('[data-testid$="-handvat"],[data-testid$="-uitklappen"]').count()==0 and geenhscroll(pg))
         ctx.close()
-
-    # Free: ongewijzigd
     ctx,pg=nieuw(b,DESK,'free')
-    ok('K19 Free: geen werkruimte en geen inklapknoppen', pg.get_by_test_id('chat-werkruimte').count()==0 and pg.locator('[data-testid$="-inklappen"]').count()==0)
+    ok('D21 Free: geen werkruimte en geen grepen', pg.get_by_test_id('chat-werkruimte').count()==0 and pg.locator('[data-testid$="-handvat"]').count()==0)
     ctx.close()
     b.close()
 finally:
