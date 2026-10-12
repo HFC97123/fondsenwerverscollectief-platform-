@@ -3,6 +3,7 @@ import {
   PI_VELDEN, PI_GROEPEN, PI_KEYS, PI_PROJECTBREED, PI_VERSIE, actieveVelden, leesProjectinformatie, schrijfProjectinformatie, voortgang,
   programmaSuggesties, paneelVelden, paneelProjectbreed, schrijfPaneel,
 } from '../../src/features/kompas-app/projectinformatie/projectinformatie.js';
+import { stelTrefwoordenVoor, voegRegioToe, MAX_VOORSTELLEN } from '../../src/features/kompas-app/projectinformatie/trefwoorden.js';
 import { valideerEnBereidOp } from '../../src/features/kompas-app/projectOpslaan.js';
 import { naarKolomPatch } from '../../src/data/services/projecten.js';
 
@@ -70,6 +71,32 @@ const lees = (p) => readFileSync(p, 'utf8');
 check('projectinformatie.js importeert niets (pure module)', !/^import /m.test(lees('src/features/kompas-app/projectinformatie/projectinformatie.js')));
 check('Edge Function en migraties niet verwezen door fase 1', !/supabase/i.test(lees('src/features/kompas-app/projectinformatie/projectinformatie.js').replace(/\/\/.*$/gm, '')));
 check('compact formulier gebruikt teFinancieren, geen eigen berekening', /teFinancieren/.test(lees('src/features/kompas-app/projectOpslaan.js')));
+
+
+console.log('\n== 7. Trefwoorden uit de omschrijving (voorstellen, geen automatische opslag)');
+const DG = ['Buurtbewoners', 'Jongeren', 'Kinderen', 'Ouderen', 'Vluchtelingen', 'Vrijwilligers', 'Mensen in armoede', 'Dieren'];
+const TH = ['Eenzaamheid', 'Sport', 'Welzijn', 'Kunst', 'Muziek', 'Zorg', 'Rechten', 'Maatschappij', 'Onderwijs', 'Taalvaardigheid', 'Duurzaamheid', 'Opleiding / beroepsontwikkeling'];
+const RG = ['Amsterdam', 'Utrecht', 'Leiden', 'Afrika', 'Landelijk', 'Caribisch gebied', 'Caribisch deel van het Koninkrijk', 'Den Haag', 'Wereld / internationaal', 'Rotterdam', 'Oost-Europa'];
+const voor = (tekst, gekozen = {}) => stelTrefwoordenVoor({ tekst, doelgroepen: DG, themas: TH, regios: RG, gekozen });
+const namen = (r) => ({ doelgroep: r.doelgroep.map((x) => x.naam), discipline: r.discipline.map((x) => x.naam), regio: r.regio.map((x) => x.naam) });
+const r1 = namen(voor('Wekelijks een warme maaltijd voor eenzame ouderen in Utrecht-Noord, met hulp van vrijwilligers uit de buurt.'));
+gelijk('eenzame ouderen in Utrecht-Noord', r1, { doelgroep: ['Ouderen', 'Vrijwilligers'], discipline: ['Eenzaamheid'], regio: ['Utrecht'] });
+const r2 = namen(voor('Taalcafé voor vluchtelingen en kinderen in Den Haag en Rotterdam, door heel Nederland uit te rollen.'));
+gelijk('taalcafé: doelgroep, thema en meerdere plaatsen', [r2.doelgroep, r2.discipline, r2.regio.includes('Den Haag'), r2.regio.includes('Rotterdam'), r2.regio.includes('Landelijk')], [['Kinderen', 'Vluchtelingen'], ['Taalvaardigheid'], true, true, true]);
+gelijk('land wordt gekoppeld aan werelddeel (Ghana -> Afrika)', namen(voor('Een waterproject voor dorpen in Ghana en Kenia.')).regio, ['Afrika']);
+gelijk('Caribische eilanden -> beide Caribische werkgebieden', namen(voor('Jongerenwerk op Bonaire en Sint Eustatius voor de jeugd.')).regio.sort(), ['Caribisch deel van het Koninkrijk', 'Caribisch gebied']);
+gelijk('"leiden tot" is geen Leiden (hoofdletter vereist)', namen(voor('Dit project gaat leiden tot meer zelfvertrouwen bij de deelnemers.')).regio, []);
+gelijk('Leiden als plaats wel, maar niet voor "Leiden van mensen"', [namen(voor('Een project in Leiden voor de wijk.')).regio, namen(voor('Leiden van mensen naar werk is ons doel.')).regio], [['Leiden'], []]);
+gelijk('"landelijk gebied" is niet Landelijk', namen(voor('Een dorpshuis in het landelijk gebied van Drenthe.')).regio, []);
+gelijk('al gekozen waarden komen niet terug', namen(voor('Eenzame ouderen in Utrecht', { doelgroep: ['Ouderen'], discipline: ['Eenzaamheid'], regio: 'Utrecht-Noord' })), { doelgroep: [], discipline: [], regio: [] });
+gelijk('lege of korte tekst: geen voorstellen', namen(voor('Ouderen')), { doelgroep: [], discipline: [], regio: [] });
+gelijk('thema Rechten en Maatschappij worden nooit automatisch voorgesteld', namen(voor('Wij verdedigen de rechten van de maatschappij in alle opzichten.')).discipline, []);
+gelijk('voorstellen komen alleen uit de aangeleverde tabellen', namen(stelTrefwoordenVoor({ tekst: 'Eenzame ouderen sporten samen in Utrecht.', doelgroepen: ['Kinderen'], themas: ['Muziek'], regios: ['Amsterdam'] })), { doelgroep: [], discipline: [], regio: [] });
+gelijk('trefwoorden die de herkenning veroorzaakten worden meegegeven', voor('Eenzame ouderen hier.').doelgroep[0].trefwoorden, ['ouderen']);
+check(`maximaal ${MAX_VOORSTELLEN} voorstellen per categorie`, Object.values(voor('Kunst, muziek, sport, welzijn, zorg, onderwijs, duurzaam, eenzaam en taalcafé voor jongeren, kinderen, ouderen, vrijwilligers en vluchtelingen in Amsterdam, Utrecht, Leiden, Rotterdam en Den Haag.')).every((l) => l.length <= MAX_VOORSTELLEN));
+gelijk('waarde zonder eigen patronen wordt op de eigen naam herkend (opleiding)', namen(voor('Een opleiding voor jonge mensen die werk zoeken.')).discipline, ['Opleiding / beroepsontwikkeling']);
+gelijk('regio toevoegen: leeg, dubbel en kommalijst', [voegRegioToe('', 'Utrecht'), voegRegioToe('Utrecht-Noord', 'Utrecht'), voegRegioToe('Amsterdam', 'Utrecht')], ['Utrecht', 'Utrecht-Noord', 'Amsterdam, Utrecht']);
+check('trefwoorden.js importeert niets (pure module) en raakt de database niet', !/^import /m.test(lees('src/features/kompas-app/projectinformatie/trefwoorden.js')) && !/supabase|fetch\(|query\(/.test(lees('src/features/kompas-app/projectinformatie/trefwoorden.js').replace(/\/\/.*$/gm, '')));
 
 console.log(`\n${ok} geslaagd, ${fail} mislukt`);
 process.exit(fail ? 1 : 0);

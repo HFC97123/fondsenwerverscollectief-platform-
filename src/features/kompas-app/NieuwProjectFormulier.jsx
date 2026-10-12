@@ -7,11 +7,13 @@
 // Het te financieren bedrag is read-only en wordt uitsluitend afgeleid met teFinancieren() uit
 // financiering/dekkingsplan.js (begroting min eigen bijdrage, nooit negatief): dezelfde functie als
 // bij het opslaan, dus er is geen tweede berekening.
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { Button, ClassificatieSelect, Field, veldStijl } from '../../shared/ui/index.js';
 import { formatEuro, leesBedragInvoer, teFinancieren } from './financiering/dekkingsplan.js';
 import { ISO_DATUM } from './projectOpslaan.js';
+import { stelTrefwoordenVoor, voegRegioToe } from './projectinformatie/trefwoorden.js';
+import TrefwoordVoorstellen from './projectinformatie/TrefwoordVoorstellen.jsx';
 
 // De velden van het aanmaakformulier, in volgorde. Gebruikt door de pagina en door de tests.
 export const NIEUW_PROJECT_VELDEN = ['naam', 'doelgroep', 'discipline', 'periodeVan', 'periodeTot', 'regio', 'omschrijving', 'begroting', 'eigenBijdrage'];
@@ -56,6 +58,26 @@ function DatumInvoer({ testid, label, waarde, onChange, min, max }) {
 
 export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, themas = [], regios = [], fout, bezig, onOpslaan, onAnnuleer, modus = 'nieuw' }) {
   const bewerk = modus === 'bewerk';
+
+  // Trefwoorden uit de omschrijving (en naam) op de achtergrond koppelen aan Doelgroep, Discipline en Werkgebied.
+  // Alleen voorstellen uit de bestaande tabellen; het lid kiest zelf (zie projectinformatie/trefwoorden.js).
+  const [scanTekst, setScanTekst] = useState(`${form.naam || ''}. ${form.omschrijving || ''}`);
+  const [genegeerd, setGenegeerd] = useState({});
+
+  useEffect(() => {
+    const t = setTimeout(() => setScanTekst(`${form.naam || ''}. ${form.omschrijving || ''}`), 500);
+
+    return () => clearTimeout(t);
+  }, [form.naam, form.omschrijving]);
+
+  const voorstellen = useMemo(() => {
+    const v = stelTrefwoordenVoor({ tekst: scanTekst, doelgroepen, themas, regios, gekozen: { doelgroep: form.doelgroep, discipline: form.discipline, regio: form.regio } });
+    const zichtbaar = (cat) => v[cat].filter((x) => !genegeerd[`${cat}:${x.naam}`]);
+
+    return { doelgroep: zichtbaar('doelgroep'), discipline: zichtbaar('discipline'), regio: zichtbaar('regio') };
+  }, [scanTekst, doelgroepen, themas, regios, form.doelgroep, form.discipline, form.regio, genegeerd]);
+
+  const negeer = (cat) => (naam) => setGenegeerd((cur) => ({ ...cur, [`${cat}:${naam}`]: true }));
   const te = teFinancierenUitFormulier(form);
   const b = leesBedragInvoer(form.begroting);
   const e = leesBedragInvoer(form.eigenBijdrage);
@@ -93,6 +115,7 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
             placeholder="Selecteer doelgroep(en)"
             ariaLabel="Doelgroep"
           />
+          <TrefwoordVoorstellen testid="np-voorstel-doelgroep" voorstellen={voorstellen.doelgroep} onKies={(n) => setVeld('doelgroep', [...alsLijst(form.doelgroep), n])} onNegeer={negeer('doelgroep')} />
         </Field>
 
         <Field>
@@ -106,6 +129,7 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
             placeholder="Selecteer discipline(s)"
             ariaLabel="Discipline"
           />
+          <TrefwoordVoorstellen testid="np-voorstel-discipline" voorstellen={voorstellen.discipline} onKies={(n) => setVeld('discipline', [...alsLijst(form.discipline), n])} onNegeer={negeer('discipline')} />
         </Field>
 
         <Field span="1 / -1">
@@ -133,6 +157,7 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
               <option key={r} value={r} />
             ))}
           </datalist>
+          <TrefwoordVoorstellen testid="np-voorstel-regio" voorstellen={voorstellen.regio} onKies={(n) => setVeld('regio', voegRegioToe(form.regio, n))} onNegeer={negeer('regio')} />
         </Field>
 
         <Field span="1 / -1">

@@ -10,9 +10,18 @@ res=[]
 def ok(n,c,d=''):
     res.append((n,bool(c),d)); print(('OK  ' if c else 'FAIL'),n,(d if not c else ''), flush=True)
 os.makedirs('shots',exist_ok=True)
+SEED_PATCH = """
+window.__SEED_PATCH=function(seed,h){
+  var t=seed.tables;
+  t.doelgroepen=['Buurtbewoners','Jongeren','Kinderen','Ouderen','Vluchtelingen','Vrijwilligers'].map(function(n){return {naam:n};});
+  t.themas=['Cultuur','Eenzaamheid','Onderwijs','Sport','Welzijn','Taalvaardigheid'].map(function(n){return {naam:n};});
+  t.regios=['Amsterdam','Caribisch gebied','Landelijk','Rotterdam','Utrecht'].map(function(n){return {naam:n};});
+};
+"""
 def nieuw(b,vp,tier,pad):
     ctx=b.new_context(viewport=vp); pg=ctx.new_page()
     pg.add_init_script("document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='div[style*=\"z-index: 2000\"]{display:none !important}';document.head.appendChild(s)})")
+    pg.add_init_script(SEED_PATCH)
     pg.errs=[]; pg.on('pageerror',lambda e: pg.errs.append(str(e)))
     pg.goto(f'{BASE}?tier={tier}#{pad}'); pg.wait_for_timeout(1600)
     return ctx,pg
@@ -96,6 +105,54 @@ with sync_playwright() as p:
         ok(f'29 mobiel {w}: opslaan-knop tikbaar (>=44px hoog)', pg.get_by_role('button',name='Projectinformatie opslaan').bounding_box()['height']>=44)
         if w==390: pg.screenshot(path='shots/pi_3_mobiel.png', full_page=True)
         ok(f'30 mobiel {w}: geen pageerrors', not pg.errs, str(pg.errs))
+        ctx.close()
+    # ===== Trefwoorden uit de omschrijving: voorstellen onder Doelgroep, Discipline en Werkgebied
+    ctx,pg=nieuw(b,{'width':1280,'height':1100},'pro','/kompas/projecten')
+    pg.get_by_role('button',name='+ Nieuw project').click(); pg.wait_for_timeout(500)
+    ok('31 geen voorstellen zolang er geen omschrijving is', pg.locator('[data-testid^="np-voorstel-"]').count()==0)
+    pg.locator('[data-testid="np-omschrijving"]').fill('Wekelijks een warme maaltijd voor eenzame ouderen in Utrecht-Noord, met hulp van vrijwilligers uit de buurt.')
+    pg.wait_for_timeout(300)
+    ok('32 niet meteen (op de achtergrond, met korte vertraging)', pg.locator('[data-testid="np-voorstel-doelgroep"]').count()==0)
+    pg.wait_for_timeout(700)
+    dv=pg.locator('[data-testid="np-voorstel-doelgroep-kies"]'); tv=pg.locator('[data-testid="np-voorstel-discipline-kies"]'); rv=pg.locator('[data-testid="np-voorstel-regio-kies"]')
+    ok('33 voorstellen verschijnen vanzelf: doelgroep Ouderen+Vrijwilligers, discipline Eenzaamheid, werkgebied Utrecht', sorted(x.get_attribute('data-naam') for x in dv.all())==['Ouderen','Vrijwilligers'] and [x.get_attribute('data-naam') for x in tv.all()]==['Eenzaamheid'] and [x.get_attribute('data-naam') for x in rv.all()]==['Utrecht'], pg.locator('[data-testid="nieuw-project-formulier"]').inner_text()[:600])
+    ok('34 voorstel noemt de herkende woorden (title)', 'ouderen' in (dv.filter(has_text='Ouderen').first.get_attribute('title') or ''))
+    ok('35 niets is zonder klik toegepast (velden leeg, geen opslag)', pg.locator('[data-testid="np-regio"]').input_value()=='' and not any('Ouderen' in str(r.get('target_groups')) for r in pg.evaluate('window.__DBL.subsidie_kompas_programs') if r.get('name')=='Trefwoordtest'))
+    pg.screenshot(path='shots/pi_4_voorstellen.png', full_page=True)
+    dv.filter(has_text='Ouderen').first.click(); pg.wait_for_timeout(200)
+    ok('36 klik op Ouderen neemt het over in Doelgroep en het voorstel verdwijnt', 'Ouderen' in pg.locator('[data-testid="nieuw-project-formulier"]').inner_text() and [x.get_attribute('data-naam') for x in pg.locator('[data-testid="np-voorstel-doelgroep-kies"]').all()]==['Vrijwilligers'])
+    pg.locator('[data-testid="np-voorstel-doelgroep-negeer"]').first.click(); pg.wait_for_timeout(150)
+    ok('37 kruisje verbergt een voorstel', pg.locator('[data-testid="np-voorstel-doelgroep"]').count()==0)
+    rv.first.click(); pg.wait_for_timeout(150)
+    ok('38 werkgebied: klik zet Utrecht in het tekstveld', pg.locator('[data-testid="np-regio"]').input_value()=='Utrecht' and pg.locator('[data-testid="np-voorstel-regio"]').count()==0)
+    pg.locator('[data-testid="np-regio"]').fill('Rotterdam'); pg.locator('[data-testid="np-omschrijving"]').fill('Wekelijks een warme maaltijd voor eenzame ouderen in Utrecht-Noord.'); pg.wait_for_timeout(900)
+    ok('39 al ingevulde waarden worden niet opnieuw voorgesteld', 'Ouderen' not in [x.get_attribute('data-naam') for x in pg.locator('[data-testid="np-voorstel-doelgroep-kies"]').all()])
+    pg.locator('[data-testid="np-omschrijving"]').fill('Wij helpen mensen verder met een mooi project.'); pg.wait_for_timeout(900)
+    ok('40 omschrijving zonder herkenbare woorden: geen voorstellen', pg.locator('[data-testid^="np-voorstel-"]').count()==0)
+    ok('41 geen pageerrors', not pg.errs, str(pg.errs))
+    ctx.close()
+    # opslaan: alleen wat het lid koos wordt bewaard
+    ctx,pg=nieuw(b,{'width':1280,'height':1100},'pro','/kompas/projecten')
+    pg.get_by_role('button',name='+ Nieuw project').click(); pg.wait_for_timeout(400)
+    pg.locator('[data-testid="np-naam"]').fill('Trefwoordtest')
+    pg.locator('[data-testid="np-omschrijving"]').fill('Taalcafé voor vluchtelingen en kinderen in Rotterdam.'); pg.wait_for_timeout(900)
+    pg.locator('[data-testid="np-voorstel-doelgroep-kies"][data-naam="Vluchtelingen"]').click()
+    pg.get_by_role('button',name='Project aanmaken').click(); pg.wait_for_timeout(1200)
+    rij=[r for r in pg.evaluate('window.__DBL.subsidie_kompas_programs') if r.get('name')=='Trefwoordtest']
+    ok('42 opgeslagen project bevat alleen de gekozen doelgroep, niet de niet-gekozen voorstellen (Kinderen, Taalvaardigheid, Rotterdam)', len(rij)==1 and rij[0].get('target_groups')=='Vluchtelingen' and not rij[0].get('themes') and not rij[0].get('location'), str(rij and (rij[0].get('target_groups'),rij[0].get('themes'),rij[0].get('location'))))
+    ctx.close()
+    # bewerken van een bestaand project: voorstellen uit de bestaande omschrijving
+    ctx,pg=nieuw(b,{'width':1280,'height':1100},'pro',f'/kompas/projecten/{P1}?bewerk=1'); pg.wait_for_timeout(900)
+    ok('43 bewerken: voorstellen uit de bestaande omschrijving (alleen aanvullend, geen pageerrors)', not pg.errs, str(pg.errs))
+    ctx.close()
+    # mobiel: voorstellen binnen beeld en tikbaar
+    for w in (390,320):
+        ctx,pg=nieuw(b,{'width':w,'height':900},'pro','/kompas/projecten')
+        pg.get_by_role('button',name='+ Nieuw project').click(); pg.wait_for_timeout(400)
+        pg.locator('[data-testid="np-omschrijving"]').fill('Taalcafé voor vluchtelingen en kinderen in Rotterdam, door heel Nederland.'); pg.wait_for_timeout(900)
+        ok(f'44 mobiel {w}: voorstellen zonder horizontale scroll', pg.locator('[data-testid="np-voorstel-doelgroep"]').count()==1 and geenhscroll(pg))
+        bb=pg.locator('[data-testid="np-voorstel-doelgroep-kies"]').first.bounding_box()
+        ok(f'45 mobiel {w}: voorstel tikbaar (>=32px hoog, binnen beeld)', bb['height']>=32 and bb['x']+bb['width']<=w+1, str(bb))
         ctx.close()
     b.close()
 srv.terminate()
