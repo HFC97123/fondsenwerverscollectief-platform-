@@ -7,6 +7,7 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { PROJECT_EMPTY, useKompas } from './KompasStore.jsx';
 import NieuwProjectFormulier from './NieuwProjectFormulier.jsx';
+import { valideerEnBereidOp } from './projectOpslaan.js';
 import { haalClassificatiesOp } from '../../data/services/classificaties.js';
 import { Button, EmptyState, Notice, Panel, PanelHeader, Toggle, selectStijl } from '../../shared/ui/index.js';
 import { isEchtId } from '../../data/services/projecten.js';
@@ -16,7 +17,7 @@ import BespreekProjectKnop from './BespreekProjectKnop.jsx';
 import { useHeeftWerkruimte } from './werkruimteRechten.js';
 import { useDekkingsplannen } from './financiering/useProjectFinanciering.js';
 import { projectFinancieringHref } from './financiering/deeplinks.js';
-import { STATUS_LABEL, bedragenVoorOpslaan, dekkingVanProject, formatDatum, formatEuro, komendeDeadlines, periodeTekst, teFinancieren } from './financiering/dekkingsplan.js';
+import { STATUS_LABEL, dekkingVanProject, formatDatum, formatEuro, komendeDeadlines, periodeTekst } from './financiering/dekkingsplan.js';
 
 export default function ProjectenPage() {
   const app = useApp();
@@ -85,29 +86,15 @@ export default function ProjectenPage() {
   };
 
   const opslaan = () => {
-    if (!String(form.naam || '').trim()) {
-      setFout('Vul in ieder geval de naam van het project in.');
+    const klaar = valideerEnBereidOp(form);
+
+    if (!klaar.ok) {
+      setFout(klaar.fout);
 
       return;
     }
 
-    if (form.periodeVan && form.periodeTot && /^\d{4}-\d{2}-\d{2}$/.test(form.periodeVan) && /^\d{4}-\d{2}-\d{2}$/.test(form.periodeTot) && form.periodeTot < form.periodeVan) {
-      setFout('De einddatum van de looptijd ligt voor de startdatum.');
-
-      return;
-    }
-
-    // Bedragen strikt omzetten (geen raden); het te financieren bedrag wordt bij het opslaan afgeleid.
-    const bedragen = bedragenVoorOpslaan(form);
-
-    if (!bedragen.ok) {
-      setFout(bedragen.fout);
-
-      return;
-    }
-
-    const { nieuw, ...zonderVlag } = form;
-    const teBewaren = { ...zonderVlag, begroting: bedragen.begroting, eigenBijdrage: bedragen.eigenBijdrage, gevraagd: bedragen.begroting === '' ? '' : teFinancieren(bedragen.begroting, bedragen.eigenBijdrage) };
+    const { nieuw, ...teBewaren } = klaar.project;
     const bewaar = store.saveProject(teBewaren);
 
     setFout('');

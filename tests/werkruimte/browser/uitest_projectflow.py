@@ -145,7 +145,7 @@ with sync_playwright() as p:
     pg.locator('[data-testid="overzicht-bewerken"]').click(); pg.wait_for_timeout(500)
     bt=txt(pg)
     ok('4 Overzicht bewerken: formulier in het dossier, geen navigatie naar Projecten, URL ?bewerk=1', pg.locator('[data-testid="project-bewerk-formulier"]').count()==1 and hsh(pg)==h0+'?bewerk=1' and '/kompas/projecten/' in hsh(pg), hsh(pg))
-    ok('4 Overzicht bewerken: bestaande uitgebreide projectgegevens zijn hier (en alleen hier) bewerkbaar', all(x in bt for x in ['Programma of onderdeel','Partners','Doelstellingen','Activiteiten','Beoogde impact','Resultaten','Schrijfvoorkeur']))
+    ok('4 Overzicht bewerken: compact formulier (zoals Nieuw project); uitgebreide velden staan bij Projectinformatie (Documenten)', all(x in bt for x in ['Projectnaam','Doelgroep','Discipline','Looptijd','Werkgebied / locatie','Projectomschrijving','Totale projectbegroting','Eigen bijdrage','Te financieren bedrag']) and not any(x in bt for x in ['Programma of onderdeel','Partners','Doelstellingen','Activiteiten','Beoogde impact','Resultaten','Schrijfvoorkeur']))
     ok('4 Overzicht bewerken: geen tweede cofinanciers-editor en geen documentenbeheer in het formulier', 'Cofinanciers en andere financiering' not in bt and pg.locator('[data-testid="project-bewerk-formulier"] input[type=file]').count()==0 and pg.locator('[data-testid="form-dekkingsplan-verwijzing"]').count()==0)
     pg.screenshot(path='shots/flow_4_overzicht_bewerken.png', full_page=True)
     pg.locator('[data-testid="project-bewerk-formulier"] input[value="Buurtkeuken De Brug"]').first.fill('Buurtkeuken De Brug 2')

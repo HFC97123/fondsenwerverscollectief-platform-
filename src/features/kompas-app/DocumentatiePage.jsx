@@ -33,9 +33,12 @@
 //   een document veilig uit project.docs verwijdert, is de knop hier
 //   weggelaten in plaats van een knop te tonen die niets uitvoert; zie het
 //   rapport (stap 3C) voor dit aandachtspunt.
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
+import { useHeeftWerkruimte } from './werkruimteRechten.js';
+import { isEchtId } from '../../data/services/projecten.js';
+import ProjectinformatiePaneel from './projectinformatie/ProjectinformatiePaneel.jsx';
 import { DOC_SOORTEN, useKompas } from './KompasStore.jsx';
 import { Button, EmptyState, Notice, Panel, PanelHeader } from '../../shared/ui/index.js';
 // Exporteren (Word / Excel / PDF): gedeeld menu en gedeelde exportlaag
@@ -50,22 +53,48 @@ const WORD_STIJL = { label: 'DOCX', bg: '#EAF1F6', color: '#2C4A5E' };
 
 const FILTERS = [['alle', 'Alle documenten'], ...DOC_SOORTEN.map((soort) => [soort, soort])];
 
-export default function DocumentatiePage({ embedded = false } = {}) {
+// Het gekozen project voor Projectinformatie staat als ?project=<id> in de hash, zodat het projectdossier er direct
+// naar kan linken en een vernieuwde pagina hetzelfde project toont.
+function leesProjectUitUrl() {
+  const m = /[?&]project=([^&]+)/.exec(window.location.hash || '');
+
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+function zetProjectInUrl(id) {
+  try {
+    const basis = (window.location.hash || '#/kompas/documentatie').split('?')[0];
+
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${basis}?project=${encodeURIComponent(id)}`);
+  } catch (e) {
+    /* alleen een gemak voor het delen van de link */
+  }
+}
+
+export default function DocumentatiePage() {
   const app = useApp();
   const store = useKompas();
-  const paid = ['pro', 'premium'].indexOf(app.subscriptionTier || 'free') !== -1;
+  const paid = useHeeftWerkruimte();
 
   const [filter, setFilter] = useState('alle');
   const [melding, setMelding] = useState('');
+  const [gekozen, setGekozen] = useState(leesProjectUitUrl);
+
+  // Alleen echte, niet-gearchiveerde projecten: Projectinformatie hoort bij een bewaard project.
+  const projecten = useMemo(() => (store.projects || []).filter((p) => isEchtId(p.id) && !p.gearchiveerd), [store.projects]);
+  const projectId = projecten.some((p) => p.id === gekozen) ? gekozen : projecten.length ? projecten[0].id : '';
+
+  const kiesProject = useCallback((id) => {
+    setGekozen(id);
+    zetProjectInUrl(id);
+  }, []);
 
   if (!paid) {
     return (
-      <Panel embedded={embedded}>
-        {!embedded && (
-          <PanelHeader title="Documenten"
-            intro="Met Pro en Premium maakt Subsidie Kompas projectplannen en aanvragen in Word, begrotingen in Excel en definitieve versies in pdf. Ze komen hier terecht, gekoppeld aan uw projecten."
-          />
-        )}
+      <Panel>
+        <PanelHeader title="Documenten"
+          intro="Met Pro en Premium maakt Subsidie Kompas projectplannen en aanvragen in Word, begrotingen in Excel en definitieve versies in pdf. Ze komen hier terecht, gekoppeld aan uw projecten."
+        />
         <Button variant="dark" onClick={app.goAbonnementen}>
           Bekijk de abonnementen
         </Button>
@@ -95,12 +124,20 @@ export default function DocumentatiePage({ embedded = false } = {}) {
   };
 
   return (
-    <Panel embedded={embedded}>
-      {!embedded && (
-        <PanelHeader title="Documenten"
-          intro="Alles wat Subsidie Kompas voor u opmaakt en dat u bij een project heeft bewaard, komt hier terecht. Klik op een naam om er in de chat mee verder te werken, of download het als Word-bestand."
-        />
+    <Panel>
+      <PanelHeader title="Documenten"
+        intro="Hier vult u per project de inhoud aan waarmee Subsidie Kompas teksten en aanvragen schrijft. Daaronder staat alles wat Subsidie Kompas voor u heeft opgemaakt en bij een project bewaard: klik op een naam om er in de chat mee verder te werken, of download het als Word-bestand."
+      />
+
+      {projecten.length > 0 ? (
+        <ProjectinformatiePaneel projecten={projecten} projectId={projectId} onKies={kiesProject} store={store} />
+      ) : (
+        <div data-testid="pi-geen-project" style={css('margin-bottom: 24px; padding: 16px; border: 1px dashed #D5E0D9; border-radius: 16px; font-size: 14.5px; color: #7B8985;')}>
+          Maak eerst een project aan bij <a href="#/kompas/projecten" style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>Projecten</a>. Daarna vult u hier de projectinformatie aan.
+        </div>
       )}
+
+      <h2 style={css("margin: 0 0 12px; font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;")}>Opgemaakte documenten</h2>
 
       <div style={css('display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;')}>
         {FILTERS.map(([value, label]) => {

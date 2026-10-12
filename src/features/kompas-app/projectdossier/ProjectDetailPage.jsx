@@ -21,6 +21,7 @@ import { isEchtId } from '../../../data/services/projecten.js';
 import KaartMenu, { CSS_KAARTMENU } from '../KaartMenu.jsx';
 import { useHeeftWerkruimte } from '../werkruimteRechten.js';
 import ProjectBewerkFormulier from './ProjectBewerkFormulier.jsx';
+import { voortgang } from '../projectinformatie/projectinformatie.js';
 import { DocumentSoortKiezer, DocumentUploadKnop, DocumentVerwijderKnop, useDocumentenBeheer } from './DocumentenBeheer.jsx';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14.5px; line-height: 1.6; color: #4B5C58;";
@@ -119,7 +120,8 @@ function OverzichtTab({ project, financiering, store, bewerk, setBewerk }) {
   const doelgroep = Array.isArray(project.doelgroep) ? project.doelgroep.join(', ') : project.doelgroep;
   const discipline = Array.isArray(project.discipline) ? project.discipline.join(', ') : project.discipline;
   const periode = periodeTekst(project.periodeVan, project.periodeTot);
-  const heeftInhoud = [discipline, project.omschrijving, project.doelstellingen, project.activiteiten, project.impact, project.planning, project.partners, project.resultaten, doelgroep, project.programma].some(Boolean);
+  const heeftInhoud = [discipline, project.omschrijving, doelgroep, project.programma].some(Boolean);
+  const pi = voortgang(project);
 
   return (
     <div data-testid="tab-overzicht" style={css('display: flex; flex-direction: column; gap: 18px;')}>
@@ -148,18 +150,31 @@ function OverzichtTab({ project, financiering, store, bewerk, setBewerk }) {
             <Veld label="Discipline">{discipline}</Veld>
             <Veld label="Werkgebied / locatie">{project.regio}</Veld>
             <Veld label="Looptijd">{periode}</Veld>
-            <Veld label="Partners">{project.partners}</Veld>
-            <Veld label="Omschrijving">{project.omschrijving}</Veld>
-            <Veld label="Doelstellingen">{project.doelstellingen}</Veld>
-            <Veld label="Activiteiten">{project.activiteiten}</Veld>
-            <Veld label="Beoogde impact">{project.impact}</Veld>
-            <Veld label="Planning">{project.planning}</Veld>
-            <Veld label="Resultaten">{project.resultaten}</Veld>
+            <div style={css('grid-column: 1 / -1; min-width: 0;')}>
+              <Veld label="Projectomschrijving">{project.omschrijving}</Veld>
+            </div>
           </div>
         ) : (
           <div style={css(`${TEKST} color: #7B8985;`)}>Er zijn nog geen projectgegevens ingevuld. Vul ze aan via “Projectgegevens bewerken”.</div>
         )}
       </section>
+
+      {!bewerk && (
+        <section data-testid="overzicht-projectinformatie" style={css(KAART)}>
+          <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;')}>
+            <h2 style={css(`${LABEL} margin: 0;`)}>Projectinformatie</h2>
+            <a href={`#/kompas/documentatie?project=${encodeURIComponent(project.id)}`} data-testid="overzicht-open-projectinformatie" style={css(LINK)}>
+              Open in Documenten
+            </a>
+          </div>
+          <p style={css(`${TEKST} margin: 8px 0 0; max-width: 640px;`)}>
+            Doelstellingen, activiteiten, impact, planning en andere inhoud voor teksten en aanvragen beheert u bij Documenten.{' '}
+            <span data-testid="overzicht-pi-voortgang" style={css('font-weight: 800; color: #2C4A5E;')}>
+              {pi.ingevuld} van {pi.totaal} onderdelen ingevuld.
+            </span>
+          </p>
+        </section>
+      )}
 
       {!bewerk && <CofinanciersSectie project={project} financiering={financiering} />}
     </div>

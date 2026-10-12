@@ -1,7 +1,8 @@
-// Licht aanmaakformulier voor een nieuw project (Projecten > + Nieuw project).
-// Bewust alleen de gegevens die nodig zijn om te starten; de rest (programma, partners, doelstellingen,
-// activiteiten, impact, resultaten, schrijfvoorkeur) blijft bestaan in het project en is later aan te
-// vullen via het bewerkformulier of de chat. Er verdwijnt niets uit de database.
+// Het compacte projectformulier: dezelfde velden voor een nieuw project (Projecten > + Nieuw project, modus 'nieuw')
+// en voor het bewerken van een bestaand project (projectdossier, modus 'bewerk'). Eén formulier, geen tweede.
+// Alleen de gegevens waarmee Subsidie Kompas matcht en de financiering volgt. Programma, partners, doelstellingen,
+// activiteiten, impact, resultaten, planning en schrijfvoorkeur blijven bestaan in het project en worden beheerd
+// als Projectinformatie op de pagina Documenten (zie projectinformatie/). Er verdwijnt niets uit de database.
 //
 // Het te financieren bedrag is read-only en wordt uitsluitend afgeleid met teFinancieren() uit
 // financiering/dekkingsplan.js (begroting min eigen bijdrage, nooit negatief): dezelfde functie als
@@ -10,6 +11,7 @@ import React from 'react';
 import { css } from '../../shared/lib/css.js';
 import { Button, ClassificatieSelect, Field, veldStijl } from '../../shared/ui/index.js';
 import { formatEuro, leesBedragInvoer, teFinancieren } from './financiering/dekkingsplan.js';
+import { ISO_DATUM } from './projectOpslaan.js';
 
 // De velden van het aanmaakformulier, in volgorde. Gebruikt door de pagina en door de tests.
 export const NIEUW_PROJECT_VELDEN = ['naam', 'doelgroep', 'discipline', 'periodeVan', 'periodeTot', 'regio', 'omschrijving', 'begroting', 'eigenBijdrage'];
@@ -33,7 +35,27 @@ export function teFinancierenUitFormulier(form) {
   return teFinancieren(b.waarde, e.waarde);
 }
 
-export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, themas = [], regios = [], fout, bezig, onOpslaan, onAnnuleer }) {
+// Looptijd: een native datumveld. Een bestaand project met vrije tekst ("Q1 2026") houdt een tekstveld, zodat die
+// waarde niet stil verdwijnt; kiest u een datum, dan komt er een echte datum voor in de plaats.
+function DatumInvoer({ testid, label, waarde, onChange, min, max }) {
+  const v = waarde || '';
+
+  if (v && !ISO_DATUM.test(v)) {
+    return (
+      <span style={css('display: grid; gap: 6px;')}>
+        <input data-testid={testid} aria-label={label} value={v} onChange={(ev) => onChange(ev.target.value)} style={veldStijl} />
+        <button type="button" onClick={() => onChange('')} style={css('justify-self: start; cursor: pointer; border: none; background: none; padding: 0; font-size: 12.5px; font-weight: 700; color: #4E9A6C;')}>
+          Kies een datum
+        </button>
+      </span>
+    );
+  }
+
+  return <input data-testid={testid} type="date" aria-label={label} value={v} min={min || undefined} max={max || undefined} onChange={(ev) => onChange(ev.target.value)} style={veldStijl} />;
+}
+
+export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, themas = [], regios = [], fout, bezig, onOpslaan, onAnnuleer, modus = 'nieuw' }) {
+  const bewerk = modus === 'bewerk';
   const te = teFinancierenUitFormulier(form);
   const b = leesBedragInvoer(form.begroting);
   const e = leesBedragInvoer(form.eigenBijdrage);
@@ -41,15 +63,18 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
 
   return (
     <form
-      data-testid="nieuw-project-formulier"
+      data-testid={bewerk ? 'project-bewerk-formulier' : 'nieuw-project-formulier'}
+      data-modus={modus}
       onSubmit={(ev) => {
         ev.preventDefault();
         onOpslaan();
       }}
     >
-      <div style={css("margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid #E1EAE4; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
-        {String(form.naam || '').trim() || 'Nieuw project'}
-      </div>
+      {!bewerk && (
+        <div style={css("margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid #E1EAE4; font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; color: #2C4A5E;")}>
+          {String(form.naam || '').trim() || 'Nieuw project'}
+        </div>
+      )}
 
       <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px;')}>
         <Field span="1 / -1">
@@ -88,12 +113,12 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
           <div role="group" aria-labelledby="np-looptijd-label" data-testid="np-looptijd" style={css('display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: end;')} className="fwk-np-looptijd">
             <div style={css('display: block; min-width: 0;')}>
               <span style={css(HULP_LABEL)}>Startdatum</span>
-              <input data-testid="np-periode-van" type="date" aria-label="Startdatum" value={form.periodeVan || ''} max={form.periodeTot || undefined} onChange={(ev) => setVeld('periodeVan', ev.target.value)} style={veldStijl} />
+              <DatumInvoer testid="np-periode-van" label="Startdatum" waarde={form.periodeVan} max={ISO_DATUM.test(form.periodeTot || '') ? form.periodeTot : ''} onChange={(w) => setVeld('periodeVan', w)} />
             </div>
             <span aria-hidden="true" className="fwk-np-pijl" style={css('padding-bottom: 12px; font-weight: 800; color: #7B8985;')}>→</span>
             <div style={css('display: block; min-width: 0;')}>
               <span style={css(HULP_LABEL)}>Einddatum</span>
-              <input data-testid="np-periode-tot" type="date" aria-label="Einddatum" value={form.periodeTot || ''} min={form.periodeVan || undefined} onChange={(ev) => setVeld('periodeTot', ev.target.value)} style={veldStijl} />
+              <DatumInvoer testid="np-periode-tot" label="Einddatum" waarde={form.periodeTot} min={ISO_DATUM.test(form.periodeVan || '') ? form.periodeVan : ''} onChange={(w) => setVeld('periodeTot', w)} />
             </div>
           </div>
           <style>{'@media (max-width: 520px) { .fwk-np-looptijd { grid-template-columns: minmax(0, 1fr) !important; } .fwk-np-pijl { display: none; } }'}</style>
@@ -151,14 +176,14 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
       </div>
 
       {fout && (
-        <div role="alert" data-testid="np-fout" style={css('margin-top: 24px; padding: 14px 18px; border: 1px solid #EDD3CE; border-radius: 14px; background: #FDF6F5; font-size: 14.5px; font-weight: 700; color: #9E3B2C;')}>
+        <div role="alert" data-testid={bewerk ? 'bewerk-fout' : 'np-fout'} style={css('margin-top: 24px; padding: 14px 18px; border: 1px solid #EDD3CE; border-radius: 14px; background: #FDF6F5; font-size: 14.5px; font-weight: 700; color: #9E3B2C;')}>
           {fout}
         </div>
       )}
 
       <div style={css('margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;')}>
         <Button type="submit" disabled={bezig}>
-          {bezig ? 'Project wordt aangemaakt…' : 'Project aanmaken'}
+          {bewerk ? (bezig ? 'Bezig met opslaan…' : 'Project opslaan') : bezig ? 'Project wordt aangemaakt…' : 'Project aanmaken'}
         </Button>
         <Button variant="outline" onClick={onAnnuleer}>
           Annuleren

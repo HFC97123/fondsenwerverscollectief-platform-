@@ -61,7 +61,7 @@ gelijk('velden in volgorde', NIEUW_PROJECT_VELDEN, ['naam', 'doelgroep', 'discip
 ['Programma of onderdeel', 'Partners', 'Doelstellingen', 'Activiteiten', 'Beoogde impact', 'Resultaten', 'Schrijfvoorkeur', 'Eerdere', 'Co-financier', 'Cofinancier'].forEach((l) =>
   check(`formulier toont "${l}" NIET`, !zonderCommentaar(formSrc).includes(l)));
 gelijk('hulptekst bij omschrijving exact', OMSCHRIJVING_HULPTEKST, 'Heb je al een projectplan of two-pager? Voeg die toe en laat Subsidie Kompas je projectomschrijving aanvullen.');
-check('twee native datumvelden (type="date"), geen datepicker-bibliotheek', (formSrc.match(/type="date"/g) || []).length === 2 && !/datepicker|flatpickr|react-datepicker/i.test(formSrc));
+check('twee native datumvelden (type="date" via DatumInvoer: np-periode-van en np-periode-tot), geen datepicker-bibliotheek', /type="date"/.test(formSrc) && /testid="np-periode-van"/.test(formSrc) && /testid="np-periode-tot"/.test(formSrc) && !/datepicker|flatpickr|react-datepicker/i.test(formSrc));
 check('te financieren is read-only (geen input)', /data-testid="np-te-financieren"[\s\S]{0,200}<div|<div[\s\S]{0,80}np-te-financieren/.test(formSrc) && !/<input[^>]*np-te-financieren/.test(formSrc));
 check('formulier gebruikt teFinancieren uit de gedeelde module (geen eigen formule)', /teFinancieren/.test(formSrc) && !/begroting\s*-\s*eigen/i.test(zonderCommentaar(formSrc)));
 const pagina = lees('src/features/kompas-app/ProjectenPage.jsx');
@@ -70,7 +70,9 @@ check('na aanmaken: redirect naar /kompas/projecten/<id>', /window\.location\.ha
 check('Nieuw project opent het lichte formulier (nieuw: true)', /nieuw: true/.test(pagina) && /form && form\.nieuw/.test(pagina));
 check('bewerkformulier: geen sectie Eerdere fondsen/Co-financiers meer', !/Eerdere fondsen en toekenningen|<SectionHeading>Co-financiers|COFIN_STATUSSEN|UITKOMSTEN/.test(bewerk));
 check('bewerkformulier: geen tweede cofinanciers-editor (cofinanciers staan in Projectfinanciering)', !/Cofinanciers en andere financiering|<SectionHeading/.test(bewerk) && !/BEWERK_VELDEN|VELDEN = \[/.test(pagina));
-check('bewerkformulier: bestaande projectvelden blijven bewerkbaar (programma, partners, doelstellingen, activiteiten, impact, resultaten, schrijfvoorkeur)', ['programma', 'partners', 'doelstellingen', 'activiteiten', 'impact', 'resultaten', 'schrijfvoorkeur'].every((n) => bewerk.includes(`n: '${n}'`)));
+check('bewerkformulier: hetzelfde compacte formulier (modus bewerk), niet meer de uitgebreide velden', /NieuwProjectFormulier/.test(bewerk) && /modus="bewerk"/.test(bewerk) && !/doelstellingen|activiteiten|schrijfvoorkeur|partners/.test(zonderCommentaar(bewerk)));
+check('uitgebreide projectvelden zijn niet verdwenen: ze zijn Projectinformatie op de pagina Documenten (zelfde kolommen)', ['doelstellingen', 'activiteiten', 'partners', 'impact', 'resultaten', 'planning', 'schrijfvoorkeur', 'programma'].every((n) => lees('src/features/kompas-app/projectinformatie/projectinformatie.js').includes(`project: '${n}'`)));
+check('aanmaken en bewerken gebruiken dezelfde validatie (valideerEnBereidOp)', /valideerEnBereidOp/.test(pagina) && /valideerEnBereidOp/.test(bewerk));
 check('bewerkformulier: geen los "Gevraagd bedrag"-veld meer', !/n: 'gevraagd'/.test(bewerk));
 
 // ============================================================ 4. Eén financiële waarheid
@@ -164,9 +166,9 @@ check('Doelgroep en Discipline: geen vrije-tekstinvoer (geen metAnders) in het a
 check('Discipline gebruikt de lijst themas, Doelgroep de lijst doelgroepen (opties via props, geen eigen lijsten)', /opties=\{themas\}/.test(formSrc) && /opties=\{doelgroepen\}/.test(formSrc) && !/const\s+(THEMAS|DOELGROEPEN|DISCIPLINES)\s*=/.test(formSrc));
 check('pagina haalt themas/doelgroepen/regios uit haalClassificatiesOp (één bron voor matching en project)', /setThemas\(lijst\.themas/.test(pagina) && /setRegios\(lijst\.regios/.test(pagina) && /themas=\{themas\}/.test(pagina));
 check('Werkgebied / locatie: bestaande regio-waarden als suggesties (datalist), bestaande kolom location', /list="np-regio-opties"/.test(formSrc) && /location: project\.regio/.test(projectenSrc));
-check('Looptijd: twee native datumvelden Startdatum en Einddatum, opslag in period_start/period_end', /aria-label="Startdatum"/.test(formSrc) && /aria-label="Einddatum"/.test(formSrc) && /period_start: project\.periodeVan/.test(projectenSrc));
-check('bewerkformulier: Discipline en Werkgebied / locatie, geen metAnders', /n: 'discipline'/.test(bewerk) && /Werkgebied \/ locatie/.test(bewerk) && !/metAnders/.test(bewerk));
-check('bestaande looptijd als vrije tekst blijft zichtbaar en laadbaar (LooptijdInvoer)', /ISO_DATUM\.test\(v\)/.test(bewerk));
+check('Looptijd: twee native datumvelden Startdatum en Einddatum, opslag in period_start/period_end', /label="Startdatum"/.test(formSrc) && /label="Einddatum"/.test(formSrc) && /period_start: project\.periodeVan/.test(projectenSrc));
+check('bewerkformulier: Discipline en Werkgebied / locatie (uit het gedeelde formulier), geen metAnders', /Discipline/.test(formSrc) && /Werkgebied \/ locatie/.test(formSrc) && !/metAnders/.test(bewerk) && /themas=\{lijsten\.themas\}/.test(bewerk));
+check('bestaande looptijd als vrije tekst blijft zichtbaar en laadbaar (DatumInvoer, Kies een datum)', /ISO_DATUM\.test\(v\)/.test(formSrc) && /Kies een datum/.test(formSrc));
 const sig = buildMatchSignalen({ orgProfile: { themas: ['Cultuur'], doelgroepen: ['Jongeren'], regio: 'Utrecht' }, projects: [{ id: 'p1', discipline: ['Sport'], doelgroep: ['Ouderen'], regio: 'Rotterdam', gevraagd: 50000 }], linkedProjectId: 'p1' });
 gelijk('matchsignalen: project-discipline, -doelgroep en -werkgebied zijn leidend (exacte taxonomiewaarden)', [sig.themas, sig.doelgroepen, sig.werkgebied], [['Sport'], ['Ouderen'], 'Rotterdam']);
 gelijk('matchsignalen: zonder project-discipline blijven de themas van het organisatieprofiel gelden', buildMatchSignalen({ orgProfile: { themas: ['Cultuur'] }, projects: [{ id: 'p1', discipline: [] }], linkedProjectId: 'p1' }).themas, ['Cultuur']);

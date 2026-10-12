@@ -122,8 +122,8 @@ with sync_playwright() as p:
     kaartP4.locator('[data-testid="project-kaart-menu-knop"]').click(); pg.locator('[data-testid="project-kaart-menu-bewerken"]').click(); pg.wait_for_timeout(900)
     bt=txt(pg)
     ok('bewerken: geen "Eerdere fondsen en toekenningen" of "Co-financiers"-sectie en geen tweede cofinanciers-editor in het formulier', 'Eerdere fondsen' not in bt and 'Co-financiers' not in bt and pg.locator('[data-testid="form-dekkingsplan-verwijzing"]').count()==0)
-    ok('bewerken: Te financieren bedrag read-only € 340.000', '€ 340.000' in pg.locator('[data-testid="bewerk-te-financieren"]').inner_text().replace('\xa0',' ') and pg.locator('input[data-testid="bewerk-te-financieren"]').count()==0)
-    ok('bewerken: bestaande projectvelden (programma, partners, doelstellingen...) blijven bewerkbaar', all(x in bt for x in ['Programma of onderdeel','Partners','Doelstellingen','Activiteiten','Beoogde impact','Resultaten','Schrijfvoorkeur']))
+    ok('bewerken: Te financieren bedrag read-only € 340.000', '€ 340.000' in pg.locator('[data-testid="np-te-financieren"]').inner_text().replace('\xa0',' ') and pg.locator('input[data-testid="np-te-financieren"]').count()==0)
+    ok('bewerken: compact formulier (modus bewerk): dezelfde velden als Nieuw project, uitgebreide velden niet meer hier', pg.locator('[data-testid="project-bewerk-formulier"][data-modus="bewerk"]').count()==1 and all(x in bt for x in ['Projectnaam','Doelgroep','Discipline','Looptijd','Werkgebied / locatie','Projectomschrijving','Totale projectbegroting','Eigen bijdrage']) and not any(x in bt for x in ['Programma of onderdeel','Partners','Doelstellingen','Activiteiten','Beoogde impact','Resultaten','Schrijfvoorkeur']))
     ctx.close()
     # ================= 4. Legacy-project bewerken verliest niets
     ctx,pg=nieuw(b,{'width':1280,'height':1000},'pro',f'/kompas/projecten?bewerk={P1}')
