@@ -48,7 +48,7 @@ function maak(n) {
     update(p) { st.op = 'update'; st.payload = p; return api; },
     upsert(p, o) { st.op = 'upsert'; st.payload = p; st.conflict = o && o.onConflict; return api; },
     delete() { st.op = 'delete'; return api; },
-    neq(k, w) { st.f.push([k, w, 'neq']); return api; }, limit() { return api; },
+    neq(k, w) { st.f.push([k, w, 'neq']); return api; }, not(k, op, w) { st.f.push([k, w, 'neq']); return api; }, limit() { return api; },
     eq(k, w) { st.f.push([k, w, 'eq']); return api; }, is(k, w) { st.f.push([k, w, 'eq']); return api; }, in(k, w) { st.f.push([k, w, 'in']); return api; },
     order(k, o) { st.ord = { k, asc: !(o && o.ascending === false) }; return api; },
     maybeSingle() { st.een = 'maybe'; return Promise.resolve(run()); }, single() { st.een = 'single'; return Promise.resolve(run()); },
@@ -89,6 +89,23 @@ export const supabase = {
     });
     return { data: uit, error: null };
   },
-  storage: { from: () => ({ list: async () => ({ data: [], error: null }) }) },
+  storage: {
+    from: (bucket) => ({
+      list: async () => ({ data: [], error: null }),
+      upload: async (pad, file) => {
+        window.__STORAGE = window.__STORAGE || {};
+        if (window.__STORAGEFOUT) return { data: null, error: { message: 'opslag kapot' } };
+        window.__STORAGE[`${bucket}/${pad}`] = { naam: file.name, grootte: file.size, type: file.type };
+        return { data: { path: pad }, error: null };
+      },
+      remove: async (paden) => {
+        window.__STORAGE = window.__STORAGE || {};
+        window.__STORAGE_VERWIJDERD = (window.__STORAGE_VERWIJDERD || []).concat(paden);
+        paden.forEach((p) => { delete window.__STORAGE[`${bucket}/${p}`]; });
+        return { data: [], error: null };
+      },
+      createSignedUrl: async (pad) => ((window.__STORAGE || {})[`${bucket}/${pad}`] ? { data: { signedUrl: `${location.origin}/__signed/${bucket}/${pad}` }, error: null } : { data: null, error: { message: 'niet gevonden' } }),
+    }),
+  },
 };
 export async function query(fn, fb = null) { try { return await fn(supabase); } catch (e) { return { data: fb, error: e }; } }

@@ -22,6 +22,7 @@ await build({
   logLevel: 'warning',
 });
 
+cpSync(`${root}/node_modules/pdfjs-dist/build/pdf.worker.min.mjs`, `${hier}/web/worker.js`);
 cpSync(`${hier}/index.html`, `${hier}/web/index.html`);
 mkdirSync(`${hier}/web/uploads`, { recursive: true });
 cpSync(`${root}/uploads/kompas-logo.png`, `${hier}/web/uploads/kompas-logo.png`);

@@ -184,7 +184,74 @@ function naarDocVeld(rij) {
     vervangen: !!rij.superseded_at,
     gemaakt: rij.created_at || null,
     bron: rij.source_type || 'upload',
+    // Het originele bestand (alleen bij uploads sinds het bewaren van originelen): pad in de opslag en mimetype.
+    pad: rij.storage_path || '',
+    mime: rij.mime_type || '',
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Originele projectbestanden. Het bestand wordt bewaard in de bestaande, besloten opslagbucket van Subsidie Kompas
+// (dezelfde als bij organisatiedocumenten) onder <user-id>/projecten/...; het beleid van die bucket staat alleen
+// de eigenaar toe (eerste map = eigen user-id). Het pad en mimetype staan in de bestaande kolommen storage_path en
+// mime_type van subsidie_kompas_knowledge_items; er is geen schemawijziging nodig.
+export const PROJECT_BESTAND_BUCKET = 'subsidie-kompas-organisatie-docs';
+export const MAX_PROJECT_BESTAND = 25 * 1024 * 1024;
+
+const schoonBestandsnaam = (naam) =>
+  String(naam || 'bestand')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9.]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'bestand';
+
+// Geeft { pad, error }. Mislukt het bewaren van het origineel, dan kan het document nog steeds (als tekst) worden toegevoegd.
+export async function uploadProjectBestand(file) {
+  const userId = await huidigeGebruiker();
+
+  if (!userId || !supabase) {
+    return { pad: '', error: 'geen-sessie' };
+  }
+
+  if (file.size > MAX_PROJECT_BESTAND) {
+    return { pad: '', error: 'te-groot' };
+  }
+
+  const pad = `${userId}/projecten/${Date.now()}-${schoonBestandsnaam(file.name)}`;
+  const { error } = await supabase.storage.from(PROJECT_BESTAND_BUCKET).upload(pad, file, { upsert: false, contentType: file.type || undefined });
+
+  return error ? { pad: '', error: error.message || 'upload-mislukt' } : { pad, error: null };
+}
+
+// Tijdelijke link (een uur) naar het originele bestand; null als die er niet is of mislukt.
+export async function projectBestandLink(pad) {
+  if (!supabase || !pad) {
+    return null;
+  }
+
+  const { data, error } = await supabase.storage.from(PROJECT_BESTAND_BUCKET).createSignedUrl(pad, 3600);
+
+  return error || !data ? null : data.signedUrl;
+}
+
+// Verwijdert de originele bestanden van documenten (best effort: een mislukte opruiming blokkeert het verwijderen niet).
+// { ids } = documentrijen, of { programId } = alle documenten van een project.
+async function verwijderOpslagBestanden(userId, { ids, programId }) {
+  try {
+    let q = supabase.from('subsidie_kompas_knowledge_items').select('storage_path').eq('user_id', userId).not('storage_path', 'is', null);
+
+    q = ids ? q.in('id', ids) : q.eq('program_id', programId);
+
+    const { data } = await q;
+    const paden = (data || []).map((r) => r.storage_path).filter((x) => typeof x === 'string' && x.indexOf(`${userId}/`) === 0);
+
+    if (paden.length) {
+      await supabase.storage.from(PROJECT_BESTAND_BUCKET).remove(paden);
+    }
+  } catch (e) {
+    /* opruimen is best effort */
+  }
 }
 
 // Geeft een array projecten terug, of null zonder sessie/database (dan valt
@@ -213,7 +280,7 @@ export async function haalProjectenOp() {
   if (ids.length) {
     const { data: docs } = await supabase
       .from('subsidie_kompas_knowledge_items')
-      .select('id, program_id, file_name, title, notes, extracted_text, doc_type, version, document_context, superseded_at, created_at, source_type')
+      .select('id, program_id, file_name, title, notes, extracted_text, doc_type, version, document_context, superseded_at, created_at, source_type, storage_path, mime_type')
       .in('program_id', ids)
       .order('created_at', { ascending: true });
 
@@ -251,7 +318,7 @@ export async function haalProjectVoorExport(projectId) {
 
   const { data: docs } = await supabase
     .from('subsidie_kompas_knowledge_items')
-    .select('id, program_id, file_name, title, notes, doc_type, version, document_context, superseded_at, created_at, source_type')
+    .select('id, program_id, file_name, title, notes, doc_type, version, document_context, superseded_at, created_at, source_type, storage_path, mime_type')
     .eq('program_id', rij.id)
     .order('created_at', { ascending: true });
 
@@ -280,7 +347,7 @@ export async function haalDocumentVoorExport(projectId, documentId) {
 
   const { data: rij, error } = await supabase
     .from('subsidie_kompas_knowledge_items')
-    .select('id, program_id, file_name, title, notes, extracted_text, doc_type, version, document_context, superseded_at, created_at, source_type')
+    .select('id, program_id, file_name, title, notes, extracted_text, doc_type, version, document_context, superseded_at, created_at, source_type, storage_path, mime_type')
     .eq('id', documentId)
     .eq('program_id', programma.id)
     .maybeSingle();
@@ -358,6 +425,7 @@ export async function bewaarProject(project) {
   const teVerwijderen = (project.verwijderdeDocIds || []).filter((x) => bestaandIds.has(x));
 
   if (teVerwijderen.length) {
+    await verwijderOpslagBestanden(userId, { ids: teVerwijderen });
     await supabase.from('subsidie_kompas_knowledge_items').delete().in('id', teVerwijderen).eq('user_id', userId);
   }
 
@@ -410,6 +478,8 @@ export async function bewaarProject(project) {
       version: versie,
       document_context: context,
       extracted_text: d.tekst || null,
+      storage_path: d.pad || null,
+      mime_type: d.mime || null,
       source_type: d.bron || 'upload',
       status: 'ready',
     });
@@ -466,6 +536,8 @@ export async function verwijderDocument(id) {
     return false;
   }
 
+  await verwijderOpslagBestanden(userId, { ids: [id] });
+
   const { error } = await supabase.from('subsidie_kompas_knowledge_items').delete().eq('id', id).eq('user_id', userId);
 
   return !error;
@@ -482,6 +554,9 @@ export async function verwijderProject(id) {
   if (!userId || !supabase || !isEchtId(id)) {
     return false;
   }
+
+  // De documenten gaan mee met het project (cascade); hun originele bestanden in de opslag ruimen we eerst op.
+  await verwijderOpslagBestanden(userId, { programId: id });
 
   const { error } = await supabase.from('subsidie_kompas_programs').delete().eq('id', id).eq('user_id', userId);
 

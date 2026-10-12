@@ -37,7 +37,9 @@ function leesAlsTekst(file) {
 
 async function leesDocx(file) {
   try {
-    const mammoth = await import('mammoth');
+    const mod = await import('mammoth');
+    // CommonJS-pakket: afhankelijk van de bundler zit de API op de namespace of op default.
+    const mammoth = typeof mod.extractRawText === 'function' ? mod : mod.default;
     const buffer = await file.arrayBuffer();
     const { value } = await mammoth.extractRawText({ arrayBuffer: buffer });
 
@@ -68,6 +70,45 @@ async function leesPdf(file) {
   }
 }
 
+// Excel (.xlsx): per werkblad de rijen als tekst, cellen gescheiden door " | ". Formules worden als hun uitkomst gelezen.
+async function leesXlsx(file) {
+  try {
+    const mod = await import('exceljs');
+    const ExcelJS = mod.default || mod;
+    const wb = new ExcelJS.Workbook();
+
+    await wb.xlsx.load(await file.arrayBuffer());
+
+    let tekst = '';
+
+    wb.eachSheet((blad) => {
+      tekst += `${blad.name}\n`;
+      blad.eachRow((rij) => {
+        const cellen = [];
+
+        rij.eachCell({ includeEmpty: false }, (cel) => {
+          const w = cel.value;
+          const v = w && typeof w === 'object' ? (w.result != null ? w.result : w.text != null ? w.text : w.richText ? w.richText.map((x) => x.text).join('') : '') : w;
+
+          if (v !== '' && v != null) {
+            cellen.push(String(v));
+          }
+        });
+
+        if (cellen.length) {
+          tekst += `${cellen.join(' | ')}\n`;
+        }
+      });
+      tekst += '\n';
+    });
+
+    return tekst;
+  } catch (e) {
+    return '';
+  }
+}
+
+const ALS_XLSX = /\.xlsx$/i;
 const ALS_TEKST = /^text\/|\.(txt|md|csv)$/i;
 const ALS_DOCX = /\.docx$/i;
 const ALS_PDF = /application\/pdf|\.pdf$/i;
@@ -82,6 +123,8 @@ export async function extraheerTekst(file) {
 
   if (ALS_DOCX.test(file.name || '')) {
     tekst = await leesDocx(file);
+  } else if (ALS_XLSX.test(file.name || '')) {
+    tekst = await leesXlsx(file);
   } else if (ALS_PDF.test(kenmerk)) {
     tekst = await leesPdf(file);
   } else if (ALS_TEKST.test(kenmerk)) {

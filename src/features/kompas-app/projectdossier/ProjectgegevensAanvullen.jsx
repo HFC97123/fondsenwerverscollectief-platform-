@@ -17,8 +17,12 @@ const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight
 export const MELDING_GEEN_TEKST = 'In dit document is geen tekst gevonden die we kunnen lezen. Probeer een ander document, of vul de omschrijving zelf in.';
 export const MELDING_TE_WEINIG = 'Dit document bevat te weinig informatie om een verantwoorde omschrijving voor te stellen. Er is niets gewijzigd.';
 
-export function meldingVoorReden(reden) {
-  if (reden === 'geen-tekst') return MELDING_GEEN_TEKST;
+// Bij een PDF of Word-bestand zonder uitgelezen tekst: de meest voorkomende oorzaken en wat het lid kan doen.
+export const MELDING_GEEN_TEKST_PDF =
+  'In dit bestand is geen tekst gevonden. Dat gebeurt bij een gescande PDF (een foto van papier) of een beveiligde PDF, en bij documenten die zijn geüpload voordat uitlezen werkte. Upload het opnieuw als Word-bestand of als PDF waarin u tekst kunt selecteren, of vul de omschrijving zelf in.';
+
+export function meldingVoorReden(reden, documentNaam) {
+  if (reden === 'geen-tekst') return /\.(pdf|docx|xlsx)$/i.test(documentNaam || '') ? MELDING_GEEN_TEKST_PDF : MELDING_GEEN_TEKST;
   if (reden === 'te-weinig-informatie') return MELDING_TE_WEINIG;
 
   return '';
@@ -49,7 +53,7 @@ export default function ProjectgegevensAanvullen({ project, document, onOpslaan,
     }
 
     if (!res.omschrijving) {
-      setMelding(meldingVoorReden(res.reden) || MELDING_TE_WEINIG);
+      setMelding(meldingVoorReden(res.reden, document.naam) || MELDING_TE_WEINIG);
       setFase('melding');
 
       return;

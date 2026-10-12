@@ -68,12 +68,12 @@ function Formulier({ project, projecten, store }) {
       setBezig(false);
 
       if (id === null) {
-        setFout('De projectinformatie kon niet in de database worden opgeslagen. Probeer het opnieuw.');
+        setFout('De projectdocumentatie kon niet in de database worden opgeslagen. Probeer het opnieuw.');
 
         return;
       }
 
-      setMelding('Projectinformatie opgeslagen.');
+      setMelding('Projectdocumentatie opgeslagen.');
     });
   };
 
@@ -109,7 +109,7 @@ function Formulier({ project, projecten, store }) {
       }}
     >
       <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px;')}>
-        <h2 style={css(`${LABEL} margin: 0;`)}>Projectinformatie</h2>
+        <h2 style={css(`${LABEL} margin: 0;`)}>Projectdocumentatie</h2>
         <span data-testid="pi-voortgang" style={css('font-size: 13px; font-weight: 800; color: #2C4A5E;')}>
           {pi.ingevuld} van {pi.totaal} onderdelen ingevuld
         </span>
@@ -157,7 +157,7 @@ function Formulier({ project, projecten, store }) {
 
       <div style={css('display: flex; gap: 12px; align-items: center; flex-wrap: wrap;')}>
         <Button type="submit" disabled={bezig || !gewijzigd}>
-          {bezig ? 'Bezig met opslaan…' : 'Projectinformatie opslaan'}
+          {bezig ? 'Bezig met opslaan…' : 'Projectdocumentatie opslaan'}
         </Button>
         <span role="status" data-testid="pi-melding" style={css('font-size: 14px; font-weight: 700; color: #4E9A6C;')}>
           {melding}

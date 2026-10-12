@@ -22,7 +22,7 @@ import KaartMenu, { CSS_KAARTMENU } from '../KaartMenu.jsx';
 import { useHeeftWerkruimte } from '../werkruimteRechten.js';
 import ProjectBewerkFormulier from './ProjectBewerkFormulier.jsx';
 import { voortgang } from '../projectinformatie/projectinformatie.js';
-import { DocumentSoortKiezer, DocumentUploadKnop, DocumentVerwijderKnop, useDocumentenBeheer } from './DocumentenBeheer.jsx';
+import { DocumentNaam, DocumentSoortKiezer, DocumentUploadKnop, DocumentVerwijderKnop, useDocumentenBeheer } from './DocumentenBeheer.jsx';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14.5px; line-height: 1.6; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;";
@@ -162,7 +162,7 @@ function OverzichtTab({ project, financiering, store, bewerk, setBewerk }) {
       {!bewerk && (
         <section data-testid="overzicht-projectinformatie" style={css(KAART)}>
           <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;')}>
-            <h2 style={css(`${LABEL} margin: 0;`)}>Projectinformatie</h2>
+            <h2 style={css(`${LABEL} margin: 0;`)}>Projectdocumentatie</h2>
             <a href={`#/kompas/documentatie?project=${encodeURIComponent(project.id)}`} data-testid="overzicht-open-projectinformatie" style={css(LINK)}>
               Open in Documenten
             </a>
@@ -202,7 +202,7 @@ function DocumentenTab({ project, store }) {
             <li key={d.id || d.naam} data-testid="detail-document">
               <div style={css('display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center;')}>
                 <div style={css('flex: 1 1 220px; min-width: 0;')}>
-                  <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{d.naam}</div>
+                  <DocumentNaam doc={d} />
                   <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>
                     {[d.grootte, d.versie > 1 ? `versie ${d.versie}` : '', d.gemaakt ? formatTijd(d.gemaakt, new Date()) : ''].filter(Boolean).join(' · ')}
                   </div>

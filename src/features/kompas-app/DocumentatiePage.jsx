@@ -38,6 +38,7 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useHeeftWerkruimte } from './werkruimteRechten.js';
 import { isEchtId } from '../../data/services/projecten.js';
+import { openProjectBestand } from './projectdossier/DocumentenBeheer.jsx';
 import ProjectinformatiePaneel from './projectinformatie/ProjectinformatiePaneel.jsx';
 import { DOC_SOORTEN, useKompas } from './KompasStore.jsx';
 import { Button, EmptyState, Notice, Panel, PanelHeader } from '../../shared/ui/index.js';
@@ -133,7 +134,7 @@ export default function DocumentatiePage() {
         <ProjectinformatiePaneel projecten={projecten} projectId={projectId} onKies={kiesProject} store={store} />
       ) : (
         <div data-testid="pi-geen-project" style={css('margin-bottom: 24px; padding: 16px; border: 1px dashed #D5E0D9; border-radius: 16px; font-size: 14.5px; color: #7B8985;')}>
-          Maak eerst een project aan bij <a href="#/kompas/projecten" style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>Projecten</a>. Daarna vult u hier de projectinformatie aan.
+          Maak eerst een project aan bij <a href="#/kompas/projecten" style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>Projecten</a>. Daarna vult u hier de projectdocumentatie aan.
         </div>
       )}
 
@@ -215,6 +216,20 @@ export default function DocumentatiePage() {
               </button>
 
               <span style={css('display: flex; align-items: center; gap: 14px; flex-shrink: 0; flex-wrap: wrap;')}>
+                {d.pad && (
+                  <button
+                    type="button"
+                    data-testid="document-open-bestand"
+                    onClick={async () => {
+                      if (!(await openProjectBestand(d.pad))) {
+                        setMelding('Het bestand kon niet worden geopend. Probeer het opnieuw.');
+                      }
+                    }}
+                    style={css("cursor: pointer; min-height: 40px; padding: 0 4px; border: none; background: none; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #4E9A6C;")}
+                  >
+                    Bestand openen
+                  </button>
+                )}
                 <ExportMenu
                   toegestaan={paid}
                   uitlijnen="rechts"

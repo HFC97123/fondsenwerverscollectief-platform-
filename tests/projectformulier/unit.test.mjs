@@ -150,7 +150,7 @@ check('UI: acties Opslaan bij project / Aanpassen / Annuleren', ['Opslaan bij pr
 check('UI: titel "Voorstel projectomschrijving" en knop "Projectgegevens aanvullen"', aanvul.includes('Voorstel projectomschrijving') && aanvul.includes('Projectgegevens aanvullen'));
 check('UI: bewaren alleen via onOpslaan na de knop (geen opslag bij ontvangen voorstel)', /const start = async[\s\S]*?setFase\('voorstel'\)/.test(aanvul) && !/onOpslaan\(/.test(zonderCommentaar(aanvul).split('const bewaar')[0]));
 check('UI: bestaande omschrijving blijft zichtbaar en wordt niet stil overschreven', /projectgegevens-bestaand/.test(aanvul) && /vervangt/.test(aanvul));
-check('UI: vriendelijke meldingen voor leeg en onleesbaar document', meldingVoorReden('geen-tekst') === MELDING_GEEN_TEKST && meldingVoorReden('te-weinig-informatie') === MELDING_TE_WEINIG && MELDING_GEEN_TEKST.length > 20);
+check('UI: vriendelijke meldingen voor leeg en onleesbaar document (PDF krijgt een eigen uitleg)', meldingVoorReden('geen-tekst') === MELDING_GEEN_TEKST && /gescande PDF/.test(meldingVoorReden('geen-tekst', 'plan.pdf')) && meldingVoorReden('te-weinig-informatie') === MELDING_TE_WEINIG && MELDING_GEEN_TEKST.length > 20);
 const detail = lees('src/features/kompas-app/projectdossier/ProjectDetailPage.jsx');
 check('Documenten-tab: actie per eigen document met echte id (isEchtId)', /ProjectgegevensAanvullen/.test(detail) && /isEchtId\(d\.id\)/.test(detail));
 check('opslaan via bestaande store-route werkProjectBij met herkomst "upload" (uit een document), alleen omschrijving', /werkProjectBij\(project\.id, \{ vulling: \{\}, bijwerking: \{ omschrijving: tekst \}, bronnen: \{ omschrijving: 'upload' \}/.test(detail));

@@ -1,4 +1,4 @@
-# Projectinformatie
+# Projectdocumentatie (in de code: Projectinformatie)
 
 De uitgebreide, inhoudelijke kennislaag bij één project. Beheerd op de pagina Documenten; **Projecten blijft compact**
 (naam, doelgroep, discipline, werkgebied, looptijd, omschrijving, begroting) en is de bron voor fondsenmatching en dekkingsplan.
