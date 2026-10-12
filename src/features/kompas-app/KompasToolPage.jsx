@@ -31,6 +31,7 @@ import {
 import ExportMenu from '../../shared/ui/ExportMenu.jsx';
 import { chatDocumentExport, gesprekExport } from './exportBronnen.js';
 import { extraheerTekst } from '../../data/services/documentExtractie.js';
+import { useSpraakInvoer } from './chat/spraakInvoer.js';
 import {
   bijwerkenGesprekModusEnDossier,
   haalBerichtenOp,
@@ -295,6 +296,10 @@ export default function KompasToolPage() {
   // eindpunt of aparte opslag voor nodig.
   const [attachBezig, setAttachBezig] = useState(false);
   const [attachFout, setAttachFout] = useState('');
+  // Dicteren: de uitgesproken tekst komt in het invoerveld (niet automatisch verstuurd).
+  const draftRef = useRef('');
+  const spraak = useSpraakInvoer({ leesDraft: () => draftRef.current, zetDraft: (t) => { draftRef.current = t; setDraft(t); window.requestAnimationFrame(() => taRef.current && groeiMeeRef.current()); } });
+  const groeiMeeRef = useRef(() => {});
   const bestandRef = useRef(null);
 
   const scrollRef = useRef(null);
@@ -342,6 +347,9 @@ export default function KompasToolPage() {
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   };
 
+  draftRef.current = draft;
+  groeiMeeRef.current = groeiMee;
+
   // Leest het gekozen bestand client-side uit (extraheerTekst regelt zelf
   // .pdf/.docx/.txt, en geeft nooit een uitzondering) en zet de tekst, met
   // een duidelijk label, vóór wat het lid al had getypt - zodat in het
@@ -384,6 +392,8 @@ export default function KompasToolPage() {
     const vraag = (tekst != null ? tekst : draft).trim();
 
     if (!vraag || loading) return;
+
+    spraak.stop();
 
     // Verbetering Projectplan-workflow: modusOverride komt van de
     // projectplan-starterchip hieronder. React's setKompasMode() hierbeneden
@@ -1714,6 +1724,7 @@ export default function KompasToolPage() {
                 data-testid="chat-invoer"
                 value={draft}
                 onChange={(e) => {
+                  if (spraak.luistert) spraak.stop();
                   setDraft(e.target.value);
                   groeiMee();
                 }}
@@ -1729,6 +1740,26 @@ export default function KompasToolPage() {
                   "flex: 1; min-width: 0; height: 48px; min-height: 48px; max-height: 180px; overflow-y: auto; padding: 13px 0 10px; border: none; outline: none; resize: none; background: transparent; color: #2E3A38; font-family: 'Mulish', sans-serif; font-size: 15.5px; line-height: 1.5;",
                 )}
               />
+              {spraak.ondersteund && (
+                <button
+                  type="button"
+                  data-testid="chat-microfoon"
+                  aria-label={spraak.luistert ? 'Stop met luisteren' : 'Spreek uw vraag in'}
+                  aria-pressed={spraak.luistert}
+                  title={spraak.luistert ? 'Stop met luisteren' : 'Spreek uw vraag in (de spraakherkenning wordt door uw browser verzorgd)'}
+                  disabled={loading}
+                  onClick={spraak.wissel}
+                  style={css(
+                    `width: 40px; height: 40px; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0; border-radius: 50%; border: 1px solid ${spraak.luistert ? '#B23B3B' : '#D6E3E9'}; background: ${spraak.luistert ? '#FCE9E9' : '#FFFFFF'}; cursor: ${loading ? 'not-allowed' : 'pointer'}; opacity: ${loading ? 0.5 : 1};`,
+                  )}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={spraak.luistert ? '#B23B3B' : '#2C4A5E'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3" />
+                    <path d="M5 11a7 7 0 0 0 14 0" />
+                    <path d="M12 18v3" />
+                  </svg>
+                </button>
+              )}
               <div
                 onClick={() => verstuur()}
                 role="button"
@@ -1746,6 +1777,12 @@ export default function KompasToolPage() {
               </div>
             </div>
 
+            {spraak.luistert && (
+              <p data-testid="chat-luistert" role="status" style={css('margin: 8px 0 0; font-size: 12.5px; font-weight: 700; color: #B23B3B;')}>Aan het luisteren… spreek uw vraag in. Klik op de microfoon om te stoppen.</p>
+            )}
+            {spraak.fout && (
+              <p data-testid="chat-spraakfout" role="alert" style={css('margin: 8px 0 0; font-size: 12.5px; color: #B23B3B;')}>{spraak.fout}</p>
+            )}
             {attachFout && (
               <p style={css('margin: 8px 0 0; font-size: 12.5px; color: #B23B3B;')}>{attachFout}</p>
             )}
