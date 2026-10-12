@@ -288,6 +288,25 @@ export function berekenDekking({ begroting, regels, overige }) {
   const overig = projectBedrag(overige);
   const gedekt = toegekend + aangevraagd + overig;
   const nogNodig = Math.max(0, budget - gedekt);
+
+  // Plan (Dekkingsplan): wat nog niet is aangevraagd maar wel is voorzien. Alleen regels in voorbereiding of
+  // interessant; een regel zonder bedrag telt 0 (er wordt niet geschat) en wordt apart geteld voor de hint.
+  const planRegels = bedragen.filter((r) => r.status === 'interesting' || r.status === 'preparing');
+  const gepland = planRegels.reduce((t, r) => t + (r.requested != null ? r.requested : 0), 0);
+  const geplandZonderBedrag = planRegels.filter((r) => r.requested == null).length;
+  const gedektMetPlan = gedekt + gepland;
+  const nogTePlannen = Math.max(0, budget - gedektMetPlan);
+  const procent = (deel) => (budget > 0 ? Math.round((deel / budget) * 100) : 0);
+  // Minimaal 1% zodra er iets is, nooit meer dan 100% en nooit 100% zolang er nog iets ontbreekt.
+  const procentBegrensd = (deel) => {
+    if (budget <= 0 || deel <= 0) return 0;
+
+    const p = procent(deel);
+
+    return Math.min(100, Math.max(1, deel < budget && p >= 100 ? 99 : p));
+  };
+  const planFactor = budget > 0 && gedektMetPlan > budget ? budget / gedektMetPlan : 1;
+  const planPct = (n) => (budget > 0 ? Math.round(((n * planFactor) / budget) * 10000) / 100 : 0);
   const factor = budget > 0 && gedekt > budget ? budget / gedekt : 1;
   const pct = (n) => (budget > 0 ? Math.round(((n * factor) / budget) * 10000) / 100 : 0);
 
@@ -299,6 +318,26 @@ export function berekenDekking({ begroting, regels, overige }) {
     overige: overig,
     nogNodig,
     volledigGedekt: budget > 0 && gedekt >= budget,
+    // Dekkingsplan: bestaande velden hierboven blijven ongewijzigd; dit zijn de aanvullende begrippen.
+    //   Gepland        = som requested_amount bij interesting/preparing
+    //   Nog te plannen = max(0, begroting - (eigen + toegekend + aangevraagd + gepland))
+    //   % ingevuld     = (eigen + toegekend + aangevraagd + gepland) / begroting, maximaal 100
+    //   % toegekend    = toegekend / begroting (de eigen bijdrage telt hier niet mee)
+    gepland,
+    geplandZonderBedrag,
+    gedektMetPlan,
+    nogTePlannen,
+    overgedekt: budget > 0 && gedektMetPlan > budget ? gedektMetPlan - budget : 0,
+    planVolledig: budget > 0 && gedektMetPlan >= budget,
+    pctIngevuld: procentBegrensd(gedektMetPlan),
+    pctToegekend: procentBegrensd(toegekend),
+    planSegmenten: {
+      overige: planPct(overig),
+      toegekend: planPct(toegekend),
+      aangevraagd: planPct(aangevraagd),
+      gepland: planPct(gepland),
+      nogTePlannen: budget > 0 ? Math.max(0, Math.round((100 - planPct(overig) - planPct(toegekend) - planPct(aangevraagd) - planPct(gepland)) * 100) / 100) : 0,
+    },
     segmenten: {
       toegekend: pct(toegekend),
       aangevraagd: pct(aangevraagd),
