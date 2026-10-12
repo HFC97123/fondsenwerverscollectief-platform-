@@ -67,7 +67,7 @@ with sync_playwright() as p:
         ok(f'{label}: geen bovenknoppen Nieuw gesprek / Naar Projecten', pg.get_by_role('button',name='Nieuw gesprek').count()==0 and pg.get_by_text('Naar Projecten',exact=True).count()==0)
         ok(f'{label}: structuur = Projecten, Mijn komende deadlines, Recente documenten (in die volgorde)', [h.inner_text().strip().lower() for h in pg.locator('main h2, h2').all()][:3]==['projecten','mijn komende deadlines','recente documenten'], str([h.inner_text() for h in pg.locator('h2').all()]))
         ok(f'{label}: naamgeving Subsidie Kompas op het Dashboard', 'Subsidiekompas' not in txt(pg) and 'Bespreek met Subsidie Kompas' in txt(pg))
-        ok(f'{label}: open project-link', k1.locator('a:has-text("Open project")').get_attribute('href')=='#/kompas/projecten/11111111-1111-4111-8111-111111111111')
+        ok(f'{label}: projectkaart is klikbaar via de titel (geen aparte Open project-knop)', k1.locator('[data-testid="dashboard-project-link"]').get_attribute('href')=='#/kompas/projecten/11111111-1111-4111-8111-111111111111' and k1.get_by_text('Open project').count()==0)
         ok(f'{label}: geen horizontale scroll (dashboard)', geenhscroll(pg))
         ok(f'{label}: geen pageerrors (dashboard)', not pg.errs, '; '.join(pg.errs)[:300])
         pg.screenshot(path=f'shots/{label}_dashboard.png', full_page=True)

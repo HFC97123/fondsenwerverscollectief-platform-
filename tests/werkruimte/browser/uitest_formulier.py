@@ -118,10 +118,10 @@ with sync_playwright() as p:
     ok('Projecten: kaart noemt geen "eerdere toekenningen"/"co-financiers" meer', 'eerdere toekenning' not in txt(pg) and 'co-financiers' not in txt(pg))
     pg.screenshot(path='shots/formulier_6_projecten_kaart.png', full_page=True)
     # Bewerkformulier P4: geen eerdere/cofin-secties, te-financieren read-only
-    kaartP4=pg.locator('div').filter(has_text='Fondsenwerving Hulp Na Onderzoek').filter(has=pg.get_by_role('button',name='Bewerken')).last
-    kaartP4.get_by_role('button',name='Bewerken').click(); pg.wait_for_timeout(500)
+    kaartP4=pg.locator(f'[data-testid="project-kaart"][data-project-id="{P4}"]')
+    kaartP4.locator('[data-testid="project-kaart-menu-knop"]').click(); pg.locator('[data-testid="project-kaart-menu-bewerken"]').click(); pg.wait_for_timeout(900)
     bt=txt(pg)
-    ok('bewerken: geen "Eerdere fondsen en toekenningen" of "Co-financiers"-sectie; wel "Cofinanciers en andere financiering"-verwijzing', 'Eerdere fondsen' not in bt and 'Co-financiers' not in bt and 'Cofinanciers en andere financiering' in bt)
+    ok('bewerken: geen "Eerdere fondsen en toekenningen" of "Co-financiers"-sectie en geen tweede cofinanciers-editor in het formulier', 'Eerdere fondsen' not in bt and 'Co-financiers' not in bt and pg.locator('[data-testid="form-dekkingsplan-verwijzing"]').count()==0)
     ok('bewerken: Te financieren bedrag read-only € 340.000', '€ 340.000' in pg.locator('[data-testid="bewerk-te-financieren"]').inner_text().replace('\xa0',' ') and pg.locator('input[data-testid="bewerk-te-financieren"]').count()==0)
     ok('bewerken: bestaande projectvelden (programma, partners, doelstellingen...) blijven bewerkbaar', all(x in bt for x in ['Programma of onderdeel','Partners','Doelstellingen','Activiteiten','Beoogde impact','Resultaten','Schrijfvoorkeur']))
     ctx.close()

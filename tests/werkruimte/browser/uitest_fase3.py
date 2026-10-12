@@ -49,7 +49,7 @@ def geenhscroll(pg): return pg.evaluate('document.documentElement.scrollWidth<=w
 def fund(pg,prog=None):
     q='window.__DBL.subsidie_kompas_program_funding'
     return pg.evaluate(q+(f'.filter(r=>r.program_id==="{prog}")' if prog else ''))
-def rij(pg,naam): return pg.locator('[data-testid="md-rij"]').filter(has=pg.locator(f'[data-testid="md-naam"]:text-is("{naam}")'))
+def rij(pg,naam): return pg.locator('[data-testid="md-rij"]').filter(has=pg.locator(f'[data-testid="md-open"]:text-is("{naam}")'))
 def namen(pg,groep): return pg.locator(f'[data-testid="md-groep-{groep}"] [data-testid="md-naam"]').all_inner_texts()
 def html(pg): return pg.evaluate("(()=>{const c=document.body.cloneNode(true);c.querySelectorAll('script').forEach(x=>x.remove());return c.innerHTML})()")
 def log(pg): return pg.evaluate('window.__LOG')
@@ -261,8 +261,9 @@ with sync_playwright() as p:
     bb=[x.bounding_box() for x in pg.locator('[data-testid="md-rij"]').all()]
     ok('mobiel: rijen passen in de breedte als kaarten', bb and all(x['x']>=0 and x['x']+x['width']<=375.5 for x in bb))
     r3=rij(pg,'Oranje Fonds Burenhulp')
-    kb=r3.get_by_test_id('herinnering-knop').bounding_box(); ob=r3.get_by_test_id('md-open').bounding_box()
-    ok('mobiel: herinnering en deeplink bereikbaar (tapgrootte >= 44px, binnen beeld)', kb['height']>=44 and ob['height']>=44 and kb['x']+kb['width']<=375 and ob['x']+ob['width']<=375)
+    kb=r3.get_by_test_id('herinnering-knop').bounding_box(); ob=r3.bounding_box()
+    midden=pg.evaluate("(el)=>{const r=el.getBoundingClientRect();const x=r.left+r.width*0.5, y=r.top+r.height*0.5;const e=document.elementFromPoint(x,y);return e&&e.getAttribute('data-testid')}", r3.element_handle())
+    ok('mobiel: herinnering bereikbaar (tap >= 44px) en de hele kaart is het tikgebied naar de projectfinanciering (>= 44px, binnen beeld)', kb['height']>=44 and ob['height']>=44 and kb['x']+kb['width']<=375 and ob['x']+ob['width']<=375 and midden=='md-open', str(midden))
     pg.screenshot(path='shots/f3_mobile_mijn_deadlines.png', full_page=True)
     open_alle(pg); open_detail(pg,'Nieuwe Testregeling')
     ok('mobiel: detailkaart geen horizontale scroll', geenhscroll(pg))

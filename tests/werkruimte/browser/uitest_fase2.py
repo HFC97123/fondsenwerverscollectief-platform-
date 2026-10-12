@@ -172,7 +172,7 @@ with sync_playwright() as p:
     ok('Free chat: geen RPC en geen funding-queries', not pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan'||l.tabel==='subsidie_kompas_program_funding')"))
     ctx.close()
     ctx,pg=nieuw(b,vp,'free','/kompas/projecten')
-    ok('Free Projecten: geen RPC, geen Open project-link, geen funding-queries', not pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan'||l.tabel==='subsidie_kompas_program_funding')") and pg.locator('[data-testid="open-project"]').count()==0, txt(pg)[:200])
+    ok('Free Projecten: geen RPC, geen projectkaarten/-links, geen funding-queries', not pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan'||l.tabel==='subsidie_kompas_program_funding')") and pg.locator('[data-testid="project-kaart-link"]').count()==0, txt(pg)[:200])
     ctx.close()
     # --- RPC niet beschikbaar / fout
     for fout,meld in [('niet-beschikbaar','nog niet beschikbaar'),('fout','kon niet worden geladen')]:
@@ -185,25 +185,25 @@ with sync_playwright() as p:
     # --- ProjectenPage
     ctx,pg=nieuw(b,vp,'pro','/kompas/projecten')
     t=txt(pg)
-    k=pg.locator('[data-testid="open-project"]')
-    ok('Projecten: Open project-link per actief project met UUID (3 eigen)', k.count()==3 and k.first.get_attribute('href').startswith('#/kompas/projecten/'), str(k.count()))
+    k=pg.locator('[data-testid="project-kaart-link"]')
+    ok('Projecten: kaarttitel is de link naar het dossier per actief project met UUID (3 eigen)', k.count()==3 and k.first.get_attribute('href').startswith('#/kompas/projecten/'), str(k.count()))
     kf=' || '.join(re.sub(r'\s+',' ',x.replace('\xa0',' ')) for x in pg.locator('[data-testid="projecten-kaart-financiering"]').all_inner_texts())
     ok('Projecten: kaart toont dezelfde financiering als het projectdossier (30.000 / 15.000 / 20.000 / 35.000)', 'Toegekend € 30.000 · Aangevraagd € 15.000 · Eigen bijdrage € 20.000 · Nog te financieren € 35.000' in kf, kf)
     ok('Projecten: komende deadlines uit het dekkingsplan, niet uit legacy', pg.locator('[data-testid="projecten-komende-deadline"]').count()==3 and 'Oranje Fonds Burenhulp' in t and 'LEGACY' not in t)
-    pg.get_by_role('button',name='Bewerken').first.click(); pg.wait_for_timeout(400)
-    ok('Projecten formulier: dekkingsplan-verwijzing naar projectfinancieringstab, geen oude regelingen-editor', pg.locator('[data-testid="form-dekkingsplan-verwijzing"]').count()==1 and 'Aan te vragen bedrag' not in pg.content() and 'LEGACY' not in txt(pg))
+    pg.locator('[data-testid="project-kaart-menu-knop"]').first.click(); pg.locator('[data-testid="project-kaart-menu-bewerken"]').click(); pg.wait_for_timeout(600)
+    ok('Projecten > kaartmenu > Bewerken opent het bewerkformulier in het projectdossier, geen oude regelingen-editor', pg.evaluate('location.hash').startswith('#/kompas/projecten/') and pg.evaluate('location.hash').endswith('?bewerk=1') and pg.locator('[data-testid="project-bewerk-formulier"]').count()==1 and 'Aan te vragen bedrag' not in pg.content() and 'LEGACY' not in txt(pg))
     # linked_schemes wordt niet meer geschreven
     ctx.close()
     ctx,pg=nieuw(b,vp,'pro','/kompas/projecten')
     pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{P1}").linked_schemes=["SENTINEL"]')
-    pg.locator('div').filter(has_text=re.compile(r'^Buurtkeuken De Brug')).get_by_role('button',name='Bewerken').last.click(); pg.wait_for_timeout(300)
+    pg.goto(f'{BASE}?tier=pro#/kompas/projecten/{P1}?bewerk=1'); pg.wait_for_timeout(1200)
     naam=pg.locator('input[value="Buurtkeuken De Brug"]').first
     naam.fill('Buurtkeuken De Brug 2'); pg.get_by_role('button',name=re.compile('Project opslaan|Opslaan',re.I)).first.click(); pg.wait_for_timeout(900)
     rij=pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{P1}")')
     ok('linked_schemes: opslaan van project schrijft de kolom niet meer (sentinel onaangeroerd)', rij['name']=='Buurtkeuken De Brug 2' and rij['linked_schemes']==['SENTINEL'], str(rij['linked_schemes']))
     ctx.close()
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten?bewerk={P2}')
-    ok('Projecten: ?bewerk=<id> opent het formulier van dat project', pg.locator('input[value="Taalcafe Zuid"]').count()>=1)
+    ok('Projecten: oude link ?bewerk=<id> stuurt door naar het bewerkformulier in het dossier van dat project', pg.evaluate('location.hash')==f'#/kompas/projecten/{P2}?bewerk=1' and pg.locator('input[value="Taalcafe Zuid"]').count()>=1)
     ctx.close()
     # --- Deadlines: "Opnemen in een project" schrijft naar de fundingtabel (geen linked_schemes)
     NIEUW='b0000000-0000-4000-8000-000000000001'

@@ -18,6 +18,10 @@ import CofinanciersSectie from './CofinanciersSectie.jsx';
 import ConversationsList from '../chat/ConversationsList.jsx';
 import ProjectgegevensAanvullen from './ProjectgegevensAanvullen.jsx';
 import { isEchtId } from '../../../data/services/projecten.js';
+import KaartMenu, { CSS_KAARTMENU } from '../KaartMenu.jsx';
+import { useHeeftWerkruimte } from '../werkruimteRechten.js';
+import ProjectBewerkFormulier from './ProjectBewerkFormulier.jsx';
+import { DocumentSoortKiezer, DocumentUploadKnop, DocumentVerwijderKnop, useDocumentenBeheer } from './DocumentenBeheer.jsx';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14.5px; line-height: 1.6; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;";
@@ -60,10 +64,26 @@ function zetTabInUrl(id) {
   }
 }
 
+// ?bewerk=1 in de hash opent het bewerkformulier (tab Overzicht). Oude links (#/kompas/projecten?bewerk=<id>)
+// worden door de Projecten-pagina naar hier doorgestuurd.
+function leesBewerk() {
+  return /[?&]bewerk=1(&|$)/.test(window.location.hash || '');
+}
+
+function zetBewerkInUrl(aan) {
+  try {
+    const [pad] = String(window.location.hash || '').replace(/^#/, '').split('?');
+
+    window.history.replaceState(null, '', `#${pad}${aan ? '?bewerk=1' : ''}`);
+  } catch (e) {
+    // Zonder history API blijft de modus gewoon in de component-state.
+  }
+}
+
 function Pagina({ children }) {
   return (
     <div className="fwk-pd-pagina" style={css('min-height: 100vh; background: #F7F9F8;')}>
-      <style>{CSS_PAGINA}</style>
+      <style>{`${CSS_PAGINA}${CSS_KAARTMENU}`}</style>
       <div style={css('max-width: 1120px; margin: 0 auto; padding: clamp(20px, 3vw, 36px) clamp(16px, 4vw, 24px) 64px;')}>{children}</div>
     </div>
   );
@@ -95,7 +115,7 @@ function Veld({ label, children }) {
   );
 }
 
-function OverzichtTab({ project, financiering }) {
+function OverzichtTab({ project, financiering, store, bewerk, setBewerk }) {
   const doelgroep = Array.isArray(project.doelgroep) ? project.doelgroep.join(', ') : project.doelgroep;
   const discipline = Array.isArray(project.discipline) ? project.discipline.join(', ') : project.discipline;
   const periode = periodeTekst(project.periodeVan, project.periodeTot);
@@ -106,11 +126,22 @@ function OverzichtTab({ project, financiering }) {
       <section style={css(KAART)}>
         <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;')}>
           <h2 style={css(`${LABEL} margin: 0;`)}>Over dit project</h2>
-          <a href={`#/kompas/projecten?bewerk=${project.id}`} style={css(LINK)}>
-            Projectgegevens bewerken
-          </a>
+          {!bewerk && (
+            <button type="button" data-testid="overzicht-bewerken" onClick={() => setBewerk(true)} style={css(LINK)}>
+              Projectgegevens bewerken
+            </button>
+          )}
         </div>
-        {heeftInhoud || periode || project.regio ? (
+        {bewerk ? (
+          <ProjectBewerkFormulier
+            project={project}
+            store={store}
+            onAnnuleer={() => setBewerk(false)}
+            onKlaar={(tekst) => {
+              setBewerk(false, tekst);
+            }}
+          />
+        ) : heeftInhoud || periode || project.regio ? (
           <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px 24px;')}>
             <Veld label="Programma of onderdeel">{project.programma}</Veld>
             <Veld label="Doelgroep">{doelgroep}</Veld>
@@ -130,13 +161,14 @@ function OverzichtTab({ project, financiering }) {
         )}
       </section>
 
-      <CofinanciersSectie project={project} financiering={financiering} />
+      {!bewerk && <CofinanciersSectie project={project} financiering={financiering} />}
     </div>
   );
 }
 
 function DocumentenTab({ project, store }) {
   const docs = (project.docs || []).filter((d) => d && !d.vervangen);
+  const beheer = useDocumentenBeheer(project, store);
 
   return (
     <section data-testid="tab-documenten" style={css(KAART)}>
@@ -146,15 +178,22 @@ function DocumentenTab({ project, store }) {
           Naar Documentatie
         </a>
       </div>
+      <p style={css(`${TEKST} margin: 0 0 14px; max-width: 640px;`)}>
+        Upload projectplannen, begrotingen en concept-dekkingsplannen. Subsidie Kompas gebruikt deze documenten als achtergrondinformatie bij vragen over dit project.
+      </p>
       {docs.length ? (
-        <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px;')}>
+        <ul style={css('list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 12px;')}>
           {docs.map((d) => (
             <li key={d.id || d.naam} data-testid="detail-document">
-              <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{d.naam}</div>
-              <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>
-                {d.soort || 'Overig'}
-                {d.versie > 1 ? ` · versie ${d.versie}` : ''}
-                {d.gemaakt ? ` · ${formatTijd(d.gemaakt, new Date())}` : ''}
+              <div style={css('display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center;')}>
+                <div style={css('flex: 1 1 220px; min-width: 0;')}>
+                  <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{d.naam}</div>
+                  <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>
+                    {[d.grootte, d.versie > 1 ? `versie ${d.versie}` : '', d.gemaakt ? formatTijd(d.gemaakt, new Date()) : ''].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <DocumentSoortKiezer doc={d} beheer={beheer} />
+                <DocumentVerwijderKnop doc={d} beheer={beheer} />
               </div>
               {isEchtId(d.id) && isEchtId(project.id) && (
                 <ProjectgegevensAanvullen
@@ -169,8 +208,12 @@ function DocumentenTab({ project, store }) {
           ))}
         </ul>
       ) : (
-        <div style={css(`${TEKST} color: #7B8985;`)}>Nog geen documenten bij dit project. Documenten die u uploadt of in de chat opslaat, verschijnen hier.</div>
+        <div style={css(`${TEKST} margin-bottom: 16px; color: #7B8985;`)}>Nog geen documenten bij dit project. Documenten die u uploadt of in de chat opslaat, verschijnen hier.</div>
       )}
+      <DocumentUploadKnop beheer={beheer} />
+      <div role="status" data-testid="detail-documenten-melding" style={css(`${TEKST} margin-top: 10px; min-height: 22px; color: ${beheer.fout ? '#9E3B2C' : '#4E9A6C'}; font-weight: 700;`)}>
+        {beheer.fout || beheer.melding}
+      </div>
     </section>
   );
 }
@@ -193,18 +236,25 @@ function GesprekkenTab({ project, gesprekken, onOpen, onBespreek }) {
 export default function ProjectDetailPage({ projectId }) {
   const app = useApp();
   const store = useKompas();
-  const tier = app.subscriptionTier || 'free';
-  // Zelfde regel als hasPlanTools in KompasToolPage en de navigatie in KompasApp.
-  const paid = app.isAdmin || tier === 'pro' || tier === 'premium';
+  const paid = useHeeftWerkruimte();
 
   const project = (store.projects || []).find((p) => p.id === projectId) || null;
   // Altijd aanroepen (hooks); voor een onbekend of lokaal project doet dit niets.
   const financiering = useProjectFinanciering(project && paid ? projectId : null);
   const [tab, setTab] = useState(leesTab);
   const tabRefs = useRef({});
+  const [bewerk, setBewerkState] = useState(leesBewerk);
+  const [opgeslagen, setOpgeslagen] = useState('');
+
+  const setBewerk = useCallback((aan, melding) => {
+    setBewerkState(aan);
+    zetBewerkInUrl(aan);
+    setOpgeslagen(melding || '');
+  }, []);
 
   const kies = useCallback((id) => {
     setTab(id);
+    setBewerkState(false);
     zetTabInUrl(id);
   }, []);
 
@@ -288,19 +338,38 @@ export default function ProjectDetailPage({ projectId }) {
           ← Alle projecten
         </a>
 
-        <div style={css('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin: 10px 0 20px;')}>
-          <div style={css('min-width: 0; flex: 1 1 320px;')}>
-            <h1 data-testid="project-detail-naam" style={css("margin: 0 0 4px; font-family: 'Newsreader', serif; font-size: clamp(26px, 3.6vw, 34px); font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere;")}>
-              {project.naam || 'Naamloos project'}
-            </h1>
-            {meta && <div data-testid="project-detail-meta" style={css(`${TEKST} color: #7B8985;`)}>{meta}</div>}
+        {/* Rustige projectkop: titel en meta; daaronder de ene aanvullende actie en het ⋯-menu. Bewerken gebeurt
+            per tabblad op de plek waar de gegevens staan; export hoort bij Documenten (de exportcode blijft bestaan). */}
+        <div data-testid="project-kop" style={css('margin: 10px 0 20px;')}>
+          <h1 data-testid="project-detail-naam" style={css("margin: 0 0 4px; font-family: 'Newsreader', serif; font-size: clamp(26px, 3.6vw, 34px); font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere;")}>
+            {project.naam || 'Naamloos project'}
+          </h1>
+          {meta && <div data-testid="project-detail-meta" style={css(`${TEKST} color: #7B8985;`)}>{meta}</div>}
+          <div style={css('display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-top: 14px;')}>
+            <Button onClick={() => bespreek(project.id)}>Bespreek met Subsidie Kompas</Button>
+            <KaartMenu
+              label="Meer acties voor dit project"
+              testid="project-menu"
+              acties={[
+                { id: 'archiveren', label: project.gearchiveerd ? 'Terugzetten' : 'Archiveren', onSelect: () => store.archiveProject(project.id, !project.gearchiveerd) },
+                {
+                  id: 'verwijderen',
+                  label: 'Verwijderen',
+                  gevaar: true,
+                  bevestig: { vraag: `Project "${project.naam || 'Naamloos project'}" definitief verwijderen? Ook de documenten van dit project worden verwijderd.`, knop: 'Definitief verwijderen' },
+                  onSelect: () => {
+                    store.deleteProject(project.id);
+                    window.location.hash = '#/kompas/projecten';
+                  },
+                },
+              ]}
+            />
           </div>
-          <Button onClick={() => bespreek(project.id)}>Bespreek met Subsidie Kompas</Button>
         </div>
 
         {project.gearchiveerd && (
           <div role="status" data-testid="project-gearchiveerd" style={css(`${TEKST} margin-bottom: 14px; padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #EEF3F0; color: #4B5C58;`)}>
-            Dit project is gearchiveerd. U kunt het terugzetten bij Projecten.
+            Dit project is gearchiveerd. U kunt het terugzetten via het menu ⋯ hierboven.
           </div>
         )}
 
@@ -345,7 +414,10 @@ export default function ProjectDetailPage({ projectId }) {
         </div>
 
         <div role="tabpanel" id={`pd-paneel-${tab}`} aria-labelledby={`pd-tab-${tab}`}>
-          {tab === 'overzicht' && <OverzichtTab project={project} financiering={financiering} />}
+          {tab === 'overzicht' && opgeslagen && !bewerk && (
+            <div role="status" data-testid="overzicht-melding" style={css(`${TEKST} margin-bottom: 12px; font-weight: 700; color: #4E9A6C;`)}>{opgeslagen}</div>
+          )}
+          {tab === 'overzicht' && <OverzichtTab project={project} financiering={financiering} store={store} bewerk={bewerk} setBewerk={setBewerk} />}
           {tab === 'projectfinanciering' && <ProjectfinancieringTab project={project} financiering={financiering} dekking={dekking} />}
           {tab === 'documenten' && <DocumentenTab project={project} store={store} />}
           {tab === 'gesprekken' && <GesprekkenTab project={project} gesprekken={gesprekken} onOpen={openGesprek} onBespreek={bespreek} />}

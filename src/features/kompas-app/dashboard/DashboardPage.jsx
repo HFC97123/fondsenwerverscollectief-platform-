@@ -18,6 +18,8 @@ import { bouwDashboard, dagenTekst, formatDatum, formatEuro, formatTijd } from '
 import { useDekkingsplannen } from '../financiering/useProjectFinanciering.js';
 import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
+import { CSS_KLIKKAART } from '../klikKaart.js';
+import BespreekProjectKnop from '../BespreekProjectKnop.jsx';
 
 const MAX_PROJECTEN = 6;
 
@@ -60,9 +62,19 @@ function ProjectKaart({ project, onBespreek }) {
   const volgende = project.volgendeDeadline;
 
   return (
-    <article data-testid="dashboard-project" data-project-id={project.id} style={{ ...kaartStijl, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+    <article
+      className="fwk-kk fwk-kk-klikbaar"
+      data-testid="dashboard-project"
+      data-project-id={project.id}
+      style={{ ...kaartStijl, '--kk-r': '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}
+    >
       <div>
-        <h3 style={css("margin: 0; font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere;")}>{project.naam}</h3>
+        <h3 style={css("margin: 0; font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere;")}>
+          {/* De hele kaart is de link naar het project (klikKaart.js); er is geen aparte "Open project"-knop. */}
+          <a className="fwk-kk-link" data-testid="dashboard-project-link" href={`#/kompas/projecten/${project.id}`}>
+            {project.naam}
+          </a>
+        </h3>
         {meta && <div style={{ ...tekstStijl, fontSize: '13.5px', color: '#7B8985' }}>{meta}</div>}
       </div>
 
@@ -96,24 +108,8 @@ function ProjectKaart({ project, onBespreek }) {
         )}
       </div>
 
-      <div style={css('display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto;')}>
-        <a
-          href={`#/kompas/projecten/${project.id}`}
-          style={css(
-            "display: inline-flex; align-items: center; min-height: 40px; box-sizing: border-box; padding: 8px 18px; border-radius: 999px; background: #4E9A6C; color: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; text-decoration: none;",
-          )}
-        >
-          Open project
-        </a>
-        <button
-          type="button"
-          onClick={() => onBespreek(project.id)}
-          style={css(
-            "cursor: pointer; display: inline-flex; align-items: center; min-height: 40px; box-sizing: border-box; padding: 8px 18px; border-radius: 999px; border: 1px solid #CFE0D6; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800;",
-          )}
-        >
-          Bespreek met Subsidie Kompas
-        </button>
+      <div style={css('margin-top: auto;')}>
+        <BespreekProjectKnop naam={project.naam} onClick={() => onBespreek(project.id)} />
       </div>
     </article>
   );
@@ -181,6 +177,7 @@ export default function DashboardPage() {
 
   return (
     <Pagina>
+      <style>{CSS_KLIKKAART}</style>
       <Kop intro="Uw projecten, komende deadlines en recente documenten in één oogopslag." />
 
       {financiering.status === 'fout' && (
