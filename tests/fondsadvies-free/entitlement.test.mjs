@@ -198,7 +198,7 @@ sectie('A/B. Publiek bekend fonds met Premium-record (Oranje Fonds): Free en Pro
     const r = await stel(tier);
     const t = modelBlok(r);
     check(`A/B (${tier}, web vindt het): de verkenner is aangeroepen en blokkeert het fonds niet`, r.scout.length === 1 && t.includes(O.regeling) && t.includes(O.funder));
-    check(`A/B (${tier}, web vindt het): één canoniek resultaat (database leidend, web voegt actuele inhoud toe)`, (t.match(new RegExp(`^- ${O.regeling} (?:\\(|—)`, 'gm')) || []).length === 1 && /Online gecontroleerd: status open, deadline 2026-11-30, maximaal € 12345/.test(t), t.match(/Oranje Fonds Armoede Programma[^\n]*\n[^\n]*/)?.[0]);
+    check(`A/B (${tier}, web vindt het): één canoniek resultaat (database leidend, web voegt actuele inhoud toe)`, (t.match(new RegExp(`^- ${O.regeling} (?:\\(|—)`, 'gm')) || []).length === 1 && /Online gevonden: status open, deadline 2026-11-30, maximaal € 12345/.test(t), t.match(/Oranje Fonds Armoede Programma[^\n]*\n[^\n]*/)?.[0]);
     check(`A/B (${tier}, web vindt het): de openbare bron staat bij de bronnen`, r.json.sources.some((b) => b.url === `https://${O.domein}/aanvragen`), JSON.stringify(r.json.sources));
     check(`A/B (${tier}, web vindt het): geen DB-only gegevens, ook niet via het web-pad`, bevat(alleModelInput(), DB_ONLY_O).length === 0 && bevat(bodyTekst(r), DB_ONLY_O).length === 0);
     check(`A/B (${tier}, web vindt het): eindaanroep zonder zoektool`, r.hoofd.tools === undefined);
@@ -240,7 +240,7 @@ sectie('C. Premium: ziet het Premium-record volledig, met interne Premium-gegeve
     const r = await stel(profiel);
     const t = modelBlok(r);
     check(`C niveau 3 (${profiel}): de modelcontext bevat het fonds met DB-missie, criteria en bedrag`, t.includes(O.regeling) && t.includes(O.missie) && t.includes(O.crit) && t.includes(String(O.bedrag)));
-    check(`C niveau 3 (${profiel}): web voegt actuele inhoud en bron toe`, /Online gecontroleerd: status open, deadline 2026-11-30/.test(t) && r.json.sources.some((b) => b.url.includes(O.domein)));
+    check(`C niveau 3 (${profiel}): web voegt actuele inhoud en bron toe`, /Online gevonden: status open, deadline 2026-11-30/.test(t) && r.json.sources.some((b) => b.url.includes(O.domein)));
     check(`C niveau 3 (${profiel}): geen interne identifier (funder_id) in het model`, !alleModelInput().includes(O.id));
     check(`C niveau 3 (${profiel}): Premium/admin raadpleegt de exclusiviteitslijst niet (ziet toch alles)`, rpcAantal() === 0);
   }
@@ -495,7 +495,7 @@ sectie('K. Migratie en fail-closed gedrag van de exclusiviteitslijst');
   for (const fout of ['http500', 'netwerk']) {
     wereld({ regelingen, funders, profiel: 'pro', exclusief: EXCLUSIEF(), scoutFout: fout, modelTekst: 'Antwoord.' });
     const r = await stel('pro');
-    check(`K4 verkenner ${fout}: het exclusieve fonds komt er niet door, het publieke Oranje wel`, r.status === 200 && bevatX(alleModelInput()).length === 0 && modelBlok(r).includes(O.regeling) && /online controle niet is gelukt/.test(modelBlok(r)));
+    check(`K4 verkenner ${fout}: het exclusieve fonds komt er niet door, het publieke Oranje wel`, r.status === 200 && bevatX(alleModelInput()).length === 0 && modelBlok(r).includes(O.regeling) && /online onderzoek niet is gelukt/.test(modelBlok(r)));
   }
   // K5: kapotte lijstrijen
   {

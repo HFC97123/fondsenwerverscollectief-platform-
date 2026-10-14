@@ -25,7 +25,7 @@ async function huidigeGebruiker() {
 function isNietBeschikbaar(error) {
   const t = `${error?.code || ''} ${error?.message || ''}`;
 
-  return /PGRST205|42P01|does not exist|schema cache|Could not find/i.test(t);
+  return /PGRST204|PGRST205|42703|42P01|does not exist|schema cache|Could not find/i.test(t);
 }
 
 // -> { acties: object[] | null, error: null | 'geen-sessie' | 'niet-beschikbaar' | 'fout' }
@@ -85,7 +85,7 @@ export async function voegActieToe(invoer) {
     .single();
 
   if (error) {
-    return { ok: false, reden: isNietBeschikbaar(error) ? 'niet-beschikbaar' : 'fout' };
+    return { ok: false, reden: error.code === '23505' ? 'bestaat-al' : isNietBeschikbaar(error) ? 'niet-beschikbaar' : 'fout' };
   }
 
   return { ok: true, actie: actieUitRij(data) };

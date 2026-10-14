@@ -27,7 +27,47 @@ async function huidigeGebruiker() {
 function isNietBeschikbaar(error) {
   const tekst = `${error?.code || ''} ${error?.message || ''}`;
 
-  return /PGRST202|PGRST205|42883|42P01|does not exist|schema cache|Could not find/i.test(tekst);
+  return /PGRST202|PGRST204|PGRST205|42883|42703|42P01|does not exist|schema cache|Could not find/i.test(tekst);
+}
+
+// Fout van een insert -> reden voor de interface. 23505 = bestaat al (unieke index); 42501 = geen recht (RLS of abonnement);
+// 23514 = de database wijst de invoer af; ontbrekende kolom of functie = de voorstel-migratie is nog niet toegepast.
+function redenVoorInsertFout(error) {
+  if (error?.code === '23505') return 'bestaat-al';
+  if (error?.code === '42501') return 'niet-toegestaan';
+  if (error?.code === '23514') return 'ongeldig';
+  if (isNietBeschikbaar(error)) return 'niet-beschikbaar';
+
+  return 'fout';
+}
+
+// Voorstelmetadata per financieringsregel van een eigen project (gemaskeerd naar het abonnement door de database).
+// ALLEEN LEZEN. De client schrijft nooit voorstelmetadata: de kolom is voor `authenticated` niet te lezen of te schrijven en wordt
+// uitsluitend door de server gezet (Optie B, server-owned verificatie).
+// Bestaat de RPC nog niet (migratie niet toegepast), dan is dat 'niet-beschikbaar' en werkt de rest gewoon.
+// -> { meta: { [fundingId]: object } | null, error: null | 'geen-sessie' | 'niet-beschikbaar' | 'fout' }
+export async function haalVoorstelMetadata(projectId) {
+  if (!supabase || !isEchtId(projectId)) {
+    return { meta: null, error: 'geen-sessie' };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('kompas_voorstel_metadata', { p_program_id: projectId });
+
+    if (error) {
+      return { meta: null, error: isNietBeschikbaar(error) ? 'niet-beschikbaar' : 'fout' };
+    }
+
+    const meta = {};
+
+    (Array.isArray(data) ? data : []).forEach((r) => {
+      if (r && r.funding_id && r.voorstel && typeof r.voorstel === 'object') meta[r.funding_id] = r.voorstel;
+    });
+
+    return { meta, error: null };
+  } catch (e) {
+    return { meta: null, error: 'fout' };
+  }
 }
 
 // -> { regels: Rij[] | null, error: null | 'geen-sessie' | 'niet-beschikbaar' | 'fout' }
@@ -76,7 +116,7 @@ export async function voegRegelToe({ projectId, schemeId = null, funderId = null
     .single();
 
   if (error) {
-    return { ok: false, reden: error.code === '23505' ? 'bestaat-al' : 'fout' };
+    return { ok: false, reden: redenVoorInsertFout(error) };
   }
 
   return { ok: true, id: data?.id || null };
@@ -116,7 +156,7 @@ export async function voegFinancierToe({ projectId, naam, bedrag = null, status 
     .single();
 
   if (error) {
-    return { ok: false, reden: error.code === '23505' ? 'bestaat-al' : 'fout' };
+    return { ok: false, reden: redenVoorInsertFout(error) };
   }
 
   return { ok: true, id: data?.id || null };

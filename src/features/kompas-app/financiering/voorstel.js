@@ -17,6 +17,9 @@ export const MAX_ACTIES = 30;
 
 export const VOORSTEL_STATUS = { UITVRAAG: 'uitvraag', CONCEPT: 'concept', DEFINITIEF: 'definitief' };
 export const BRON_SOORT = { REGELING: 'regeling', FONDS: 'fonds', ONLINE: 'online' };
+// LET OP: dit is de uitkomst van de CITAATCONTROLE in dit contract (de datum staat letterlijk in het citaat dat het model aanleverde). Het is
+// geen bronverificatie: die doet alleen de server na het zelf ophalen van de pagina (zie verificatieWeergave). Toon dit nooit als
+// "geverifieerd door Subsidie Kompas"; gebruik daarvoor uitsluitend de metadata van de server.
 export const DEADLINE_STATUS = { GEVERIFIEERD: 'geverifieerd', TE_VERIFIEREN: 'te-verifieren' };
 export const DATUM_TYPE = { STREEF: 'streef', EXTERN: 'extern' };
 
@@ -859,42 +862,63 @@ export function schaalNaarGat(regels, gat) {
   return lijstRegels;
 }
 
-// Metadata die bij het opslaan van een gevalideerde regel in subsidie_kompas_program_funding.voorstel komt
-// (vorm: supabase/voorstel-niet-uitgevoerd/20261014120000_voorstel_metadata.sql). `voorgesteld_bedrag` is het bedrag zoals
-// Subsidie Kompas het voorstelde en dient alleen om later naast de aanpassingen van het lid te tonen; het telt nooit mee:
-// requested_amount (Gepland) blijft de enige bron voor geld.
-export function regelMetadata(regel, vandaag) {
-  if (!regel || typeof regel !== 'object' || !isEchteDatum(vandaag)) return null;
+// Weergave van de verificatiemetadata die de SERVER bij een voorgestelde regel heeft vastgelegd (kolom funding.voorstel, versie 2,
+// gelezen via de gemaskeerde RPC kompas_voorstel_metadata). De client BOUWT deze metadata nooit: de database weigert elke
+// schrijfpoging van een ingelogd lid, en alleen de Edge Function (service_role) kan haar aanmaken na zelf de bron te hebben opgehaald.
+//
+// Regel voor de interface: het woord "geverifieerd" verschijnt alleen als de metadata van de server komt (versie 2 én
+// server_generated === true) én de server de status 'geverifieerd' heeft vastgelegd. Alles wat daar niet aan voldoet, wordt getoond als
+// "niet gecontroleerd". De status van de server wordt hier niet opnieuw berekend of "verbeterd".
+export const VERIFICATIE_STATUS = { GEVERIFIEERD: 'geverifieerd', GEDEELTELIJK: 'gedeeltelijk', ONZEKER: 'onzeker', CONFLICT: 'conflict', NIET_GECONTROLEERD: 'niet_gecontroleerd' };
+export const VELD_STATUS = { BEVESTIGD: 'confirmed', ONZEKER: 'uncertain', CONFLICT: 'conflict', NIET_GECONTROLEERD: 'not_checked' };
 
-  const type = regel.type;
-  const bron = regel.bron || {};
-  const dl = regel.deadline || {};
-  const geverifieerd = dl.status === DEADLINE_STATUS.GEVERIFIEERD && isEchteDatum(dl.datum);
-  const meta = {
-    versie: VOORSTEL_VERSIE,
-    herkomst: type,
-    voorgesteld_op: vandaag,
-    voorgesteld_bedrag: regel.oorspronkelijkBedrag != null ? regel.oorspronkelijkBedrag : regel.bedrag != null ? regel.bedrag : null,
-    motivatie: regel.motivatie || '',
-    onderdeel: regel.onderdeel || '',
-    voorwaarden: Array.isArray(regel.voorwaarden) ? regel.voorwaarden : [],
-    onzekerheden: Array.isArray(regel.onzekerheden) ? regel.onzekerheden : [],
-    deadline: {
-      status: geverifieerd ? DEADLINE_STATUS.GEVERIFIEERD : DEADLINE_STATUS.TE_VERIFIEREN,
-      datum: geverifieerd ? dl.datum : null,
-    },
-  };
+export const VERIFICATIE_LABEL = {
+  geverifieerd: 'Geverifieerd door Subsidie Kompas',
+  gedeeltelijk: 'Gedeeltelijk geverifieerd',
+  onzeker: 'Onzeker',
+  conflict: 'Conflict tussen database en website',
+  niet_gecontroleerd: 'Niet gecontroleerd',
+};
 
-  if (type === BRON_SOORT.ONLINE) {
-    // De database eist voor een online financier een https-url en een controledatum (het ophaalmoment van de server).
-    if (!bron.url || !String(bron.url).startsWith('https://') || !isEchteDatum(bron.gecontroleerdOp)) return null;
+export const VELD_LABEL = {
+  fondsnaam: 'Fondsnaam', deadline: 'Deadline', bedrag_min: 'Minimale bijdrage', bedrag_max: 'Maximale bijdrage', voorwaarden: 'Voorwaarden',
+  cofinanciering: 'Cofinanciering', doelgroep: 'Doelgroep', aanvragertype: 'Type aanvrager', geografie: 'Werkgebied',
+};
 
-    meta.bron = { url: bron.url, gecontroleerd_op: bron.gecontroleerdOp };
-    if (bron.fragment) meta.bron.fragment = String(bron.fragment).slice(0, 300);
-    if (regel.regeling) meta.regeling = regel.regeling;
+export const GEEN_BRONCONTROLE = 'Bron kon niet automatisch worden gecontroleerd.';
+
+// -> null (regel is niet voorgesteld) | { status, label, serverGeverifieerd, bronUrl, gecontroleerdOp,
+//      bevestigd: [label], onzeker: [label], nietGecontroleerd: [label], conflicten: [{ veld, label, online, database, fragment }], melding }
+export function verificatieWeergave(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+
+  const vanServer = meta.versie === 2 && meta.server_generated === true;
+  const ver = vanServer && meta.verificatie && typeof meta.verificatie === 'object' ? meta.verificatie : null;
+  const bekend = ver && Object.keys(VERIFICATIE_LABEL).indexOf(ver.status) !== -1;
+  const status = bekend ? ver.status : VERIFICATIE_STATUS.NIET_GECONTROLEERD;
+  const velden = bekend && ver.velden && typeof ver.velden === 'object' ? ver.velden : {};
+  const uit = { status, label: VERIFICATIE_LABEL[status], serverGeverifieerd: status === VERIFICATIE_STATUS.GEVERIFIEERD, bronUrl: null, gecontroleerdOp: null, bevestigd: [], onzeker: [], nietGecontroleerd: [], conflicten: [], melding: '' };
+
+  if (bekend) {
+    const url = veiligeUrl(ver.bron_url);
+    uit.bronUrl = url && url.indexOf('https://') === 0 ? url : null;
+    uit.gecontroleerdOp = typeof ver.gecontroleerd_op === 'string' ? ver.gecontroleerd_op.slice(0, 10) : null;
   }
 
-  return meta;
+  Object.keys(VELD_LABEL).forEach((naam) => {
+    const v = velden[naam];
+    const label = VELD_LABEL[naam];
+
+    if (!v || typeof v !== 'object' || v.status === VELD_STATUS.NIET_GECONTROLEERD) uit.nietGecontroleerd.push(label);
+    else if (v.status === VELD_STATUS.BEVESTIGD) uit.bevestigd.push(label);
+    else if (v.status === VELD_STATUS.ONZEKER) uit.onzeker.push(label);
+    else if (v.status === VELD_STATUS.CONFLICT) uit.conflicten.push({ veld: naam, label, online: String(v.waarde || ''), database: String(v.db_waarde || ''), fragment: String(v.fragment || '') });
+    else uit.nietGecontroleerd.push(label);
+  });
+
+  if (status === VERIFICATIE_STATUS.NIET_GECONTROLEERD) uit.melding = GEEN_BRONCONTROLE;
+
+  return uit;
 }
 
 // Het huidige dekkingsplan-regel (requested, status) naast de oorspronkelijke voorstelmetadata: wat is door het lid gewijzigd?

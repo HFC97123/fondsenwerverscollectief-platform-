@@ -9,8 +9,9 @@ grant usage on schema auth to authenticated, anon, service_role; grant execute o
 
 create table public.subsidie_kompas_programs (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id), naam text, constraint p_id_user unique (id, user_id));
 grant select on public.subsidie_kompas_programs to authenticated;
-create table public.funders (id uuid primary key default gen_random_uuid());
-create table public.subsidieregelingen (id uuid primary key default gen_random_uuid(), zichtbaar boolean not null default true);
+-- premium = alleen zichtbaar voor Premium (nabootsing van de tier-zichtbaarheid van de echte kompas_dekkingsplan); zichtbaar=false = voor niemand zichtbaar.
+create table public.funders (id uuid primary key default gen_random_uuid(), premium boolean not null default false);
+create table public.subsidieregelingen (id uuid primary key default gen_random_uuid(), zichtbaar boolean not null default true, premium boolean not null default false);
 
 -- Abonnement per test te kiezen met: select set_config('test.tier','pro'|'premium'|'free',false)
 create function public.current_user_has_pro_access() returns boolean language sql stable security definer as $$ select current_setting('test.tier', true) in ('pro','premium') $$;
@@ -110,7 +111,8 @@ grant insert (user_id, program_id, scheme_id, funder_id, requested_amount, award
 grant update (requested_amount, awarded_amount, status, eigen_deadline, reminder_enabled, notes, financier_naam) on table public.subsidie_kompas_program_funding to authenticated;
 grant all on table public.subsidie_kompas_program_funding to service_role;
 
--- Nagebootste kompas_dekkingsplan(): zelfde eigenaarschapscontrole en bron_status-semantiek als de echte (masking-regels zelf zijn hier niet het onderwerp).
+-- Nagebootste kompas_dekkingsplan(): zelfde eigenaarschapscontrole en bron_status-semantiek als de echte, met zichtbaarheid per abonnement
+-- (test.tier): een Premium-regeling of -fonds is alleen zichtbaar voor Premium; de echte masking-regels zijn hier niet het onderwerp.
 create function public.kompas_dekkingsplan(p_program_id uuid)
 returns table (id uuid, program_id uuid, bron_status text)
 language plpgsql stable security definer set search_path = public, pg_temp as $$
@@ -123,7 +125,8 @@ begin
   select pf.id, pf.program_id,
     case when pf.financier_naam is not null then 'zichtbaar'
          when pf.scheme_id is null and pf.funder_id is null then 'verwijderd'
-         when pf.scheme_id is not null and (select s.zichtbaar from public.subsidieregelingen s where s.id = pf.scheme_id) then 'zichtbaar'
+         when pf.scheme_id is not null and (select s.zichtbaar and (not s.premium or public.current_user_has_premium_access()) from public.subsidieregelingen s where s.id = pf.scheme_id) then 'zichtbaar'
+         when pf.funder_id is not null and (select (not f.premium) or public.current_user_has_premium_access() from public.funders f where f.id = pf.funder_id) then 'zichtbaar'
          else 'verborgen' end
   from public.subsidie_kompas_program_funding pf where pf.program_id = p_program_id and pf.user_id = auth.uid();
 end $$;
@@ -143,3 +146,7 @@ create function public.t_gelijk(label text, q text, verwacht text) returns void 
 declare v text;
 begin execute q into v;
   if v is not distinct from verwacht then raise notice 'OK    %', label; else raise notice 'FAIL  % (kreeg %, verwacht %)', label, v, verwacht; end if; end $$;
+
+-- Vaste testgegevens (JSON-fixtures), leesbaar voor de testrollen
+create table public.t_json (naam text primary key, j jsonb not null);
+grant select on public.t_json to authenticated, service_role, anon;

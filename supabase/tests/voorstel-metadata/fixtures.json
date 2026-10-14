@@ -1,0 +1,1396 @@
+[
+ {
+  "naam": "minimaal: regeling zonder verificatie",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "regeling",
+   "voorgesteld_op": "2026-10-14"
+  }
+ },
+ {
+  "naam": "regeling met bedrag null",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "regeling",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": null
+  }
+ },
+ {
+  "naam": "online geverifieerd met bewijs",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "fonds conflict met volledig conflictbewijs",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "2026-11-15",
+      "db_waarde": "2026-11-12",
+      "fragment": "uiterlijk 15 november 2026",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "conflict met alleen citaat-hash (geen citaat)",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "2026-11-15",
+      "db_waarde": "2026-11-12",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "online niet_gecontroleerd zonder bewijs",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "niet_gecontroleerd"
+   }
+  }
+ },
+ {
+  "naam": "online gedeeltelijk: fondsnaam bevestigd, deadline onzeker",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "gedeeltelijk",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "uncertain"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "online onzeker zonder bron (alleen niet_gecontroleerd mag zonder bron)",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "onzeker",
+    "velden": {
+     "deadline": {
+      "status": "uncertain"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "server_generated false",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": false,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "server_generated ontbreekt",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "server_generated als tekst",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": "true",
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "versie 1",
+  "geldig": false,
+  "meta": {
+   "versie": 1,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "onbekende sleutel op topniveau",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "regeling",
+   "voorgesteld_op": "2026-10-14",
+   "motivatie": "verborgen tekst"
+  }
+ },
+ {
+  "naam": "onbekende sleutel in verificatie",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    },
+    "verified": true
+   }
+  }
+ },
+ {
+  "naam": "onbekende sleutel in veld",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026",
+      "verified": true
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "onbekend veld",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     },
+     "motivatie": {
+      "status": "confirmed"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "ongeldige herkomst",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "chat",
+   "voorgesteld_op": "2026-10-14"
+  }
+ },
+ {
+  "naam": "ongeldige verificatiestatus",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "verified",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "ongeldige veldstatus",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "verified",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "voorgesteld_op geen datum",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "regeling",
+   "voorgesteld_op": "gisteren"
+  }
+ },
+ {
+  "naam": "negatief bedrag",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "regeling",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": -1
+  }
+ },
+ {
+  "naam": "bedrag als tekst",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "regeling",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": "5000"
+  }
+ },
+ {
+  "naam": "http-bron",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "http://fonds-a.example.nl/",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "javascript-bron",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "javascript:alert(1)",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "eind_url niet https",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    },
+    "eind_url": "ftp://x.example/a"
+   }
+  }
+ },
+ {
+  "naam": "ongeldige pagina-hash",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "abc",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "geverifieerd zonder pagina-hash",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "geverifieerd zonder bron",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "geverifieerd zonder controlemoment",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "geverifieerd zonder deadlinecitaat",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "geverifieerd met leeg deadlinecitaat",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "  "
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "geverifieerd zonder bevestigde fondsnaam",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "uncertain",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "geverifieerd met een onzeker veld",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     },
+     "doelgroep": {
+      "status": "uncertain"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "geverifieerd met een conflictveld",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "conflict",
+      "waarde": "20000",
+      "db_waarde": "25000",
+      "fragment": "max 20.000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "conflictveld maar status gedeeltelijk",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "gedeeltelijk",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "2026-11-15",
+      "db_waarde": "2026-11-12",
+      "fragment": "uiterlijk 15 november 2026",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "status conflict zonder conflictveld",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "conflict zonder databasewaarde",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "conflict zonder onlinewaarde",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "conflict",
+      "db_waarde": "2026-11-12",
+      "fragment": "uiterlijk 15 november 2026",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "conflict zonder citaat en zonder hash",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "2026-11-15",
+      "db_waarde": "2026-11-12"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "databasewaarde bij een bevestigd veld",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A",
+      "db_waarde": "x"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "ongeldige citaat-hash",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "2026-11-15",
+      "db_waarde": "2026-11-12",
+      "fragment": "uiterlijk 15 november 2026",
+      "fragment_sha256": "zzz"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "databasewaarde te lang",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "2026-11-15",
+      "db_waarde": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "fragment": "uiterlijk 15 november 2026",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "onlinewaarde te lang",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "uiterlijk 15 november 2026"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "citaat te lang",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "voorgesteld_bedrag": 5000,
+   "verificatie": {
+    "status": "geverifieerd",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed",
+      "fragment": "Fonds A"
+     },
+     "deadline": {
+      "status": "confirmed",
+      "waarde": "2026-11-15",
+      "fragment": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+     },
+     "bedrag_max": {
+      "status": "confirmed",
+      "waarde": "25000"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "niet_gecontroleerd met een bevestigd veld",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "niet_gecontroleerd",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "gedeeltelijk zonder bevestigde fondsnaam",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "gedeeltelijk",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "uncertain"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "online zonder verificatieblok",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14"
+  }
+ },
+ {
+  "naam": "online gedeeltelijk zonder bron",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "online",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "gedeeltelijk",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "confirmed"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "metadata groter dan 8000 bytes (alle velden vol, tweebyte-tekens)",
+  "geldig": false,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "bedrag_min": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "bedrag_max": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "voorwaarden": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "cofinanciering": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "doelgroep": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "aanvragertype": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "geografie": {
+      "status": "conflict",
+      "waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "db_waarde": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment": "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "alle velden vol met enkelbyte-tekens blijft geldig? (bewust onder de grens)",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "fonds",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "conflict",
+    "gecontroleerd_op": "2026-10-14T10:00:00Z",
+    "bron_url": "https://fonds-a.example.nl/aanvragen",
+    "pagina_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "velden": {
+     "fondsnaam": {
+      "status": "conflict",
+      "waarde": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "db_waarde": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "fragment": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "deadline": {
+      "status": "conflict",
+      "waarde": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "db_waarde": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "fragment": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     },
+     "bedrag_min": {
+      "status": "conflict",
+      "waarde": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "db_waarde": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "fragment": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "fragment_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+     }
+    }
+   }
+  }
+ },
+ {
+  "naam": "regeling onzeker zonder bron is geldig (live record leidend)",
+  "geldig": true,
+  "meta": {
+   "versie": 2,
+   "server_generated": true,
+   "herkomst": "regeling",
+   "voorgesteld_op": "2026-10-14",
+   "verificatie": {
+    "status": "onzeker",
+    "velden": {
+     "deadline": {
+      "status": "uncertain"
+     }
+    }
+   }
+  }
+ }
+]

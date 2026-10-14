@@ -1,7 +1,7 @@
 import {
   VOORSTEL_VERSIE, MAX_REGELS, MAX_VRAGEN, VOORSTEL_STATUS, BRON_SOORT, DEADLINE_STATUS, DATUM_TYPE,
   beoordeelProject, valideerVoorstel, berekenTotalen, schaalNaarGat, plantTerug, verificatieActie, voegDagenToe,
-  contractBedrag, regelMetadata, schaalEnControleer, vergelijkMetVoorstel, datumInFragment, bronUrlSleutel, veiligeUrl, zelfdeFinancier, normaliseerNaam, regelSleutelVan, actieSleutelVan, isEchteDatum,
+  contractBedrag, verificatieWeergave, GEEN_BRONCONTROLE, schaalEnControleer, vergelijkMetVoorstel, datumInFragment, bronUrlSleutel, veiligeUrl, zelfdeFinancier, normaliseerNaam, regelSleutelVan, actieSleutelVan, isEchteDatum,
 } from '../../src/features/kompas-app/financiering/voorstel.js';
 import { berekenDekking } from '../../src/features/kompas-app/financiering/dekkingsplan.js';
 
@@ -210,21 +210,30 @@ const metMin = schaalNaarGat([{ selecteerbaar: true, bedrag: 40000, grenzen: { m
 check('schaalNaarGat: minimum gerespecteerd; past het niet, dan valt de kleinste regel af', metMin.reduce((s, r) => s + (r.bedrag || 0), 0) <= 45000 && metMin.some((r) => r.selecteerbaar === false) && metMin.filter((r) => r.selecteerbaar).every((r) => r.bedrag >= 35000 || r.bedrag >= 15000));
 check('schaalNaarGat verandert de invoer niet', (() => { const inv = [{ selecteerbaar: true, bedrag: 60000, grenzen: {} }]; schaalNaarGat(inv, 100); return inv[0].bedrag === 60000; })());
 
-console.log('== metadata voor opslag');
-const mOnline = regelMetadata({ type: 'online', naam: 'Buurtfonds Zuid', regeling: 'Buurtinitiatieven', motivatie: 'm', onderdeel: 'o', bron: { url: 'https://buurtfonds.example.nl/a', gecontroleerdOp: VANDAAG }, deadline: { status: 'geverifieerd', datum: '2026-11-15' }, voorwaarden: ['v'], onzekerheden: ['o'] }, VANDAAG);
-gelijk('online regel: herkomst, bron, regeling, geverifieerde deadline', [mOnline.versie, mOnline.herkomst, mOnline.bron, mOnline.regeling, mOnline.deadline], [1, 'online', { url: 'https://buurtfonds.example.nl/a', gecontroleerd_op: VANDAAG }, 'Buurtinitiatieven', { status: 'geverifieerd', datum: '2026-11-15' }]);
-check('online zonder https-url of controledatum: geen metadata (de database zou het weigeren)', regelMetadata({ type: 'online', bron: { url: 'http://x.nl', gecontroleerdOp: VANDAAG } }, VANDAAG) === null && regelMetadata({ type: 'online', bron: { url: 'https://x.nl', gecontroleerdOp: null } }, VANDAAG) === null);
-const mDb = regelMetadata({ type: 'regeling', bron: { url: null, gecontroleerdOp: null }, deadline: { status: 'te-verifieren', datum: '2026-12-01' } }, VANDAAG);
-gelijk('te-verifieren deadline krijgt nooit een datum in de metadata', [mDb.deadline, mDb.bron === undefined], [{ status: 'te-verifieren', datum: null }, true]);
-check('metadata bevat geen aanvraagstatus; het enige bedrag is voorgesteld_bedrag (alleen ter vergelijking)', !/submitted|awarded|aangevraagd|toegekend/.test(JSON.stringify(mOnline)) && Object.keys(mOnline).filter((k) => /bedrag/.test(k)).join() === 'voorgesteld_bedrag');
-check('metadata blijft ruim onder de 8000 tekens van de database', JSON.stringify(regelMetadata({ type: 'regeling', motivatie: 'x'.repeat(600), onderdeel: 'y'.repeat(200), voorwaarden: Array(8).fill('v'.repeat(300)), onzekerheden: Array(8).fill('o'.repeat(300)), bron: {}, deadline: {} }, VANDAAG)).length < 8000);
-check('zonder echte datum van vandaag geen metadata', regelMetadata({ type: 'regeling' }, 'vandaag') === null);
+console.log('== weergave van server-verificatie (de client bouwt nooit metadata)');
+const H64 = '0123456789abcdef'.repeat(4);
+const serverMeta = (ver, extra = {}) => ({ versie: 2, server_generated: true, herkomst: 'online', voorgesteld_op: VANDAAG, voorgesteld_bedrag: 20000, verificatie: ver, ...extra });
+const wGev = verificatieWeergave(serverMeta({ status: 'geverifieerd', gecontroleerd_op: '2026-10-14T10:00:00Z', bron_url: 'https://buurtfonds.example.nl/a', pagina_sha256: H64, velden: { fondsnaam: { status: 'confirmed' }, deadline: { status: 'confirmed', fragment: 'tot 15 november' }, doelgroep: { status: 'not_checked' } } }));
+gelijk('server-geverifieerd: label, bron, controledatum, bevestigde en niet-gecontroleerde velden', [wGev.label, wGev.serverGeverifieerd, wGev.bronUrl, wGev.gecontroleerdOp, wGev.bevestigd, wGev.nietGecontroleerd.includes('Doelgroep'), wGev.nietGecontroleerd.includes('Voorwaarden')], ['Geverifieerd door Subsidie Kompas', true, 'https://buurtfonds.example.nl/a', '2026-10-14', ['Fondsnaam', 'Deadline'], true, true]);
+const wFake = verificatieWeergave({ versie: 2, server_generated: false, herkomst: 'online', verificatie: { status: 'geverifieerd', bron_url: 'https://x.example.nl/a' } });
+gelijk('clientclaim (server_generated niet true): nooit "geverifieerd"', [wFake.status, wFake.serverGeverifieerd, wFake.melding, wFake.bronUrl], ['niet_gecontroleerd', false, GEEN_BRONCONTROLE, null]);
+const wV1 = verificatieWeergave({ versie: 1, herkomst: 'online', deadline: { status: 'geverifieerd', datum: '2026-11-15' } });
+gelijk('oude versie-1 metadata (deadline.status geverifieerd) wordt niet als verificatie getoond', [wV1.status, wV1.serverGeverifieerd], ['niet_gecontroleerd', false]);
+gelijk('onbekende status wordt niet doorgegeven', verificatieWeergave(serverMeta({ status: 'verified' })).status, 'niet_gecontroleerd');
+const wCon = verificatieWeergave(serverMeta({ status: 'conflict', gecontroleerd_op: '2026-10-14T10:00:00Z', bron_url: 'https://f.example.nl/a', pagina_sha256: H64, velden: { fondsnaam: { status: 'confirmed' }, deadline: { status: 'conflict', waarde: '2026-11-15', db_waarde: '2026-11-12', fragment: 'tot 15 november 2026' } } }));
+gelijk('conflict: veld, online waarde, databasewaarde en controledatum zichtbaar', [wCon.status, wCon.conflicten, wCon.gecontroleerdOp, wCon.serverGeverifieerd], ['conflict', [{ veld: 'deadline', label: 'Deadline', online: '2026-11-15', database: '2026-11-12', fragment: 'tot 15 november 2026' }], '2026-10-14', false]);
+gelijk('gedeeltelijk en onzeker krijgen hun eigen label', [verificatieWeergave(serverMeta({ status: 'gedeeltelijk' })).label, verificatieWeergave(serverMeta({ status: 'onzeker' })).label], ['Gedeeltelijk geverifieerd', 'Onzeker']);
+gelijk('niet gecontroleerd toont de faalmelding', verificatieWeergave(serverMeta({ status: 'niet_gecontroleerd' })).melding, 'Bron kon niet automatisch worden gecontroleerd.');
+gelijk('http-bron wordt niet als link getoond', verificatieWeergave(serverMeta({ status: 'onzeker', bron_url: 'http://x.example.nl/a' })).bronUrl, null);
+gelijk('regeling zonder verificatieblok: niet gecontroleerd (geen claim)', verificatieWeergave({ versie: 2, server_generated: true, herkomst: 'regeling', voorgesteld_op: VANDAAG }).serverGeverifieerd, false);
+check('zonder metadata (geen voorgestelde regel): geen weergave', verificatieWeergave(null) === null && verificatieWeergave('x') === null);
+check('de weergave verandert de invoer niet', (() => { const m = serverMeta({ status: 'onzeker', velden: { deadline: { status: 'uncertain' } } }); const t = JSON.stringify(m); verificatieWeergave(m); return t === JSON.stringify(m); })());
 
 console.log('== gebruikerswijzigingen naast de oorspronkelijke metadata');
 const orig = v(voorstel({ regels: [regelDb({ bedrag: 20000 })] })).voorstel.regels[0];
 gelijk('validatie legt het oorspronkelijk voorgestelde bedrag vast', [orig.bedrag, orig.oorspronkelijkBedrag], [20000, 20000]);
 const gewijzigd = { ...orig, bedrag: 15000 };
-const metaGew = regelMetadata(gewijzigd, VANDAAG);
+const metaGew = serverMeta({ status: 'niet_gecontroleerd' }, { voorgesteld_bedrag: orig.oorspronkelijkBedrag });
 gelijk('lid past het bedrag in de preview aan: metadata bewaart het oorspronkelijke bedrag, requested_amount krijgt het aangepaste', [metaGew.voorgesteld_bedrag, gewijzigd.bedrag], [20000, 15000]);
 const vgl = vergelijkMetVoorstel({ requested: 15000, status: 'interesting' }, metaGew);
 gelijk('vergelijking: voorgesteld 20.000, nu 15.000, aangepast', [vgl.voorgesteldBedrag, vgl.huidigBedrag, vgl.bedragGewijzigd, vgl.statusGewijzigd, vgl.aangepast], [20000, 15000, true, false, true]);

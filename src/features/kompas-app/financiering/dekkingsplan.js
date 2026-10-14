@@ -13,12 +13,17 @@
 // Statussen
 // ---------------------------------------------------------------------------
 export const STATUSSEN = ['interesting', 'preparing', 'submitted', 'awarded', 'rejected'];
+// 'withdrawn' (Ingetrokken: door het lid zelf niet voortgezet) bestaat pas na de voorstel-migratie. De client kent hem al, zodat een
+// ingetrokken regel nooit als Gepland wordt gelezen; kiesbaar is hij alleen waar de migratie beschikbaar is (zie STATUS_NA_MIGRATIE).
+export const STATUS_NA_MIGRATIE = 'withdrawn';
+export const ALLE_STATUSSEN = [...STATUSSEN, STATUS_NA_MIGRATIE];
 export const STATUS_LABEL = {
   interesting: 'Interessant',
   preparing: 'In voorbereiding',
   submitted: 'Aangevraagd',
   awarded: 'Toegekend',
   rejected: 'Afgewezen',
+  withdrawn: 'Ingetrokken',
 };
 // Alleen regels in deze statussen tellen mee als "komende deadline".
 // Deadlineveld bij snelle financieringsinvoer, afhankelijk van de status:
@@ -205,7 +210,7 @@ export function regelUitRpc(rij) {
     systeemDeadlineBron: bronStatus === 'zichtbaar' ? r.systeem_deadline_bron || null : null,
     requested: regelBedrag(r.requested_amount),
     awarded: regelBedrag(r.awarded_amount),
-    status: STATUSSEN.indexOf(r.status) !== -1 ? r.status : 'interesting',
+    status: ALLE_STATUSSEN.indexOf(r.status) !== -1 ? r.status : 'interesting',
     eigenDeadline: r.eigen_deadline || null,
     // Effectieve deadline: de eigen datum van het lid, anders de live datum van de bron. Nooit een snapshot.
     // Bij een verborgen of verwijderde bron telt alleen de eigen datum (de server stuurt dan geen brondatum;
@@ -487,7 +492,7 @@ export function patchVoorDatabase(wijziging) {
     const w = wijziging[k];
 
     if (k === 'status') {
-      if (STATUSSEN.indexOf(w) !== -1) uit.status = w;
+      if (ALLE_STATUSSEN.indexOf(w) !== -1) uit.status = w;
     } else if (k === 'reminder') {
       uit.reminder_enabled = Boolean(w);
     } else if (k === 'eigenDeadline') {
@@ -510,7 +515,7 @@ export function pasWijzigingToe(regel, wijziging) {
 
   if ('requested' in w) volgende.requested = regelBedrag(w.requested);
   if ('awarded' in w) volgende.awarded = regelBedrag(w.awarded);
-  if ('status' in w && STATUSSEN.indexOf(w.status) !== -1) volgende.status = w.status;
+  if ('status' in w && ALLE_STATUSSEN.indexOf(w.status) !== -1) volgende.status = w.status;
   if ('eigenDeadline' in w) volgende.eigenDeadline = w.eigenDeadline ? String(w.eigenDeadline).slice(0, 10) : null;
   if ('reminder' in w) volgende.reminder = Boolean(w.reminder);
   if ('notitie' in w) volgende.notitie = String(w.notitie || '').trim() ? String(w.notitie).slice(0, 4000) : '';

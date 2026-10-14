@@ -2124,13 +2124,16 @@ type FundingVerzoek = { tekst: string; regels: FundingRegel[]; programId: string
 
 const LEGE_FUNDING: FundingVerzoek = { tekst: '', regels: [], programId: null, regelsBekend: false };
 const FUNDING_CONTEXT_KOP = 'FINANCIERING VAN DIT PROJECT';
-const FUNDING_STATUSSEN = ['interesting', 'preparing', 'submitted', 'awarded', 'rejected'];
+// 'withdrawn' (Ingetrokken: door het lid zelf niet voortgezet) is een eigen, historische status: geen kans, niet gepland, niet
+// aangevraagd, niet toegekend. Zonder deze regel zou een onbekende status hieronder als 'interesting' (een actieve kans) worden gelezen.
+const FUNDING_STATUSSEN = ['interesting', 'preparing', 'submitted', 'awarded', 'rejected', 'withdrawn'];
 const FUNDING_STATUS_TEKST: Record<string, string> = {
   interesting: 'Interessant',
   preparing: 'In voorbereiding',
   submitted: 'Aangevraagd',
   awarded: 'Toegekend',
   rejected: 'Afgewezen',
+  withdrawn: 'Ingetrokken',
 };
 // Alleen regels in deze statussen tellen mee als "komende deadline" (zelfde regel als de UI).
 const FUNDING_ACTIEVE_STATUSSEN = ['interesting', 'preparing'];
@@ -4575,7 +4578,8 @@ function applyEntitlementsAndSanitize(
   return { entitlement, row: schoon, maskeer: geenMasker };
 }
 
-// Regelt in één keer de tekstregels "Online gecontroleerd" voor een samengevoegd record.
+// Regelt in één keer de tekstregel "Online gevonden" voor een samengevoegd record. Bewust NIET "gecontroleerd": deze gegevens komen van het
+// online onderzoek van het model; de server heeft de bron niet zelf opgehaald en gecontroleerd (dat is een aparte, latere verificatielaag).
 function webControleRegel(row: any): string | null {
   const w = row?._web;
 
@@ -4583,7 +4587,7 @@ function webControleRegel(row: any): string | null {
 
   const delen = [w.status ? `status ${w.status}` : null, w.deadline ? `deadline ${w.deadline}` : null, w.bedragMax != null ? `maximaal € ${w.bedragMax}` : null].filter(Boolean);
 
-  return delen.length ? `  Online gecontroleerd: ${delen.join(', ')}${w.url ? ` (bron: ${w.url})` : ''}.` : null;
+  return delen.length ? `  Online gevonden: ${delen.join(', ')}${w.url ? ` (bron: ${w.url})` : ''}.` : null;
 }
 
 // Uitvoercontrole (verdediging in de diepte): geen enkele naam van een voor de gebruiker
@@ -5329,10 +5333,10 @@ function bouwFreeAdviesBlok(
     'Zichtbaarheid en matching zijn twee verschillende dingen: of iets voor dit lid zichtbaar is zegt NIETS over of het past. Noem een fonds of regeling nooit alleen omdat het zichtbaar is.',
     'Noem NOOIT een fonds of regeling die je zelf als niet passend beoordeelt: ook niet "met een kanttekening", niet als voorbeeld, niet om te laten zien wat er niet past en niet om op drie resultaten te komen. Een harde mismatch (andere plaats/regio dan het project, ander thema, verkeerde doelgroep, verplichte rechtsvorm of aanvragertype dat niet past, bedrag buiten de bandbreedte, uitgesloten activiteit, regeling gesloten zonder nieuwe ronde) betekent: weglaten. Alleen als de gebruiker expliciet vraagt of een bepaald, bij naam genoemd fonds past, leg je uit waarom wel of niet.',
     gratis
-      ? 'Toon maximaal 3 fondsen/regelingen, de best aansluitende inhoudelijke matches (online gecontroleerd én uit de database samen), elk kort met: waarom het past, de belangrijkste voorwaarde en het actuele bedrag/de actuele deadline als die bekend is. Zijn er minder dan 3 sterke matches, toon er dan 1 of 2 en vul NOOIT aan: verzin nooit een derde, en vul nooit aan met een fonds dat niet echt past.'
-      : 'Toon alle sterke, actuele matches (online gecontroleerd én uit de database samen) in volgorde van aansluiting; er is geen limiet van drie. De sterkste uitgebreider (waarom het past, belangrijkste voorwaarde, actueel bedrag/actuele deadline), de overige beknopt. Vul NOOIT aan met een fonds dat niet echt past en verzin niets.',
-    'ONLINE ONDERZOEK: het online onderzoek (bestaat nog, open of aankomende ronde, doelgroep, geografie, thema, aanvragertype, bedrag, deadline) is al door het systeem uitgevoerd en beoordeeld. De resultaten staan, voor zover ze voor dit lid mogen worden getoond, onder "ONLINE GEVONDEN FONDSEN EN REGELINGEN" en als regel "Online gecontroleerd" bij databasekandidaten. Je hebt in dit antwoord GEEN zoekfunctie. Noem uitsluitend fondsen en regelingen die in de lijsten in de systeemberichten staan, of die de gebruiker zelf bij naam noemt: noem nooit een fonds of regeling uit je eigen kennis. Staat er bij een record "gever: niet vermeld", noem de gever dan ook niet en verzin of raad geen naam.' + (opties.webStatus === 'mislukt' ? ' Het online onderzoek kon nu niet worden uitgevoerd: baseer je uitsluitend op de databasekandidaten en zeg eerlijk dat de online controle niet is gelukt.' : opties.webStatus === 'uit' ? ' Online onderzoek is nu niet actief: baseer je uitsluitend op de databasekandidaten.' : ''),
-    'Deadlinecontrole: wat hieronder als databasekandidaat staat is al op verstreken deadlines gefilterd. Blijkt uit de gegevens (bijvoorbeeld de regel "Online gecontroleerd") dat een deadline vóór vandaag ligt (en is er geen aankomende ronde), toon het dan NIET als beschikbaar: alleen in de aparte sectie "Interessant voor een volgende ronde" (zie onderaan), na de actuele matches.',
+      ? 'Toon maximaal 3 fondsen/regelingen, de best aansluitende inhoudelijke matches (online gevonden én uit de database samen), elk kort met: waarom het past, de belangrijkste voorwaarde en het actuele bedrag/de actuele deadline als die bekend is. Zijn er minder dan 3 sterke matches, toon er dan 1 of 2 en vul NOOIT aan: verzin nooit een derde, en vul nooit aan met een fonds dat niet echt past.'
+      : 'Toon alle sterke, actuele matches (online gevonden én uit de database samen) in volgorde van aansluiting; er is geen limiet van drie. De sterkste uitgebreider (waarom het past, belangrijkste voorwaarde, actueel bedrag/actuele deadline), de overige beknopt. Vul NOOIT aan met een fonds dat niet echt past en verzin niets.',
+    'ONLINE ONDERZOEK: het online onderzoek (bestaat nog, open of aankomende ronde, doelgroep, geografie, thema, aanvragertype, bedrag, deadline) is al door het systeem uitgevoerd en beoordeeld. De resultaten staan, voor zover ze voor dit lid mogen worden getoond, onder "ONLINE GEVONDEN FONDSEN EN REGELINGEN" en als regel "Online gevonden" bij databasekandidaten. Online gevonden gegevens zijn nog niet door ons geverifieerd: noem ze nooit "geverifieerd" of "gecontroleerd", zeg "online gevonden", noem de bron en laat het lid de actuele voorwaarden bij de financier zelf controleren. Je hebt in dit antwoord GEEN zoekfunctie. Noem uitsluitend fondsen en regelingen die in de lijsten in de systeemberichten staan, of die de gebruiker zelf bij naam noemt: noem nooit een fonds of regeling uit je eigen kennis. Staat er bij een record "gever: niet vermeld", noem de gever dan ook niet en verzin of raad geen naam.' + (opties.webStatus === 'mislukt' ? ' Het online onderzoek kon nu niet worden uitgevoerd: baseer je uitsluitend op de databasekandidaten en zeg eerlijk dat het online onderzoek niet is gelukt.' : opties.webStatus === 'uit' ? ' Online onderzoek is nu niet actief: baseer je uitsluitend op de databasekandidaten.' : ''),
+    'Deadlinecontrole: wat hieronder als databasekandidaat staat is al op verstreken deadlines gefilterd. Blijkt uit de gegevens (bijvoorbeeld de regel "Online gevonden") dat een deadline vóór vandaag ligt (en is er geen aankomende ronde), toon het dan NIET als beschikbaar: alleen in de aparte sectie "Interessant voor een volgende ronde" (zie onderaan), na de actuele matches.',
     gratis
       ? 'Heb je na al deze controles geen enkele sterke match, zeg dan precies: "Op basis van uw huidige projectinformatie heb ik nog geen drie fondsen gevonden die ik met voldoende vertrouwen zou aanraden." en stel gerichte vragen om het project scherper te krijgen. Toon je wél minstens één match, schrijf dan NOOIT een zin over "minder dan drie" of "nog geen drie": het systeem controleert dat.'
       : 'Heb je na al deze controles geen enkele sterke match, zeg dat dan eerlijk en stel gerichte vragen om het project scherper te krijgen. Schrijf geen zin over "minder dan drie fondsen".',
@@ -5396,7 +5400,7 @@ function bouwFreeAdviesBlok(
   );
 
   regels.push(
-    'Bij een databasekandidaat kan een regel "Online gecontroleerd" staan met actuele status, deadline en bedrag: gebruik die gegevens en benoem het verschil als ze afwijken van de database. Is een deadline in de database verstreken en is er geen aantoonbare nieuwe ronde, toon de regeling dan niet als aanbeveling.',
+    'Bij een databasekandidaat kan een regel "Online gevonden" staan met actuele status, deadline en bedrag: gebruik die gegevens en benoem het verschil als ze afwijken van de database. Is een deadline in de database verstreken en is er geen aantoonbare nieuwe ronde, toon de regeling dan niet als aanbeveling.',
   );
 
   if (selectie.geslotenGetoond.length) {

@@ -85,7 +85,7 @@ function dagenReden(dagen, label = 'deadline') {
 
 // Eén actie voor één regel (de belangrijkste), of null als er voor deze regel niets te doen is.
 export function actieVoorRegel(regel, project, nu) {
-  if (!regel || regel.status === 'rejected') return null;
+  if (!regel || regel.status === 'rejected' || regel.status === 'withdrawn') return null;
 
   const basis = { projectId: project.id, projectNaam: project.naam || 'Naamloos project', regelId: regel.id, regelNaam: regel.naam || '', bronType: regel.bronType };
 

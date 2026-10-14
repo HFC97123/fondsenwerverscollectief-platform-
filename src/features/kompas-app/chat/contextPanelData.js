@@ -11,7 +11,7 @@ import { dekkingVanProject, eerstvolgendeDeadline, periodeTekst } from '../finan
 export const MAX_REGELS = 3;
 
 // Volgorde van relevantie voor de chat: wat nu loopt eerst, dan wat al is toegekend, dan ideeën, afgewezen onderaan.
-const STATUS_RANG = { preparing: 0, submitted: 1, awarded: 2, interesting: 3, rejected: 4 };
+const STATUS_RANG = { preparing: 0, submitted: 1, awarded: 2, interesting: 3, rejected: 4, withdrawn: 5 };
 
 function deadlineSleutel(regel) {
   return regel && regel.deadline ? String(regel.deadline).slice(0, 10) : '9999-12-31';

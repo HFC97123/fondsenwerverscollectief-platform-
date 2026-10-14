@@ -12,6 +12,7 @@ export const STATUS_CHIP = {
   submitted: { bg: '#EAF4EE', color: '#2F6D47', border: '#CFE4D7' },
   awarded: { bg: '#EAF4EE', color: '#2F6D47', border: '#CFE4D7' },
   rejected: { bg: '#F9ECEA', color: '#9E3B2C', border: '#EDD3CE' },
+  withdrawn: { bg: '#EEF1F0', color: '#5D6B67', border: '#D5DDD9' },
 };
 
 export function StatusChip({ status }) {

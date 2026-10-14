@@ -74,7 +74,7 @@ sectie('2. Pariteit rekenmodule: server = UI-module (dekkingsplan.js)');
 {
   let gelijk = 0;
   let totaal = 0;
-  const statussen = ['interesting', 'preparing', 'submitted', 'awarded', 'rejected'];
+  const statussen = ['interesting', 'preparing', 'submitted', 'awarded', 'rejected', 'withdrawn'];
 
   for (let i = 0; i < 40; i += 1) {
     const w = wereld('premium', { metRegels: false });
@@ -87,7 +87,7 @@ sectie('2. Pariteit rekenmodule: server = UI-module (dekkingsplan.js)');
       T.maakFundingRegel({
         programId: w.p.id,
         funderId: w.f.funders[k % w.f.funders.length].funder_id,
-        status: statussen[(i + k) % 5],
+        status: statussen[(i + k) % statussen.length],
         requested_amount: [null, 1000, 15000, 40000][(i + k) % 4],
         awarded_amount: [null, 500, 25000][(i * 3 + k) % 3],
       });
@@ -422,6 +422,54 @@ sectie('11. Logging bevat geen inhoud');
   await vraagMet(w, 'Dit is een geheime promptzin over Hushu House en 123456.');
   await vraagMet(w, 'x', { focusFundingId: 'geheim' });
   check('11a: serverlogs bestaan alleen uit codes (geen prompt, project- of fondsnamen)', T.fouten.every((l) => /^\[subsidie-kompas\] [a-z_0-9]+$/.test(l)), T.fouten.join('|'));
+}
+
+// ---------------------------------------------------------------------------
+sectie('12. Ingetrokken (withdrawn): historisch, geen kans, niet gepland/aangevraagd/toegekend');
+{
+  const bouw = (extra = []) => {
+    const w = wereld('premium', { metRegels: false });
+
+    w.p.budget_total = 100000;
+    w.p.own_contribution = 10000;
+    w.ingetrokken = T.maakFundingRegel({ programId: w.p.id, schemeId: w.f.R.jongeren.regeling_id, status: 'withdrawn', requested_amount: 30000, awarded_amount: 12000 });
+    extra.forEach((e) => T.maakFundingRegel({ programId: w.p.id, ...e(w) }));
+
+    return w;
+  };
+
+  const w1 = bouw();
+  const b1 = T.fundingBlok(await vraagMet(w1, 'Wat staat er in mijn financieringsplan?'));
+
+  check('12a: de regel staat als Ingetrokken in de chatcontext', /Rotterdams Jongerencultuurfonds \(Gemeente Rotterdam\) — Ingetrokken/.test(b1), b1.split('\n').slice(5, 8).join('|'));
+  check('12b: niet als Interessant, Aangevraagd of Toegekend gelezen', !/Rotterdams Jongerencultuurfonds[^\n]* — (Interessant|Aangevraagd|Toegekend|In voorbereiding)/.test(b1));
+  check('12c: telt niet mee als Aangevraagd of Toegekend (ook niet met een ingevuld toegekend bedrag)', /Aangevraagd: € 0\b/.test(b1) && /Toegekend: € 0\b/.test(b1), b1.split('\n').slice(1, 6).join('|'));
+  check('12d: beïnvloedt het gat niet: nog te financieren = begroting - overige dekking', /Nog te financieren: € 90\.000/.test(b1));
+  check('12e: is geen komende deadline (ook niet met een toekomstige brondeadline)', /Eerstvolgende deadline: geen komende deadline/.test(b1));
+
+  const w2 = bouw([(w) => ({ funderId: w.f.F.podium.funder_id, status: 'interesting' })]);
+  const b2 = T.fundingBlok(await vraagMet(w2, 'Wat staat er in mijn financieringsplan?'));
+
+  check('12f: een actieve regel naast een ingetrokken regel blijft de eerstvolgende kans', /Eerstvolgende deadline: Fonds Podiumkunsten|Eerstvolgende deadline: geen komende deadline/.test(b2) && !/Eerstvolgende deadline: Rotterdams Jongerencultuurfonds/.test(b2));
+
+  const w3 = bouw([(w) => ({ schemeId: w.f.R.dans.regeling_id, status: 'awarded', awarded_amount: 25000 }), (w) => ({ funderId: w.f.F.jeugd.funder_id, status: 'submitted', requested_amount: 8000 })]);
+  const b3 = T.fundingBlok(await vraagMet(w3, 'Hoeveel ontbreekt er nog?'));
+  // (de wereld wordt bij elke wereld() opnieuw opgebouwd: lees de UI-kant van w3 eerst)
+  const rpc = T.emuleerDekkingsplan(T.GEBRUIKER_A.id, w3.p.id).data.map(regelUitRpc);
+  const ui = berekenDekking({ begroting: 100000, regels: rpc, overige: 10000 });
+  const w4 = wereld('premium', { metRegels: false });
+
+  w4.p.budget_total = 100000;
+  w4.p.own_contribution = 10000;
+  T.maakFundingRegel({ programId: w4.p.id, schemeId: w4.f.R.dans.regeling_id, status: 'awarded', awarded_amount: 25000 });
+  T.maakFundingRegel({ programId: w4.p.id, funderId: w4.f.F.jeugd.funder_id, status: 'submitted', requested_amount: 8000 });
+  const b4 = T.fundingBlok(await vraagMet(w4, 'Hoeveel ontbreekt er nog?'));
+  const kop = (b) => b.split('\n').slice(1, 6).join('|');
+
+  check('12g: dezelfde totalen met en zonder de ingetrokken regel', kop(b3) === kop(b4) && /Toegekend: € 25\.000/.test(b3) && /Aangevraagd: € 8\.000/.test(b3), `${kop(b3)} <> ${kop(b4)}`);
+
+  check('12h: UI-module en server rekenen met een ingetrokken regel hetzelfde', ui.toegekend === 25000 && ui.aangevraagd === 8000 && ui.nogNodig === 57000 && /Nog te financieren: € 57\.000/.test(b3), JSON.stringify(ui));
+  check('12i: de UI leest withdrawn als Ingetrokken (niet als Interessant)', rpc.find((r) => r.status === 'withdrawn') != null && rpc.filter((r) => r.status === 'interesting').length === 0);
 }
 
 T.herstelConsole();
