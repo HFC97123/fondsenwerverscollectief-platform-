@@ -1,4 +1,5 @@
-// Tab "Projectfinanciering": het dekkingsplan van één project. Bovenaan de dekking van de begroting
+// Tab "Projectfinanciering / Dekkingsplan": het dekkingsplan van één project, met de startknop van Subsidiekompas en,
+// op dezelfde pagina, de Acties & deadlines van dat project. Bovenaan de dekking van de begroting
 // (zelfde rekenmodule als Dashboard en projectdossier), daaronder de regels uit
 // subsidie_kompas_program_funding. Bronnen buiten het abonnement blijven gemaskeerd; de eigen
 // velden van het lid (bedragen, status, eigen deadline, herinnering, notitie) altijd zichtbaar.
@@ -8,6 +9,7 @@ import { css } from '../../../shared/lib/css.js';
 import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { ActieplanVoorProject } from '../financiering/ActieplanBlok.jsx';
+import VoorstelStart from '../financiering/VoorstelStart.jsx';
 import FinancierFormulier from '../financiering/FinancierFormulier.jsx';
 import {
   STATUSSEN,
@@ -43,6 +45,7 @@ function Legenda({ dekking }) {
     ['Totale begroting', dekking.heeftBegroting ? formatEuro(dekking.begroting) : '—', '#C5D2CB'],
     ['Toegekend', formatEuro(dekking.toegekend), KLEUR.toegekend],
     ['Aangevraagd', formatEuro(dekking.aangevraagd), KLEUR.aangevraagd],
+    ['Gepland', formatEuro(dekking.gepland), '#C9D9E8'],
     ['Eigen bijdrage', formatEuro(dekking.overige), KLEUR.overige],
     ['Nog te financieren', dekking.heeftBegroting ? formatEuro(dekking.nogNodig) : '—', '#E1EAE4'],
   ];
@@ -289,6 +292,8 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
         </div>
       )}
 
+      <VoorstelStart project={project} opgeslagen={status !== 'geen-database' && Boolean(project && project.id)} />
+
       <section style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF;')}>
         <h2 style={css(`${LABEL} margin: 0 0 14px;`)}>Dekking van de begroting</h2>
         {dekking.heeftBegroting ? (
@@ -302,8 +307,13 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
           <div style={css(`${TEKST} color: #7B8985;`)}>Vul de projectbegroting in (Projecten) om de dekking te zien.</div>
         )}
         <Legenda dekking={dekking} />
+        {dekking.heeftBegroting && (
+          <div data-testid="pf-nog-te-plannen" style={css(`${TEKST} margin-top: 10px; font-size: 13px; color: #4B5C58;`)}>
+            Waarvan nog niet gepland: <strong>{formatEuro(dekking.nogTePlannen)}</strong>
+          </div>
+        )}
         <div style={css(`${TEKST} margin-top: 14px; font-size: 12.5px; color: #7B8985;`)}>
-          Toegekend telt het toegekende bedrag (is dat leeg, dan het aangevraagde bedrag); Aangevraagd telt regels met status Aangevraagd; Eigen bijdrage staat bij de projectgegevens. Cofinanciers en andere financiering staan hieronder als gewone regels.
+          Toegekend telt het toegekende bedrag (is dat leeg, dan het aangevraagde bedrag); Aangevraagd telt regels met status Aangevraagd; Gepland telt het bedrag van regels met status Interessant of In voorbereiding (ook voorstellen van Subsidiekompas); Eigen bijdrage staat bij de projectgegevens. Cofinanciers en andere financiering staan hieronder als gewone regels.
         </div>
       </section>
 
@@ -348,7 +358,7 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
       </section>
 
       {status === 'klaar' && project && project.id && (
-        <section style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF;')}>
+        <section id="pf-acties" data-testid="pf-acties" style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF;')}>
           <ActieplanVoorProject project={project} regels={regels} />
         </section>
       )}

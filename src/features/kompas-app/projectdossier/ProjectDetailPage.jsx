@@ -31,7 +31,7 @@ const LINK = "font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight:
 
 const TABS = [
   { id: 'overzicht', label: 'Overzicht' },
-  { id: 'projectfinanciering', label: 'Projectfinanciering' },
+  { id: 'projectfinanciering', label: 'Projectfinanciering / Dekkingsplan' },
   { id: 'documenten', label: 'Documenten' },
   { id: 'gesprekken', label: 'Gesprekken' },
 ];

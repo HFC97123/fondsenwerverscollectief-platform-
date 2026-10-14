@@ -52,7 +52,11 @@ export function actieUitRij(r) {
     notitie: tekst(r.notes),
     bron: r.source === 'chat' ? 'chat' : 'user',
     voorgesteldOp: r.proposed_at || null,
+    // Alleen aanwezig na de voorstel-migratie; tot die tijd undefined/leeg.
+    voorstelSleutel: r.voorstel_sleutel || null,
+    bronDeadlineBijVoorstel: r.bron_deadline_bij_voorstel ? tekst(r.bron_deadline_bij_voorstel).slice(0, 10) : '',
     gemaakt: r.created_at || '',
+    bijgewerkt: r.updated_at || '',
   };
 }
 
@@ -175,7 +179,8 @@ export function afgeleidNaarTaak(afgeleid) {
     fundingId: afgeleid.regelId || null,
     titel: afgeleid.tekst,
     financier: afgeleid.regelNaam || '',
-    deadline: afgeleid.datum || '',
+    // Een taak aan een regel erft de deadline van het fonds (live): geen kopie van de datum als eigen streefdatum.
+    deadline: afgeleid.regelId ? '' : afgeleid.datum || '',
     prioriteit: afgeleid.prioriteit === 'hoog' ? 'high' : 'normal',
     notitie: afgeleid.reden ? `Aanleiding: ${afgeleid.reden}.` : '',
   };

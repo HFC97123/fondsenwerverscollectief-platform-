@@ -50,7 +50,7 @@ with sync_playwright() as p:
     ok('dossier KPI: Nog te financieren € 35.000', '€ 35.000' in kpi(pg,'Nog te financieren'))
     ok('dossier KPI: eerstvolgende deadline = Oranje Fonds Burenhulp', 'Oranje Fonds Burenhulp' in kpi(pg,'Eerstvolgende deadline'), kpi(pg,'Eerstvolgende deadline'))
     tabs=[x.inner_text().strip() for x in pg.locator('[role="tab"]').all()]
-    ok('dossier: 4 tabs in juiste volgorde', tabs==['Overzicht','Projectfinanciering','Documenten','Gesprekken'], str(tabs))
+    ok('dossier: 4 tabs in juiste volgorde', tabs==['Overzicht','Projectfinanciering / Dekkingsplan','Documenten','Gesprekken'], str(tabs))
     ok('dossier: Overzicht standaard geselecteerd', pg.locator('[data-testid="tab-btn-overzicht"]').get_attribute('aria-selected')=='true')
     ov=pg.locator('[data-testid="tab-overzicht"]').inner_text()
     ok('dossier Overzicht: basisgegevens uit subsidie_kompas_programs (omschrijving, doelgroep, discipline, locatie, looptijd)', 'Wekelijks een warme maaltijd.' in ov and 'Utrecht-Noord' in ov)

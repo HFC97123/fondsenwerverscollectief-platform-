@@ -129,7 +129,7 @@ with sync_playwright() as p:
     kb=[x.inner_text().strip() or x.get_attribute('aria-label') for x in kop.locator('button').all()]
     ok('regressie: projectkop heeft geen Bewerken, Exporteren of Open project', not any(re.search(r'Bewerken|Exporteren|Open project',x) for x in kb) and kop.get_by_role('link',name=re.compile('Bewerken|Exporteren|Open project')).count()==0, str(kb))
     tabs=[x.inner_text().strip() for x in pg.locator('[role=tab]').all()]
-    ok('3 tabs: Overzicht | Projectfinanciering | Documenten | Gesprekken', tabs==['Overzicht','Projectfinanciering','Documenten','Gesprekken'], str(tabs))
+    ok('3 tabs: Overzicht | Projectfinanciering / Dekkingsplan | Documenten | Gesprekken', tabs==['Overzicht','Projectfinanciering / Dekkingsplan','Documenten','Gesprekken'], str(tabs))
     pg.screenshot(path='shots/flow_3_projectdetail.png', full_page=True)
     # ⋯ in de kop
     kop.locator('[data-testid="project-menu-knop"]').click(); pg.wait_for_timeout(200)

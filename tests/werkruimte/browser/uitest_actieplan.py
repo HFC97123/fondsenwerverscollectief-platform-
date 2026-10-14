@@ -46,11 +46,12 @@ with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
     ctx,pg=nieuw(b,DESK,'pro',PAD)
     ap=pg.locator('[data-testid="actieplan"]')
-    ok('A1 onder het project (tab Projectfinanciering) staat het blok Actieplan', ap.count()==1 and ap.get_attribute('data-project-id')==P1 and 'actieplan' in ap.inner_text().lower())
+    ok('A1 onder het project (tab Projectfinanciering / Dekkingsplan) staat het blok Acties & deadlines', ap.count()==1 and ap.get_attribute('data-project-id')==P1 and 'acties & deadlines' in ap.inner_text().lower())
     ok('A2 opgeslagen taak "Begroting controleren" staat onder Te laat (deadline 3 dagen geleden), met hoge prioriteit en herkomst Subsidie Kompas', pg.locator('[data-testid="ap-groep-te-laat"]').count()==1 and taak(pg,'Begroting controleren').count()==1 and 'Hoog' in taak(pg,'Begroting controleren').inner_text() and 'voorgesteld door Subsidie Kompas' in taak(pg,'Begroting controleren').inner_text())
-    ok('A3 afgeronde taak onder Afgerond; teller telt alleen open taken', pg.locator('[data-testid="ap-groep-klaar"] [data-testid="ap-taak"]').count()==1 and '(1 open)' in pg.get_by_test_id('ap-teller').inner_text().lower(), pg.get_by_test_id('ap-teller').inner_text())
+    def open_n(pg): return pg.locator('[data-testid="ap-taak"]:not([data-status="done"])').count()+pg.locator('[data-testid="ap-afgeleid-actie"]').count()
+    ok('A3 afgeronde taak onder Afgerond; teller telt alle open items (opgeslagen taken en afgeleide acties), geen afgeronde', pg.locator('[data-testid="ap-groep-klaar"] [data-testid="ap-taak"]').count()==1 and f'({open_n(pg)} open)' in pg.get_by_test_id('ap-teller').inner_text().lower() and pg.locator('[data-testid="ap-taak"]:not([data-status="done"])').count()==1, pg.get_by_test_id('ap-teller').inner_text())
     ok('A4 taken van een ander project of een andere gebruiker zijn niet zichtbaar', 'GEHEIM' not in txt(pg) and 'Taalcafe: eerste financier' not in ap.inner_text())
-    ok('A5 aanbevolen stappen uit het dekkingsplan staan eronder (afgeleid, niet opgeslagen)', pg.get_by_test_id('ap-afgeleid').count()==1 and pg.locator('[data-testid="ap-afgeleid-actie"]').count()>=1 and len(rijen(pg))==4)
+    ok('A5 afgeleide acties staan in dezelfde lijst, herkenbaar als "Afgeleid uit dekkingsplan" (niet opgeslagen); opgeslagen taken als "Opgeslagen taak"', pg.get_by_test_id('ap-afgeleid').count()==0 and pg.locator('[data-testid="ap-afgeleid-actie"][data-soort="afgeleid"]').count()>=1 and pg.locator('[data-testid="ap-afgeleid-actie"]').first.get_by_test_id('ap-soort').inner_text()=='Afgeleid uit dekkingsplan' and pg.locator('[data-testid="ap-taak"]').first.get_by_test_id('ap-soort').inner_text()=='Opgeslagen taak' and len(rijen(pg))==4)
     pg.screenshot(path='shots/ap_1_project.png', full_page=True)
     # toevoegen
     pg.get_by_test_id('ap-toevoegen-open').click()
@@ -60,7 +61,7 @@ with sync_playwright() as p:
     pg.get_by_test_id('ap-opslaan').click(); pg.wait_for_timeout(500)
     nieuw_rij=[r for r in rijen(pg) if r['title']=='Vooroverleg plannen']
     ok('B2 opslaan: rij in de database met juiste gebruiker, project, status todo, prioriteit, deadline, herkomst user', len(nieuw_rij)==1 and nieuw_rij[0]['user_id']=='u1' and nieuw_rij[0]['program_id']==P1 and nieuw_rij[0]['status']=='todo' and nieuw_rij[0]['priority']=='high' and nieuw_rij[0]['due_date']==iso(5) and nieuw_rij[0]['source']=='user' and nieuw_rij[0]['financier_label']=='Gemeente Utrecht' and nieuw_rij[0]['notes']=='Bel de contactpersoon', str(nieuw_rij))
-    ok('B3 de taak staat direct onder Deze week; formulier is dicht; teller 2 open', taak(pg,'Vooroverleg plannen').count()==1 and pg.locator('[data-testid="ap-groep-week"] [data-testid="ap-taak"]').count()==1 and pg.get_by_test_id('ap-form').count()==0 and '(2 open)' in pg.get_by_test_id('ap-teller').inner_text().lower())
+    ok('B3 de taak staat direct onder Deze week; formulier is dicht; teller 2 open', taak(pg,'Vooroverleg plannen').count()==1 and pg.locator('[data-testid="ap-groep-week"] [data-testid="ap-taak"]').count()==1 and pg.get_by_test_id('ap-form').count()==0 and f'({open_n(pg)} open)' in pg.get_by_test_id('ap-teller').inner_text().lower() and pg.locator('[data-testid="ap-taak"]:not([data-status="done"])').count()==2)
     pg.get_by_test_id('ap-toevoegen-open').click(); pg.get_by_test_id('ap-titel').fill('X'); pg.get_by_test_id('ap-deadline').evaluate("e=>{e.value='';}")
     pg.get_by_test_id('ap-titel').fill('Y'*201); 
     ok('B4 titel is begrensd op 200 tekens (invoerveld)', len(pg.get_by_test_id('ap-titel').input_value())<=200)
@@ -122,7 +123,7 @@ with sync_playwright() as p:
 
     # migratie nog niet toegepast
     ctx,pg=nieuw(b,DESK,'pro',PAD,tabel=False)
-    ok('H1 zonder tabel: nette melding, geen "+ Actie toevoegen", geen pageerrors, afgeleide aanbevelingen werken, rest van de tab werkt', pg.get_by_test_id('ap-niet-beschikbaar').count()==1 and pg.get_by_test_id('ap-toevoegen-open').count()==0 and pg.get_by_test_id('ap-afgeleid').count()==1 and pg.get_by_test_id('ap-maak-taak').count()==0 and tab(pg).count()==1 and pg.get_by_test_id('pf-regel').count()>=1 and not pg.errs, str(pg.errs))
+    ok('H1 zonder tabel: nette melding, geen "+ Actie toevoegen", geen pageerrors, afgeleide aanbevelingen werken, rest van de tab werkt', pg.get_by_test_id('ap-niet-beschikbaar').count()==1 and pg.get_by_test_id('ap-toevoegen-open').count()==0 and pg.locator('[data-testid="ap-afgeleid-actie"]').count()>=1 and pg.get_by_test_id('ap-maak-taak').count()==0 and tab(pg).count()==1 and pg.get_by_test_id('pf-regel').count()>=1 and not pg.errs, str(pg.errs))
     ctx.close()
     ctx,pg=nieuw(b,DESK,'pro','/kompas/deadlines',tabel=False)
     seg(pg).click(); pg.wait_for_timeout(900)

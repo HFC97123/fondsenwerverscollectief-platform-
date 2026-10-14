@@ -41,7 +41,7 @@ gelijk('pasActieWijzigingToe', pasActieWijzigingToe(taak({ titel: 'A' }), { tite
 const rij = { id: 'r', program_id: 'p1', funding_id: 'f1', title: 'T', financier_label: null, due_date: '2026-11-02T00:00:00', status: 'rommel', priority: 'rommel', notes: null, source: 'chat', proposed_at: 't', created_at: 'c' };
 gelijk('actieUitRij: onbekende status/prioriteit vallen terug; datum afgekapt', [actieUitRij(rij).status, actieUitRij(rij).prioriteit, actieUitRij(rij).deadline, actieUitRij(rij).bron, actieUitRij(rij).fundingId], ['todo', 'normal', '2026-11-02', 'chat', 'f1']);
 const afg = { projectId: 'p1', regelId: 'f1', regelNaam: 'Fonds A', tekst: 'Aanvraag afronden', datum: '2026-10-20', prioriteit: 'hoog', reden: 'deadline over 8 dagen' };
-gelijk('afgeleidNaarTaak', afleiding(), { projectId: 'p1', fundingId: 'f1', titel: 'Aanvraag afronden', financier: 'Fonds A', deadline: '2026-10-20', prioriteit: 'high', notitie: 'Aanleiding: deadline over 8 dagen.' });
+gelijk('afgeleidNaarTaak', afleiding(), { projectId: 'p1', fundingId: 'f1', titel: 'Aanvraag afronden', financier: 'Fonds A', deadline: '', prioriteit: 'high', notitie: 'Aanleiding: deadline over 8 dagen.' });
 function afleiding() { return afgeleidNaarTaak(afg); }
 gelijk('verbergAlOpgeslagen: verbergt alleen met openstaande taak voor dezelfde regel en titel', verbergAlOpgeslagen([afg, { ...afg, regelId: 'f2' }], [taak({ titel: 'Aanvraag afronden', fundingId: 'f1' })]).map((a) => a.regelId), ['f2']);
 gelijk('een afgeronde taak verbergt de aanbeveling niet', verbergAlOpgeslagen([afg], [taak({ titel: 'Aanvraag afronden', fundingId: 'f1', status: 'done' })]).length, 1);

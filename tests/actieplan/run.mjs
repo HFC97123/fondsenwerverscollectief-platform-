@@ -3,9 +3,12 @@
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
 
+let status = 0;
+
+for (const naam of ['unit', 'samen']) {
 await build({
-  entryPoints: ['tests/actieplan/unit.test.mjs'],
-  outfile: 'tests/actieplan/.build/unit.bundle.mjs',
+  entryPoints: [`tests/actieplan/${naam}.test.mjs`],
+  outfile: `tests/actieplan/.build/${naam}.bundle.mjs`,
   bundle: true, platform: 'node', format: 'esm', loader: { '.js': 'jsx' }, jsx: 'automatic',
   mainFields: ['browser', 'module', 'main'],
   external: ['exceljs', 'docx', 'jszip'],
@@ -18,6 +21,9 @@ await build({
   logLevel: 'warning',
 });
 
-const r = spawnSync('node', ['tests/actieplan/.build/unit.bundle.mjs'], { stdio: 'inherit' });
+const r = spawnSync('node', [`tests/actieplan/.build/${naam}.bundle.mjs`], { stdio: 'inherit' });
 
-process.exit(r.status ?? 1);
+status = status || (r.status ?? 1);
+}
+
+process.exit(status);

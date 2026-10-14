@@ -1,5 +1,7 @@
-// Actieplan per project (Pro/Premium): opgeslagen taken (actie, financier, deadline, status, prioriteit, notitie) en,
-// daaronder, de aanbevolen vervolgstappen die uit het dekkingsplan zijn afgeleid (acties.js, niet opgeslagen).
+// Acties & deadlines per project (Pro/Premium): opgeslagen taken (actie, financier, streefdatum, status, prioriteit, notitie)
+// en de acties die uit het dekkingsplan zijn afgeleid (acties.js, niet opgeslagen) in ÉÉN overzicht, herkenbaar als 'taak' of
+// 'afgeleid' (actiesEnDeadlines.js). Een fondsdeadline zonder opgeslagen taak blijft zichtbaar; een taak aan een regel erft de
+// deadline van het fonds tenzij het lid een eigen streefdatum kiest.
 // Eén blok voor twee plekken: onder het project (Projectfinanciering) en op de pagina Deadlines (tab Actieplan).
 // Geen bedragen: het dekkingsplan blijft de enige bron voor geld.
 import React, { useMemo, useState } from 'react';
@@ -7,7 +9,8 @@ import { css } from '../../../shared/lib/css.js';
 import { isEchtId } from '../../../data/services/projecten.js';
 import { useDekkingsplannen } from './useProjectFinanciering.js';
 import { useActieplan } from './useActieplan.js';
-import { leidActiesAf } from './acties.js';
+import { bouwActiesEnDeadlines, groepeerActiesEnDeadlines, telOpen, SOORT, DATUM_SOORT } from './actiesEnDeadlines.js';
+import { dagenTot, dagenTekst, formatDatum } from './dekkingsplan.js';
 import { projectFinancieringHref } from './deeplinks.js';
 import {
   ACTIE_GROEPEN,
@@ -20,11 +23,7 @@ import {
   MAX_NOTITIE,
   MAX_TITEL,
   afgeleidNaarTaak,
-  deadlineTekst,
-  groepeerTaken,
-  telOpenTaken,
   valideerActie,
-  verbergAlOpgeslagen,
 } from './actieplan.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
@@ -41,6 +40,42 @@ const PRIORITEIT_STIJL = {
   low: 'background: #EEF1F0; color: #5D6B67;',
 };
 
+const SOORT_LABEL = { taak: 'Opgeslagen taak', afgeleid: 'Afgeleid uit dekkingsplan' };
+
+function SoortLabel({ soort }) {
+  return (
+    <span
+      data-testid="ap-soort"
+      data-soort={soort}
+      style={css(`display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid ${soort === SOORT.TAAK ? '#CFDDD5' : '#E1D5F0'}; background: ${soort === SOORT.TAAK ? '#F7F9F8' : '#F4EFFA'}; color: ${soort === SOORT.TAAK ? '#4B5C58' : '#5B3F8A'}; font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800;`)}
+    >
+      {SOORT_LABEL[soort]}
+    </span>
+  );
+}
+
+// "Streefdatum 20 nov 2026 (over 6 dagen) · Fondsdeadline 1 dec 2026" of, zonder eigen datum, "Deadline van het fonds 1 dec 2026 (over 48 dagen)".
+function datumRegels(item, nu) {
+  const rest = (iso) => {
+    if (item.status === 'done') return '';
+
+    const d = dagenTot(iso, nu);
+
+    return d == null ? '' : ` (${dagenTekst(d)})`;
+  };
+  const delen = [];
+
+  if (item.datumSoort === DATUM_SOORT.STREEF) {
+    delen.push(`Streefdatum ${formatDatum(item.streefdatum)}${rest(item.streefdatum)}`);
+
+    if (item.externeDeadline && item.externeDeadline !== item.streefdatum) delen.push(`Fondsdeadline ${formatDatum(item.externeDeadline)}`);
+  } else if (item.datumSoort === DATUM_SOORT.EXTERN) {
+    delen.push(`${item.soort === SOORT.TAAK ? 'Deadline van het fonds' : 'Deadline'} ${formatDatum(item.externeDeadline)}${rest(item.externeDeadline)}`);
+  }
+
+  return delen;
+}
+
 function Chip({ prioriteit }) {
   return (
     <span data-testid="ap-prioriteit-chip" style={css(`display: inline-block; padding: 2px 9px; border-radius: 999px; font-family: 'Mulish', sans-serif; font-size: 12px; font-weight: 800; ${PRIORITEIT_STIJL[prioriteit] || PRIORITEIT_STIJL.normal}`)}>
@@ -50,7 +85,7 @@ function Chip({ prioriteit }) {
 }
 
 // Formulier voor een nieuwe taak of het bewerken van een bestaande.
-function ActieFormulier({ initieel, financiers, financierVast = null, onOpslaan, onAnnuleer, bezigTekst = 'Opslaan' }) {
+function ActieFormulier({ initieel, financiers, financierVast = null, volgtFonds = false, onOpslaan, onAnnuleer, bezigTekst = 'Opslaan' }) {
   const [titel, setTitel] = useState(initieel?.titel || '');
   const [financier, setFinancier] = useState(initieel?.financier || '');
   const [deadline, setDeadline] = useState(initieel?.deadline || '');
@@ -102,8 +137,9 @@ function ActieFormulier({ initieel, financiers, financierVast = null, onOpslaan,
         </datalist>
       </label>
       <label style={css('min-width: 0;')}>
-        <span style={css(LABEL)}>Deadline (optioneel)</span>
+        <span style={css(LABEL)}>{volgtFonds ? 'Eigen streefdatum (optioneel)' : 'Deadline (optioneel)'}</span>
         <input data-testid="ap-deadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} style={css(INVOER)} />
+        {volgtFonds && <span style={css(`${TEKST} display: block; margin-top: 4px; font-size: 12px; color: #7B8985;`)}>Leeg laten = deze taak volgt de deadline van het fonds.</span>}
       </label>
       <label style={css('min-width: 0;')}>
         <span style={css(LABEL)}>Prioriteit</span>
@@ -136,7 +172,8 @@ function ActieFormulier({ initieel, financiers, financierVast = null, onOpslaan,
   );
 }
 
-function Taak({ taak, financiers, regelNaam, nu, onWijzig, onVerwijder }) {
+function Taak({ item, financiers, regelNaam, nu, onWijzig, onVerwijder }) {
+  const taak = item.taak;
   const [bewerk, setBewerk] = useState(false);
   const [bevestig, setBevestig] = useState(false);
   const [fout, setFout] = useState('');
@@ -158,6 +195,7 @@ function Taak({ taak, financiers, regelNaam, nu, onWijzig, onVerwijder }) {
         initieel={taak}
         financiers={financiers}
         financierVast={regelNaam}
+        volgtFonds={Boolean(taak.fundingId)}
         onAnnuleer={() => setBewerk(false)}
         onOpslaan={async (w) => {
           const res = await onWijzig(taak.id, w);
@@ -172,7 +210,7 @@ function Taak({ taak, financiers, regelNaam, nu, onWijzig, onVerwijder }) {
     );
   }
 
-  const dl = deadlineTekst(taak, nu);
+  const datums = datumRegels(item, nu);
 
   return (
     <article
@@ -195,12 +233,19 @@ function Taak({ taak, financiers, regelNaam, nu, onWijzig, onVerwijder }) {
             {taak.titel}
           </div>
           <div style={css(`${TEKST} font-size: 13px; color: #6D7C77; margin-top: 2px; overflow-wrap: anywhere;`)}>
-            {[regelNaam || taak.financier, dl].filter(Boolean).join(' · ') || 'Geen financier of deadline'}
-            {taak.bron === 'chat' && <span data-testid="ap-bron-chat"> · voorgesteld door Subsidie Kompas</span>}
+            {[regelNaam || taak.financier, ...datums].filter(Boolean).join(' · ') || 'Geen financier of deadline'}
+            {taak.bron === 'chat' && <span data-testid="ap-bron-chat"> · voorgesteld door Subsidie Kompas{item.aangepastDoorLid ? ', door u aangepast' : ''}</span>}
           </div>
+          {item.externeDeadlineGewijzigd && (
+            <div data-testid="ap-deadline-gewijzigd" style={css(`${TEKST} font-size: 12.5px; margin-top: 4px; color: #8A5A16;`)}>
+              De deadline van het fonds is gewijzigd: was {formatDatum(item.externeDeadlineGewijzigd.van)}, nu {formatDatum(item.externeDeadlineGewijzigd.naar)}.
+              {item.datumSoort === DATUM_SOORT.STREEF ? ' Uw streefdatum is niet aangepast.' : ' Deze taak volgt de nieuwe deadline.'}
+            </div>
+          )}
           {taak.notitie && <div style={css(`${TEKST} font-size: 13px; margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere;`)}>{taak.notitie}</div>}
         </div>
         <div style={css('display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0;')}>
+          <SoortLabel soort={SOORT.TAAK} />
           <Chip prioriteit={taak.prioriteit} />
           <select data-testid="ap-status" aria-label={`Status van ${taak.titel}`} value={taak.status} onChange={(e) => zet({ status: e.target.value })} style={css(`${INVOER} width: auto; min-height: 32px; padding: 4px 8px; font-size: 13px;`)}>
             {ACTIE_STATUSSEN.map((s) => (
@@ -245,8 +290,8 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
   const [meldingFout, setMeldingFout] = useState('');
   const taken = useMemo(() => plan.actieVoor(project.id), [plan, project.id]);
   const financiers = useMemo(() => Array.from(new Set((regels || []).filter((r) => r.bronStatus === 'zichtbaar').map((r) => r.naam).filter(Boolean))), [regels]);
-  const afgeleid = useMemo(() => verbergAlOpgeslagen(leidActiesAf({ projecten: [project], regelsPerProject: { [project.id]: regels || [] }, nu }), taken), [project, regels, nu, taken]);
-  const groepen = useMemo(() => groepeerTaken(taken, nu), [taken, nu]);
+  const items = useMemo(() => bouwActiesEnDeadlines({ project, regels, taken, nu }), [project, regels, taken, nu]);
+  const groepen = useMemo(() => groepeerActiesEnDeadlines(items, nu), [items, nu]);
   const beschikbaar = plan.status === 'klaar';
   // Een taak die aan een regel van het dekkingsplan hangt toont de LIVE naam van die regel (al gemaskeerd naar het abonnement);
   // de naam wordt dan niet bij de taak gekopieerd, zodat er na een downgrade geen fondsnaam blijft hangen.
@@ -266,7 +311,7 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
   const maakTaak = async (a) => {
     setMeldingFout('');
 
-    const taakInvoer = afgeleidNaarTaak(a);
+    const taakInvoer = afgeleidNaarTaak(a.afgeleid);
     const res = await plan.voegToe({ ...taakInvoer, financier: taakInvoer.fundingId ? '' : taakInvoer.financier, bron: 'user' });
 
     if (!res.ok) {
@@ -279,7 +324,7 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
       <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;')}>
         {koptekst && (
           <h2 style={css(`${LABEL} margin: 0;`)}>
-            Actieplan <span data-testid="ap-teller" style={css('color: #7B8985;')}>({telOpenTaken(taken)} open)</span>
+            Acties &amp; deadlines <span data-testid="ap-teller" style={css('color: #7B8985;')}>({telOpen(items)} open)</span>
           </h2>
         )}
         {beschikbaar && !open && (
@@ -319,7 +364,13 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
 
       {beschikbaar && taken.length === 0 && !open && (
         <div data-testid="ap-leeg" style={css(`${TEKST} padding: 16px 18px; border: 1px dashed #CFDDD5; border-radius: 14px; color: #7B8985;`)}>
-          Nog geen eigen taken bij dit project. Voeg een actie toe, bijvoorbeeld “vooroverleg plannen met Fonds A”, of maak hieronder een aanbevolen stap tot taak.
+          Nog geen eigen taken bij dit project. Voeg een actie toe, bijvoorbeeld “vooroverleg plannen met Fonds A”, of maak een afgeleide actie tot taak.
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div style={css(`${TEKST} font-size: 12.5px; color: #7B8985;`)}>
+          Opgeslagen taken en acties die uit uw dekkingsplan volgen staan hier samen. Afgeleide acties worden berekend en wijzigen vanzelf mee; maak er een taak van om ze bij te houden. Een taak bij een financier volgt de deadline van het fonds, tenzij u een eigen streefdatum kiest.
         </div>
       )}
 
@@ -329,36 +380,32 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
             <h3 style={css(`${LABEL} margin: 6px 0 0; color: ${g === 'te-laat' ? '#9E3B2C' : '#2C4A5E'};`)}>
               {ACTIE_GROEP_LABEL[g]} <span style={css('color: #7B8985;')}>({groepen[g].length})</span>
             </h3>
-            {groepen[g].map((t) => (
-              <Taak key={t.id} taak={t} financiers={financiers} regelNaam={naamVanRegel(t.fundingId)} nu={nu} onWijzig={plan.wijzig} onVerwijder={plan.verwijder} />
-            ))}
+            {groepen[g].map((i) =>
+              i.soort === SOORT.TAAK ? (
+                <Taak key={i.sleutel} item={i} financiers={financiers} regelNaam={naamVanRegel(i.taak.fundingId)} nu={nu} onWijzig={plan.wijzig} onVerwijder={plan.verwijder} />
+              ) : (
+                <div key={i.sleutel} data-testid="ap-afgeleid-actie" data-soort="afgeleid" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border: 1px solid #E8E0F2; border-radius: 12px; background: #FBF9FD;')}>
+                  <div style={css('min-width: 0; flex: 1 1 240px;')}>
+                    <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{i.titel}</div>
+                    <div style={css(`${TEKST} font-size: 13px; color: #6D7C77; overflow-wrap: anywhere;`)}>{[i.regelNaam, i.reden].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <SoortLabel soort={SOORT.AFGELEID} />
+                  <Chip prioriteit={i.prioriteit} />
+                  {beschikbaar && (
+                    <button type="button" data-testid="ap-maak-taak" onClick={() => maakTaak(i)} style={css(KNOP)}>
+                      Maak er een taak van
+                    </button>
+                  )}
+                </div>
+              ),
+            )}
           </div>
         ) : null,
       )}
 
-      {afgeleid.length > 0 && (
-        <div data-testid="ap-afgeleid" style={css('display: flex; flex-direction: column; gap: 8px; margin-top: 6px;')}>
-          <h3 style={css(`${LABEL} margin: 6px 0 0; color: #2C4A5E;`)}>Aanbevolen op basis van uw dekkingsplan</h3>
-          <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>Dit wordt berekend uit de stand van uw dekkingsplan en wijzigt vanzelf mee. Maak er een taak van om het bij te houden.</div>
-          {afgeleid.slice(0, 8).map((a) => (
-            <div key={a.id} data-testid="ap-afgeleid-actie" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #F7F9F8;')}>
-              <div style={css('min-width: 0; flex: 1 1 240px;')}>
-                <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{a.tekst}</div>
-                <div style={css(`${TEKST} font-size: 13px; color: #6D7C77; overflow-wrap: anywhere;`)}>{[a.regelNaam, a.reden].filter(Boolean).join(' · ')}</div>
-              </div>
-              <Chip prioriteit={a.prioriteit === 'hoog' ? 'high' : 'normal'} />
-              {beschikbaar && (
-                <button type="button" data-testid="ap-maak-taak" onClick={() => maakTaak(a)} style={css(KNOP)}>
-                  Maak er een taak van
-                </button>
-              )}
-            </div>
-          ))}
-          {meldingFout && (
-            <div role="alert" data-testid="ap-afgeleid-fout" style={css(`${TEKST} font-size: 13px; font-weight: 700; color: #9E3B2C;`)}>
-              {meldingFout}
-            </div>
-          )}
+      {meldingFout && (
+        <div role="alert" data-testid="ap-afgeleid-fout" style={css(`${TEKST} font-size: 13px; font-weight: 700; color: #9E3B2C;`)}>
+          {meldingFout}
         </div>
       )}
     </section>
