@@ -24,6 +24,7 @@ import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import AdminInlineEdit from './AdminInlineEdit.jsx';
 import AddToProjectFundingDialog from './deadlines/AddToProjectFundingDialog.jsx';
 import MijnDeadlines from './deadlines/MijnDeadlines.jsx';
+import { ActieplanOverzicht } from './financiering/ActieplanBlok.jsx';
 import { bronUitDeadlineRij } from './financiering/toevoegen.js';
 
 // Regelgebaseerde inschatting: discipline, werkgebied en omvang tegenover het profiel.
@@ -672,7 +673,7 @@ export default function DeadlinesPage() {
       <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px) clamp(48px, 7vw, 90px);')}>
         {paid && (
           <div role="tablist" aria-label="Deadlines" data-testid="deadlines-segmenten" style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;')}>
-            {[['mijn', 'Mijn deadlines'], ['alle', 'Alle regelingen']].map(([id, label]) => (
+            {[['mijn', 'Mijn deadlines'], ['actieplan', 'Actieplan'], ['alle', 'Alle regelingen']].map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -703,6 +704,8 @@ export default function DeadlinesPage() {
         {paid && segment === 'mijn' && (
           <MijnDeadlines projecten={store.projects} onNaarAlleRegelingen={() => setSegment('alle')} />
         )}
+
+        {paid && segment === 'actieplan' && <ActieplanOverzicht projecten={store.projects} />}
 
         {(!paid || segment === 'alle') && (
         <div style={css(`

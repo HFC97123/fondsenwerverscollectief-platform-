@@ -69,7 +69,7 @@ with sync_playwright() as p:
     # ================= Mijn deadlines (Pro, bureaublad)
     ctx,pg=nieuw(b,vp,'pro','/kompas/deadlines')
     seg=pg.get_by_test_id('deadlines-segmenten')
-    ok('segmenten: Mijn deadlines en Alle regelingen, Mijn deadlines standaard', seg.locator('[role=tab]').all_inner_texts()==['Mijn deadlines','Alle regelingen'] and pg.get_by_test_id('segment-mijn').get_attribute('aria-selected')=='true')
+    ok('segmenten: Mijn deadlines, Actieplan en Alle regelingen, Mijn deadlines standaard', seg.locator('[role=tab]').all_inner_texts()==['Mijn deadlines','Actieplan','Alle regelingen'] and pg.get_by_test_id('segment-mijn').get_attribute('aria-selected')=='true')
     ok('Mijn deadlines: marktoverzicht (zoekveld/filters) niet zichtbaar in dit segment', pg.get_by_placeholder('Zoek in subsidieregelingen…').count()==0)
     t=txt(pg)
     ok('1: toont alleen eigen financieringsregels (8 van P1; andermans, gearchiveerd project en legacy niet)', pg.locator('[data-testid="md-rij"]').count()==8 and 'GEHEIM' not in t and 'GEARCHIVEERDE' not in t and 'LEGACY' not in t, str(pg.locator('[data-testid="md-rij"]').count()))

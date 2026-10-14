@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
+import { ActieplanVoorProject } from '../financiering/ActieplanBlok.jsx';
 import FinancierFormulier from '../financiering/FinancierFormulier.jsx';
 import {
   STATUSSEN,
@@ -345,6 +346,12 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
           </>
         )}
       </section>
+
+      {status === 'klaar' && project && project.id && (
+        <section style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF;')}>
+          <ActieplanVoorProject project={project} regels={regels} />
+        </section>
+      )}
     </div>
   );
 }

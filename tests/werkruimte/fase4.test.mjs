@@ -137,7 +137,7 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: PA, bron_type: 'regelin
 {
   const chat = loop('src/features/kompas-app/chat').filter((f) => /\.(js|jsx)$/.test(f));
   const code = (f) => zonderCommentaar(lees(f));
-  check('27: chat/-modules: geen localStorage/sessionStorage/IndexedDB (geen browserstate als bron van waarheid)', chat.every((f) => !/localStorage|sessionStorage|indexedDB/.test(code(f))));
+  check('27: chat/-modules: geen localStorage/sessionStorage/IndexedDB (geen browserstate als bron van waarheid); enige uitzondering: ChatWerkruimte bewaart kolombreedte/ingeklapt als weergavevoorkeur, binnen try/catch', chat.every((f) => f.endsWith('ChatWerkruimte.jsx') || !/localStorage|sessionStorage|indexedDB/.test(code(f))) && /try \{[^}]*localStorage/.test(code('src/features/kompas-app/chat/ChatWerkruimte.jsx')));
   check('28: chat/-modules: geen askKompas, Edge Function, context-/promptbouw of directe Supabase-aanroepen', chat.every((f) => !/askKompas|functions\.invoke|buildContext|buildMatchSignalen|buildProjectFundingContext|from ['"].*data\/client|supabase\./.test(code(f))));
   const hook = code('src/features/kompas-app/chat/useProjectContextPanel.js');
   check('29: contexthook leest alleen via bestaande bronnen (store + useProjectFinanciering) en ontvangt alleen een project-id', /useKompas/.test(hook) && /useProjectFinanciering/.test(hook) && !/werkRegelBij|verwijderRegel|voegRegelToe|\.wijzig|\.verwijder/.test(hook) && /useProjectContextPanel\(\{ projectId/.test(hook));
@@ -152,6 +152,7 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: PA, bron_type: 'regelin
   const zonderFase5 = (t) => t
     .replace(/^[ \t]*\/\/ FASE5-BEGIN[\s\S]*?\/\/ FASE5-END\n/gm, '')
     .replace(/^.*\/\/ FASE5\n/gm, '')
+    .replace(/^[ \t]*spraak\.stop\(\);\n\n/gm, '') // dicteren: microfoon stoppen bij versturen (geen wijziging van chatlogica)
     .replace(', ...(fondsKaart ? { fondsMatches: fondsKaart } : {}) }]', ' }]');
   const toolF4 = zonderFase5(tool);
   const blok = (a, b) => { const i = toolF4.indexOf(a); const j = toolF4.indexOf(b, i); return i < 0 || j < 0 ? '' : toolF4.slice(i, j); };
@@ -170,7 +171,7 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: PA, bron_type: 'regelin
   check('41: geen migratie en geen secrets in de Fase 4-bestanden', chat.every((f) => !/sk_live_|whsec_|sk_test_|create table|alter table/i.test(lees(f))));
   const tp = toolCode;
   check('51: geen algemene Context-kolom of Context-knop meer: kolom heet projectoverzicht, knop heet Project (alleen bij actief project)', !/open-context|kolom-context|Context bij dit gesprek/.test(tp + code('src/features/kompas-app/chat/ChatWerkruimte.jsx')) && /data-testid="open-project"/.test(tp) && /\{actiefProject && \(\s*<button type="button" data-testid="open-project"/.test(tp));
-  check('52: rechterkolom alleen bij actief project; drawer-tab project alleen bij actief project', /rechts=\{actiefProject \? <ProjectContextPanel/.test(tp) && /\.\.\.\(actiefProject \? \{ project:/.test(tp) && /\{rechts && \(\s*<aside/.test(code('src/features/kompas-app/chat/ChatWerkruimte.jsx')));
+  check('52: rechterkolom alleen bij actief project; drawer-tab project alleen bij actief project', /rechts=\{actiefProject \? <ProjectContextPanel/.test(tp) && /\.\.\.\(actiefProject \? \{ project:/.test(tp) && /\{rechts && \(\s*<Zijkolom kant="rechts"/.test(code('src/features/kompas-app/chat/ChatWerkruimte.jsx')));
   check('53: projectoverzicht toont geen organisatie- of documentenblok meer', !/ctx-organisatie|ctx-documenten|OrganisatieBlok|DocumentenBlok|Organisatieprofiel →|Documenten →/.test(panel));
   check('54: AI-runtime ongewijzigd in gebruik: de Edge Function leest organisatie en documenten zelf uit de database; buildContext bevat nog het actieve document', /subsidie_kompas_organizations/.test(lees('supabase/functions/subsidie-kompas/index.ts')) && /knowledge_items/.test(lees('supabase/functions/subsidie-kompas/index.ts')) && /export function buildContext/.test(lees('src/data/services/chat.js')) && /buildProjectFundingContext|projectFundingContext|fundingContext/i.test(lees('supabase/functions/subsidie-kompas/index.ts')));
   check('55: werkkop: geen status-/contextbadges meer boven de chat; "Actief in dit gesprek" alleen met actief project', !/Wisselen start een nieuw gesprek<\/span>/.test(tp) && /\{actiefProject && \(\s*<div data-testid="actief-project-kop"/.test(tp));
