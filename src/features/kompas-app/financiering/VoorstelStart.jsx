@@ -16,16 +16,18 @@ function lijstTekst(items) {
   return `${items.slice(0, -1).join(', ')} en ${items[items.length - 1]}`;
 }
 
-export default function VoorstelStart({ project, beschikbaar = voorstelGeneratieBeschikbaar(), opgeslagen = true, onStart }) {
+export default function VoorstelStart({ project, beschikbaar = voorstelGeneratieBeschikbaar(), opgeslagen = true, bezig = false, onStart }) {
   const oordeel = useMemo(() => beoordeelProject({ project }), [project]);
   const essentieel = oordeel.ontbrekend.filter((o) => o.soort === 'essentieel').map((o) => ONTBREKEND_LABEL[o.veld]).filter(Boolean);
   const aanvullend = oordeel.ontbrekend.filter((o) => o.soort !== 'essentieel').map((o) => ONTBREKEND_LABEL[o.veld]).filter(Boolean);
-  const actief = beschikbaar && opgeslagen;
+  // Knop alleen aan als de flow werkt, het project is opgeslagen, de essentiële gegevens er zijn, er een begroting is (anders valt er niets te dekken) en er niet al iets bezig is.
+  const projectKlaar = oordeel.kanOnderzoeken && oordeel.bedragenToegestaan;
+  const actief = beschikbaar && opgeslagen && projectKlaar && !bezig;
 
   return (
     <section
       data-testid="voorstel-start"
-      data-beschikbaar={actief ? 'ja' : 'nee'}
+      data-beschikbaar={beschikbaar && opgeslagen ? 'ja' : 'nee'}
       style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #CFE4D7; border-radius: 20px; background: #F3F9F5; display: flex; flex-direction: column; gap: 12px;')}
     >
       <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;')}>
@@ -49,11 +51,19 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
         </button>
       </div>
 
-      {!actief && (
+      {!actief && !bezig && !(beschikbaar && opgeslagen) && (
         <div role="status" data-testid="voorstel-nog-niet" style={css(`${TEKST} padding: 10px 14px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
           {opgeslagen
             ? 'Het maken van een voorstel is nog niet beschikbaar. Het wordt stap voor stap opgebouwd en de knop gaat pas aan als de hele flow werkt. Uw bestaande financiering en acties hieronder werken al.'
             : 'Sla dit project eerst op (Projecten); daarna kunt u een voorstel laten maken.'}
+        </div>
+      )}
+
+      {beschikbaar && opgeslagen && !projectKlaar && !bezig && (
+        <div role="status" data-testid="voorstel-eerst-aanvullen" style={css(`${TEKST} padding: 10px 14px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
+          {oordeel.kanOnderzoeken
+            ? 'Vul eerst de projectbegroting in; zonder begroting kan Subsidiekompas geen sluitend dekkingsplan met bedragen maken.'
+            : 'Vul eerst de ontbrekende projectgegevens aan (zie hieronder); daarna kan Subsidiekompas een voorstel maken.'}
         </div>
       )}
 

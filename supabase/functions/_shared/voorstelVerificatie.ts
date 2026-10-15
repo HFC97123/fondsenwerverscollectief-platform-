@@ -17,7 +17,7 @@
 // Elke uitzondering eindigt in ok:false zonder enige verificatiestatus. De client kan een status nooit zelf bepalen.
 
 // @deno-types="./voorstelContract.d.ts"
-import { MAX_REGELS, berekenTotalen, isEchteDatum, schaalEnControleer, veiligeUrl } from './voorstelContract.js';
+import { MAX_REGELS, berekenTotalen, isEchteDatum, schaalEnControleer, toegestaneSom, veiligeUrl } from './voorstelContract.js';
 import type { BekendRecord, ContractRegel, ContractVoorstel } from './voorstelContract.js';
 import { zoekFragmenten } from './fragmentZoeker.ts';
 import { bouwMetadata } from './voorstelMetadata.ts';
@@ -66,6 +66,8 @@ export interface PreviewInvoer {
   bedragenToegestaan?: boolean;
   records: ServerRecord[];
   geheim?: string | null;
+  // Alleen van de server (tierConfig): factor waarmee de som het financieringsgat mag overschrijden (Pro 1.10, Premium 1.20). Ontbreekt = 1.
+  dekkingsdoel?: number;
 }
 
 export type OvergeslagenCode = 'online-niet-ondersteund' | 'onbekende-bron' | 'geen-object';
@@ -189,7 +191,7 @@ export function filterOpEntitlement(raw: Record<string, unknown>, records: Serve
 // ---------------------------------------------------------------------------------------------------------------------------
 // Stap 4: tweede, onafhankelijke grenzencontrole (niet het contract opnieuw uitvoeren, maar het RESULTAAT tegen de bron van waarheid houden)
 
-export function controleerGrenzen(voorstel: ContractVoorstel, bekend: Record<string, BekendRecord>, dekking: unknown, bedragenToegestaan: boolean): string[] {
+export function controleerGrenzen(voorstel: ContractVoorstel, bekend: Record<string, BekendRecord>, dekking: unknown, bedragenToegestaan: boolean, dekkingsdoel: number = 1): string[] {
   const fouten: string[] = [];
   const d = isObject(dekking) ? dekking : {};
   const gat = d.heeftBegroting === true && typeof d.nogTePlannen === 'number' ? Math.max(0, d.nogTePlannen) : 0;
@@ -209,7 +211,7 @@ export function controleerGrenzen(voorstel: ContractVoorstel, bekend: Record<str
     som += r.bedrag;
   }
 
-  if (som > gat) fouten.push('boven-financieringsgat');
+  if (som > toegestaneSom(gat, dekkingsdoel)) fouten.push('boven-financieringsgat');
 
   return fouten;
 }
@@ -366,6 +368,7 @@ export async function maakVoorstelPreview(inv: PreviewInvoer, deps: PreviewAfhan
       vandaag,
       bekendeBronnen: gefilterd.bekend,
       opgehaaldeBronnen: [],
+      dekkingsdoel: inv.dekkingsdoel,
     };
     const gevalideerd = schaalEnControleer(gefilterd.raw, ctx);
 
@@ -375,7 +378,7 @@ export async function maakVoorstelPreview(inv: PreviewInvoer, deps: PreviewAfhan
     const voorstel: ContractVoorstel = { ...gevalideerd.voorstel, acties: [] };
 
     // 4. tweede grenzencontrole
-    const grenzen = controleerGrenzen(voorstel, gefilterd.bekend, inv.dekking, bedragenToegestaan);
+    const grenzen = controleerGrenzen(voorstel, gefilterd.bekend, inv.dekking, bedragenToegestaan, inv.dekkingsdoel);
 
     if (grenzen.length) return mislukt('grenzen-geschonden', grenzen.slice(0, 10).map((code) => ({ pad: 'regels', code })));
 

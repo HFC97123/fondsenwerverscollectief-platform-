@@ -4,6 +4,10 @@ export const VOORSTEL_VERSIE: number;
 export const MAX_REGELS: number;
 export function isEchteDatum(iso: unknown): boolean;
 export function veiligeUrl(waarde: unknown): string | null;
+export function zelfdeFinancier(a: unknown, b: unknown): boolean;
+export const MAX_DEKKINGSDOEL: number;
+export function toegestaneSom(gat: number, dekkingsdoel?: unknown): number;
+export function plantTerug(regel: ContractRegel, vandaag: string): Array<Record<string, unknown>>;
 export interface ContractRegel {
   type: 'regeling' | 'fonds' | 'online';
   id: string | null;
@@ -48,6 +52,8 @@ export interface ContractContext {
   vandaag: string;
   bekendeBronnen: Record<string, BekendRecord>;
   opgehaaldeBronnen?: unknown[];
+  // Alleen van de server (tierConfig): factor 1 t/m 1,5 waarmee de som het financieringsgat mag overschrijden.
+  dekkingsdoel?: number;
 }
 export function valideerVoorstel(raw: unknown, ctx: ContractContext): ContractUitkomst;
 export function schaalEnControleer(raw: unknown, ctx: ContractContext): ContractUitkomst;

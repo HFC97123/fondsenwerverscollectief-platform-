@@ -43,7 +43,8 @@ export type AfwijsCode =
   | 'geen-bedragen-bekend'
   | 'ongeldige-grenzen'
   | 'minimum-boven-gat'
-  | 'mix-vol';
+  | 'mix-vol'
+  | 'boven-doel';
 
 export type BedragGrond = 'aandeel-van-gat' | 'rest-tot-doel' | 'fonds-maximum' | 'fonds-minimum';
 
@@ -153,7 +154,7 @@ export const MELDING_TE_WEINIG_STERKE_MATCHES =
 export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[]; gat: unknown; config: TierConfig }): MixResultaat {
   const { config } = inv;
   const gat = getal(inv.gat) ?? 0;
-  const doelBedrag = Math.ceil(gat * config.dekkingsdoel);
+  const doelBedrag = Math.ceil(Math.round(gat * config.dekkingsdoel * 100) / 100); // zelfde afronding als toegestaneSom in het contract
   const leeg = (uitkomst: MixUitkomst, melding: string | null = null): MixResultaat => ({ uitkomst, gat, doelBedrag, som: 0, dekking: 0, mix: [], reserve: null, afgewezen: [], melding });
 
   if (!config.dekkingsplan || config.maxRegelsInMix <= 0) return leeg('niet-beschikbaar');
@@ -246,6 +247,12 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
 
     if (b.bedrag === null) {
       afgewezen.push({ sleutel: k.sleutel, code: b.afwijsCode as AfwijsCode });
+      continue;
+    }
+
+    // Een minimum van het fonds mag de mix nooit boven het dekkingsdoel tillen (het contract weigert dat): dan deze overslaan.
+    if (som + b.bedrag > doelBedrag) {
+      afgewezen.push({ sleutel: k.sleutel, code: 'boven-doel' });
       continue;
     }
 

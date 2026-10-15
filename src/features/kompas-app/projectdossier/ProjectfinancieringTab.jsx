@@ -9,7 +9,7 @@ import { css } from '../../../shared/lib/css.js';
 import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { ActieplanVoorProject } from '../financiering/ActieplanBlok.jsx';
-import VoorstelStart from '../financiering/VoorstelStart.jsx';
+import VoorstelWerkruimte from '../financiering/VoorstelWerkruimte.jsx';
 import FinancierFormulier from '../financiering/FinancierFormulier.jsx';
 import {
   STATUSSEN,
@@ -274,6 +274,7 @@ function Regel({ regel, onWijzig, onVerwijder }) {
 
 export default function ProjectfinancieringTab({ project, financiering, dekking }) {
   const { status, fout, regels, wijzig, verwijder, laad } = financiering;
+  const [actieVersie, setActieVersie] = useState(0);
 
   return (
     <div data-testid="tab-projectfinanciering" style={css('display: flex; flex-direction: column; gap: 18px;')}>
@@ -292,7 +293,14 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
         </div>
       )}
 
-      <VoorstelStart project={project} opgeslagen={status !== 'geen-database' && Boolean(project && project.id)} />
+      <VoorstelWerkruimte
+        project={project}
+        opgeslagen={status !== 'geen-database' && Boolean(project && project.id)}
+        onOpgeslagen={() => {
+          laad();
+          setActieVersie((v) => v + 1);
+        }}
+      />
 
       <section style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF;')}>
         <h2 style={css(`${LABEL} margin: 0 0 14px;`)}>Dekking van de begroting</h2>
@@ -359,7 +367,7 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
 
       {status === 'klaar' && project && project.id && (
         <section id="pf-acties" data-testid="pf-acties" style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF;')}>
-          <ActieplanVoorProject project={project} regels={regels} />
+          <ActieplanVoorProject key={actieVersie} project={project} regels={regels} />
         </section>
       )}
     </div>

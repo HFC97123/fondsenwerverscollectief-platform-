@@ -108,7 +108,7 @@ function Rij({ label, children, testId }) {
 }
 
 // De details van één voorgestelde regel. Alleen weergave van wat de server leverde; bevat zelf geen enkele controle.
-function VoorstelRegelDetail({ r }) {
+export function VoorstelRegelDetail({ r }) {
   return (
     <div data-testid="voorstel-regel-detail" style={css('display: flex; flex-direction: column; gap: 12px;')}>
       <style>{STIJL_DETAIL}</style>

@@ -26,6 +26,15 @@ export const DATUM_TYPE = { STREEF: 'streef', EXTERN: 'extern' };
 const MAX = { naam: 200, motivatie: 600, onderdeel: 200, voorwaarde: 300, onzekerheid: 300, titel: 200, toelichting: 600, sleutel: 120 };
 const MAX_LIJST = 6;
 const MAX_BEDRAG = 1e12;
+// Dekkingsdoel: hoeveel boven het financieringsgat een voorstel mag uitkomen omdat een afwijzing normaal is (Pro 1.10, Premium 1.20).
+// Alleen de SERVER bepaalt dit (uit de tierconfiguratie); een waarde buiten 1 t/m 1,5 telt als 1 (geen buffer).
+export const MAX_DEKKINGSDOEL = 1.5;
+export function toegestaneSom(gat, dekkingsdoel) {
+  const f = typeof dekkingsdoel === 'number' && Number.isFinite(dekkingsdoel) && dekkingsdoel >= 1 && dekkingsdoel <= MAX_DEKKINGSDOEL ? dekkingsdoel : 1;
+
+  // Eerst op centen afronden: 100000 * 1.1 is in floating point 110000.00000000001 en mag niet 110001 worden.
+  return Math.ceil(Math.round(gat * f * 100) / 100);
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const PRIORITEITEN = ['high', 'normal', 'low'];
@@ -560,6 +569,7 @@ function binnenGrenzen(bedrag, min, max) {
 //   bestaandeRegels    regels uit het dekkingsplan: [{ schemeId, funderId, naam, financierNaam }] (voor "staat al")
 //   bedragenToegestaan zie beoordeelProject; false = alle bedragen worden leeggemaakt
 //   vandaag            ISO-datum
+//   dekkingsdoel       optioneel, alleen van de server: factor (1 t/m 1,5) waarmee de som het financieringsgat mag overschrijden
 // -> { ok, voorstel, fouten: [{ pad, code }], waarschuwingen: [{ pad, code }] }
 export function valideerVoorstel(raw, ctx) {
   const c = ctx || {};
@@ -711,7 +721,7 @@ export function valideerVoorstel(raw, ctx) {
   // --- Totalen en financieringsgat -------------------------------------------------------------------------------------
   const som = regels.filter((r) => r.selecteerbaar).reduce((t, r) => t + (r.bedrag || 0), 0);
 
-  if (som > gat) fout('regels', 'boven-financieringsgat');
+  if (som > toegestaneSom(gat, c.dekkingsdoel)) fout('regels', 'boven-financieringsgat');
 
   // --- Acties --------------------------------------------------------------------------------------------------------
   const ruweActies = Array.isArray(raw.acties) ? raw.acties : [];
@@ -956,7 +966,7 @@ export function schaalEnControleer(raw, ctx) {
 
   const c = ctx || {};
   const gat = c.dekking && c.dekking.heeftBegroting ? Math.max(0, c.dekking.nogTePlannen || 0) : 0;
-  const geschaald = schaalNaarGat(eerste.voorstel.regels, gat);
+  const geschaald = schaalNaarGat(eerste.voorstel.regels, toegestaneSom(gat, c.dekkingsdoel));
   const perSleutel = new Map(geschaald.map((r) => [r.sleutel, r]));
   const ruweRegels = Array.isArray(raw.regels) ? raw.regels : [];
   const nieuweRegels = [];
