@@ -7,8 +7,9 @@
 //
 // Vaste volgorde per aanroep:
 //   1. invoer en token-eisen controleren (gebruiker, project, datum)
-//   2. ENTITLEMENT per regel, vóór alles: verborgen of onbekend = regel verdwijnt (niet te onderscheiden van niet bestaand);
-//      publiek = regel blijft zonder bedragen/deadline/grenzen en wordt NIET opgehaald; online = overgeslagen (geen server-bekende bron)
+//   2. ENTITLEMENT per regel, vóór alles: alleen een record op niveau 'volledig' blijft over. Verborgen, publiek of onbekend = regel
+//      verdwijnt (niet te onderscheiden van niet bestaand). Productregel 15-10-2026: een Premium-record verschijnt alleen bij Premium,
+//      ook niet als "alleen naam" bij Pro of Free. Online = overgeslagen (geen server-bekende bron)
 //   3. contractvalidatie met server-bekende records (bedragen binnen grenzen, financieringsgat, dubbelen, bestaande regels)
 //   4. een tweede, onafhankelijke grenzencontrole op het resultaat (fail-safe: bij twijfel geen voorstel)
 //   5. verificatie per toegestane regel (begrensd aantal, begrensde tijd, begrensde gelijktijdigheid)
@@ -48,6 +49,12 @@ export interface ServerRecord {
   min?: number | null;
   max?: number | null;
   cofinanciering?: string | null;
+  // Wat onze database van dit record zegt over waarop gescand wordt (alleen bij niveau 'volledig'). Nog niet door de verificatiemotor
+  // gecontroleerd; dit is de vergelijkingsbasis voor de latere controle van doelgroep, werkgebied en aanvragertype (TIER-3).
+  themas?: string[]; // disciplines
+  doelgroepen?: string[];
+  werkgebieden?: string[];
+  aanvraagcriteria?: string | null; // vrije tekst; hier staat ook het aanvragertype (geen aparte kolom)
 }
 
 export interface PreviewInvoer {
@@ -126,8 +133,8 @@ export interface Gefilterd {
   records: Map<string, ServerRecord>; // op "type:id"
 }
 
-// Haalt uit de ruwe regels alles weg wat deze gebruiker niet mag zien of waar de server geen bron voor kent. Geeft ook de server-bekende
-// records (voor het contract) terug: bij niveau 'publiek' zijn deadline, grenzen en cofinanciering daar al weggelaten.
+// Haalt uit de ruwe regels alles weg wat deze gebruiker niet VOLLEDIG mag zien of waar de server geen bron voor kent. Geeft ook de
+// server-bekende records (voor het contract) terug.
 export function filterOpEntitlement(raw: Record<string, unknown>, records: ServerRecord[]): Gefilterd {
   const perSleutel = new Map<string, ServerRecord>();
 
@@ -158,27 +165,22 @@ export function filterOpEntitlement(raw: Record<string, unknown>, records: Serve
     const id = typeof r.id === 'string' ? r.id.toLowerCase() : '';
     const rec = (r.type === 'regeling' || r.type === 'fonds') && UUID.test(id) ? perSleutel.get(sleutelVan(r.type, id)) : undefined;
 
-    // Verborgen of onbekend zijn voor de gebruiker niet te onderscheiden.
-    if (!rec || rec.niveau === 'verborgen') {
+    // Verborgen, publiek (record van een hoger abonnement) of onbekend zijn voor de gebruiker niet te onderscheiden.
+    if (!rec || rec.niveau !== 'volledig') {
       overgeslagen.push({ index, code: 'onbekende-bron' });
       return;
     }
 
-    const volledig = rec.niveau === 'volledig';
-
-    // Het contract zoekt de record op id. Bij 'publiek' ontbreken alle gevoelige velden, dus kan er niets worden gelekt of "bevestigd".
     bekend[id] = {
       naam: rec.naam,
       gever: rec.gever ?? '',
-      deadline: volledig && isEchteDatum(rec.deadline) ? (rec.deadline as string) : null,
-      min: volledig && typeof rec.min === 'number' ? rec.min : null,
-      max: volledig && typeof rec.max === 'number' ? rec.max : null,
-      cofinanciering: volledig ? rec.cofinanciering ?? null : null,
+      deadline: isEchteDatum(rec.deadline) ? (rec.deadline as string) : null,
+      min: typeof rec.min === 'number' ? rec.min : null,
+      max: typeof rec.max === 'number' ? rec.max : null,
+      cofinanciering: rec.cofinanciering ?? null,
     };
     toegestaan.set(id, rec);
-
-    // Een bedrag bij een publiek record is niet te begrenzen: weg ermee (nooit een onbegrensd bedrag in een preview).
-    bruikbaar.push(volledig ? r : { ...r, bedrag: null });
+    bruikbaar.push(r);
   });
 
   return { raw: { ...raw, regels: bruikbaar }, overgeslagen, bekend, records: toegestaan };

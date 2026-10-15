@@ -1,10 +1,12 @@
 // Hoe het werkt: wat Subsidie Kompas doet, de vijf stappen, en waarom Premium.
-import React from 'react';
+import React, { useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from '../kompas-app/useKompasApp.js';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
-import { abonnerenHash, bewaarIntentie, intentieVoorTier } from '../../data/services/koopintentie.js';
+import { abonnerenHash, bewaarIntentie, bewaarLooptijd, intentieVoorTier, leesLooptijd } from '../../data/services/koopintentie.js';
+import { LOOPTIJD_INFO, STANDAARD_LOOPTIJD, maxBesparingPercentage, prijsInfo } from '../../data/abonnementen.js';
+import LooptijdSchakelaar from './LooptijdSchakelaar.jsx';
 import { naar } from '../../app/routes.js';
 import { useStappen } from './useMarketingContent.js';
 
@@ -43,7 +45,6 @@ const PLANNEN = [
   {
     tier: 'pro',
     naam: 'Pro',
-    prijs: '€12',
     proefperiode: '7 dagen gratis proberen',
     omschrijving: 'Professionele documenten in uw eigen huisstijl.',
     ctaTekst: 'Start 7 dagen gratis',
@@ -69,7 +70,6 @@ const PLANNEN = [
   {
     tier: 'premium',
     naam: 'Premium',
-    prijs: '€39',
     proefperiode: '24 uur gratis proberen',
     omschrijving: 'Alles uit Pro, plus de exclusieve fondsendatabase.',
     ctaTekst: 'Probeer Premium 24 uur',
@@ -121,6 +121,12 @@ export default function HoeHetWerktPage() {
   const app = useApp();
   const tier = app.subscriptionTier || 'free';
   const STAPPEN = useStappen() || STAPPEN_STANDAARD;
+  // Looptijd voor de prijsweergave: een eerder bewaarde keuze, anders de standaard. Alleen weergave.
+  const [looptijd, setLooptijd] = useState(() => leesLooptijd() || STANDAARD_LOOPTIJD);
+  const kiesLooptijd = (code) => {
+    setLooptijd(code);
+    bewaarLooptijd(code);
+  };
 
   // Kiezen van Pro of Premium start NOOIT iets. Het onthoudt alleen de keuze
   // (intentie PRO of PREMIUM, uitsluitend UX) en brengt de bezoeker naar
@@ -133,8 +139,8 @@ export default function HoeHetWerktPage() {
       return;
     }
 
-    bewaarIntentie(code);
-    naar(abonnerenHash(code));
+    bewaarIntentie(code, looptijd);
+    naar(abonnerenHash(code, looptijd));
   };
 
   return (
@@ -311,6 +317,14 @@ export default function HoeHetWerktPage() {
         </div>
       </div>
 
+      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(24px, 3vw, 34px) clamp(16px, 4vw, 24px) 0; text-align: center;')}>
+        <LooptijdSchakelaar waarde={looptijd} onChange={kiesLooptijd} />
+        <div style={css('max-width: 640px; margin: 14px auto 0; font-size: 14px; line-height: 1.6; color: #4B5C58;')}>
+          Vooruit betalen geeft korting (tot {maxBesparingPercentage('JAAR')}% bij een jaar). Na de gekozen periode loopt uw
+          abonnement automatisch door voor de maandprijs, per maand opzegbaar.
+        </div>
+      </div>
+
       <div
         style={css(
           'max-width: 1180px; margin: 0 auto; padding: clamp(30px, 4vw, 46px) clamp(16px, 4vw, 24px) clamp(48px, 7vw, 90px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 18px; align-items: stretch;',
@@ -318,6 +332,9 @@ export default function HoeHetWerktPage() {
       >
         {PLANNEN.map((plan) => {
           const huidig = tier === plan.tier;
+          const prijs = plan.tier === 'free' ? null : prijsInfo(plan.tier, looptijd);
+          const vooruit = Boolean(prijs && prijs.vooruit);
+          const ctaTekst = !plan.ctaTekst || !prijs ? plan.ctaTekst : prijs.vooruit ? `Kies ${plan.naam} ${LOOPTIJD_INFO[looptijd].periode}` : plan.ctaTekst;
 
           return (
             <div
@@ -346,12 +363,22 @@ export default function HoeHetWerktPage() {
               <div style={css('font-size: 15px; font-weight: 800; color: #4E9A6C; margin-bottom: 10px;')}>{plan.naam}</div>
               <div style={css('display: flex; align-items: baseline; gap: 8px; margin-bottom: 14px;')}>
                 <span style={css("font-family: 'Newsreader', serif; font-size: 46px; font-weight: 600; color: #2C4A5E; line-height: 1;")}>
-                  {plan.prijs}
+                  {prijs ? prijs.perMaand : plan.prijs}
                 </span>
                 <span style={css('font-size: 14px; color: #6B7B77;')}>{plan.tier === 'free' ? 'per maand' : 'per maand excl. btw'}</span>
               </div>
+              <div style={css('min-height: 42px; font-size: 13.5px; line-height: 1.5; color: #4B5C58; margin-bottom: 8px;')} data-testid={`prijsregel-${plan.tier}`}>
+                {vooruit ? (
+                  <>
+                    {prijs.totaal} {prijs.periode} vooruit betaald
+                    {prijs.besparingPercentage > 0 ? ` · bespaar ${prijs.besparingPercentage}%` : ''}
+                    <br />
+                    Daarna {prijs.maandPrijs} per maand
+                  </>
+                ) : null}
+              </div>
               <div style={css('min-height: 22px; font-size: 14px; font-weight: 800; color: #4E9A6C; margin-bottom: 16px;')}>
-                {huidig ? '' : plan.proefperiode}
+                {huidig || vooruit ? '' : plan.proefperiode}
               </div>
               <div style={css('min-height: 48px; font-size: 15px; line-height: 1.6; color: #4B5C58; margin-bottom: 26px;')}>
                 {plan.omschrijving}
@@ -365,7 +392,7 @@ export default function HoeHetWerktPage() {
                 >
                   Huidig abonnement
                 </div>
-              ) : plan.ctaTekst ? (
+              ) : ctaTekst ? (
                 <button
                   type="button"
                   onClick={() => kiesPlan(plan)}
@@ -385,7 +412,7 @@ export default function HoeHetWerktPage() {
                     text-align: center;
                   `)}
                 >
-                  {plan.ctaTekst}
+                  {ctaTekst}
                 </button>
               ) : (
                 <div style={css('box-sizing: border-box; min-height: 56px; margin-bottom: 26px;')} aria-hidden="true" />

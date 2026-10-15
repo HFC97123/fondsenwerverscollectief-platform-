@@ -84,6 +84,8 @@ sectie('3. Happy path voor een Free-lid met een volledig toegankelijke regeling'
   check('geen acties, niets opgeslagen', j?.voorstel?.acties?.length === 0 && j?.opgeslagen === false && j?.actiesGegenereerd === false);
   check('zonder VOORSTEL_TOKEN_SECRET: geen token', j?.token === null);
   check(GEEN_SCHRIJVEN, w.schrijfpogingen.length === 0, JSON.stringify(w.schrijfpogingen));
+  check('kostenmeter: precies één rij, alleen tellers (geen inhoud)', w.gebruikRijen.length >= 1 && w.gebruikRijen.every((g) => g.action_type === 'proposal_preview' && g.user_id === UID && g.project_id === PID && g.verification_pages === 1 && g.success === true && Object.keys(g).sort().join() === ['action_type', 'cache_hits', 'duration_ms', 'estimated_cost_eur', 'external_page_fetches', 'input_tokens', 'model', 'output_tokens', 'project_id', 'success', 'tier', 'user_id', 'verification_pages', 'web_search_calls'].sort().join()), JSON.stringify(w.gebruikRijen));
+  check('kostenmeter: geen URL, naam of tekst in de rij', !/example|http|Rotterdams/i.test(JSON.stringify(w.gebruikRijen)));
   check('alleen toegestane RPC-aanroepen', w.rpcs.every((n) => TOEGESTANE_RPC.has(n)), JSON.stringify([...new Set(w.rpcs)]));
   check('de client kan geen token of status meesturen die iets verandert', (await preview(voorstel([regel('regeling', A)], { token: 'x', verificaties: [{ status: 'geverifieerd' }] }))).json?.ok === true);
 
@@ -101,16 +103,12 @@ sectie('4. Entitlement per regel: Free-lid ziet niet meer dan de bestaande entit
   const j = uit.json;
 
   check('200 en ok', uit.status === 200 && j?.ok === true, uit.tekst.slice(0, 300));
-  check('exclusief fonds en exclusieve regeling zijn weg (niet te onderscheiden van onbekend)', j.voorstel.regels.every((r) => r.id !== X && r.id !== XF) && j.overgeslagen.filter((o) => o.code === 'onbekende-bron').length === 2);
+  check('exclusief fonds, exclusieve regeling en premium-record zijn weg (niet te onderscheiden van onbekend)', j.voorstel.regels.every((r) => r.id !== X && r.id !== XF && r.id !== P) && j.overgeslagen.filter((o) => o.code === 'onbekende-bron').length === 3, JSON.stringify(j.overgeslagen));
   check('niets van het exclusieve fonds in de respons', !/Geheim|geheimfonds|Geheime/i.test(uit.tekst));
   check('exclusieve host nooit benaderd', !w.dnsOpgevraagd.some((h) => h.includes('geheim')) && !w.fetches.some((f) => f.includes('geheim')));
-
-  const premium = j.voorstel.regels.find((r) => r.id === P);
-
-  check('premium-record, Free-lid: regel zichtbaar zonder bedrag, deadline en grenzen', premium && premium.bedrag === null && premium.deadline.datum === null && premium.grenzen.min === null && premium.grenzen.max === null, JSON.stringify(premium));
+  check('premium-record, Free-lid: de regel verschijnt niet, ook niet als alleen een naam', !/Premium Cultuurregeling|premium\.example/i.test(uit.tekst), uit.tekst.slice(0, 200));
   check('premium-record: geen gevoelige gegevens in de respons', !/2026-12-01|90000|50%/.test(uit.tekst));
   check('premium-record: niet opgehaald', !w.dnsOpgevraagd.includes('www.premium.example.nl') && !w.fetches.some((f) => f.includes('premium')));
-  check('premium-record: geen verificatieclaim', j.verificaties.find((v) => v.sleutel === premium.sleutel)?.metadata?.verificatie === undefined);
   check('volledige regel wel geverifieerd', j.verificaties.find((v) => v.sleutel === j.voorstel.regels.find((r) => r.id === A).sleutel)?.metadata?.verificatie?.status === 'geverifieerd');
   check('fonds zonder deadline: alleen naam bevestigd, niet "geverifieerd"', (() => { const v = j.verificaties.find((x) => x.sleutel === j.voorstel.regels.find((r) => r.id === F).sleutel); return v?.metadata?.verificatie?.status === 'gedeeltelijk' || v?.metadata?.verificatie?.status === 'onzeker'; })());
   check(GEEN_SCHRIJVEN, w.schrijfpogingen.length === 0);
@@ -121,6 +119,13 @@ sectie('4. Entitlement per regel: Free-lid ziet niet meer dan de bestaande entit
 
   check('Premium-lid: premium-record volledig (deadline en grenzen)', pr && pr.deadline.datum === '2026-12-01' && pr.grenzen.max === 90000 && pr.bedrag === 50000, prem.tekst.slice(0, 300));
   check('Premium-lid: premium-bron wel opgehaald', w.fetches.some((f) => f.includes('premium')));
+
+  reset({ profile: { subscription_tier: 'pro', subscription_active: true, trial_ends_at: null, role: 'user' }, paginas: { 'https://www.premium.example.nl/regeling': '<html><body><h1>Premium Cultuurregeling</h1></body></html>' } });
+  const proUit = await preview(voorstel([regel('regeling', P, { bedrag: 50000 }), regel('regeling', A)]));
+
+  check('Pro-lid: een Premium-record verschijnt niet (ook niet als naam), de eigen regeling wel', proUit.json?.ok === true && proUit.json.voorstel.regels.length === 1 && proUit.json.voorstel.regels[0].id === A && !/Premium Cultuurregeling|premium\.example/i.test(proUit.tekst), proUit.tekst.slice(0, 300));
+  check('Pro-lid: premium-bron nooit benaderd', !w.dnsOpgevraagd.includes('www.premium.example.nl') && !w.fetches.some((f) => f.includes('premium')));
+  check('Pro-lid: kostenmeter noteert tier pro', w.gebruikRijen.every((g) => g.tier === 'pro'));
 }
 
 sectie('5. Exclusiviteitslijst onbeschikbaar: fail closed voor Free');
@@ -198,6 +203,7 @@ sectie('8. Statische eigenschappen van het mode-blok');
     check(`${naam}: geen schrijvende RPC`, [...deel.matchAll(/\.rpc\(\s*'([a-z_]+)'/g)].every((m) => ['kompas_subsidieregelingen_voor_tier', 'kompas_funders_voor_matching'].includes(m[1])), JSON.stringify([...deel.matchAll(/\.rpc\(\s*'([a-z_]+)'/g)].map((m) => m[1])));
     check(`${naam}: geen opslag of storage`, !/storage|localStorage|\.upload\(/.test(deel));
     check(`${naam}: geen OpenAI of legVerbruikVast`, !/openai|legVerbruikVast|apiKey|MODEL/i.test(deel));
+    check(`${naam}: de enige schrijfhandeling is de kostenmeter met alleen tellers`, [...deel.matchAll(/meldGebruik\(admin, \{([^}]*)\}/g)].every((m) => /actie: 'proposal_preview'/.test(m[1]) && !/(voorstel|regels|tekst|naam|url|body)/i.test(m[1].replace(/projectId: projectRij\.id/, ''))));
     check(`${naam}: geen koppeling met chat-, matching- of acties-code`, !/verkenOnline|beoordeelPool|pasRechtenToe|bouwFondsMatches|project_actions|kompas_conversations/.test(deel));
   }
 

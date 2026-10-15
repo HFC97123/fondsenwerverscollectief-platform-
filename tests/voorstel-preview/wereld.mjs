@@ -35,7 +35,7 @@ export function reset(extra = {}) {
     exclusief: [{ funder_id: XF, naam: 'Geheim Exclusief Fonds', website: 'https://www.geheimfonds.nl/', aliassen: [], regeling_namen: ['Geheime Regeling'], regeling_links: [] }],
     dns: { 'www.fonds-a.example.nl': ['93.184.216.34'], 'www.fonds-f.example.nl': ['93.184.216.34'], 'www.premium.example.nl': ['93.184.216.34'], 'www.geheimfonds.nl': ['93.184.216.34'] },
     paginas: { 'https://www.fonds-a.example.nl/aanvragen': PAGINA_A, 'https://www.fonds-f.example.nl/': '<html><head><title>x</title></head><body><h1>Fonds Voorbeeld</h1><p>Wij steunen projecten in Rotterdam.</p></body></html>' },
-    schrijfpogingen: [], rpcs: [], fetches: [], dnsOpgevraagd: [], tabellen: [],
+    schrijfpogingen: [], gebruikRijen: [], rpcs: [], fetches: [], dnsOpgevraagd: [], tabellen: [],
     ...extra,
   });
 }
@@ -53,7 +53,13 @@ const builder = (tabel) => {
       if (tabel === 'subsidie_kompas_programs') return { data: w.project && filters.id === w.project.id && filters.user_id === w.project.user_id && filters.archived_at === null && w.project.archived_at === null ? w.project : null, error: null };
       return { data: null, error: null };
     },
-    insert(r) { w.schrijfpogingen.push({ tabel, soort: 'insert', r }); return Promise.resolve({ data: null, error: null }); },
+    // De interne kostenmeter is de ENIGE toegestane insert: alleen tellers, geen inhoud. Wordt apart bijgehouden en getoetst.
+    insert(r) {
+      if (tabel === 'kompas_gebruik_log') w.gebruikRijen.push(r);
+      else w.schrijfpogingen.push({ tabel, soort: 'insert', r });
+
+      return Promise.resolve({ data: null, error: null });
+    },
     update(r) { w.schrijfpogingen.push({ tabel, soort: 'update', r }); return b; },
     upsert(r) { w.schrijfpogingen.push({ tabel, soort: 'upsert', r }); return b; },
     delete() { w.schrijfpogingen.push({ tabel, soort: 'delete' }); return b; },

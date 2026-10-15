@@ -9,8 +9,8 @@
 //    toepasselijke belasting en toont basisbedrag, belasting en totaal op de
 //    Stripe Checkout-pagina; Stripe is de enige bron van waarheid voor belasting.
 //    Er staat nergens in de code een btw-percentage of een bedrag incl. btw;
-//  - PRO     EUR 12 per maand excl. btw, trial 7 dagen als nog beschikbaar;
-//  - PREMIUM EUR 39 per maand excl. btw, trial 1 dag (beoogd exact 24 uur) als
+//  - PRO     EUR 40 per maand excl. btw, trial 7 dagen als nog beschikbaar;
+//  - PREMIUM EUR 75 per maand excl. btw, trial 1 dag (beoogd exact 24 uur) als
 //            nog beschikbaar;
 //  - trial uitsluitend voor een account dat NOOIT eerder een trial EN nooit
 //    een Pro/Premium-abonnement had (Stripe-historie + profiel);
@@ -27,8 +27,11 @@
 //  Subscription lifecycle bepaald. Er is hier geen eigen timer of
 //  Supabase-trigger die na 7 dagen/24 uur zelf iets activeert.
 //
-// De client stuurt UITSLUITEND { plan: 'PRO' | 'PREMIUM', voorwaarden_akkoord:
-// true }. Trial ja/nee, trialduur, Price ID, prijs, status en toegang worden
+// De client stuurt UITSLUITEND { plan: 'PRO' | 'PREMIUM', looptijd (optioneel),
+// voorwaarden_akkoord: true }. Deze functie kent nu ALLEEN de maandprijs: 'MAAND' (of geen
+// looptijd) is toegestaan; kwartaal, half jaar en jaar worden GEWEIGERD (fail closed) totdat de
+// vooruitbetaalde varianten hier en in de webhook zijn gebouwd. Zo kan nooit een maandabonnement
+// worden afgerekend terwijl het lid een vooruitbetaalde periode koos. Trial ja/nee, trialduur, Price ID, prijs, status en toegang worden
 // nooit uit het verzoek gelezen.
 //
 // BELANGRIJK - SCOPE VAN DEZE FUNCTIE:
@@ -78,22 +81,22 @@ function json(body: unknown, status = 200) {
 type Plan = 'PRO' | 'PREMIUM';
 
 const PLANNEN: Record<Plan, { tier: 'pro' | 'premium'; priceEnv: string; bedragCent: number; trialDagen: number }> = {
-  PRO: { tier: 'pro', priceEnv: 'STRIPE_PRO_PRICE_ID', bedragCent: 1200, trialDagen: 7 },
+  PRO: { tier: 'pro', priceEnv: 'STRIPE_PRO_PRICE_ID', bedragCent: 4000, trialDagen: 7 },
   // trial_period_days=1 is de normale Stripe-trial. ACCEPTATIECRITERIUM voor
   // de Sandbox-test: trial_end - trial_start moet exact 86.400 s zijn. Klopt
   // dat niet: STOPPEN en eerst een alternatief ontwerpen, geen workaround.
-  PREMIUM: { tier: 'premium', priceEnv: 'STRIPE_PREMIUM_PRICE_ID', bedragCent: 3900, trialDagen: 1 },
+  PREMIUM: { tier: 'premium', priceEnv: 'STRIPE_PREMIUM_PRICE_ID', bedragCent: 7500, trialDagen: 1 },
 };
 
 // Stripe-statussen waarin er al een lopend abonnement is: dan geen tweede
 // Checkout (voorkomt dubbele abonnementen en twee gelijktijdige trials).
 const LOPENDE_STATUSSEN = new Set(['trialing', 'active', 'past_due', 'unpaid', 'paused']);
 
-// Stripe Tax: het basisbedrag (EUR 12 / EUR 39) moet EXCLUSIEF belasting zijn.
+// Stripe Tax: het basisbedrag (EUR 40 / EUR 75) moet EXCLUSIEF belasting zijn.
 // Staat een Price (of, bij tax_behavior 'unspecified', de standaard in de Tax
 // settings van Stripe) op 'inclusive' of 'inferred_by_currency' (= inclusief
 // voor EUR), dan zou Stripe de btw UIT het basisbedrag halen en ontvangen we
-// minder dan EUR 12 / EUR 39. Dat is een stille financiële fout, dus: weigeren
+// minder dan EUR 40 / EUR 75. Dat is een stille financiële fout, dus: weigeren
 // met een duidelijke logregel en geen Checkout. Er wordt niets gewijzigd bij
 // Stripe; de Price wordt nooit aangepast.
 // Geeft null terug als alles klopt, anders een korte reden voor de log.
@@ -192,10 +195,26 @@ Deno.serve(async (req) => {
     return json({ error: 'Ongeldige aanvraag.' }, 400);
   }
 
-  const invoer = (body ?? {}) as { plan?: unknown; voorwaarden_akkoord?: unknown };
+  const invoer = (body ?? {}) as { plan?: unknown; looptijd?: unknown; voorwaarden_akkoord?: unknown };
 
   if (invoer.plan !== 'PRO' && invoer.plan !== 'PREMIUM') {
     return json({ error: 'Ongeldig abonnementstype.' }, 400);
+  }
+
+  // Looptijd: geen of 'MAAND' = gewone maandprijs. Een bekende vooruitbetaalde looptijd wordt nog niet
+  // ondersteund en een onbekende waarde is ongeldig. In beide gevallen geen Checkout en niets in rekening.
+  if (invoer.looptijd !== undefined && invoer.looptijd !== null && invoer.looptijd !== 'MAAND') {
+    const bekend = invoer.looptijd === 'KWARTAAL' || invoer.looptijd === 'HALFJAAR' || invoer.looptijd === 'JAAR';
+
+    return json(
+      {
+        error: bekend
+          ? 'Vooruitbetalen is nog niet beschikbaar. Er is niets in rekening gebracht. Kies voorlopig maandelijks.'
+          : 'Ongeldige looptijd.',
+        code: bekend ? 'looptijd_niet_beschikbaar' : 'ongeldige_looptijd',
+      },
+      400,
+    );
   }
 
   const plan: Plan = invoer.plan;

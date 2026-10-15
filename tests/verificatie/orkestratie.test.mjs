@@ -90,16 +90,11 @@ sectie('3. Entitlement per voorstelregel, vóór alles');
 
   check('onbekend id geeft dezelfde code als verborgen', onbekend.ok && onbekend.overgeslagen[0].code === 'onbekende-bron');
 
-  const publiek = u.ok ? u.voorstel.regels.find((r) => r.id === B) : null;
-
-  check('publiek: regel blijft zichtbaar', Boolean(publiek));
-  check('publiek: geen bedrag, geen deadline, geen grenzen', publiek && publiek.bedrag === null && publiek.deadline.datum === null && publiek.grenzen.min === null && publiek.grenzen.max === null, JSON.stringify(publiek));
+  // Productregel 15-10-2026: een record van een hoger abonnement (niveau 'publiek') verschijnt niet, ook niet als alleen een naam.
+  check('publiek: regel verdwijnt (geen Premium-record bij een lager abonnement)', u.ok && !u.voorstel.regels.some((r) => r.id === B));
+  check('publiek: alleen de generieke code, niet te onderscheiden van onbekend', u.ok && u.overgeslagen.some((o) => o.index === 2 && o.code === 'onbekende-bron'));
   check('publiek: niet opgehaald', !w.calls.dns.includes('www.premium.example.nl') && !w.calls.fetch.some((x) => x.includes('premium')));
-
-  const vp = u.ok ? u.verificaties.find((v) => v.sleutel === publiek?.sleutel) : null;
-
-  check('publiek: geen verificatieclaim', vp && vp.categorie === 'niet_uitgevoerd' && vp.reden === 'geen_toegang_tot_details' && !vp.metadata?.verificatie, JSON.stringify(vp));
-  check('publiek: de gevoelige database-waarden staan nergens in het resultaat', u.ok && !JSON.stringify(u).includes('2026-12-01') && !JSON.stringify(u).includes('90000'));
+  check('publiek: niets van het record in het resultaat (naam, gever, deadline, bedrag)', u.ok && !/Fonds Premium Voorbeeld|Stichting Premium|2026-12-01|90000/.test(JSON.stringify(u)));
   check('de gevoelige waarden van het verborgen record ook niet', u.ok && !JSON.stringify(u).includes('2026-12-31') && !JSON.stringify(u).includes('Verborgen Regeling'));
 
   const online = await preview(voorstel([regel('online', null, { bron: { url: 'https://www.nieuw.example.nl/', fragment: 'x' } }), regel('regeling', A)]), wereld());
@@ -108,7 +103,7 @@ sectie('3. Entitlement per voorstelregel, vóór alles');
 
   const f = filterOpEntitlement(voorstel([regel('fonds', B)]), [recB]);
 
-  check('filter: bij publiek zijn deadline en grenzen al in het contractrecord weggelaten', f.bekend[B].deadline === null && f.bekend[B].min === null && f.bekend[B].max === null);
+  check('filter: een publiek record komt niet in de bekende records en niet in de regels', !f.bekend[B] && !f.records.has(B) && f.raw.regels.length === 0 && f.overgeslagen[0]?.code === 'onbekende-bron');
 }
 
 sectie('4. Conflict, onzeker en niet gecontroleerd');

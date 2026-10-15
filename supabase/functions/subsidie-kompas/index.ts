@@ -529,6 +529,20 @@ async function legVerbruikVast(admin: any, row: Record<string, unknown>) {
   }
 }
 
+// Interne kostenmeter (TIER-2): één rij met alleen tellers per relevante actie (zie _shared/gebruikLog.ts). Uitsluitend meten; faalt altijd
+// stil (ook als de tabel nog niet bestaat) en wordt dynamisch geladen, zodat de opstart van deze functie niet verandert.
+async function meldGebruik(admin: any, invoer: Record<string, unknown>) {
+  try {
+    const { legGebruik, tokensUitUsage } = await import('../_shared/gebruikLog.ts');
+    const { usage, ...rest } = invoer;
+    const t = usage ? tokensUitUsage(usage) : null;
+
+    await legGebruik(admin, { ...rest, ...(t ? { inputTokens: t.input, outputTokens: t.output, gecachedeInputTokens: t.gecachte } : {}) } as any);
+  } catch (_) {
+    // meten mag een antwoord nooit blokkeren
+  }
+}
+
 // AI Fundraising Assistant, fase 1: de centrale, uitlegbare matchscore-engine.
 // Eén implementatie, hier - nooit in de frontend gedupliceerd (opdrachtpunt
 // 17: "geen duplicatie van business logic tussen frontend en backend"). De
@@ -2751,16 +2765,18 @@ async function haalPaginaOp(url: string) {
 // geen ruwe OpenAI-structuur naar de frontend: alleen platte tekst + een
 // eenvoudige {title, url}-lijst, precies zoals het bestaande sources-veld
 // dat al sinds langer door chat.js wordt doorgegeven verwacht.
-function leesResponsesUitvoer(data: any): { tekst: string; bronnen: { title: string; url: string }[]; websearchGebruikt: boolean } {
+function leesResponsesUitvoer(data: any): { tekst: string; bronnen: { title: string; url: string }[]; websearchGebruikt: boolean; websearchAantal: number } {
   const output = Array.isArray(data?.output) ? data.output : [];
   let tekst = '';
   let websearchGebruikt = false;
+  let websearchAantal = 0; // kostenmeter: aantal web_search_call-items (elk item is één zoekactie)
   const gezienUrls = new Set<string>();
   const bronnen: { title: string; url: string }[] = [];
 
   for (const item of output) {
     if (item?.type === 'web_search_call') {
       websearchGebruikt = true;
+      websearchAantal += 1;
       continue;
     }
 
@@ -2788,7 +2804,7 @@ function leesResponsesUitvoer(data: any): { tekst: string; bronnen: { title: str
   // gevonden - nooit in plaats daarvan.
   if (!tekst && typeof data?.output_text === 'string') tekst = data.output_text;
 
-  return { tekst, bronnen, websearchGebruikt };
+  return { tekst, bronnen, websearchGebruikt, websearchAantal };
 }
 
 // STAP 4B, fix 1 (websearch betrouwbaar maken): de acceptatietest van STAP 3
@@ -4784,7 +4800,7 @@ async function verkenOnline(
   taxonomie: Taxonomie,
   matchContext: { org: string; project: string } | null,
   vandaag: string = vandaagIso(),
-): Promise<{ kandidaten: WebKandidaat[]; usage: any; status: 'ok' | 'uit' | 'mislukt' }> {
+): Promise<{ kandidaten: WebKandidaat[]; usage: any; status: 'ok' | 'uit' | 'mislukt'; webAanroepen?: number }> {
   if (Deno.env.get('KOMPAS_WEB_VERKENNER') === 'uit') return { kandidaten: [], usage: null, status: 'uit' };
 
   const gebruikersTekst = (berichten || [])
@@ -4836,12 +4852,12 @@ async function verkenOnline(
     if (data?.status === 'failed' || data?.status === 'incomplete') {
       console.error('[subsidie-kompas] web_verkenner_onvolledig');
 
-      return { kandidaten: [], usage: data?.usage ?? null, status: 'mislukt' };
+      return { kandidaten: [], usage: data?.usage ?? null, status: 'mislukt', webAanroepen: leesResponsesUitvoer(data).websearchAantal };
     }
 
-    const { tekst } = leesResponsesUitvoer(data);
+    const { tekst, websearchAantal } = leesResponsesUitvoer(data);
 
-    return { kandidaten: parseVerkennerUitvoer(tekst, taxonomie), usage: data?.usage ?? null, status: 'ok' };
+    return { kandidaten: parseVerkennerUitvoer(tekst, taxonomie), usage: data?.usage ?? null, status: 'ok', webAanroepen: websearchAantal };
   } catch (_) {
     console.error('[subsidie-kompas] web_verkenner_fout');
 
@@ -5465,6 +5481,8 @@ async function freeFondsadvies(
     voldoende: false,
     usage: null as any,
     verkennerUsage: null as any,
+    verkennerWebAanroepen: 0,
+    verkennerStatus: 'uit' as string,
     taal,
     ctx: nieuweEntitlementCtx(DOCUMENT_MODI.includes(modus), exclusiviteit),
     bronnen: [] as { title: string; url: string }[],
@@ -5603,6 +5621,8 @@ async function freeFondsadvies(
     voldoende: true,
     usage,
     verkennerUsage: web.usage,
+    verkennerWebAanroepen: (web as any).webAanroepen ?? 0,
+    verkennerStatus: web.status as string,
     taal,
     ctx,
     bronnen: schoneBronnen(bronnen),
@@ -5672,6 +5692,10 @@ type VoorstelServerRecord = {
   min?: number | null;
   max?: number | null;
   cofinanciering?: string | null;
+  themas?: string[];
+  doelgroepen?: string[];
+  werkgebieden?: string[];
+  aanvraagcriteria?: string | null;
 };
 
 const voorstelGetal = (v: unknown): number | null => {
@@ -5682,6 +5706,14 @@ const voorstelGetal = (v: unknown): number | null => {
 
 // Server-bekende records voor precies de id's die het voorstel noemt. Het niveau komt uit applyEntitlementsAndSanitize (de enige
 // beslisser); bij 'publiek' bevat het record alleen wat die laag doorlaat, bij 'verborgen' niets. Faalt een bron, dan null (fail closed).
+// Korte, begrensde lijst met labels uit een databaserij (disciplines, doelgroepen, werkgebieden) voor een voorstelrecord.
+function voorstelLabels(waarde: unknown): string[] {
+  return (Array.isArray(waarde) ? waarde : [])
+    .map((x) => String(x ?? '').trim().slice(0, 80))
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 async function laadVoorstelRecords(
   admin: any,
   gevraagd: { regeling: Set<string>; fonds: Set<string> },
@@ -5722,6 +5754,10 @@ async function laadVoorstelRecords(
           min: volledig ? voorstelGetal(row.bedrag_min) : null,
           max: volledig ? voorstelGetal(row.bedrag_max) : null,
           cofinanciering: volledig ? String(row.cofinanciering || '').slice(0, 200) || null : null,
+          themas: volledig ? voorstelLabels(row.themas_namen) : [],
+          doelgroepen: volledig ? voorstelLabels(row.doelgroepen_namen) : [],
+          werkgebieden: volledig ? voorstelLabels(row.werkgebieden_namen) : [],
+          aanvraagcriteria: volledig ? String(row.aanvraagcriteria || '').slice(0, 600) || null : null,
         });
       }
     }
@@ -5757,6 +5793,10 @@ async function laadVoorstelRecords(
           min: volledig ? voorstelGetal(row.bijdrage_min) : null,
           max: volledig ? voorstelGetal(row.bijdrage_max) : null,
           cofinanciering: null,
+          themas: volledig ? voorstelLabels(row.themas_namen) : [],
+          doelgroepen: volledig ? voorstelLabels(row.doelgroepen_namen) : [],
+          werkgebieden: volledig ? voorstelLabels(row.werkgebieden_namen) : [],
+          aanvraagcriteria: volledig ? String(row.aanvraagcriteria || '').slice(0, 600) || null : null,
         });
       }
     }
@@ -5983,6 +6023,7 @@ Deno.serve(async (req) => {
         overige: projectRij.own_contribution,
       });
 
+      const tStart = Date.now();
       const uitkomst = await maakVoorstelPreview(
         {
           raw: { ...(voorstelRuw as any), regels: ruweRegels },
@@ -5998,6 +6039,20 @@ Deno.serve(async (req) => {
         },
         { resolveHost: voorstelResolveHost },
       );
+
+      // Kostenmeter: alleen tellers en duur. 'Pagina's' = bronnen waarvoor de server een verificatie is gestart (elk één opgehaalde pagina, geen AI-kosten).
+      const gecontroleerdePaginas = uitkomst.ok ? uitkomst.verificaties.filter((v) => v.categorie !== 'niet_uitgevoerd').length : 0;
+
+      await meldGebruik(admin, {
+        userId: profileId,
+        tier: isAdmin ? 'admin' : tier,
+        actie: 'proposal_preview',
+        projectId: projectRij.id,
+        externePaginas: gecontroleerdePaginas,
+        verificatiePaginas: gecontroleerdePaginas,
+        duurMs: Date.now() - tStart,
+        succes: uitkomst.ok,
+      });
 
       if (!uitkomst.ok) {
         console.error('[subsidie-kompas] voorstel_preview_afgewezen', uitkomst.reden);
@@ -6050,6 +6105,7 @@ Deno.serve(async (req) => {
         tokens_in: usage?.prompt_tokens ?? null,
         tokens_uit: usage?.completion_tokens ?? null,
       });
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'document_generation', model: MODEL, usage: usage });
     }
 
     return json({ budget });
@@ -6089,6 +6145,7 @@ Deno.serve(async (req) => {
         tokens_in: usage?.prompt_tokens ?? null,
         tokens_uit: usage?.completion_tokens ?? null,
       });
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'document_analyse', model: MODEL, usage: usage });
     }
 
     return json({ velden: voorstel });
@@ -6162,6 +6219,7 @@ Deno.serve(async (req) => {
       tokens_in: usage?.prompt_tokens ?? null,
       tokens_uit: usage?.completion_tokens ?? null,
     });
+    await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'project_advice', model: MODEL, usage: usage });
 
     if (!omschrijving) {
       return json({ omschrijving: null, reden: 'te-weinig-informatie' });
@@ -6272,6 +6330,7 @@ Deno.serve(async (req) => {
         tokens_in: usage?.prompt_tokens ?? null,
         tokens_uit: usage?.completion_tokens ?? null,
       });
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'website_analyse', model: MODEL, usage: usage });
     }
 
     return json({ velden: voorstel, paginas: paginas.map((p) => ({ url: p.url, titel: p.titel })) });
@@ -6564,6 +6623,7 @@ Deno.serve(async (req) => {
         tokens_in: advies.usage?.prompt_tokens ?? null,
         tokens_uit: advies.usage?.completion_tokens ?? null,
       });
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'fonds_scan_database', model: MODEL, usage: advies.usage });
     }
 
     // De online verkenningsaanroep wordt apart geregistreerd (Responses API-tokenvelden).
@@ -6575,6 +6635,7 @@ Deno.serve(async (req) => {
         tokens_in: advies.verkennerUsage?.input_tokens ?? null,
         tokens_uit: advies.verkennerUsage?.output_tokens ?? null,
       });
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'fonds_scan_web', model: CHAT_MODEL, usage: advies.verkennerUsage, webZoekAanroepen: advies.verkennerWebAanroepen, succes: advies.verkennerStatus === 'ok' });
     }
   }
 
@@ -6910,6 +6971,7 @@ Deno.serve(async (req) => {
         tokens_in: (data.usage?.input_tokens ?? 0) + leerTokensIn || null,
         tokens_uit: (data.usage?.output_tokens ?? 0) + leerTokensUit || null,
       });
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'chat', model: CHAT_MODEL, usage: data.usage, webZoekAanroepen: gelezen.websearchAantal });
     }
 
     // Fondsadvies: de zin over extra Pro/Premium-mogelijkheden komt van de
@@ -6934,6 +6996,7 @@ Deno.serve(async (req) => {
       let volledig = '';
       let bronnen: { title: string; url: string }[] = [];
       let usage: any = null;
+      let webAantalStroom = 0;
       // STAP 5: 'response.completed', 'response.incomplete' en
       // 'response.failed' zijn drie afzonderlijke SSE-event-types in de
       // Responses API (elk met een eigen 'type'-waarde, niet één
@@ -7032,6 +7095,7 @@ Deno.serve(async (req) => {
                 afgerond = true;
 
                 if (deel.response?.usage) usage = deel.response.usage;
+                webAantalStroom = gelezen.websearchAantal;
               }
             } catch (_) {
               // onvolledig fragment; volgende ronde
@@ -7160,6 +7224,7 @@ Deno.serve(async (req) => {
               tokens_in: (usage?.input_tokens ?? 0) + leerTokensIn || null,
               tokens_uit: (usage?.output_tokens ?? 0) + leerTokensUit || null,
             });
+            await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'chat', model: CHAT_MODEL, usage: usage, webZoekAanroepen: webAantalStroom });
           }
         }
       } catch (fout: any) {

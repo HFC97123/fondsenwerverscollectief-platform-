@@ -85,7 +85,7 @@ async function wacht() {
   await act(async () => { await sleep(30); });
 }
 
-const PRO_NAAR = (plan) => ({ plan, voorwaarden_akkoord: true });
+const PRO_NAAR = (plan, looptijd = 'MAAND') => ({ plan, looptijd, voorwaarden_akkoord: true });
 const GOED = () => ({ data: { url: CHECKOUT_URL }, error: null });
 
 // ---- 0. URL-validatie ----------------------------------------------------------
@@ -292,7 +292,7 @@ await klik(knop('Doorgaan naar betalen'));
 await wacht();
 {
   const body = client.log.invoke[0].opties.body;
-  ok(JSON.stringify(Object.keys(body).sort()) === JSON.stringify(['plan', 'voorwaarden_akkoord']), 'body bevat uitsluitend plan + voorwaarden_akkoord');
+  ok(JSON.stringify(Object.keys(body).sort()) === JSON.stringify(['looptijd', 'plan', 'voorwaarden_akkoord']), 'body bevat uitsluitend plan + looptijd + voorwaarden_akkoord');
   ok(!('trial' in body) && !('trial_period_days' in body) && !('price' in body) && !('priceId' in body) && !('tier' in body) && !('status' in body) && !('user_id' in body) && !('terms_version' in body), 'geen trial/prijs/tier/status/user/terms_version vanuit frontend');
 }
 
@@ -583,6 +583,133 @@ huidig = 'L terugkeer-status';
   ok(/onClick=\{beheerAbonnement\}/.test(accountBron2) && /openBeheerportaal\(\)/.test(accountBron2) && /Abonnement beheren/.test(accountBron2), 'AccountPage: knop "Abonnement beheren" roept openBeheerportaal aan');
   const beheerFn = accountBron2.slice(accountBron2.indexOf('const beheerAbonnement'), accountBron2.indexOf('return (', accountBron2.indexOf('const beheerAbonnement')));
   ok(!/setTier|subscription_|tier\s*=|\.update|profile/i.test(beheerFn) && /setFout\(res\.error\)/.test(beheerFn), 'beheerAbonnement: toont alleen een eventuele fout; wijzigt geen tier of profiel');
+}
+
+// ---- N. looptijden (maand, kwartaal, half jaar, jaar) ------------------------------------------------------------
+huidig = 'N looptijden';
+{
+  const ab = await import('../../src/data/abonnementen.js');
+  const kp = await import('../../src/data/services/koopintentie.js');
+
+  // N1. prijstabel: totalen, monotone korting, nooit negatief
+  ok(ab.totaalCent('pro', 'MAAND') === 4000 && ab.totaalCent('pro', 'KWARTAAL') === 10500 && ab.totaalCent('pro', 'HALFJAAR') === 19200 && ab.totaalCent('pro', 'JAAR') === 36000, 'Pro totalen 40 / 105 / 192 / 360');
+  ok(ab.totaalCent('premium', 'MAAND') === 7500 && ab.totaalCent('premium', 'KWARTAAL') === 19500 && ab.totaalCent('premium', 'HALFJAAR') === 36000 && ab.totaalCent('premium', 'JAAR') === 66000, 'Premium totalen 75 / 195 / 360 / 660');
+  for (const t of ['pro', 'premium']) {
+    const per = ab.LOOPTIJDEN.map((l) => ab.prijsPerMaandCent(t, l));
+    ok(per.every((x, i) => i === 0 || x < per[i - 1]), `${t}: per-maandprijs daalt bij langere looptijd (${per.join('/')})`);
+    ok(ab.LOOPTIJDEN.every((l) => ab.besparingCent(t, l) >= 0), `${t}: besparing nooit negatief`);
+    ok(ab.besparingCent(t, 'MAAND') === 0 && ab.besparingPercentage(t, 'MAAND') === 0, `${t}: maand = geen korting`);
+  }
+  ok(ab.besparingCent('pro', 'JAAR') === 12000 && ab.besparingPercentage('pro', 'JAAR') === 25, 'Pro jaar: bespaart 120, 25%');
+  ok(ab.prijsPerMaandCent('free', 'MAAND') === null && ab.prijsPerMaandCent('pro', 'WEEK') === null && ab.prijsInfo('pro', 'x') === null, 'onbekende tier of looptijd = null');
+  ok(ab.formatEuro(4000) === '€40' && ab.formatEuro(3250) === '€32,50', 'formatEuro: hele euro zonder decimalen, anders komma');
+  ok(ab.proefMogelijk('MAAND') === true && ['KWARTAAL', 'HALFJAAR', 'JAAR'].every((l) => ab.proefMogelijk(l) === false), 'proef alleen bij maand');
+  ok(ab.ABONNEMENTEN.pro.prijsTekst === '€40 per maand excl. btw' && ab.ABONNEMENTEN.premium.prijsTekst === '€75 per maand excl. btw', 'maandprijzen €40 / €75 excl. btw');
+
+  // N2. Pro per kwartaal: meteen betalen, geen proef, juiste tekst en juiste body
+  opnieuw(GOED);
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'KWARTAAL' }));
+  {
+    const t = tekst();
+    ok(t.includes('€105 nu betalen') && t.includes('3 maanden') && t.includes('€35 per maand') && t.includes('Daarna €40 per maand'), 'kwartaal: €105 nu, 3 maanden, daarna €40 per maand');
+    ok(t.includes('U bespaart €15'), 'kwartaal: besparing €15 genoemd');
+    ok(!t.includes('7 dagen gratis'), 'kwartaal: GEEN gratis proefperiode');
+    ok(t.includes('excl. btw') && !/\bbtw\b[^.]*\d+%/.test(t), 'excl. btw genoemd, geen btw-berekening');
+  }
+  await vink();
+  await klik(knop('Doorgaan naar betalen'));
+  await wacht();
+  ok(JSON.stringify(client.log.invoke[0].opties.body) === JSON.stringify(PRO_NAAR('PRO', 'KWARTAAL')), 'body bevat looptijd KWARTAAL en verder niets');
+  ok(!('bedrag' in client.log.invoke[0].opties.body) && !('amount' in client.log.invoke[0].opties.body) && !('price' in client.log.invoke[0].opties.body), 'frontend stuurt nooit een bedrag of prijs');
+
+  // N3. Premium per jaar
+  opnieuw(GOED);
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PREMIUM', looptijd: 'JAAR' }));
+  ok(tekst().includes('€660 nu betalen') && tekst().includes('Daarna €75 per maand') && !tekst().includes('24 uur gratis'), 'Premium jaar: €660, daarna €75 per maand, geen 24-uurs proef');
+  await vink();
+  await klik(knop('Doorgaan naar betalen'));
+  await wacht();
+  ok(JSON.stringify(client.log.invoke[0].opties.body) === JSON.stringify(PRO_NAAR('PREMIUM', 'JAAR')), 'body bevat looptijd JAAR');
+
+  // N4. maand blijft zoals voorheen (met proef) en vooruit negeert een trial-aanbod
+  opnieuw(GOED);
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PREMIUM', looptijd: 'MAAND' }));
+  ok(tekst().includes('24 uur gratis') && tekst().includes('€75 per maand excl. btw'), 'maand: proef en maandprijs zoals voorheen');
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'MAAND', aanbod: { trialBeschikbaar: false } }));
+  ok(tekst().includes('Uw gratis proefperiode is al gebruikt') && tekst().includes('€40 per maand excl. btw'), 'maand zonder trialrecht: geen proef, €40');
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO' }));
+  ok(tekst().includes('7 dagen gratis'), 'zonder looptijd-prop: gewone maandkeuze (oude gedrag)');
+
+  // N5. schakelaar op de abonneren-pagina: URL eerst, wisselen vraagt opnieuw akkoord en bewaart de keuze
+  opnieuw(GOED);
+  dom.window.location.hash = '#/kompas/abonneren?intent=PRO&looptijd=HALFJAAR';
+  await render(React.createElement(AbonnerenPage));
+  ok(tekst().includes('€192 nu betalen'), 'looptijd uit de URL (half jaar: €192)');
+  ok(JSON.parse(dom.window.localStorage.getItem('fc.koopintentie') || '{}').looptijd === 'HALFJAAR', 'looptijd samen met de intentie bewaard');
+  await vink();
+  ok(container.querySelector('input[type=checkbox]').checked, 'akkoord gegeven');
+  await klik(container.querySelector('[data-looptijd="JAAR"]'));
+  ok(tekst().includes('€360 nu betalen'), 'wisselen naar jaar toont €360');
+  ok(container.querySelector('input[type=checkbox]').checked === false, 'na wisselen moet het akkoord opnieuw gegeven worden');
+  ok(JSON.parse(dom.window.localStorage.getItem('fc.koopintentie') || '{}').looptijd === 'JAAR', 'gewijzigde looptijd bewaard');
+  await klik(container.querySelector('[data-looptijd="MAAND"]'));
+  ok(tekst().includes('7 dagen gratis') && container.querySelectorAll('[role=radio]').length === 4, 'terug naar maand: proef zichtbaar; 4 keuzes in de schakelaar');
+  ok(container.querySelector('[data-looptijd="MAAND"]').getAttribute('aria-checked') === 'true', 'schakelaar: actieve keuze staat aria-checked');
+
+  // N6. oude link zonder looptijd en zonder bewaarde keuze: gewone maandkeuze
+  opnieuw(GOED);
+  dom.window.location.hash = '#/kompas/abonneren?intent=PREMIUM';
+  await render(React.createElement(AbonnerenPage));
+  ok(tekst().includes('24 uur gratis') && !tekst().includes('nu betalen'), 'link zonder looptijd = maandkeuze');
+  dom.window.location.hash = '#/kompas/abonneren?intent=PRO&looptijd=EVIL';
+  opnieuw(GOED);
+  await render(React.createElement(AbonnerenPage));
+  ok(tekst().includes('7 dagen gratis'), 'ongeldige looptijd in de URL wordt genegeerd (maand)');
+  dom.window.location.hash = '#/kompas/abonneren?intent=PRO';
+
+  // N7. de server weigert vooruitbetalen (nog niet beschikbaar): melding, geen redirect, niets gewijzigd
+  opnieuw(() => httpFout(400, { error: 'Vooruitbetalen is nog niet beschikbaar. Er is niets in rekening gebracht. Kies voorlopig maandelijks.', code: 'looptijd_niet_beschikbaar' }));
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'JAAR' }));
+  await vink();
+  await klik(knop('Doorgaan naar betalen'));
+  await wacht();
+  {
+    const alarm = container.querySelector('[role=alert]');
+    ok(!!alarm && alarm.textContent.includes('Vooruitbetalen is nog niet beschikbaar'), 'servermelding bij geweigerde looptijd getoond');
+    ok(navigaties.length === 0 && client.log.andere.length === 0, 'geen redirect en geen andere aanroep');
+  }
+
+  // N8. startCheckout valideert de looptijd; zonder looptijd = maand
+  opnieuw(GOED);
+  {
+    const r = await startCheckout('PRO', { voorwaardenAkkoord: true, looptijd: 'WEEK' });
+    ok(r.url === null && r.code === 'ongeldige_looptijd' && client.log.invoke.length === 0, 'onbekende looptijd: geen aanroep');
+    const r2 = await startCheckout('PRO', { voorwaardenAkkoord: true });
+    ok(r2.url === CHECKOUT_URL && client.log.invoke[0].opties.body.looptijd === 'MAAND', 'zonder looptijd -> MAAND');
+  }
+
+  // N9. koopintentie: looptijd in hash en opslag, oude aanroepen ongewijzigd
+  ok(kp.abonnerenHash('PRO') === '#/kompas/abonneren?intent=PRO' && kp.abonnerenHash('PRO', 'JAAR') === '#/kompas/abonneren?intent=PRO&looptijd=JAAR', 'abonnerenHash: oude vorm ongewijzigd, nieuwe met looptijd');
+  ok(kp.abonnerenHash('PRO', 'EVIL') === '#/kompas/abonneren?intent=PRO' && kp.abonnerenHash('EVIL', 'JAAR') === '#/kompas/abonneren', 'abonnerenHash: ongeldige looptijd of code genegeerd');
+  ok(kp.looptijdUitHash('#/kompas/abonneren?intent=PRO&looptijd=KWARTAAL') === 'KWARTAAL' && kp.looptijdUitHash('#/x?looptijd=EVIL') === null && kp.looptijdUitHash('#/x') === null, 'looptijdUitHash alleen uit allowlist');
+  dom.window.localStorage.clear();
+  ok(kp.bewaarLooptijd('JAAR') === false && kp.leesLooptijd() === null, 'looptijd zonder bewaarde intentie wordt niet bewaard');
+  kp.bewaarIntentie('PRO', 'KWARTAAL');
+  ok(kp.leesLooptijd() === 'KWARTAAL', 'bewaarIntentie bewaart looptijd');
+  kp.bewaarIntentie('PREMIUM');
+  ok(kp.leesLooptijd() === 'KWARTAAL' && kp.leesIntentie() === 'PREMIUM', 'nieuwe intentie zonder looptijd behoudt de eerdere looptijd');
+  ok(kp.neemTeAanbiedenIntentie() === 'PREMIUM' && kp.leesLooptijd() === 'KWARTAAL', 'terugleiding na inloggen behoudt de looptijd');
+  kp.bewaarIntentie('PRO', 'EVIL');
+  ok(kp.leesLooptijd() === 'KWARTAAL', 'ongeldige looptijd overschrijft niets');
+  dom.window.localStorage.setItem('fc.koopintentie', JSON.stringify({ intentie: 'PRO', ts: Date.now(), aangeboden: false, looptijd: 'EVIL' }));
+  ok(kp.leesLooptijd() === null && kp.leesIntentie() === 'PRO', 'beschadigde looptijd in opslag wordt genegeerd');
+
+  // N10. bronscan: geen btw-berekening en geen bedragen die naar de server gaan
+  const strip4 = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+  const bronnen = ['src/data/abonnementen.js', 'src/features/kompas-marketing/AbonnerenPage.jsx', 'src/features/kompas-marketing/HoeHetWerktPage.jsx', 'src/features/kompas-marketing/LooptijdSchakelaar.jsx'].map((f) => [f, strip4(readFileSync(join(process.env.REPO_ROOT || process.cwd(), f), 'utf8'))]);
+  for (const [f, b] of bronnen) {
+    ok(!/\b(1\.21|0\.21|21 ?%|btwPercentage|vat)\b/i.test(b), `${f}: geen btw-berekening`);
+  }
 }
 
 console.log(`\nCHECKOUT-FRONTEND: ${pass} geslaagd, ${fail} mislukt`);

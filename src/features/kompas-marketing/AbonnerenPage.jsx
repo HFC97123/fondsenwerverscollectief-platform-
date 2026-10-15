@@ -26,14 +26,18 @@ import { css } from '../../shared/lib/css.js';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { Button, Notice } from '../../shared/ui/index.js';
 import { useApp } from '../kompas-app/useKompasApp.js';
-import { ABONNEMENTEN } from '../../data/abonnementen.js';
+import { ABONNEMENTEN, BASIS_LOOPTIJD, prijsInfo } from '../../data/abonnementen.js';
+import LooptijdSchakelaar from './LooptijdSchakelaar.jsx';
 import { leesCheckoutResultaat, startCheckout, wisCheckoutResultaat } from '../../data/services/billing.js';
 import {
   INTENTIES,
   bewaarIntentie,
+  bewaarLooptijd,
   heeftIntentParam,
   intentieUitHash,
   leesIntentie,
+  leesLooptijd,
+  looptijdUitHash,
   neemTeAanbiedenIntentie,
   wisIntentie,
 } from '../../data/services/koopintentie.js';
@@ -72,8 +76,10 @@ function Punten({ items }) {
 }
 
 // De herbruikbare bevestigingsflow. `intentie` is een code uit INTENTIES.
+// `looptijd` (MAAND, KWARTAAL, HALFJAAR of JAAR) bepaalt alleen de weergave en wat er naar de
+// server gaat; de server valideert en rekent zelf. `onLooptijd` wordt aangeroepen bij een andere keuze.
 // `aanbod` (optioneel, later van de server): { trialBeschikbaar: boolean }.
-export function AbonnerenBevestiging({ intentie, aanbod }) {
+export function AbonnerenBevestiging({ intentie, aanbod, looptijd = BASIS_LOOPTIJD, onLooptijd }) {
   const app = useApp();
   const [akkoord, setAkkoord] = useState(false);
   const [bezig, setBezig] = useState(false);
@@ -84,8 +90,21 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
   const { tier } = INTENTIES[intentie];
   const info = ABONNEMENTEN[tier];
   const profiel = app.profile || null;
-  // Alleen een expliciet "false" van de server toont de variant zonder trial.
-  const metTrial = !(aanbod && aanbod.trialBeschikbaar === false);
+  const p = prijsInfo(tier, looptijd) || prijsInfo(tier, BASIS_LOOPTIJD);
+  const vooruit = p.vooruit;
+  // Alleen een expliciet "false" van de server toont de variant zonder trial. Een gratis proefperiode
+  // bestaat alleen bij maandelijks betalen: wie vooruit betaalt, betaalt meteen.
+  const metTrial = !vooruit && !(aanbod && aanbod.trialBeschikbaar === false);
+
+  // Een andere looptijd = een ander bedrag en andere voorwaarden: het akkoord moet opnieuw gegeven worden.
+  const wijzigLooptijd = (code) => {
+    setAkkoord(false);
+    setFout('');
+
+    if (onLooptijd) {
+      onLooptijd(code);
+    }
+  };
 
   // Logt de bezoeker in en is het profiel geladen, dan is dit de bevestigingsstap
   // zelf: markeer de intentie als aangeboden, zodat een latere inlog niet
@@ -131,7 +150,7 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
     let res = null;
 
     try {
-      res = await startCheckout(intentie, { voorwaardenAkkoord: akkoord });
+      res = await startCheckout(intentie, { voorwaardenAkkoord: akkoord, looptijd: p.looptijd });
     } catch (e) {
       res = null;
     }
@@ -159,7 +178,15 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
     </>
   );
 
-  const prijsblok = metTrial ? (
+  const prijsblok = vooruit ? (
+    <div style={PRIJSBLOK}>
+      <div style={PRIJS_GROOT}>{p.totaal} nu betalen</div>
+      <div style={PRIJS_KLEIN}>voor {p.duur} ({p.perMaand} per maand, excl. btw)</div>
+      <div style={css('margin-top: 6px; font-size: 15px; color: #4B5C58;')}>
+        U bespaart {p.besparing} ten opzichte van maandelijks betalen. Daarna {p.maandPrijs} per maand.
+      </div>
+    </div>
+  ) : metTrial ? (
     <div style={PRIJSBLOK}>
       <div style={PRIJS_GROOT}>{info.proefDuur} gratis</div>
       <div style={PRIJS_KLEIN}>daarna {info.prijsTekst}</div>
@@ -171,7 +198,12 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
     </div>
   );
 
-  const kop = metTrial ? (
+  const kop = vooruit ? (
+    <>
+      <h1 style={KOP}>{info.naam} — {p.label.toLowerCase()}</h1>
+      <p style={TEKST}>{p.totaal} voor {p.duur}, daarna {p.maandPrijs} per maand.</p>
+    </>
+  ) : metTrial ? (
     <>
       <h1 style={KOP}>{info.naam}</h1>
       <p style={TEKST}>{info.proefDuur} gratis, daarna {info.prijsTekst}.</p>
@@ -183,7 +215,17 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
     </>
   );
 
-  const punten = metTrial ? (
+  const punten = vooruit ? (
+    <Punten
+      items={[
+        `${p.totaal} excl. btw, in één keer betaald voor ${p.duur} (${p.perMaand} per maand). Een betaalmethode is vereist.`,
+        `U bespaart ${p.besparing} ten opzichte van maandelijks betalen.`,
+        `Daarna loopt uw abonnement automatisch door voor ${p.maandPrijs} per maand excl. btw, totdat u opzegt.`,
+        'Een gratis proefperiode is er alleen bij maandelijks betalen.',
+        'Opzeggen kan altijd. U houdt toegang tot het einde van de betaalde periode; daarna valt uw account terug op Free.',
+      ]}
+    />
+  ) : metTrial ? (
     <Punten
       items={[
         `${info.proefDuur} gratis. Een betaalmethode is vereist om te starten.`,
@@ -202,12 +244,19 @@ export function AbonnerenBevestiging({ intentie, aanbod }) {
     />
   );
 
-  const akkoordTekst = metTrial
+  const akkoordTekst = vooruit
+    ? <>Ik ga akkoord met de {voorwaardenLinks} en begrijp dat ik nu {p.totaal} betaal voor {p.duur} en dat mijn abonnement daarna automatisch doorloopt voor {p.maandPrijs} per maand totdat ik opzeg.</>
+    : metTrial
     ? <>Ik ga akkoord met de {voorwaardenLinks} en begrijp dat mijn gratis proefperiode daarna automatisch overgaat in een betaald abonnement totdat ik opzeg.</>
     : <>Ik ga akkoord met de {voorwaardenLinks} en begrijp dat mijn abonnement maandelijks automatisch wordt verlengd totdat ik opzeg.</>;
 
   const samenvatting = (
     <>
+      {onLooptijd && (
+        <div style={css('margin: 0 0 22px;')}>
+          <LooptijdSchakelaar waarde={p.looptijd} onChange={wijzigLooptijd} uitgeschakeld={bezig} />
+        </div>
+      )}
       {kop}
       {prijsblok}
       {punten}
@@ -302,6 +351,13 @@ export default function AbonnerenPage() {
   // Terugkeer uit Stripe zonder af te rekenen (?checkout=cancelled): alleen een
   // melding. Dit geeft en wijzigt nooit rechten.
   const [stripeGeannuleerd] = useState(() => leesCheckoutResultaat() === 'cancelled');
+  // Looptijd: de URL eerst, dan de bewaarde keuze, anders de gewone maandkeuze (nooit stilletjes een
+  // groot vooruitbetaald bedrag tonen bij een oude link zonder looptijd).
+  const [looptijd, setLooptijd] = useState(() => looptijdUitHash(hash) || leesLooptijd() || BASIS_LOOPTIJD);
+  const wijzigLooptijd = (code) => {
+    setLooptijd(code);
+    bewaarLooptijd(code);
+  };
 
   useEffect(() => {
     if (stripeGeannuleerd) {
@@ -313,7 +369,7 @@ export default function AbonnerenPage() {
   // e-mailbevestiging overleeft (nieuwe paginalading, ander tabblad).
   useEffect(() => {
     if (fromHash && leesIntentie() !== fromHash) {
-      bewaarIntentie(fromHash);
+      bewaarIntentie(fromHash, looptijdUitHash(hash));
     }
   }, [fromHash]);
 
@@ -329,7 +385,7 @@ export default function AbonnerenPage() {
           </div>
         )}
         {intentie ? (
-          <AbonnerenBevestiging key={intentie} intentie={intentie} />
+          <AbonnerenBevestiging key={intentie} intentie={intentie} looptijd={looptijd} onLooptijd={wijzigLooptijd} />
         ) : (
           <div style={KAART}>
             <h1 style={KOP}>{ongeldig ? 'Deze keuze is niet geldig' : 'Geen keuze gevonden'}</h1>

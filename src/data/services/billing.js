@@ -2,7 +2,8 @@
 // geheime sleutels horen daar niet.
 //
 // Functies:
-//   create-checkout-session  { plan: 'PRO'|'PREMIUM', voorwaarden_akkoord: true } -> { url }
+//   create-checkout-session  { plan: 'PRO'|'PREMIUM', looptijd: 'MAAND'|'KWARTAAL'|'HALFJAAR'|'JAAR',
+//                            voorwaarden_akkoord: true } -> { url }
 //                            afrekenpagina openen. De SERVER bepaalt trial ja/nee,
 //                            prijs en alle rechten; de client stuurt alleen de keuze.
 //                            (aangesloten op de abonneren-pagina via startCheckout)
@@ -14,6 +15,7 @@
 // Geen van beide aanroepen schrijft ooit tier, toegang of abonnementsgegevens:
 // dat doet uitsluitend de geverifieerde Stripe-webhook.
 import { supabase } from '../client.js';
+import { BASIS_LOOPTIJD, isGeldigeLooptijd } from '../abonnementen.js';
 
 const GEEN_KOPPELING =
   'Afrekenen is nog niet beschikbaar. Neem contact op en wij zetten uw abonnement voor u klaar.';
@@ -112,11 +114,16 @@ async function leesFunctieFout(error) {
 // Uitkomst: { url, error, code, status }. Bij succes is `url` het adres van de
 // Stripe Checkout Session (alleen na validatie) en is de browser al onderweg
 // ernaartoe. Dit schrijft nooit tier, toegang of proefgegevens.
-export async function startCheckout(plan, { voorwaardenAkkoord = false } = {}) {
+export async function startCheckout(plan, { voorwaardenAkkoord = false, looptijd = BASIS_LOOPTIJD } = {}) {
   const fout = (error, code, status = null) => ({ url: null, error, code, status });
 
   if (plan !== 'PRO' && plan !== 'PREMIUM') {
     return fout(CHECKOUT_FOUT, 'ongeldig_plan');
+  }
+
+  // Alleen een bekende looptijd gaat naar de server; de server valideert opnieuw en rekent zelf het bedrag.
+  if (!isGeldigeLooptijd(looptijd)) {
+    return fout(CHECKOUT_FOUT, 'ongeldige_looptijd');
   }
 
   if (voorwaardenAkkoord !== true) {
@@ -132,7 +139,7 @@ export async function startCheckout(plan, { voorwaardenAkkoord = false } = {}) {
 
   try {
     ({ data, error } = await supabase.functions.invoke('create-checkout-session', {
-      body: { plan, voorwaarden_akkoord: true },
+      body: { plan, looptijd, voorwaarden_akkoord: true },
     }));
   } catch (e) {
     error = e || new Error('Aanroep mislukt.');

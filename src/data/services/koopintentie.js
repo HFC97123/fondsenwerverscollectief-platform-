@@ -14,6 +14,12 @@
 //  - alleen een allowlist van twee vaste codes wordt geaccepteerd;
 //  - vervalt automatisch na 24 uur (een bevestigingsmail kan even duren).
 // Opslag is best-effort: zonder (toegankelijke) localStorage doet dit niets.
+//
+// Naast de intentie wordt de gekozen LOOPTIJD (MAAND, KWARTAAL, HALFJAAR of JAAR) onthouden,
+// met dezelfde regels: alleen een allowlist, uitsluitend weergave/UX. De looptijd bepaalt
+// nooit een bedrag; de server valideert de looptijd opnieuw en rekent zelf.
+
+import { isGeldigeLooptijd } from '../abonnementen.js';
 
 const SLEUTEL = 'fc.koopintentie';
 const GELDIG_MS = 24 * 60 * 60 * 1000;
@@ -72,12 +78,34 @@ function schrijf(data) {
 
 // Bewaart de intentie (nieuwe keuze = nieuwe geldigheid en weer "nog niet
 // aangeboden"). Geeft false terug bij een onbekende code of geen opslag.
-export function bewaarIntentie(code) {
+// Een eerder bewaarde looptijd blijft behouden tenzij een nieuwe geldige wordt meegegeven.
+export function bewaarIntentie(code, looptijd) {
   if (!isGeldigeIntentie(code)) {
     return false;
   }
 
-  return schrijf({ intentie: code, ts: Date.now(), aangeboden: false });
+  const eerder = lees();
+  const lt = isGeldigeLooptijd(looptijd) ? looptijd : eerder && isGeldigeLooptijd(eerder.looptijd) ? eerder.looptijd : undefined;
+
+  return schrijf({ intentie: code, ts: Date.now(), aangeboden: false, ...(lt ? { looptijd: lt } : {}) });
+}
+
+// Geeft de bewaarde looptijd of null (niets bewaard, verlopen of ongeldig).
+export function leesLooptijd() {
+  const data = lees();
+
+  return data && isGeldigeLooptijd(data.looptijd) ? data.looptijd : null;
+}
+
+// Onthoudt een gewijzigde looptijd bij de al bewaarde intentie. Doet niets zonder bewaarde intentie.
+export function bewaarLooptijd(looptijd) {
+  const data = lees();
+
+  if (!data || !isGeldigeLooptijd(looptijd)) {
+    return false;
+  }
+
+  return schrijf({ ...data, looptijd });
 }
 
 // Geeft een geldige intentiecode of null (niets bewaard, verlopen of ongeldig).
@@ -130,6 +158,24 @@ export function intentieUitHash(hash) {
   }
 }
 
+// Leest ?looptijd=... uit de hash. Alleen een geldige looptijd komt terug.
+export function looptijdUitHash(hash) {
+  try {
+    const h = String(hash || '');
+    const q = h.indexOf('?');
+
+    if (q === -1) {
+      return null;
+    }
+
+    const lt = new URLSearchParams(h.slice(q + 1)).get('looptijd');
+
+    return isGeldigeLooptijd(lt) ? lt : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Staat er een ?intent=-parameter in de hash, ook al is hij ongeldig? De pagina
 // weigert een ongeldige waarde dan, in plaats van terug te vallen op een
 // eerder bewaarde keuze.
@@ -144,8 +190,12 @@ export function heeftIntentParam(hash) {
   }
 }
 
-export function abonnerenHash(code) {
-  return isGeldigeIntentie(code) ? `#${ABONNEREN_PAD}?intent=${code}` : `#${ABONNEREN_PAD}`;
+export function abonnerenHash(code, looptijd) {
+  if (!isGeldigeIntentie(code)) {
+    return `#${ABONNEREN_PAD}`;
+  }
+
+  return isGeldigeLooptijd(looptijd) ? `#${ABONNEREN_PAD}?intent=${code}&looptijd=${looptijd}` : `#${ABONNEREN_PAD}?intent=${code}`;
 }
 
 // Mag de bewaarde intentie NU een terugleiding naar de abonneren-pagina

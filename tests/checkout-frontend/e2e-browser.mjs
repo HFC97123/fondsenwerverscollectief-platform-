@@ -97,9 +97,16 @@ async function scenario(naam, fn, state = {}) {
   await c.context.close();
 }
 
+// De prijzenpagina toont standaard de jaarkeuze; de proefperiode-knoppen horen bij de maandkeuze.
+async function kiesMaand(page) {
+  await page.getByRole('radio', { name: 'Maandelijks' }).click();
+  await sleep(150);
+}
+
 async function naarBevestiging(page, code, cta) {
   await page.goto(ORIGIN + '/#/hoe-het-werkt');
   await page.waitForLoadState('networkidle');
+  await kiesMaand(page);
   await page.getByRole('button', { name: cta }).click();
   await sleep(300);
   await page.getByRole('button', { name: 'Inloggen', exact: true }).first().click();
@@ -121,8 +128,9 @@ await scenario('A Free anoniem blijft werken', async (page, c) => {
 // B. niet ingelogd: intent blijft, geen checkout
 await scenario('B niet ingelogd', async (page, c) => {
   await page.goto(ORIGIN + '/#/hoe-het-werkt'); await page.waitForLoadState('networkidle');
+  await kiesMaand(page);
   await page.getByRole('button', { name: 'Start 7 dagen gratis' }).click(); await sleep(400);
-  ok((await hashOf(page)) === '#/kompas/abonneren?intent=PRO', 'URL = abonneren?intent=PRO');
+  ok((await hashOf(page)) === '#/kompas/abonneren?intent=PRO&looptijd=MAAND', 'URL = abonneren?intent=PRO&looptijd=MAAND');
   ok(JSON.parse(await store(page)).intentie === 'PRO', 'intent bewaard');
   ok(!(await page.locator('input[type=checkbox]').count()) && !(await page.getByRole('button', { name: 'Doorgaan naar betalen' }).count()), 'geen vinkje en geen betaalknop');
   await page.getByRole('button', { name: 'Inloggen', exact: true }).first().click();
@@ -134,7 +142,7 @@ await scenario('B niet ingelogd', async (page, c) => {
 for (const [code, cta] of [['PRO', 'Start 7 dagen gratis'], ['PREMIUM', 'Probeer Premium 24 uur']]) {
   await scenario(`C ${code}: login -> akkoord -> Stripe-redirect`, async (page, c) => {
     await naarBevestiging(page, code, cta);
-    ok((await hashOf(page)) === `#/kompas/abonneren?intent=${code}`, 'op de bevestigingsstap');
+    ok((await hashOf(page)) === `#/kompas/abonneren?intent=${code}&looptijd=MAAND`, 'op de bevestigingsstap');
     ok(await page.getByRole('button', { name: 'Doorgaan naar betalen' }).isDisabled(), 'knop uit zonder akkoord');
     ok(c.fn.length === 0, 'login start niets (geen checkout-call)');
     await page.getByRole('button', { name: 'Doorgaan naar betalen' }).click({ force: true });
@@ -145,7 +153,7 @@ for (const [code, cta] of [['PRO', 'Start 7 dagen gratis'], ['PREMIUM', 'Probeer
     await page.waitForURL(/checkout\.stripe\.com/, { timeout: 8000 });
     ok(page.url() === CHECKOUT_URL, 'browser staat op de door de server teruggegeven Checkout-url');
     ok(c.fn.length === 1, 'exact één create-checkout-session-call (' + c.fn.length + ')');
-    ok(c.fn[0] && JSON.stringify(JSON.parse(c.fn[0].body)) === JSON.stringify({ plan: code, voorwaarden_akkoord: true }), 'body exact {plan, voorwaarden_akkoord:true}: ' + (c.fn[0] && c.fn[0].body));
+    ok(c.fn[0] && JSON.stringify(JSON.parse(c.fn[0].body)) === JSON.stringify({ plan: code, looptijd: 'MAAND', voorwaarden_akkoord: true }), 'body exact {plan, looptijd:MAAND, voorwaarden_akkoord:true}: ' + (c.fn[0] && c.fn[0].body));
     ok(c.fn[0] && c.fn[0].auth.startsWith('Bearer ') && c.fn[0].auth !== 'Bearer mock-anon-key' && c.fn[0].auth.split('.').length === 3, 'sessie-JWT van de ingelogde gebruiker meegestuurd (niet de anon-key)');
     ok(c.stripe.length === 1, 'alleen de gemockte Checkout-pagina bezocht');
   });
@@ -168,7 +176,7 @@ await scenario('F backendfout 409 en herstel', async (page, c) => {
   await page.getByRole('alert').waitFor();
   const t = await page.getByRole('alert').innerText();
   ok(t.includes('Er is al een lopend abonnement gekoppeld aan dit account.'), 'begrijpelijke melding: ' + t);
-  ok((await hashOf(page)) === '#/kompas/abonneren?intent=PRO' && page.url().startsWith(ORIGIN), 'gebruiker blijft op /kompas/abonneren');
+  ok((await hashOf(page)) === '#/kompas/abonneren?intent=PRO&looptijd=MAAND' && page.url().startsWith(ORIGIN), 'gebruiker blijft op /kompas/abonneren');
   ok(c.stripe.length === 0, 'geen redirect naar Stripe');
   ok(await page.getByRole('button', { name: 'Doorgaan naar betalen' }).isEnabled(), 'knop weer bruikbaar');
   ok(JSON.parse(await store(page)).intentie === 'PRO', 'intent behouden');
@@ -207,7 +215,7 @@ await scenario('I checkout=cancelled', async (page, c) => {
   await page.goto(ORIGIN + '/#/kompas/abonneren?intent=PREMIUM&checkout=cancelled'); await page.waitForLoadState('networkidle'); await sleep(600);
   const t = await page.locator('body').innerText();
   ok(t.includes('De betaling is niet afgerond. Er is niets in rekening gebracht en er is niets geactiveerd.'), 'melding bij annuleren');
-  ok(t.includes('24 uur gratis') && t.includes('€39 per maand excl. btw'), 'bevestigingsflow voor PREMIUM blijft bereikbaar');
+  ok(t.includes('24 uur gratis') && t.includes('€75 per maand excl. btw'), 'bevestigingsflow voor PREMIUM blijft bereikbaar');
   ok(c.fn.length === 0, 'terugkeer start geen nieuwe checkout');
 });
 await scenario('J checkout=success geeft geen rechten', async (page, c) => {
@@ -270,8 +278,58 @@ await scenario('N cancel: intent blijft en opnieuw proberen werkt', async (page,
   await page.locator('input[type=checkbox]').check();
   await page.getByRole('button', { name: 'Doorgaan naar betalen' }).click();
   await page.waitForURL(/checkout\.stripe\.com/, { timeout: 8000 });
-  ok(c.fn.length === 1 && JSON.stringify(JSON.parse(c.fn[0].body)) === JSON.stringify({ plan: 'PRO', voorwaarden_akkoord: true }), 'opnieuw proberen: exact één aanroep met alleen plan + akkoord');
+  ok(c.fn.length === 1 && JSON.stringify(JSON.parse(c.fn[0].body)) === JSON.stringify({ plan: 'PRO', looptijd: 'MAAND', voorwaarden_akkoord: true }), 'opnieuw proberen: exact één aanroep met alleen plan + looptijd + akkoord');
   ok(c.state.pro !== true, 'geen tierwijziging door cancel of opnieuw proberen');
+});
+
+// O. looptijdschakelaar op de prijzenpagina: standaard jaar, prijzen uit één bron, vooruitbetaald naar de bevestigingsstap
+await scenario('O looptijdschakelaar en vooruitbetalen', async (page, c) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(ORIGIN + '/#/hoe-het-werkt'); await page.waitForLoadState('networkidle'); await sleep(500);
+  ok(await page.getByRole('radio', { name: 'Per jaar' }).getAttribute('aria-checked') === 'true', 'standaard staat de schakelaar op jaar');
+  let t = await page.locator('body').innerText();
+  ok(t.includes('€30') && t.includes('€55'), 'jaar: Pro €30 en Premium €55 per maand');
+  ok(t.includes('€360 per jaar vooruit betaald') && t.includes('€660 per jaar vooruit betaald') && t.includes('Daarna €40 per maand') && t.includes('Daarna €75 per maand'), 'jaar: totalen en vervolgprijs per kaart');
+  ok(await page.getByRole('button', { name: 'Kies Pro per jaar' }).count() === 1 && await page.getByRole('button', { name: 'Kies Premium per jaar' }).count() === 1, 'jaar: knoppen "Kies … per jaar"');
+  ok(await page.getByRole('button', { name: 'Start 7 dagen gratis' }).count() === 0, 'jaar: geen proefknop');
+  await page.getByRole('radio', { name: 'Per kwartaal' }).click(); await sleep(150);
+  t = await page.locator('body').innerText();
+  ok(t.includes('€35') && t.includes('€65') && t.includes('€105 per kwartaal vooruit betaald') && t.includes('€195 per kwartaal vooruit betaald'), 'kwartaal: €35 / €65 en totalen');
+  await page.getByRole('radio', { name: 'Maandelijks' }).click(); await sleep(150);
+  t = await page.locator('body').innerText();
+  ok(t.includes('€40') && t.includes('€75') && !t.includes('vooruit betaald') && t.includes('7 dagen gratis proberen'), 'maand: €40 / €75, geen vooruitregel, proef zichtbaar');
+  ok(await page.getByRole('button', { name: 'Start 7 dagen gratis' }).count() === 1, 'maand: proefknop terug');
+  // pijltjestoets verplaatst de keuze
+  await page.getByRole('radio', { name: 'Maandelijks' }).focus();
+  await page.keyboard.press('ArrowRight'); await sleep(150);
+  ok(await page.getByRole('radio', { name: 'Per kwartaal' }).getAttribute('aria-checked') === 'true', 'pijltje rechts kiest kwartaal');
+  // Premium per half jaar -> bevestigingsstap met de gekozen looptijd (inloggen eerst)
+  await page.getByRole('radio', { name: 'Per half jaar' }).click(); await sleep(150);
+  await page.getByRole('button', { name: 'Kies Premium per half jaar' }).click(); await sleep(400);
+  ok((await hashOf(page)) === '#/kompas/abonneren?intent=PREMIUM&looptijd=HALFJAAR', 'URL bevat intent en looptijd');
+  t = await page.locator('body').innerText();
+  ok(t.includes('€360 nu betalen') && t.includes('6 maanden') && t.includes('Daarna €75 per maand') && !t.includes('24 uur gratis'), 'bevestigingsstap: €360 nu, 6 maanden, daarna €75, geen proef');
+  ok(c.fn.length === 0, 'kiezen start geen checkout');
+  await page.getByRole('button', { name: 'Inloggen', exact: true }).first().click();
+  await inloggenViaModal(page);
+  await page.waitForSelector('input[type=checkbox]');
+  ok((await hashOf(page)).includes('looptijd=HALFJAAR') || (await page.locator('body').innerText()).includes('€360 nu betalen'), 'looptijd overleeft het inloggen');
+  await page.locator('input[type=checkbox]').check();
+  await page.getByRole('button', { name: 'Doorgaan naar betalen' }).click();
+  await sleep(800);
+  ok(c.fn.length === 1 && JSON.parse(c.fn[0].body).looptijd === 'HALFJAAR' && JSON.parse(c.fn[0].body).plan === 'PREMIUM', 'checkout-aanroep bevat plan PREMIUM en looptijd HALFJAAR');
+  ok(!('bedrag' in JSON.parse(c.fn[0].body)) && !('price' in JSON.parse(c.fn[0].body)), 'geen bedrag of prijs in het verzoek');
+});
+
+// P. mobiel: geen horizontale scroll op de prijzenpagina en de bevestigingsstap
+await scenario('P mobiel layout', async (page) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(ORIGIN + '/#/hoe-het-werkt'); await page.waitForLoadState('networkidle'); await sleep(500);
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'prijzenpagina: geen horizontale scroll op 375px');
+  ok(await page.getByRole('radio', { name: 'Per jaar' }).isVisible(), 'schakelaar zichtbaar op mobiel');
+  await page.screenshot({ path: process.env.SHOT_DIR ? process.env.SHOT_DIR + '/prijzen-mobiel.png' : '/tmp/claude-0/prijzen-mobiel.png', fullPage: false });
+  await page.goto(ORIGIN + '/#/kompas/abonneren?intent=PRO&looptijd=KWARTAAL'); await page.waitForLoadState('networkidle'); await sleep(600);
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'abonneren-pagina: geen horizontale scroll op 375px');
 });
 
 const mislukt = results.filter((r) => !r[0]);

@@ -1,5 +1,15 @@
 import React from 'react';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
+import { prijsInfo } from '../../data/abonnementen.js';
+
+// Prijzen komen uit data/abonnementen.js, zodat de FAQ nooit afwijkt van de prijskaarten.
+const MAAND_PRO = prijsInfo('pro', 'MAAND').perMaand;
+const MAAND_PREMIUM = prijsInfo('premium', 'MAAND').perMaand;
+const looptijdRegel = (tier, looptijd) => {
+  const p = prijsInfo(tier, looptijd);
+
+  return `${p.label}: ${p.perMaand} per maand (${p.totaal} in één keer betaald)`;
+};
 
 // Goedgekeurde tekst van de veelgestelde vragen.
 // Dit is de standaard: staat er inhoud in Supabase (tabel kompas_faq), dan gaat
@@ -46,7 +56,7 @@ export const FAQ_SECTIONS = [
             ],
           },
           'Free bevat geen documentgenerator, exports, chatgeschiedenis, kennisbank of organisatiegeheugen.',
-          'Pro (€12 per maand)',
+          `Pro (${MAAND_PRO} per maand)`,
           'Pro bevat alle functies van Free, aangevuld met professionele documentfunctionaliteiten en personalisatie.',
           'Daarnaast kunt u:',
           {
@@ -65,7 +75,7 @@ export const FAQ_SECTIONS = [
             ],
           },
           'Pro is ontwikkeld voor organisaties die regelmatig subsidieaanvragen schrijven.',
-          'Premium (€39 per maand)',
+          `Premium (${MAAND_PREMIUM} per maand)`,
           'Premium bevat alle functies van Pro én uw eigen persoonlijke AI-fondsenwerver.',
           'Naast actuele internetinformatie gebruikt Premium ook:',
           {
@@ -116,10 +126,26 @@ export const FAQ_SECTIONS = [
         ],
       },
       {
-        q: 'Waarom kost Premium €39 per maand?',
+        q: `Waarom kost Premium ${MAAND_PREMIUM} per maand?`,
         blocks: [
           'Premium is meer dan een AI-chatbot.',
           'Premium functioneert als een persoonlijke AI-fondsenwerver die uw organisatie leert kennen. Het systeem analyseert uw organisatie, gebruikt een uitgebreide exclusieve fondsendatabase, onthoudt relevante context en ondersteunt gedurende het volledige fondsenwervingsproces: van strategie en fondsselectie tot projectplannen, begrotingen en subsidieaanvragen.',
+        ],
+      },
+      {
+        q: 'Kan ik korting krijgen door vooruit te betalen?',
+        blocks: [
+          'Ja. U betaalt standaard per maand, maar u kunt ook een kwartaal, een half jaar of een jaar vooruit betalen en krijgt daarvoor korting.',
+          'Pro',
+          {
+            list: [looptijdRegel('pro', 'KWARTAAL'), looptijdRegel('pro', 'HALFJAAR'), looptijdRegel('pro', 'JAAR')],
+          },
+          'Premium',
+          {
+            list: [looptijdRegel('premium', 'KWARTAAL'), looptijdRegel('premium', 'HALFJAAR'), looptijdRegel('premium', 'JAAR')],
+          },
+          'Alle bedragen zijn exclusief btw.',
+          `Na de vooruitbetaalde periode loopt uw abonnement automatisch door voor de maandprijs (Pro ${MAAND_PRO}, Premium ${MAAND_PREMIUM} per maand), per maand opzegbaar, tenzij u eerder opzegt. Een gratis proefperiode is er alleen bij maandelijks betalen.`,
         ],
       },
       {
@@ -399,8 +425,8 @@ export const FAQ_SECTIONS = [
       {
         q: 'Hoe werkt de betaling?',
         blocks: [
-          'Abonnementen worden maandelijks vooruitbetaald.',
-          'Uw abonnement wordt iedere maand automatisch verlengd op dezelfde datum waarop u bent gestart.',
+          'Abonnementen worden standaard maandelijks vooruitbetaald en iedere maand automatisch verlengd op dezelfde datum waarop u bent gestart.',
+          'Kiest u voor een kwartaal, half jaar of jaar vooruit, dan betaalt u die periode in één keer met korting. Daarna loopt uw abonnement automatisch door tegen de maandprijs.',
         ],
       },
       {
