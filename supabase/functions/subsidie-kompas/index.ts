@@ -5651,6 +5651,138 @@ function schoneBronnen(bronnen: { title: string; url: string }[]): { title: stri
   return (bronnen || []).map((b) => ({ ...b, url: verwijderTrackingParams(String(b?.url || '')) }));
 }
 
+// ===========================================================================
+// VOORSTELPREVIEW (Fase C) - alleen LEZEN. Nieuwe mode 'voorstel-preview', standaard UIT (zie VOORSTEL_PREVIEW hieronder).
+// Valideert een voorstel van de client tegen server-bekende records, past de bestaande entitlementlaag toe per voorstelregel,
+// laat de B1-verificatiemotor de bronnen controleren en geeft previewdata terug. Schrijft nergens naar toe: geen insert/update/rpc-
+// schrijfactie, geen opslag, geen taken, geen chatkoppeling. De logica staat in ../_shared/voorstelVerificatie.ts; hier alleen het laden
+// van de server-bekende gegevens (dezelfde RPC's en dezelfde entitlementlaag als de matching) en de HTTP-afhandeling.
+// ===========================================================================
+const VOORSTEL_PREVIEW_MAX_TEKENS = 60000;
+const VOORSTEL_PREVIEW_MAX_REGELS = 12;
+
+type VoorstelServerRecord = {
+  type: 'regeling' | 'fonds';
+  id: string;
+  niveau: Niveau;
+  naam: string;
+  gever?: string;
+  website?: string | null;
+  deadline?: string | null;
+  min?: number | null;
+  max?: number | null;
+  cofinanciering?: string | null;
+};
+
+const voorstelGetal = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+// Server-bekende records voor precies de id's die het voorstel noemt. Het niveau komt uit applyEntitlementsAndSanitize (de enige
+// beslisser); bij 'publiek' bevat het record alleen wat die laag doorlaat, bij 'verborgen' niets. Faalt een bron, dan null (fail closed).
+async function laadVoorstelRecords(
+  admin: any,
+  gevraagd: { regeling: Set<string>; fonds: Set<string> },
+  rechten: Rechten,
+  exclusiviteit: ExclusiviteitIndex,
+): Promise<VoorstelServerRecord[] | null> {
+  try {
+    const ctx = nieuweEntitlementCtx(false, exclusiviteit);
+    const uit: VoorstelServerRecord[] = [];
+
+    if (gevraagd.regeling.size) {
+      const { data, error } = await admin.rpc('kompas_subsidieregelingen_voor_tier', { p_tier: 'premium' });
+
+      if (error || !Array.isArray(data)) return null;
+
+      for (const rij of data) {
+        const id = String(rij?.regeling_id ?? '').toLowerCase();
+
+        if (!gevraagd.regeling.has(id)) continue;
+
+        const { entitlement, row } = applyEntitlementsAndSanitize('regeling', rij, rechten, ctx);
+
+        if (!row || entitlement.niveau === 'verborgen') {
+          uit.push({ type: 'regeling', id, niveau: 'verborgen', naam: '' });
+          continue;
+        }
+
+        const volledig = entitlement.niveau === 'volledig';
+
+        uit.push({
+          type: 'regeling',
+          id,
+          niveau: entitlement.niveau,
+          naam: String(row.naam || '').slice(0, 200),
+          gever: String(row.funder_naam || '').slice(0, 200),
+          website: String(row.aanvraaglink || row.funder_website || '') || null,
+          deadline: volledig ? fundingDatum(row.deadline_datum) : null,
+          min: volledig ? voorstelGetal(row.bedrag_min) : null,
+          max: volledig ? voorstelGetal(row.bedrag_max) : null,
+          cofinanciering: volledig ? String(row.cofinanciering || '').slice(0, 200) || null : null,
+        });
+      }
+    }
+
+    if (gevraagd.fonds.size) {
+      const { data, error } = await admin.rpc('kompas_funders_voor_matching', { p_tier: 'premium' });
+
+      if (error || !Array.isArray(data)) return null;
+
+      for (const rij of data) {
+        const id = String(rij?.funder_id ?? '').toLowerCase();
+
+        if (!gevraagd.fonds.has(id)) continue;
+
+        const { entitlement, row } = applyEntitlementsAndSanitize('funder', rij, rechten, ctx);
+
+        if (!row || entitlement.niveau === 'verborgen') {
+          uit.push({ type: 'fonds', id, niveau: 'verborgen', naam: '' });
+          continue;
+        }
+
+        const volledig = entitlement.niveau === 'volledig';
+        const naam = String(row.funder_naam || '').slice(0, 200);
+
+        uit.push({
+          type: 'fonds',
+          id,
+          niveau: entitlement.niveau,
+          naam,
+          gever: naam,
+          website: String(row.funder_website || '') || null,
+          deadline: null, // fondsen hebben in deze pool geen deadline
+          min: volledig ? voorstelGetal(row.bijdrage_min) : null,
+          max: volledig ? voorstelGetal(row.bijdrage_max) : null,
+          cofinanciering: null,
+        });
+      }
+    }
+
+    return uit;
+  } catch (_e) {
+    console.error('[subsidie-kompas] voorstel_records_fout');
+
+    return null;
+  }
+}
+
+// DNS voor de SSRF-controle van de verificatiemotor. Geen antwoord (of geen DNS-API) = geen adressen = de motor weigert op te halen.
+async function voorstelResolveHost(host: string): Promise<string[]> {
+  const antwoord = async (soort: 'A' | 'AAAA') => {
+    try {
+      return await (Deno as any).resolveDns(host, soort);
+    } catch (_e) {
+      return [];
+    }
+  };
+  const [a, b] = await Promise.all([antwoord('A'), antwoord('AAAA')]);
+
+  return [...a, ...b].map(String);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS });
@@ -5772,6 +5904,118 @@ Deno.serve(async (req) => {
     body = await req.json();
   } catch (_) {
     return json({ error: 'Ongeldige aanvraag.' }, 400);
+  }
+
+  // Voorstelpreview (Fase C): alleen lezen, standaard uit. Zie laadVoorstelRecords() en ../_shared/voorstelVerificatie.ts.
+  if (body.mode === 'voorstel-preview') {
+    if (!profileId) {
+      return json({ error: 'Log in om een voorstel te bekijken.' }, 401);
+    }
+
+    if (Deno.env.get('VOORSTEL_PREVIEW') !== 'aan') {
+      return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
+    }
+
+    const voorstelRuw = body.voorstel;
+
+    if (typeof body.projectId !== 'string' || !UUID_RE.test(body.projectId) || !voorstelRuw || typeof voorstelRuw !== 'object' || Array.isArray(voorstelRuw)) {
+      return json({ error: 'Ongeldige aanvraag.' }, 400);
+    }
+
+    let voorstelTekens = 0;
+
+    try {
+      voorstelTekens = JSON.stringify(voorstelRuw).length;
+    } catch (_e) {
+      return json({ error: 'Ongeldige aanvraag.' }, 400);
+    }
+
+    if (voorstelTekens > VOORSTEL_PREVIEW_MAX_TEKENS) {
+      return json({ error: 'Het voorstel is te groot.' }, 413);
+    }
+
+    try {
+      // Het project: van deze gebruiker en niet gearchiveerd (zelfde regel als de overige project-modes).
+      const { data: projectRij } = await admin
+        .from('subsidie_kompas_programs')
+        .select('id, budget_total, own_contribution')
+        .eq('id', body.projectId)
+        .eq('user_id', profileId)
+        .is('archived_at', null)
+        .maybeSingle();
+
+      if (!projectRij) {
+        return json({ error: 'Dit project is niet gevonden.' }, 404);
+      }
+
+      // Het dekkingsplan, gelezen als de ingelogde gebruiker (JWT) via dezelfde RPC als de UI; niet leesbaar = geen preview (fail-safe).
+      const fundingRegels = await laadProjectFinanciering(authHeader, projectRij.id);
+
+      if (!fundingRegels) {
+        return json({ error: 'Het dekkingsplan kon niet worden gelezen. Probeer het later opnieuw.' }, 503);
+      }
+
+      const exclusiviteit = await laadExclusiviteit(admin);
+      const rechten = bepaalRechten(tier, isAdmin);
+      const ruweRegels: any[] = Array.isArray((voorstelRuw as any).regels) ? (voorstelRuw as any).regels.slice(0, VOORSTEL_PREVIEW_MAX_REGELS) : [];
+      const gevraagd = { regeling: new Set<string>(), fonds: new Set<string>() };
+
+      for (const r of ruweRegels) {
+        const id = typeof r?.id === 'string' && UUID_RE.test(r.id) ? r.id.toLowerCase() : '';
+
+        if (!id) continue;
+        if (r.type === 'regeling') gevraagd.regeling.add(id);
+        else if (r.type === 'fonds') gevraagd.fonds.add(id);
+      }
+
+      const records = await laadVoorstelRecords(admin, gevraagd, rechten, exclusiviteit);
+
+      if (!records) {
+        return json({ error: 'De fondsgegevens konden niet worden gelezen. Probeer het later opnieuw.' }, 503);
+      }
+
+      const { maakVoorstelPreview } = await import('../_shared/voorstelVerificatie.ts');
+      const { berekenDekking } = await import('../_shared/dekkingsplanRekenen.js');
+
+      const dekking = berekenDekking({
+        begroting: projectRij.budget_total,
+        regels: fundingRegels.map((r) => ({ status: r.status, requested: r.requested, awarded: r.awarded })),
+        overige: projectRij.own_contribution,
+      });
+
+      const uitkomst = await maakVoorstelPreview(
+        {
+          raw: { ...(voorstelRuw as any), regels: ruweRegels },
+          uid: profileId,
+          projectId: projectRij.id,
+          dekking,
+          bestaandeRegels: fundingRegels
+            .filter((r) => r.bronStatus === 'zichtbaar')
+            .map((r) => ({ schemeId: r.schemeId, funderId: r.funderId, naam: r.naam, financierNaam: r.funder })),
+          bedragenToegestaan: dekking.heeftBegroting,
+          records,
+          geheim: Deno.env.get('VOORSTEL_TOKEN_SECRET') || null,
+        },
+        { resolveHost: voorstelResolveHost },
+      );
+
+      if (!uitkomst.ok) {
+        console.error('[subsidie-kompas] voorstel_preview_afgewezen', uitkomst.reden);
+
+        return json(uitkomst, uitkomst.reden === 'onverwachte-fout' ? 500 : 422);
+      }
+
+      console.log(
+        '[subsidie-kompas] voorstel_preview',
+        JSON.stringify({ regels: uitkomst.voorstel.regels.length, overgeslagen: uitkomst.overgeslagen.length, token: uitkomst.token !== null }),
+      );
+
+      return json(uitkomst);
+    } catch (_e) {
+      console.error('[subsidie-kompas] voorstel_preview_fout');
+
+      return json({ ok: false, reden: 'onverwachte-fout', fouten: [], opgeslagen: false }, 500);
+    }
   }
 
   // RC1 stap 3D-4 (2026-10-01): begroting -> gestructureerde Budget, voor de

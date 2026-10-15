@@ -248,8 +248,11 @@ sectie('7. Statische contracten: niets gekoppeld, niets geactiveerd');
     check(`${h}.ts: geen console.log van inhoud`, !/console\.(log|info|debug)/.test(t));
   }
 
-  // Er is geen route of UI-koppeling aangemaakt
-  check('geen nieuwe `mode`-waarde voor voorstel/verificatie in index.ts', !/mode\s*===\s*['"](voorstel|verificatie|verifieer)/.test(index));
+  // Fase C: precies een nieuwe mode ('voorstel-preview', standaard uit, alleen lezen). Geen andere voorstel-/verificatiemode.
+  const modes = [...index.matchAll(/mode\s*===\s*['"]((?:voorstel|verificatie|verifieer)[a-z-]*)['"]/g)].map((m) => m[1]);
+
+  check('index.ts kent precies een voorstel-/verificatiemode: voorstel-preview', modes.length === 1 && modes[0] === 'voorstel-preview', JSON.stringify(modes));
+  check('de mode staat standaard uit (omgevingsvlag VOORSTEL_PREVIEW)', /Deno\.env\.get\('VOORSTEL_PREVIEW'\) !== 'aan'/.test(index));
 }
 
 klaar('RESULTAAT');

@@ -17,7 +17,7 @@ import { extractReadableText } from './readableText.ts';
 import { safeFetchPublicPage, type FetchFout, type SafeFetchOpties } from './safeFetch.ts';
 import {
   compareDatabaseAndWeb, maakBronPagina, verifySourceEvidence,
-  type ClaimsPerVeld, type FinancierIdentiteit, type NaamOordeel, type VeldVergelijking,
+  type BronPagina, type ClaimsPerVeld, type FinancierIdentiteit, type NaamOordeel, type VeldOordeel, type VeldVergelijking,
 } from './sourceEvidence.ts';
 import { bouwMetadata, controleerMetadata, type VeldBewijs, type VeldNaam, type Verificatie, type VerificatieStatus } from './voorstelMetadata.ts';
 
@@ -38,6 +38,9 @@ export interface VerificatieInvoer {
   bronUrl: string;
   financier: FinancierIdentiteit;
   claims: ClaimsPerVeld;
+  // Optioneel (Fase C): claims die pas uit de OPGEHAALDE pagina te bepalen zijn (de server zoekt de fragmenten zelf). Ze vullen `claims`
+  // aan en kunnen er niet aan ontsnappen: ze gaan door exact dezelfde B1-regels. `oordelen` zijn onzekere uitkomsten zonder citaat.
+  bepaalClaims?: (pagina: BronPagina) => { claims: ClaimsPerVeld; oordelen?: Partial<Record<VeldNaam, VeldOordeel>> };
   // Live databasewaarde van de naam wordt niet vergeleken; die is de zoekterm.
 }
 
@@ -238,12 +241,19 @@ export async function verifieerBron(inv: VerificatieInvoer, deps: VerificatieAfh
 
     const leesbaar = extractReadableText(opgehaald.tekst, opgehaald.contentType);
     const pagina = await maakBronPagina(opgehaald, leesbaar.text);
-    const bewijs = await verifySourceEvidence(pagina, inv.financier, inv.claims ?? {});
+    const bepaald = inv.bepaalClaims ? inv.bepaalClaims(pagina) : null;
+    const claims: ClaimsPerVeld = { ...(inv.claims ?? {}), ...(bepaald?.claims ?? {}) };
+    const bewijs = await verifySourceEvidence(pagina, inv.financier, claims);
     const vergelijkingen: VeldVergelijking[] = [];
+
+    // Onzekere uitkomsten van de zoeker (geen of meerdere kandidaten) gelden alleen voor velden zonder eigen bewijsuitkomst.
+    for (const [veld, oordeel] of Object.entries(bepaald?.oordelen ?? {}) as Array<[VeldNaam, VeldOordeel]>) {
+      if (oordeel && oordeel.status !== 'confirmed' && !bewijs.velden[veld]) bewijs.velden[veld] = oordeel;
+    }
 
     for (const veld of Object.keys(bewijs.velden) as VeldNaam[]) {
       const oordeel = bewijs.velden[veld]!;
-      const db = veld === 'fondsnaam' ? undefined : (inv.claims as Record<string, { db?: unknown }>)[veld]?.db;
+      const db = veld === 'fondsnaam' ? undefined : (claims as Record<string, { db?: unknown }>)[veld]?.db;
 
       vergelijkingen.push(compareDatabaseAndWeb(veld, db, oordeel));
     }

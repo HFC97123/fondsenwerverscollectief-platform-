@@ -3,7 +3,7 @@
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
 
-const bestanden = ['ssrf', 'fetch', 'tekst', 'bewijs', 'resultaat', 'prestatie'];
+const bestanden = ['ssrf', 'fetch', 'tekst', 'bewijs', 'zoeker', 'orkestratie', 'resultaat', 'prestatie'];
 let status = 0;
 
 for (const b of bestanden) {

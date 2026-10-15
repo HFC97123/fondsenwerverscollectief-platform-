@@ -1,0 +1,3 @@
+import { build } from 'esbuild';
+await build({ entryPoints: ['tests/voorstel-preview/browser/entry.jsx'], outfile: 'tests/voorstel-preview/browser/web/bundle.js', bundle: true, format: 'iife', platform: 'browser', loader: { '.js': 'jsx' }, jsx: 'automatic', define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' }, logLevel: 'warning' });
+await build({ entryPoints: ['tests/voorstel-preview/browser/maak-fixture.mjs'], outfile: 'tests/voorstel-preview/.build/maak-fixture.bundle.mjs', bundle: true, platform: 'node', format: 'esm', loader: { '.ts': 'ts' }, logLevel: 'warning', absWorkingDir: process.cwd() });

@@ -1,0 +1,419 @@
+{
+  "ok": true,
+  "voorstel": {
+    "versie": 1,
+    "projectId": "22222222-2222-4222-8222-222222222222",
+    "gegenereerdOp": "2026-10-14",
+    "status": "concept",
+    "aannames": [],
+    "regels": [
+      {
+        "type": "regeling",
+        "id": "11111111-1111-4111-8111-111111111111",
+        "naam": "Rotterdams Jongerencultuurfonds",
+        "regeling": "",
+        "gever": "Gemeente Rotterdam",
+        "herkomst": "database",
+        "bron": {
+          "url": null,
+          "gecontroleerdOp": null,
+          "soort": "database"
+        },
+        "motivatie": "Past bij de doelgroep en het werkgebied van het project.",
+        "onderdeel": "",
+        "voorwaarden": [],
+        "onzekerheden": [],
+        "staatAl": false,
+        "selecteerbaar": true,
+        "sleutel": "r:regeling:11111111-1111-4111-8111-111111111111",
+        "bedrag": 20000,
+        "grenzen": {
+          "min": 5000,
+          "max": 25000
+        },
+        "bedragGecorrigeerd": false,
+        "deadline": {
+          "status": "geverifieerd",
+          "datum": "2026-11-12",
+          "verlopen": false
+        },
+        "oorspronkelijkBedrag": 20000
+      },
+      {
+        "type": "regeling",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "naam": "Wijkinitiatievenfonds Zuid",
+        "regeling": "",
+        "gever": "Gemeente Rotterdam",
+        "herkomst": "database",
+        "bron": {
+          "url": null,
+          "gecontroleerdOp": null,
+          "soort": "database"
+        },
+        "motivatie": "Past bij de doelgroep en het werkgebied van het project.",
+        "onderdeel": "",
+        "voorwaarden": [],
+        "onzekerheden": [],
+        "staatAl": false,
+        "selecteerbaar": true,
+        "sleutel": "r:regeling:22222222-2222-4222-8222-222222222222",
+        "bedrag": 12000,
+        "grenzen": {
+          "min": 5000,
+          "max": 15000
+        },
+        "bedragGecorrigeerd": false,
+        "deadline": {
+          "status": "geverifieerd",
+          "datum": "2026-12-01",
+          "verlopen": false
+        },
+        "oorspronkelijkBedrag": 12000
+      },
+      {
+        "type": "regeling",
+        "id": "33333333-3333-4333-8333-333333333333",
+        "naam": "Cultuurimpuls Rotterdam",
+        "regeling": "",
+        "gever": "Gemeente Rotterdam",
+        "herkomst": "database",
+        "bron": {
+          "url": null,
+          "gecontroleerdOp": null,
+          "soort": "database"
+        },
+        "motivatie": "Past bij de doelgroep en het werkgebied van het project.",
+        "onderdeel": "",
+        "voorwaarden": [],
+        "onzekerheden": [],
+        "staatAl": false,
+        "selecteerbaar": true,
+        "sleutel": "r:regeling:33333333-3333-4333-8333-333333333333",
+        "bedrag": 8000,
+        "grenzen": {
+          "min": 5000,
+          "max": 25000
+        },
+        "bedragGecorrigeerd": false,
+        "deadline": {
+          "status": "geverifieerd",
+          "datum": "2026-11-12",
+          "verlopen": false
+        },
+        "oorspronkelijkBedrag": 8000
+      },
+      {
+        "type": "regeling",
+        "id": "44444444-4444-4444-8444-444444444444",
+        "naam": "Buurtbudget Delfshaven",
+        "regeling": "",
+        "gever": "Gemeente Rotterdam",
+        "herkomst": "database",
+        "bron": {
+          "url": null,
+          "gecontroleerdOp": null,
+          "soort": "database"
+        },
+        "motivatie": "Past bij de doelgroep en het werkgebied van het project.",
+        "onderdeel": "",
+        "voorwaarden": [],
+        "onzekerheden": [],
+        "staatAl": false,
+        "selecteerbaar": true,
+        "sleutel": "r:regeling:44444444-4444-4444-8444-444444444444",
+        "bedrag": 5000,
+        "grenzen": {
+          "min": 5000,
+          "max": 25000
+        },
+        "bedragGecorrigeerd": false,
+        "deadline": {
+          "status": "geverifieerd",
+          "datum": "2026-11-12",
+          "verlopen": false
+        },
+        "oorspronkelijkBedrag": 5000
+      },
+      {
+        "type": "fonds",
+        "id": "55555555-5555-4555-8555-555555555555",
+        "naam": "Fonds Premium Voorbeeld",
+        "regeling": "",
+        "gever": "Gever",
+        "herkomst": "database",
+        "bron": {
+          "url": null,
+          "gecontroleerdOp": null,
+          "soort": "database"
+        },
+        "motivatie": "Past bij de doelgroep en het werkgebied van het project.",
+        "onderdeel": "",
+        "voorwaarden": [],
+        "onzekerheden": [],
+        "staatAl": false,
+        "selecteerbaar": true,
+        "sleutel": "r:fonds:55555555-5555-4555-8555-555555555555",
+        "bedrag": null,
+        "grenzen": {
+          "min": null,
+          "max": null
+        },
+        "bedragGecorrigeerd": false,
+        "deadline": {
+          "status": "te-verifieren",
+          "datum": null,
+          "verlopen": false
+        },
+        "oorspronkelijkBedrag": null
+      },
+      {
+        "type": "fonds",
+        "id": "66666666-6666-4666-8666-666666666666",
+        "naam": "Stichting Voorbeeld Fonds Zuid",
+        "regeling": "",
+        "gever": "Stichting Voorbeeld Fonds Zuid",
+        "herkomst": "database",
+        "bron": {
+          "url": null,
+          "gecontroleerdOp": null,
+          "soort": "database"
+        },
+        "motivatie": "Past bij de doelgroep en het werkgebied van het project.",
+        "onderdeel": "",
+        "voorwaarden": [],
+        "onzekerheden": [],
+        "staatAl": false,
+        "selecteerbaar": true,
+        "sleutel": "r:fonds:66666666-6666-4666-8666-666666666666",
+        "bedrag": 3000,
+        "grenzen": {
+          "min": 500,
+          "max": 8000
+        },
+        "bedragGecorrigeerd": false,
+        "deadline": {
+          "status": "te-verifieren",
+          "datum": null,
+          "verlopen": false
+        },
+        "oorspronkelijkBedrag": 3000
+      }
+    ],
+    "nietToegewezen": 132000,
+    "acties": []
+  },
+  "waarschuwingen": [],
+  "overgeslagen": [
+    {
+      "index": 6,
+      "code": "online-niet-ondersteund"
+    }
+  ],
+  "verificaties": [
+    {
+      "sleutel": "r:regeling:11111111-1111-4111-8111-111111111111",
+      "metadata": {
+        "versie": 2,
+        "server_generated": true,
+        "herkomst": "regeling",
+        "voorgesteld_op": "2026-10-14",
+        "voorgesteld_bedrag": 20000,
+        "verificatie": {
+          "status": "geverifieerd",
+          "gecontroleerd_op": "2026-10-14T10:00:00.000Z",
+          "bron_url": "https://www.fonds-a.example.nl/aanvragen",
+          "eind_url": "https://www.fonds-a.example.nl/aanvragen",
+          "pagina_sha256": "2047e18d457c8d9ac0fc5bd4f1b124b1577df329845abfe577ef5c373a19b77f",
+          "velden": {
+            "fondsnaam": {
+              "status": "confirmed",
+              "waarde": "Rotterdams Jongerencultuurfonds",
+              "fragment": "Pagina Rotterdams Jongerencultuurfonds Aanvragen kan tot 12 november 2026. Maximaal € 25.000 per aanvraag. Minimaal €",
+              "fragment_sha256": "b63836600725cf88899a4d14a860c6434fb891c1ba8d0b23cbf32fe72113e9ce"
+            },
+            "deadline": {
+              "status": "confirmed",
+              "waarde": "2026-11-12",
+              "fragment": "Pagina Rotterdams Jongerencultuurfonds Aanvragen kan tot 12 november 2026.",
+              "fragment_sha256": "53b1e4f51556da3c58dfaab1eef3d59ec64b96728ed0faae40a82c63ff6b3200"
+            },
+            "bedrag_min": {
+              "status": "confirmed",
+              "waarde": "5000",
+              "fragment": "Minimaal € 5.000 per project.",
+              "fragment_sha256": "2d8d01bfab70ea7a751a851f944b090d639b0070ce9f4f337299f67c853c5cfc"
+            },
+            "bedrag_max": {
+              "status": "confirmed",
+              "waarde": "25000",
+              "fragment": "Maximaal € 25.000 per aanvraag.",
+              "fragment_sha256": "59c2e5b0a07b578e0e8a7c767b49f4d7572c5cd245d8d0af239bd632b1f51bf9"
+            }
+          }
+        }
+      },
+      "categorie": "ok",
+      "reden": null,
+      "eindgebruikerTekst": null
+    },
+    {
+      "sleutel": "r:regeling:22222222-2222-4222-8222-222222222222",
+      "metadata": {
+        "versie": 2,
+        "server_generated": true,
+        "herkomst": "regeling",
+        "voorgesteld_op": "2026-10-14",
+        "voorgesteld_bedrag": 12000,
+        "verificatie": {
+          "status": "conflict",
+          "gecontroleerd_op": "2026-10-14T10:00:00.000Z",
+          "bron_url": "https://www.fonds-b.example.nl/aanvragen",
+          "eind_url": "https://www.fonds-b.example.nl/aanvragen",
+          "pagina_sha256": "92a18f1a0efab9612476cc61d210aea4f0d9e1c1e552dc8c6cb51a65b9c403d2",
+          "velden": {
+            "fondsnaam": {
+              "status": "confirmed",
+              "waarde": "Wijkinitiatievenfonds Zuid",
+              "fragment": "Pagina Wijkinitiatievenfonds Zuid De deadline voor aanvragen is 15 december 2026. Maximaal € 15.000 per aanvraag.",
+              "fragment_sha256": "92a18f1a0efab9612476cc61d210aea4f0d9e1c1e552dc8c6cb51a65b9c403d2"
+            },
+            "deadline": {
+              "status": "conflict",
+              "waarde": "2026-12-15",
+              "fragment": "Pagina Wijkinitiatievenfonds Zuid De deadline voor aanvragen is 15 december 2026.",
+              "fragment_sha256": "ae3465182d324432fd25aa28ae28efbcbe42b86218c23844123e7f1fee8f18bb",
+              "db_waarde": "2026-12-01"
+            },
+            "bedrag_max": {
+              "status": "confirmed",
+              "waarde": "15000",
+              "fragment": "Maximaal € 15.000 per aanvraag.",
+              "fragment_sha256": "34550002c5181d672951e1c99068b78b49db371bbc0c36f7c43a6205aab6f1e1"
+            },
+            "bedrag_min": {
+              "status": "uncertain"
+            }
+          }
+        }
+      },
+      "categorie": "ok",
+      "reden": null,
+      "eindgebruikerTekst": "De informatie op de website van de financier wijkt af van onze database. Controleer de actuele gegevens bij de financier."
+    },
+    {
+      "sleutel": "r:regeling:33333333-3333-4333-8333-333333333333",
+      "metadata": {
+        "versie": 2,
+        "server_generated": true,
+        "herkomst": "regeling",
+        "voorgesteld_op": "2026-10-14",
+        "voorgesteld_bedrag": 8000,
+        "verificatie": {
+          "status": "onzeker",
+          "gecontroleerd_op": "2026-10-14T10:00:00.000Z",
+          "bron_url": "https://www.fonds-c.example.nl/aanvragen",
+          "eind_url": "https://www.fonds-c.example.nl/aanvragen",
+          "pagina_sha256": "02aa9d40f180e7c605f93049e28d7ea64362c584c79e0b3af4b61ecc2a80d786",
+          "velden": {
+            "fondsnaam": {
+              "status": "uncertain"
+            },
+            "deadline": {
+              "status": "uncertain",
+              "waarde": "2026-11-12",
+              "fragment": "Pagina Een andere organisatie Aanvragen kan tot 12 november 2026.",
+              "fragment_sha256": "02aa9d40f180e7c605f93049e28d7ea64362c584c79e0b3af4b61ecc2a80d786"
+            },
+            "bedrag_min": {
+              "status": "uncertain"
+            },
+            "bedrag_max": {
+              "status": "uncertain"
+            }
+          }
+        }
+      },
+      "categorie": "financier_not_found",
+      "reden": null,
+      "eindgebruikerTekst": "De bron kon niet volledig worden bevestigd. Controleer de actuele gegevens bij de financier."
+    },
+    {
+      "sleutel": "r:regeling:44444444-4444-4444-8444-444444444444",
+      "metadata": {
+        "versie": 2,
+        "server_generated": true,
+        "herkomst": "regeling",
+        "voorgesteld_op": "2026-10-14",
+        "voorgesteld_bedrag": 5000,
+        "verificatie": {
+          "status": "niet_gecontroleerd"
+        }
+      },
+      "categorie": "http_error",
+      "reden": null,
+      "eindgebruikerTekst": "Bron kon niet automatisch worden gecontroleerd."
+    },
+    {
+      "sleutel": "r:fonds:55555555-5555-4555-8555-555555555555",
+      "metadata": {
+        "versie": 2,
+        "server_generated": true,
+        "herkomst": "fonds",
+        "voorgesteld_op": "2026-10-14",
+        "voorgesteld_bedrag": null
+      },
+      "categorie": "niet_uitgevoerd",
+      "reden": "geen_toegang_tot_details",
+      "eindgebruikerTekst": null
+    },
+    {
+      "sleutel": "r:fonds:66666666-6666-4666-8666-666666666666",
+      "metadata": {
+        "versie": 2,
+        "server_generated": true,
+        "herkomst": "fonds",
+        "voorgesteld_op": "2026-10-14",
+        "voorgesteld_bedrag": 3000,
+        "verificatie": {
+          "status": "gedeeltelijk",
+          "gecontroleerd_op": "2026-10-14T10:00:00.000Z",
+          "bron_url": "https://www.fonds-f.example.nl/aanvragen",
+          "eind_url": "https://www.fonds-f.example.nl/aanvragen",
+          "pagina_sha256": "5bcec9d31c8a58a760ba53025edbfa7df316aa8b777cd5daa10e70993f83e11d",
+          "velden": {
+            "fondsnaam": {
+              "status": "confirmed",
+              "waarde": "Stichting Voorbeeld Fonds Zuid",
+              "fragment": "Pagina Stichting Voorbeeld Fonds Zuid Wij steunen projecten in Rotterdam-Zuid.",
+              "fragment_sha256": "5bcec9d31c8a58a760ba53025edbfa7df316aa8b777cd5daa10e70993f83e11d"
+            },
+            "bedrag_min": {
+              "status": "uncertain"
+            },
+            "bedrag_max": {
+              "status": "uncertain"
+            }
+          }
+        }
+      },
+      "categorie": "ok",
+      "reden": null,
+      "eindgebruikerTekst": "De bron kon niet volledig worden bevestigd. Controleer de actuele gegevens bij de financier."
+    }
+  ],
+  "totalen": {
+    "aantal": 6,
+    "voorgesteld": 48000,
+    "gat": 180000,
+    "nietToegewezen": 132000,
+    "overboeking": 0,
+    "nieuwGepland": 48000,
+    "nieuwNogTePlannen": 132000,
+    "zonderBedrag": 1
+  },
+  "token": "eyJleHAiOjE3OTE5NzM4MDAsImgiOiI2YTk2OWE3ZWRlYzI0MGJlMTlmZmU2ZWNhNDc1ZGJjNjRlMmE1ODc0ZDhlYjAyNTg4ZDU3NGVjNTIxMGI0N2Y0IiwiaWF0IjoxNzkxOTcyMDAwLCJqdGkiOiI5OTk5OTk5OS05OTk5LTQ5OTktODk5OS05OTk5OTk5OTk5OTkiLCJwaWQiOiIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJ1aWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJ2IjoxfQ.lBXcDnATouP0yG8hIQ9XJGEJNVQh8fKVAj88PBMNRao",
+  "tokenGeldigTotSeconden": 1791973800,
+  "actiesGegenereerd": false,
+  "opgeslagen": false
+}

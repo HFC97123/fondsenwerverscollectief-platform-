@@ -213,6 +213,11 @@ export interface GevondenDatum {
   heeftJaar: boolean;
 }
 
+export interface DatumMetPositie extends GevondenDatum {
+  begin: number;
+  eind: number;
+}
+
 function echteDatum(j: number, m: number, d: number): string | null {
   if (!(j >= 1900 && j <= 2200 && m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
 
@@ -223,17 +228,18 @@ function echteDatum(j: number, m: number, d: number): string | null {
   return `${String(j).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-// Zoekt alle datums in een (korte, maximaal 300 tekens) tekst. Ondersteund: 2026-11-12, 12-11-2026, 12/11/2026, 12.11.2026,
-// 12 november 2026, 12 nov. 2026, 1e november 2026, en zonder jaar ("12 november"; dat telt als gevonden maar niet bewijsbaar).
-export function vindDatums(tekst: string): GevondenDatum[] {
-  const t = tekst.slice(0, 1000).toLowerCase();
-  const uit: GevondenDatum[] = [];
+// Kern: zoekt alle datums in `tekst` (alleen de eerste `cap` tekens) en geeft ook de plek. De posities gelden voor `tekst` zelf, mits het
+// kleine-lettersen van de tekst de lengte niet verandert (zeldzame Unicode-tekens); wie posities gebruikt, controleert dat zelf.
+export function vindDatumsMetPositie(tekst: string, cap: number, max = Number.POSITIVE_INFINITY): DatumMetPositie[] {
+  const kort = tekst.slice(0, cap);
+  const t = kort.toLowerCase();
+  const uit: DatumMetPositie[] = [];
   const bezet: Array<[number, number]> = [];
   const vrij = (a: number, b: number) => !bezet.some(([x, y]) => a < y && b > x);
   const voegToe = (a: number, b: number, d: GevondenDatum) => {
-    if (vrij(a, b)) {
+    if (uit.length < max && vrij(a, b)) {
       bezet.push([a, b]);
-      uit.push(d);
+      uit.push({ ...d, begin: a, eind: b });
     }
   };
 
@@ -258,14 +264,20 @@ export function vindDatums(tekst: string): GevondenDatum[] {
   return uit;
 }
 
-const DEADLINE_CONTEXT = ['deadline', 'uiterlijk', 'tot en met', 't/m', 'tot ', 'sluit', 'sluiting', 'sluitingsdatum', 'indienen', 'ingediend', 'inleveren', 'aanvragen', 'aanvraag', 'uiterste', 'vóór ', 'closing date', 'closes'];
-const VOORBEHOUD = [
+// Zoekt alle datums in een (korte, maximaal 1000 tekens) tekst. Ondersteund: 2026-11-12, 12-11-2026, 12/11/2026, 12.11.2026,
+// 12 november 2026, 12 nov. 2026, 1e november 2026, en zonder jaar ("12 november"; dat telt als gevonden maar niet bewijsbaar).
+export function vindDatums(tekst: string): GevondenDatum[] {
+  return vindDatumsMetPositie(tekst, 1000).map(({ iso, heeftJaar }) => ({ iso, heeftJaar }));
+}
+
+export const DEADLINE_CONTEXT = ['deadline', 'uiterlijk', 'tot en met', 't/m', 'tot ', 'sluit', 'sluiting', 'sluitingsdatum', 'indienen', 'ingediend', 'inleveren', 'aanvragen', 'aanvraag', 'uiterste', 'vóór ', 'closing date', 'closes'];
+export const VOORBEHOUD = [
   'naar verwachting', 'verwachte', 'verwacht ', 'voorlopig', 'mogelijk', 'indicatief', 'streefdatum', 'ongeveer', 'circa', 'later bekend',
   'nog niet bekend', 'nader te bepalen', 'nog te bepalen', 'n.t.b', 'wordt bekendgemaakt', 'volgt later', 'volgt nog', 'onder voorbehoud',
   'vermoedelijk', 'waarschijnlijk', 'kan wijzigen',
 ];
 
-const bevatEen = (tekst: string, lijst: string[]): boolean => {
+export const bevatEen = (tekst: string, lijst: string[]): boolean => {
   const t = tekst.toLowerCase();
 
   return lijst.some((w) => t.includes(w));
@@ -275,15 +287,23 @@ const bevatEen = (tekst: string, lijst: string[]): boolean => {
 // Bedragen (euro's)
 
 // Herkent "€ 25.000", "€25.000,-", "25.000 euro", "EUR 25000", "€ 25.000,50". Alleen op korte fragmenten toegepast.
-export function vindBedragen(tekst: string): number[] {
-  const t = tekst.slice(0, 1000).toLowerCase();
-  const uit: number[] = [];
+export interface BedragMetPositie {
+  waarde: number;
+  begin: number;
+  eind: number;
+}
+
+export function vindBedragenMetPositie(tekst: string, cap: number, max = Number.POSITIVE_INFINITY): BedragMetPositie[] {
+  const t = tekst.slice(0, cap).toLowerCase();
+  const uit: BedragMetPositie[] = [];
   const getal = '(\\d{1,3}(?:[. ]\\d{3})+|\\d+)(?:,(\\d{1,2}|-))?';
   const reeksen = [new RegExp(`(?:€|eur(?:o)?)\\s*${getal}`, 'g'), new RegExp(`${getal}\\s*(?:€|euro\\b|eur\\b)`, 'g')];
   const bezet: Array<[number, number]> = [];
 
   for (const re of reeksen) {
     for (const m of t.matchAll(re)) {
+      if (uit.length >= max) return uit;
+
       const a = m.index!;
       const b = a + m[0].length;
 
@@ -294,15 +314,19 @@ export function vindBedragen(tekst: string): number[] {
       const heel = Number(m[1].replace(/[. ]/g, ''));
       const cent = m[2] && m[2] !== '-' ? Number(m[2].padEnd(2, '0')) / 100 : 0;
 
-      if (Number.isFinite(heel)) uit.push(heel + cent);
+      if (Number.isFinite(heel)) uit.push({ waarde: heel + cent, begin: a, eind: b });
     }
   }
 
   return uit;
 }
 
-const MAX_CONTEXT = ['maximaal', 'maximum', 'max.', 'max ', 'tot ', 'hoogstens', 'niet meer dan', 'ten hoogste', 'bedraagt', 'bijdrage'];
-const MIN_CONTEXT = ['minimaal', 'minimum', 'min.', 'min ', 'vanaf', 'ten minste', 'tenminste', 'niet minder dan', 'laagste', 'bedraagt'];
+export function vindBedragen(tekst: string): number[] {
+  return vindBedragenMetPositie(tekst, 1000).map((x) => x.waarde);
+}
+
+export const MAX_CONTEXT = ['maximaal', 'maximum', 'max.', 'max ', 'tot ', 'hoogstens', 'niet meer dan', 'ten hoogste', 'bedraagt', 'bijdrage'];
+export const MIN_CONTEXT = ['minimaal', 'minimum', 'min.', 'min ', 'vanaf', 'ten minste', 'tenminste', 'niet minder dan', 'laagste', 'bedraagt'];
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Citaat zoeken
