@@ -2,6 +2,7 @@
 // Geen knoppen die schrijven, geen opslag, geen koppeling met chat of taken. Fail-safe: bij een fout staat er alleen een melding.
 import React, { useMemo } from 'react';
 import { css } from '../../../shared/lib/css.js';
+import FinancieringsRegel from './FinancieringsRegel.jsx';
 import { bouwPreviewModel, PREVIEW_FOUT } from './voorstelPreviewModel.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
@@ -92,6 +93,76 @@ function Verificatie({ v, reden, eindgebruikerTekst }) {
   );
 }
 
+const STIJL_DETAIL = `
+.fwk-vr-rij { display: grid; grid-template-columns: minmax(110px, 160px) minmax(0, 1fr); column-gap: 12px; }
+@media (max-width: 520px) { .fwk-vr-rij { grid-template-columns: minmax(0, 1fr); row-gap: 1px; } }
+`;
+
+function Rij({ label, children, testId }) {
+  return (
+    <div data-testid={testId} className="fwk-vr-rij" style={css('padding: 4px 0;')}>
+      <dt style={css(`${TEKST} font-size: 12.5px; font-weight: 800; color: #7B8985;`)}>{label}</dt>
+      <dd style={css(`${TEKST} font-size: 13.5px; margin: 0; min-width: 0; overflow-wrap: anywhere;`)}>{children}</dd>
+    </div>
+  );
+}
+
+// De details van één voorgestelde regel. Alleen weergave van wat de server leverde; bevat zelf geen enkele controle.
+function VoorstelRegelDetail({ r }) {
+  return (
+    <div data-testid="voorstel-regel-detail" style={css('display: flex; flex-direction: column; gap: 12px;')}>
+      <style>{STIJL_DETAIL}</style>
+      <dl style={css('margin: 0;')}>
+        <Rij label="Fonds / gever">{r.fondsnaam || '–'}</Rij>
+        {r.regelingnaam && <Rij label="Regeling">{r.regelingnaam}</Rij>}
+        <Rij label="Voorgesteld bedrag" testId="voorstel-regel-bedrag">
+          {r.bedragTekst || 'Geen bedrag voorgesteld'}
+          {r.bedragAangepast && <span style={css('display: block; font-size: 12px; color: #8A5A16;')}>Aangepast aan de grenzen van de regeling</span>}
+        </Rij>
+        {r.grenzenTekst && <Rij label="Bijdragegrenzen">{r.grenzenTekst}</Rij>}
+        <Rij label="Deadline" testId="voorstel-regel-deadline">{r.deadlineTekst ? `${r.deadlineTekst} (volgens onze database)` : 'Geen deadline bekend'}</Rij>
+        {r.extraVelden.map((v) => (
+          <Rij key={v.label} label={v.label}>{v.waarde}</Rij>
+        ))}
+        <Rij label="Voorwaarden">
+          {r.voorwaarden.length ? (
+            <ul style={css('margin: 0; padding-left: 18px;')}>
+              {r.voorwaarden.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          ) : (
+            'Geen voorwaarden vermeld'
+          )}
+        </Rij>
+        <Rij label="Cofinanciering">{r.cofinanciering ? `${r.cofinanciering} (niet automatisch gecontroleerd)` : 'Geen eis vermeld'}</Rij>
+      </dl>
+
+      {r.staatAl && <div style={css(`${TEKST} font-size: 13px; color: #8A5A16;`)}>Staat al in uw dekkingsplan en wordt niet opnieuw toegevoegd.</div>}
+
+      {r.motivatie && (
+        <div>
+          <div style={css(LABEL)}>Waarom past dit bij uw project</div>
+          <div data-testid="voorstel-regel-motivatie" style={css(`${TEKST} font-size: 13.5px;`)}>{r.motivatie}</div>
+        </div>
+      )}
+
+      {r.onzekerheden.length > 0 && (
+        <div>
+          <div style={css(LABEL)}>Onzekerheden</div>
+          <ul style={css(`${TEKST} font-size: 13px; margin: 2px 0 0; padding-left: 18px; color: #6D7C77;`)}>
+            {r.onzekerheden.map((o, i) => (
+              <li key={i}>{o}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <Verificatie v={r.verificatie} reden={r.reden} eindgebruikerTekst={r.eindgebruikerTekst} />
+    </div>
+  );
+}
+
 export default function VoorstelPreview({ antwoord }) {
   const model = useMemo(() => bouwPreviewModel(antwoord), [antwoord]);
 
@@ -121,41 +192,22 @@ export default function VoorstelPreview({ antwoord }) {
 
       {model.regels.length === 0 && <div style={css(TEKST)}>Er zijn geen regels om te tonen.</div>}
 
-      {model.regels.map((r) => (
-        <article key={r.sleutel} data-testid="voorstel-regel" data-sleutel={r.sleutel} style={css('display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid #E1EAE4; border-radius: 16px;')}>
-          <div style={css('display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline;')}>
-            <div style={css('min-width: 0;')}>
-              <div style={css(LABEL)}>{r.soort}</div>
-              <div data-testid="voorstel-regel-naam" style={css(`${TEKST} font-weight: 800; color: #2C4A5E; font-size: 16px;`)}>{r.naam}</div>
-              {r.gever && r.gever !== r.naam && <div style={css(`${TEKST} font-size: 13px;`)}>{r.gever}</div>}
-            </div>
-            <div style={css('text-align: right;')}>
-              <div data-testid="voorstel-regel-bedrag" style={css(`${TEKST} font-weight: 800; color: #2C4A5E; font-size: 16px;`)}>{r.bedragTekst || 'Geen bedrag voorgesteld'}</div>
-              {r.bedragAangepast && <div style={css(`${TEKST} font-size: 12px; color: #8A5A16;`)}>Aangepast aan de grenzen van de regeling</div>}
-            </div>
-          </div>
-
-          {(r.deadlineTekst || r.grenzenTekst) && (
-            <div style={css(`${TEKST} font-size: 13px; color: #6D7C77;`)}>
-              {r.deadlineTekst && <span data-testid="voorstel-regel-deadline">Deadline volgens onze database: {r.deadlineTekst}</span>}
-              {r.deadlineTekst && r.grenzenTekst && ' · '}
-              {r.grenzenTekst && <span>Bijdrage: {r.grenzenTekst}</span>}
-            </div>
-          )}
-
-          {r.staatAl && <div style={css(`${TEKST} font-size: 13px; color: #8A5A16;`)}>Staat al in uw dekkingsplan en wordt niet opnieuw toegevoegd.</div>}
-          {r.motivatie && <div style={css(`${TEKST} font-size: 13.5px;`)}>{r.motivatie}</div>}
-          {r.onzekerheden.length > 0 && (
-            <ul style={css(`${TEKST} font-size: 13px; margin: 0; padding-left: 18px; color: #6D7C77;`)}>
-              {r.onzekerheden.map((o, i) => (
-                <li key={i}>{o}</li>
-              ))}
-            </ul>
-          )}
-
-          <Verificatie v={r.verificatie} reden={r.reden} eindgebruikerTekst={r.eindgebruikerTekst} />
-        </article>
-      ))}
+      <div data-testid="voorstel-regels" style={css('display: flex; flex-direction: column; gap: 8px;')}>
+        {model.regels.map((r) => (
+          <FinancieringsRegel
+            key={r.sleutel}
+            testId="voorstel-regel"
+            data-sleutel={r.sleutel}
+            titel={r.naam}
+            bedrag={r.bedragTekst}
+            bedragLeeg="Geen bedrag"
+            status={r.kop.status}
+            samenvatting={r.kop.samenvatting}
+          >
+            <VoorstelRegelDetail r={r} />
+          </FinancieringsRegel>
+        ))}
+      </div>
 
       {model.aantalOvergeslagen > 0 && (
         <div data-testid="voorstel-overgeslagen" style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>

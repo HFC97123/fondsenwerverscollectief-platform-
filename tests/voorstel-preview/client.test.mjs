@@ -90,6 +90,20 @@ sectie('3. Niet van de server = niet gecontroleerd');
   check('metadata van een andere regel wordt niet overgenomen', verkeerd.regels[0].verificatie.status === 'niet_gecontroleerd');
 }
 
+sectie('3b. Compacte kopregel en details');
+{
+  const m = bouwPreviewModel(antwoord([regel('r1', { voorwaarden: ['Rotterdamse organisatie'], onzekerheden: ['Cofinancieringseis (niet automatisch gecontroleerd): 50%', 'Een andere onzekerheid'] })], [{ sleutel: 'r1', metadata: meta('geverifieerd') }]));
+  const r = m.regels[0];
+
+  check('kop: korte status en compacte deadline', r.kop.status.sleutel === 'geverifieerd' && r.kop.status.label === 'Geverifieerd' && r.kop.samenvatting === 'deadline 12 nov 2026', JSON.stringify(r.kop));
+  check('kop: gedeeltelijk heet "Gedeeltelijk geverifieerd"', bouwPreviewModel(antwoord([regel('r1')], [{ sleutel: 'r1', metadata: meta('gedeeltelijk') }])).regels[0].kop.status.label === 'Gedeeltelijk geverifieerd');
+  check('kop: zonder deadline geen samenvatting en geen verzonnen "doorlopend"', bouwPreviewModel(antwoord([regel('r1', { deadline: { status: 'te-verifieren', datum: null } })], [])).regels[0].kop.samenvatting === null);
+  check('details: fonds/gever en regeling gescheiden', r.fondsnaam === 'Gemeente Rotterdam' && r.regelingnaam === 'Rotterdams Jongerencultuurfonds');
+  check('details: fonds heeft geen regelingnaam', bouwPreviewModel(antwoord([regel('r1', { type: 'fonds' })], [])).regels[0].regelingnaam === null);
+  check('details: cofinanciering en voorwaarden apart, andere onzekerheden blijven staan', r.cofinanciering === '50%' && r.voorwaarden[0] === 'Rotterdamse organisatie' && r.onzekerheden.length === 1 && r.onzekerheden[0] === 'Een andere onzekerheid');
+  check('details: doelgroep, werkgebied en type aanvrager eerlijk als niet gecontroleerd', r.extraVelden.length === 3 && r.extraVelden.every((v) => v.waarde === 'Niet gecontroleerd'));
+}
+
 sectie('4. Redenen en publiek niveau');
 {
   const x = bouwPreviewModel(antwoord([regel('r1', { bedrag: null, deadline: { status: 'te-verifieren', datum: null, verlopen: false }, grenzen: { min: null, max: null } })], [{ sleutel: 'r1', metadata: { versie: 2, server_generated: true, herkomst: 'regeling', voorgesteld_op: '2026-10-14' }, categorie: 'niet_uitgevoerd', reden: 'geen_toegang_tot_details' }]));
@@ -141,7 +155,13 @@ sectie('6. Het component en de service zijn read-only');
     check(`${naam}: geen HTML-injectie`, !/dangerouslySetInnerHTML|innerHTML|eval\(/.test(code(s)));
   }
 
-  check('component: geen knoppen of klikacties (read-only)', !/<button|onClick|onSubmit|<form|<input|<textarea|<select/.test(code(comp)));
+  const regelComp = readFileSync('src/features/kompas-app/financiering/FinancieringsRegel.jsx', 'utf8');
+
+  check('preview-component: geen eigen knoppen of klikacties (read-only)', !/<button|onClick|onSubmit|<form|<input|<textarea|<select/.test(code(comp)));
+  check('gedeelde regel: precies een knop (de kopregel) met aria-expanded en aria-controls, een onClick die alleen open/dicht wisselt', (code(regelComp).match(/<button/g) || []).length === 1 && /aria-expanded=\{open\}/.test(regelComp) && /aria-controls=\{paneelId\}/.test(regelComp) && (code(regelComp).match(/onClick/g) || []).length === 1 && /const wissel = \(\) => \{[\s\S]*?\};/.test(regelComp));
+  check('gedeelde regel: geen netwerk, opslag, supabase of voorstel-/verificatielogica', !/fetch\(|supabase|localStorage|sessionStorage|\.insert\(|\.rpc\(|functions\.invoke|voorstel|verificatie|dangerouslySetInnerHTML/i.test(code(regelComp).replace(/data-testid="financieringsregel[^"]*"/g, '')));
+  check('gedeelde regel: standaard ingeklapt, details in een region die verborgen is zolang dicht', /defaultOpen = false/.test(regelComp) && /role="region"/.test(regelComp) && /hidden=\{!open\}/.test(regelComp));
+  check('preview gebruikt de gedeelde regel (geen eigen kaart)', /import FinancieringsRegel from '.\/FinancieringsRegel.jsx'/.test(comp) && /<FinancieringsRegel/.test(comp) && !/<article/.test(code(comp)));
   check('component: bronlink met noopener en nofollow', /rel="noopener noreferrer nofollow"/.test(comp));
   check('component en model bepalen nergens zelf de status "geverifieerd"', !/status\s*[:=]\s*['"]geverifieerd['"]/.test(code(comp) + code(model)));
   check('component importeert geen chat-, acties- of opslagcode', !/chat|actieplan|acties|useProjectFinanciering|projectActies|toevoegen/i.test(comp.split('\n').filter((l) => l.startsWith('import')).join('\n')));

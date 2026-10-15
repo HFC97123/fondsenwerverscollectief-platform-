@@ -25,6 +25,12 @@ const REDEN_TEKST = {
   fout: GEEN_BRONCONTROLE,
 };
 
+// Korte labels voor de compacte kopregel. De lange labels (VERIFICATIE_LABEL) blijven in het detailblok.
+export const KORT_LABEL = { geverifieerd: 'Geverifieerd', gedeeltelijk: 'Gedeeltelijk geverifieerd', onzeker: 'Onzeker', conflict: 'Conflict', niet_gecontroleerd: 'Niet gecontroleerd' };
+const EXTRA_VELDEN = ['Doelgroep', 'Werkgebied', 'Type aanvrager'];
+const STATUS_TEKST = { confirmed: 'Bevestigd in de bron', uncertain: 'Niet zeker bevestigd', conflict: 'Wijkt af van de bron', not_checked: 'Niet gecontroleerd' };
+const COF_VOORVOEGSEL = /^Cofinancieringseis[^:]*:\s*/i;
+
 const isObject = (x) => typeof x === 'object' && x !== null && !Array.isArray(x);
 
 function velden(w) {
@@ -83,6 +89,14 @@ function regelModel(r, v) {
   const g = isObject(r.grenzen) ? r.grenzen : {};
   const bedrag = Number.isFinite(r.bedrag) ? r.bedrag : null;
 
+  const onzekerheden = Array.isArray(r.onzekerheden) ? r.onzekerheden.map(String).slice(0, 6) : [];
+  const cofRegel = onzekerheden.find((o) => COF_VOORVOEGSEL.test(o)) || null;
+  const statusVan = (label) => {
+    const v = ver.velden.find((x) => x.label === label);
+
+    return STATUS_TEKST[v ? v.status : 'not_checked'];
+  };
+
   return {
     sleutel: String(r.sleutel || ''),
     naam: String(r.naam || ''),
@@ -94,7 +108,18 @@ function regelModel(r, v) {
     // Alleen wat onze database zegt. Nooit als "geverifieerd" gelabeld; de controle staat in `verificatie`.
     deadlineTekst: dl ? formatDatum(dl) : null,
     motivatie: String(r.motivatie || ''),
-    onzekerheden: Array.isArray(r.onzekerheden) ? r.onzekerheden.map(String).slice(0, 6) : [],
+    onzekerheden: onzekerheden.filter((o) => o !== cofRegel),
+    cofinanciering: cofRegel ? cofRegel.replace(COF_VOORVOEGSEL, '') : null,
+    voorwaarden: Array.isArray(r.voorwaarden) ? r.voorwaarden.map(String).slice(0, 8) : [],
+    // Compacte kopregel (details on demand): alleen naam, bedrag, status en eventueel deadline.
+    kop: {
+      status: { sleutel: ver.status, label: KORT_LABEL[ver.status] },
+      samenvatting: dl ? `deadline ${formatDatum(dl)}` : null,
+    },
+    // Rijen voor het detailblok. Waarden die de preview niet kent staan er eerlijk als "niet gecontroleerd" in, nooit als aanname.
+    fondsnaam: r.type === BRON_SOORT.FONDS ? String(r.naam || '') : String(r.gever || ''),
+    regelingnaam: r.type === BRON_SOORT.REGELING ? String(r.naam || '') : null,
+    extraVelden: EXTRA_VELDEN.map((label) => ({ label, waarde: statusVan(label) })),
     bedragAangepast: r.bedragGecorrigeerd === true,
     verificatie: ver,
     reden: ver.status === VERIFICATIE_STATUS.GEVERIFIEERD ? '' : reden,
