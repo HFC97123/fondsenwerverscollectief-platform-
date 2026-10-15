@@ -206,6 +206,28 @@ sectie('5. focusFundingId: server-side gevalideerd');
 
   check('5b: focus op een regel met verborgen bron toont alleen eigen gegevens, geen naam', /FOCUS:[^\n]*niet zichtbaar/.test(T.fundingBlok(gemaskeerd)) && !/Talentprogramma Premium|Exclusief Talentfonds/.test(gemaskeerd.developer.join('\n')));
 
+  // "Bespreek met Subsidiekompas" per regel: bronstatus (server) en openstaande vervolgstappen in de FOCUS-context.
+  {
+    const regel = w.regels.jongeren;
+
+    T.db.subsidie_kompas_bron_controles.push({ user_id: T.GEBRUIKER_A.id, program_id: w.p.id, record_type: 'regeling', record_id: regel.scheme_id, status: 'gecontroleerd', gecontroleerd_op: new Date().toISOString(), reden: null });
+    T.db.subsidie_kompas_program_actions.push(
+      { id: T.uuid(), user_id: T.GEBRUIKER_A.id, program_id: w.p.id, funding_id: regel.id, title: 'Voorwaarden van Rotterdams Jongerencultuurfonds vergelijken', due_date: '2026-10-25', status: 'todo', priority: 'high' },
+      { id: T.uuid(), user_id: T.GEBRUIKER_A.id, program_id: w.p.id, funding_id: regel.id, title: 'Afgeronde stap', due_date: '2026-10-20', status: 'done', priority: 'normal' },
+    );
+
+    const extra = await vraagMet(w, 'Help mij met deze aanvraag.', { focusFundingId: regel.id });
+    const b = T.fundingBlok(extra);
+
+    check('5f: FOCUS bevat de bronstatus uit de server-broncontrole en benoemt dat het geen beoordeling van geschiktheid is', /BRONSTATUS: de bron is gecontroleerd op/.test(b) && /Zeg nooit dat het lid in aanmerking komt/.test(b));
+    check('5g: FOCUS noemt openstaande vervolgstappen als eigen streefdata, niet de afgeronde', /OPENSTAANDE VERVOLGSTAPPEN[^\n]*Voorwaarden van Rotterdams Jongerencultuurfonds vergelijken \(streefdatum 2026-10-25\)/.test(b) && !/Afgeronde stap/.test(b));
+
+    const elders = await vraagMet(w, 'Help mij met deze aanvraag.', { focusFundingId: w.regels.dans.id });
+
+    check('5h: een andere regel krijgt niet de bronstatus of stappen van deze regel', !/gecontroleerd op/.test(T.fundingBlok(elders)) && !/Voorwaarden van Rotterdams Jongerencultuurfonds vergelijken/.test(T.fundingBlok(elders)));
+    check('5i: zonder focusregel geen BRONSTATUS in de context', !/BRONSTATUS/.test(T.fundingBlok(await vraagMet(w, 'Help mij met deze aanvraag.'))));
+  }
+
   for (const [naam, id] of [
     ['regel van een ander project van dezelfde gebruiker', regelAnder.id],
     ['een onbekend uuid', '00000000-0000-4000-8000-ffffffffffff'],

@@ -2302,6 +2302,8 @@ function buildProjectFundingContext(opties: {
   regels: FundingRegel[];
   vandaag: string;
   focusRegel?: FundingRegel | null;
+  // Alleen bij een focusregel: bronstatus en openstaande vervolgstappen van die regel (door de server gelezen).
+  focusExtra?: string;
 }): string {
   const regels = (opties.regels || []).slice();
 
@@ -2342,6 +2344,8 @@ function buildProjectFundingContext(opties: {
     delen.push(
       `FOCUS: het lid opent dit gesprek vanuit deze ene financieringsregel; vragen als "deze aanvraag" of "dit fonds" gaan hierover. ${fundingRegelTekst(opties.focusRegel, opties.vandaag).replace(/^- /, '')}`,
     );
+
+    if (opties.focusExtra) delen.push(opties.focusExtra);
   }
 
   delen.push(
@@ -2430,6 +2434,36 @@ async function gesprekProject(admin: any, userId: string, conversationId: unknow
   }
 }
 
+// "Bespreek met Subsidiekompas" vanuit één regel: wat de server weet over de bron (broncontrole) en welke vervolgstappen openstaan. Alleen voor een
+// zichtbare regel (een verborgen of verwijderde bron blijft anoniem) en alleen uit eigen rijen van het lid (RLS / eigen user_id). Elke fout geeft een
+// lege tekst: het gesprek verloopt dan zoals voorheen.
+async function laadFocusExtra(admin: any, authHeader: string, userId: string, programId: string, regel: FundingRegel): Promise<string> {
+  try {
+    if (regel.bronStatus !== 'zichtbaar') return '';
+
+    const { focusBronTekst } = await import('../_shared/bronControle.ts');
+    const isDatabase = regel.bronType === 'regeling' || regel.bronType === 'fonds';
+    const id = regel.bronType === 'regeling' ? regel.schemeId : regel.funderId;
+    const rijen = isDatabase ? await leesBronRijen(admin, userId, programId) : null;
+    const rij = isDatabase && id ? (rijen ?? []).find((x: any) => x.record_type === regel.bronType && String(x.record_id).toLowerCase() === String(id).toLowerCase()) ?? null : null;
+    const delen = [focusBronTekst(rij, isDatabase, new Date())];
+    const client = gebruikersClient(authHeader);
+
+    if (client) {
+      const { data } = await client.from('subsidie_kompas_program_actions').select('title, due_date, status, priority').eq('program_id', programId).eq('funding_id', regel.id).order('due_date', { ascending: true, nullsFirst: false }).limit(12);
+      const open = (Array.isArray(data) ? data : []).filter((a: any) => a.status !== 'done' && a.status !== 'cancelled').slice(0, 8);
+
+      if (open.length) {
+        delen.push(`OPENSTAANDE VERVOLGSTAPPEN BIJ DEZE REGEL: ${open.map((a: any) => `${String(a.title ?? '').slice(0, 120)}${a.due_date ? ` (streefdatum ${a.due_date})` : ''}`).join('; ')}. Datums van taken zijn eigen streefdata van het lid, tenzij de taak zelf een deadline van de financier noemt.`);
+      }
+    }
+
+    return delen.join('\n').slice(0, 1800);
+  } catch (_e) {
+    return '';
+  }
+}
+
 // Bouwt de fundingcontext voor dit verzoek. conversation.active_program_id is LEIDEND: de regels worden alleen
 // gelezen als het gesprek (van deze gebruiker) bij precies het door de server gevalideerde actieve project hoort.
 // Zonder gesprek (nieuw gesprek, nog niet aangemaakt) geldt het gevalideerde project als startwaarde.
@@ -2475,6 +2509,7 @@ async function laadFundingVoorVerzoek(
       }
     }
 
+    const focusExtra = focusRegel ? await laadFocusExtra(admin, authHeader, userId, actiefProject.id, focusRegel) : '';
     const tekst = buildProjectFundingContext({
       projectNaam: actiefProject.naam,
       begroting: actiefProject.velden.begroting,
@@ -2482,6 +2517,7 @@ async function laadFundingVoorVerzoek(
       regels,
       vandaag: vandaagIso(),
       focusRegel,
+      focusExtra,
     });
 
     return { tekst, regels, programId: actiefProject.id, regelsBekend: true };
@@ -5759,7 +5795,7 @@ async function laadOpslagBasis(admin: any, authHeader: string, profileId: string
 }
 
 type OpslagBasis = NonNullable<Awaited<ReturnType<typeof laadOpslagBasis>>['basis']>;
-type SchrijfBasis = { project: { id: string }; fundingRegels: OpslagBasis['fundingRegels'] };
+type SchrijfBasis = { project: { id: string }; fundingRegels: OpslagBasis['fundingRegels']; vandaag: string };
 
 // Broncontroles (tabel subsidie_kompas_bron_controles, geschreven door DEZE functie met de servicerol). Elke fout, ook een ontbrekende tabel
 // (migratie nog niet toegepast), geeft null/false terug: dan geldt "niet gecontroleerd" en blijft opslaan gewoon werken.
@@ -5820,7 +5856,7 @@ async function bronOordelenVoor(rijen: any[] | null, records: Array<{ type: stri
 // VOORSTEL-OPSLAAN-BEGIN
 // De ENIGE plek in de Edge Function die in subsidie_kompas_program_funding en subsidie_kompas_program_actions schrijft: uitsluitend via de
 // gebruikers-client (RLS van het lid zelf), nooit via de admin-client, en alleen na een klik op Opslaan (mode 'voorstel-opslaan').
-type OpslagRegelUit = { sleutel: string; naam: string; status: 'opgeslagen' | 'bestaat-al' | 'mislukt'; reden?: string };
+type OpslagRegelUit = { sleutel: string; naam: string; status: 'opgeslagen' | 'bestaat-al' | 'mislukt'; reden?: string; fundingId?: string };
 
 async function schrijfOpslag(
   client: any,
@@ -5845,7 +5881,7 @@ async function schrijfOpslag(
     }
 
     if (r.staatAl || bestaand) {
-      regels.push({ sleutel: r.sleutel, naam: r.naam, status: 'bestaat-al' });
+      regels.push({ sleutel: r.sleutel, naam: r.naam, status: 'bestaat-al', ...(bestaand ? { fundingId: bestaand.id } : {}) });
       continue;
     }
 
@@ -5863,13 +5899,62 @@ async function schrijfOpslag(
     }
 
     fundingVan.set(r.sleutel, String(data.id));
-    regels.push({ sleutel: r.sleutel, naam: r.naam, status: 'opgeslagen' });
+    regels.push({ sleutel: r.sleutel, naam: r.naam, status: 'opgeslagen', fundingId: String(data.id) });
+  }
+
+  // --- Online gevonden financiers op naam: zonder bedrag, status Interessant, nadrukkelijk "nog niet gecontroleerd". Elke krijgt een eigen route
+  // van vervolgstappen (beoordelen, voorwaarden nagaan, beslissen); de onzekere status blijft zichtbaar in het dekkingsplan zelf. ---------------
+  const { plantOnlineActies } = await import('../_shared/actieplanStappen.ts');
+  const uitSuggesties: Array<{ naam: string; status: 'opgeslagen' | 'bestaat-al' | 'mislukt'; reden?: string; fundingId?: string }> = [];
+  const onlineTaken: Array<{ fundingId: string; titel: string; financier: string; datum: string | null; prioriteit: string; toelichting: string }> = [];
+  const voegOnlineTakenToe = (fundingId: string, naam: string, url: string | null) => {
+    for (const s of plantOnlineActies(naam, url, b.vandaag)) onlineTaken.push({ fundingId, titel: s.titel, financier: naam, datum: s.datum, prioriteit: s.prioriteit, toelichting: s.toelichting });
+  };
+
+  for (const sg of suggesties) {
+    const naam = (sg.naam && sg.naam !== sg.gever ? `${sg.gever} - ${sg.naam}` : sg.gever).slice(0, 200);
+    const bestaand = b.fundingRegels.find((f) => zelfdeFinancier(f.naam, naam) || zelfdeFinancier(f.funder, sg.gever));
+
+    if (bestaand) {
+      uitSuggesties.push({ naam, status: 'bestaat-al', fundingId: bestaand.id });
+
+      // Opnieuw proberen: een eerder als online gevonden opgeslagen financier (op naam, zonder regeling of fonds uit de database) krijgt alleen zijn
+      // (ontbrekende) taken. Nooit voor een regel uit onze database.
+      if (alleenActies && !bestaand.schemeId && !bestaand.funderId) voegOnlineTakenToe(bestaand.id, naam, sg.url);
+
+      continue;
+    }
+
+    if (alleenActies) continue;
+
+    const { data, error } = await client
+      .from('subsidie_kompas_program_funding')
+      .insert({
+        user_id: profileId,
+        program_id: b.project.id,
+        financier_naam: naam,
+        requested_amount: null,
+        status: 'interesting',
+        notes: `${OPSLAAN_ONLINE_NOTITIE}${sg.url ? ` Bron: ${sg.url}` : ''}`.slice(0, 4000),
+      })
+      .select('id')
+      .single();
+
+    if (error || !data?.id) {
+      const reden = opslagReden(error);
+
+      uitSuggesties.push({ naam, status: reden === 'bestaat-al' ? 'bestaat-al' : 'mislukt', reden });
+    } else {
+      uitSuggesties.push({ naam, status: 'opgeslagen', fundingId: String(data.id) });
+      voegOnlineTakenToe(String(data.id), naam, sg.url);
+    }
   }
 
   // --- Taken: alleen voor regels die nu zijn opgeslagen (of, bij opnieuw proberen, al in het dekkingsplan staan) -------------------
   const actieplan = { status: 'geen' as 'geen' | 'klaar' | 'deels' | 'mislukt', aangemaakt: 0, bestond: 0, mislukt: 0 };
   // Projecttaken (zonder regel) alleen als er minstens één regel is opgeslagen (of, bij opnieuw proberen, al in het dekkingsplan staat).
-  const teMaken = plan.acties.filter((a) => (a.regelSleutel ? fundingVan.has(a.regelSleutel) : fundingVan.size > 0));
+  const regelTaken = plan.acties.filter((a) => (a.regelSleutel ? fundingVan.has(a.regelSleutel) : fundingVan.size > 0)).map((a) => ({ fundingId: a.regelSleutel ? fundingVan.get(a.regelSleutel) ?? null : null, titel: a.titel, financier: a.financier, datum: a.datum, prioriteit: a.prioriteit, toelichting: a.toelichting }));
+  const teMaken = [...regelTaken, ...onlineTaken];
 
   if (teMaken.length) {
     const { data: bestaande, error: leesFout } = await client.from('subsidie_kompas_program_actions').select('title, funding_id').eq('program_id', b.project.id).limit(1000);
@@ -5884,7 +5969,7 @@ async function schrijfOpslag(
       const nieuw: any[] = [];
 
       for (const a of teMaken) {
-        const fundingId = a.regelSleutel ? fundingVan.get(a.regelSleutel) ?? null : null;
+        const fundingId = a.fundingId;
         const k = sleutelVan(a.titel, fundingId);
 
         if (aanwezig.has(k)) {
@@ -5919,34 +6004,6 @@ async function schrijfOpslag(
     }
   }
 
-  // --- Online gevonden financiers op naam: zonder bedrag, status Interessant, nadrukkelijk "nog niet gecontroleerd" -----------------------
-  const uitSuggesties: Array<{ naam: string; status: 'opgeslagen' | 'bestaat-al' | 'mislukt'; reden?: string }> = [];
-
-  for (const sg of suggesties) {
-    const naam = (sg.naam && sg.naam !== sg.gever ? `${sg.gever} - ${sg.naam}` : sg.gever).slice(0, 200);
-
-    if (b.fundingRegels.some((f) => zelfdeFinancier(f.naam, naam) || zelfdeFinancier(f.funder, sg.gever))) {
-      uitSuggesties.push({ naam, status: 'bestaat-al' });
-      continue;
-    }
-
-    const { error } = await client.from('subsidie_kompas_program_funding').insert({
-      user_id: profileId,
-      program_id: b.project.id,
-      financier_naam: naam,
-      requested_amount: null,
-      status: 'interesting',
-      notes: `${OPSLAAN_ONLINE_NOTITIE}${sg.url ? ` Bron: ${sg.url}` : ''}`.slice(0, 4000),
-    });
-
-    if (error) {
-      const reden = opslagReden(error);
-
-      uitSuggesties.push({ naam, status: reden === 'bestaat-al' ? 'bestaat-al' : 'mislukt', reden });
-    } else {
-      uitSuggesties.push({ naam, status: 'opgeslagen' });
-    }
-  }
 
   return { regels, actieplan, suggesties: uitSuggesties };
 }
@@ -6477,16 +6534,22 @@ Deno.serve(async (req) => {
         regels: body.regels,
         uitgeslotenActies: body.uitgeslotenActies,
         alleenActies,
+        zonderRegelsToegestaan: Array.isArray(body.suggesties) && body.suggesties.length > 0,
         bronOordelen: Object.fromEntries(Object.entries(bronOordelen).map(([k, v]) => [k, v.status])) as any,
+        // Bedrag dat al in het dekkingsplan staat (alleen voor opnieuw proberen van het actieplan: dezelfde taken als de eerste poging).
+        bestaandeBedragen: Object.fromEntries(
+          b.fundingRegels
+            .filter((r) => r.bronStatus === 'zichtbaar' && (r.schemeId || r.funderId))
+            .map((r) => [r.schemeId ? `r:regeling:${String(r.schemeId).toLowerCase()}` : `r:fonds:${String(r.funderId).toLowerCase()}`, r.requested ?? null]),
+        ),
       });
 
       if (!plan.ok) {
         return json({ ok: false, reden: 'validatie', regelFouten: plan.regelFouten, algemeen: plan.algemeen, opgeslagen: false }, 422);
       }
 
-      const suggesties = alleenActies
-        ? []
-        : (body.suggesties as any[] | undefined ?? [])
+      // Bij opnieuw proberen van het actieplan worden de online gevonden financiers ook meegestuurd: ze staan al op de lijst en krijgen alleen hun taken.
+      const suggesties = (body.suggesties as any[] | undefined ?? [])
             .slice(0, OPSLAAN_MAX_SUGGESTIES)
             .map((x) => ({
               gever: String(x?.gever ?? '').replace(/\s+/g, ' ').trim().slice(0, 150),

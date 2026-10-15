@@ -390,7 +390,7 @@ export function verificatieActie(regel, vandaag) {
     datumType: DATUM_TYPE.STREEF,
     externeDeadline: null,
     prioriteit: 'high',
-    toelichting: 'De deadline is niet geverifieerd. Controleer de actuele openstelling bij de financier voordat u verder plant.',
+    toelichting: 'De deadline is niet geverifieerd. Controleer de actuele openstelling bij de financier voordat u verder plant. Eigen streefdatum, geen deadline van de financier.',
     automatisch: true,
   };
 }

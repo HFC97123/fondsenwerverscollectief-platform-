@@ -4,6 +4,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { vraagBronControle, vraagVoorstelAanvullen, vraagVoorstelGenereren, vraagVoorstelOpslaan, vraagVoorstelStartpunt } from '../../../data/services/voorstelGenereren.js';
+import BespreekLink from './BespreekLink.jsx';
 import FinancieringsRegel from './FinancieringsRegel.jsx';
 import VoorstelStart from './VoorstelStart.jsx';
 import { VoorstelRegelDetail } from './VoorstelPreview.jsx';
@@ -86,7 +87,7 @@ function BronChip({ bron }) {
   );
 }
 
-function Samenvatting({ uit, model, onSluiten, onActieplanOpnieuw, actieplanBezig, actieplanFout }) {
+function Samenvatting({ uit, projectId, onSluiten, onActieplanOpnieuw, actieplanBezig, actieplanFout }) {
   const opgeslagen = uit.regels.filter((r) => r.status === 'opgeslagen').length;
   const suggestiesOpgeslagen = uit.suggesties.filter((x) => x.status === 'opgeslagen').length;
   const ap = uit.actieplan;
@@ -108,11 +109,23 @@ function Samenvatting({ uit, model, onSluiten, onActieplanOpnieuw, actieplanBezi
                   <BronChip bron={r.bron} />
                 </>
               )}
+              {r.fundingId && r.status !== 'mislukt' && (
+                <>
+                  {' · '}
+                  <BespreekLink projectId={projectId} fundingId={r.fundingId} naam={r.naam} stijl="min-height: 28px; font-size: 13px;" />
+                </>
+              )}
             </li>
           ))}
           {uit.suggesties.map((x) => (
             <li key={x.naam} data-testid="voorstel-opgeslagen-suggestie" data-status={x.status}>
-              <strong>{x.naam}</strong>: {x.status === 'opgeslagen' ? 'op uw lijst gezet, zonder bedrag. Online gevonden en niet gecontroleerd' : x.status === 'bestaat-al' ? 'stond al op uw lijst' : 'kon niet worden toegevoegd'}
+              <strong>{x.naam}</strong>: {x.status === 'opgeslagen' ? 'op uw lijst gezet, zonder bedrag. Online gevonden en niet gecontroleerd. Er staan stappen klaar om te beoordelen: eerst beoordelen of het past, dan voorwaarden, deadline en bijdrage nagaan, daarna beslissen of het in uw dekkingsplan komt' : x.status === 'bestaat-al' ? 'stond al op uw lijst' : 'kon niet worden toegevoegd'}
+              {x.fundingId && x.status !== 'mislukt' && (
+                <>
+                  {' · '}
+                  <BespreekLink projectId={projectId} fundingId={x.fundingId} naam={x.naam} stijl="min-height: 28px; font-size: 13px;" />
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -390,7 +403,7 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
         </section>
       )}
 
-      {fase === 'opgeslagen' && uitkomst && <Samenvatting uit={uitkomst} model={model} onSluiten={sluit} onActieplanOpnieuw={actieplanOpnieuw} actieplanBezig={actieplanBezig} actieplanFout={actieplanFout} />}
+      {fase === 'opgeslagen' && uitkomst && <Samenvatting uit={uitkomst} projectId={projectId} onSluiten={sluit} onActieplanOpnieuw={actieplanOpnieuw} actieplanBezig={actieplanBezig} actieplanFout={actieplanFout} />}
 
       {(fase === 'klaar' || fase === 'opslaan') && model && selectie && totaal && (
         <section data-testid="voorstel-resultaat" data-controles={nogBezigMetControles ? 'bezig' : 'klaar'} style={css(KAART)}>

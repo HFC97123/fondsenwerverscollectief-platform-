@@ -62,6 +62,11 @@ export const DOC_SOORTEN = ['Projectplan', 'Begroting', 'Concept-dekkingsplan', 
 
 const KompasContext = createContext(null);
 
+// Zoals useKompas, maar zonder fout als er geen provider is (voor losse onderdelen die ook zonder winkel moeten werken, zoals een Bespreek-link).
+export function useKompasZacht() {
+  return useContext(KompasContext);
+}
+
 export function useKompas() {
   const ctx = useContext(KompasContext);
 

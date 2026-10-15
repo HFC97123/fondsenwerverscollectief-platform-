@@ -50,6 +50,8 @@ const startpuntAntwoord = (extra = {}) => ({
 // Een nep-server met dezelfde AFSPRAKEN als de echte (de echte staat in tests/voorstel-genereren): de server onthoudt broncontroles per
 // project+type+id, hergebruikt een geldige controle (ook na verversen), legt bij opslaan de bronstatus zelf vast en maakt taken nooit dubbel aan.
 // Hier testen we de AANSLUITING van de browser; de serverregels zelf worden in de serversuites getest.
+const fid = (sleutel) => { let h = 0; for (const c of String(sleutel)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return `${h.toString(16).padStart(8, '0')}-0000-4000-8000-0000000000f1`; };
+
 function maakServer(o = {}) {
   const s = {
     log: [], checks: new Map(), fundings: new Map(), taken: new Map(), bezig: 0, maxTegelijk: 0, taakFalen: o.taakFalen || 0, opslaanFalen: o.opslaanFalen || 0,
@@ -118,7 +120,7 @@ function maakServer(o = {}) {
 
         const c = s.checks.get(sleutel);
 
-        regels.push({ sleutel: sl(r.id, r.type), naam: `Regeling ${r.id.slice(-1)}`, status, reden: null, bron: c ? { status: c.status, gecontroleerdOp: c.op, beschikbaar: true } : { status: 'niet-gecontroleerd', gecontroleerdOp: null, beschikbaar: true } });
+        regels.push({ sleutel: sl(r.id, r.type), naam: `Regeling ${r.id.slice(-1)}`, status, reden: null, fundingId: fid(sleutel), bron: c ? { status: c.status, gecontroleerdOp: c.op, beschikbaar: true } : { status: 'niet-gecontroleerd', gecontroleerdOp: null, beschikbaar: true } });
 
         const titel = `Taak voor ${r.id}`;
         const tk = `${sleutel}|${titel}`;
@@ -134,9 +136,35 @@ function maakServer(o = {}) {
         aangemaakt += 1;
       }
 
+      // Online gevonden financiers: eigen financieringsrij (zonder bedrag) met drie beoordelingsstappen; dezelfde naam is nooit twee keer een rij.
+      const suggesties = [];
+
+      for (const g of (a.suggesties || [])) {
+        const naam = (g.naam && g.naam !== g.gever ? `${g.gever} - ${g.naam}` : g.gever).slice(0, 200);
+        const sk = `online:${naam}`;
+        const bestaat = s.fundings.has(sk);
+
+        if (!bestaat && a.alleenActies) continue;
+
+        if (!bestaat) s.fundings.set(sk, { bedrag: null });
+
+        suggesties.push({ naam, status: bestaat ? 'bestaat-al' : 'opgeslagen', reden: null, fundingId: fid(sk) });
+
+        for (const stap of ['Beoordelen', 'Voorwaarden nagaan', 'Beslissen']) {
+          const tk = `${sk}|${stap} ${naam}`;
+
+          totaal += 1;
+
+          if (s.taken.has(tk)) { bestond += 1; continue; }
+
+          s.taken.set(tk, { fundingId: sk, titel: stap });
+          aangemaakt += 1;
+        }
+      }
+
       const status = totaal === 0 ? 'geen' : mislukt === 0 ? 'klaar' : aangemaakt + bestond === 0 ? 'mislukt' : 'deels';
 
-      return { ok: true, antwoord: { ok: true, opgeslagen: true, regels, actieplan: { status, aangemaakt, bestond, mislukt }, suggesties: [], dekkingsdoel: 1.1 } };
+      return { ok: true, antwoord: { ok: true, opgeslagen: true, regels, actieplan: { status, aangemaakt, bestond, mislukt }, suggesties, dekkingsdoel: 1.1 } };
     },
   };
 
@@ -774,6 +802,32 @@ sectie('12. Chat-ingang (FondsMatchKaart): dezelfde voorbereiding, geen directe 
   await rust(80);
   check('opnieuw proberen werkt', qa('[data-testid="voorstel-rij"]').length === 2);
   await weg();
+}
+
+sectie('12b. Bespreek met Subsidiekompas per regel, vervolgacties voor online suggesties en herstel met suggesties');
+{
+  const gen = genereerAntwoord({ onlineSuggesties: [{ gever: 'Online BV', naam: 'Fonds X', url: 'https://x.example/a' }] });
+  const s = maakServer({ gen, taakFalen: 99 });
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(80);
+  await klik(q('[data-testid="voorstel-suggestie"] input'));
+  await klik(q('[data-testid="voorstel-opslaan"]'));
+  await rust();
+  const links = qa('[data-testid="bespreek-link"]');
+  const hrefs = links.map((l) => l.getAttribute('href'));
+  check('opgeslagen: per opgeslagen regel een Bespreek-link met focus op die regel', qa('[data-testid="voorstel-opgeslagen-regel"]').length === 2 && links.length >= 3, String(links.length));
+  check('de links wijzen naar de chat met project en de eigen fundingId (geen gedeelde link)', new Set(hrefs).size === hrefs.length && hrefs.every((h) => /kompas\?project=/.test(h) && /focus=/.test(h)), hrefs.join(' | '));
+  check('ook de online suggestie heeft een Bespreek-link', !!q('[data-testid="voorstel-opgeslagen-suggestie"] [data-testid="bespreek-link"]') || hrefs.some((h) => h.includes(fid('online:Online BV - Fonds X'))), hrefs.join(' | '));
+  check('online suggestie: onzekere status en beoordelingsroute blijven zichtbaar', /niet gecontroleerd/i.test(q('[data-testid="voorstel-opgeslagen"]').textContent) && /beoordelen of het past/.test(q('[data-testid="voorstel-opgeslagen"]').textContent));
+  const eerste = opslagCalls(s)[0];
+  check('suggestie gaat zonder bedrag mee in het opslagverzoek', Array.isArray(eerste.suggesties) && eerste.suggesties.length === 1 && eerste.suggesties[0].gever === 'Online BV' && eerste.suggesties[0].bedrag == null);
+  check('actieplan deels (taken van de regels mislukten) maar de suggestie-stappen staan er', s.taken.size === 3 && [...s.taken.keys()].every((k) => k.startsWith('online:')));
+  await act(async () => { q('[data-testid="actieplan-opnieuw"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await sleep(60); });
+  const herstel = opslagCalls(s)[1];
+  check('herstel stuurt de reeds opgeslagen suggestie opnieuw mee, alleen acties', herstel.alleenActies === true && herstel.suggesties.length === 1 && herstel.suggesties[0].gever === 'Online BV');
+  check('herstel maakt geen tweede suggestie en geen dubbele stappen', s.fundings.size === 3 && [...s.taken.keys()].filter((k) => k.startsWith('online:')).length === 3);
+  await klik(q('[data-testid="voorstel-sluiten"]'));
 }
 
 sectie('13. Statische eigenschappen van de client');

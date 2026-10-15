@@ -365,6 +365,8 @@ function leesOpslagAntwoord(a) {
         naam: tekst(r.naam, 200),
         status: ['opgeslagen', 'bestaat-al', 'mislukt'].includes(r.status) ? r.status : 'mislukt',
         reden: typeof r.reden === 'string' ? r.reden : null,
+        // Het id van de regel in het dekkingsplan (voor "Bespreek met Subsidiekompas"); alleen een geldig uuid.
+        fundingId: typeof r.fundingId === 'string' && /^[0-9a-f-]{36}$/i.test(r.fundingId) ? r.fundingId : null,
         bron: bronModel(isObject(r.bron) ? r.bron : { status: 'niet-gecontroleerd' }),
       })),
     actieplan: {
@@ -375,7 +377,7 @@ function leesOpslagAntwoord(a) {
     },
     suggesties: lijst(a.suggesties)
       .filter(isObject)
-      .map((s) => ({ naam: tekst(s.naam, 200), status: ['opgeslagen', 'bestaat-al', 'mislukt'].includes(s.status) ? s.status : 'mislukt', reden: typeof s.reden === 'string' ? s.reden : null })),
+      .map((s) => ({ naam: tekst(s.naam, 200), status: ['opgeslagen', 'bestaat-al', 'mislukt'].includes(s.status) ? s.status : 'mislukt', reden: typeof s.reden === 'string' ? s.reden : null, fundingId: typeof s.fundingId === 'string' && /^[0-9a-f-]{36}$/i.test(s.fundingId) ? s.fundingId : null })),
     dekkingsdoel: Number.isFinite(a.dekkingsdoel) ? a.dekkingsdoel : null,
   };
 }
@@ -410,9 +412,13 @@ export async function voerOpslagUit({ projectId, verzoek, diensten }) {
 export async function herstelActieplan({ projectId, model, uitkomst, verzoek, diensten }) {
   const klaar = new Set(uitkomst.regels.filter((r) => r.status === 'opgeslagen' || r.status === 'bestaat-al').map((r) => r.sleutel));
   const regels = model.regels.filter((r) => klaar.has(r.sleutel)).map((r) => ({ type: r.type, id: r.id, bedrag: null }));
+  // Online gevonden financiers die al op de lijst staan krijgen ook hun taken opnieuw (de server maakt er geen tweede regel van).
+  const naamVan = (s) => (s.naam && s.naam !== s.gever ? `${s.gever} - ${s.naam}` : s.gever).slice(0, 200);
+  const opLijst = new Set(lijst(uitkomst.suggesties).filter((s) => s.status === 'opgeslagen' || s.status === 'bestaat-al').map((s) => s.naam));
+  const suggesties = lijst(verzoek.suggesties).filter((s) => opLijst.has(naamVan(s)));
 
   try {
-    const res = await diensten.opslaan({ projectId, regels, suggesties: [], uitgeslotenActies: verzoek.uitgeslotenActies, alleenActies: true });
+    const res = await diensten.opslaan({ projectId, regels, suggesties, uitgeslotenActies: verzoek.uitgeslotenActies, alleenActies: true });
 
     if (res && res.ok && isObject(res.antwoord)) {
       const a = leesOpslagAntwoord(res.antwoord);

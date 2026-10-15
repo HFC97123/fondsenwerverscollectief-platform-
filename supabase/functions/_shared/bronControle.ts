@@ -126,3 +126,29 @@ export function bronOordeelKort(o: BronOordeel): string {
       return 'de bron is nog niet gecontroleerd';
   }
 }
+
+// Tekst voor het gesprek ("Bespreek met Subsidiekompas" vanuit één regel): wat de SERVER weet over de bron van die regel. Nooit een oordeel over
+// toekenning of geschiktheid. `rij`: de vastgelegde controle van dit record (of null); `isDatabase`: staat de financier in onze database?
+export function focusBronTekst(rij: Pick<BronRij, 'status' | 'gecontroleerd_op' | 'reden'> | null | undefined, isDatabase: boolean, nu: Date): string {
+  const uitleg = 'Bronstatus is iets anders dan de financieringsstatus: "gecontroleerd" betekent alleen dat naam en deadline op de website van de financier zijn teruggevonden. Zeg nooit dat het lid in aanmerking komt of dat toekenning waarschijnlijk is.';
+
+  if (!isDatabase) {
+    return `BRONSTATUS: deze financier staat niet in onze database (online gevonden of door het lid zelf toegevoegd). Subsidiekompas heeft de gegevens niet gecontroleerd; zeg dat expliciet en verwijs naar de website van de financier. ${uitleg}`;
+  }
+
+  if (!rij) return `BRONSTATUS: de bron van deze regel is nog niet gecontroleerd. ${uitleg}`;
+
+  const tijd = Date.parse(rij.gecontroleerd_op);
+  const dagen = Number.isFinite(tijd) ? (nu.getTime() - tijd) / 86_400_000 : Infinity;
+  const datum = Number.isFinite(tijd) ? new Date(tijd).toISOString().slice(0, 10) : 'onbekend';
+
+  if (rij.status === 'verouderd' || dagen > BRON_MAX_LEEFTIJD_DAGEN) return `BRONSTATUS: de bron is eerder gecontroleerd (${datum}), maar de controle is verouderd; behandel de gegevens als niet gecontroleerd. ${uitleg}`;
+
+  const tekst: Record<string, string> = {
+    gecontroleerd: `de bron is gecontroleerd op ${datum}`,
+    onzeker: `de bron kon op ${datum} niet volledig worden bevestigd; deadline en voorwaarden zijn onzeker`,
+    mislukt: `de broncontrole van ${datum} is mislukt; de gegevens zijn niet gecontroleerd`,
+  };
+
+  return `BRONSTATUS: ${tekst[rij.status] ?? 'de bron is niet gecontroleerd'}. ${uitleg}`;
+}

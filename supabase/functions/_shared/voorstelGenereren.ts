@@ -15,7 +15,7 @@
 //     aangeboden (`onlineSuggesties`) en tellen nooit mee in de dekking.
 
 // @deno-types="./voorstelContract.d.ts"
-import { VOORSTEL_VERSIE, isEchteDatum, plantTerug, schaalEnControleer, toegestaneSom, valideerVoorstel, zelfdeFinancier } from './voorstelContract.js';
+import { VOORSTEL_VERSIE, isEchteDatum, schaalEnControleer, toegestaneSom, valideerVoorstel, zelfdeFinancier } from './voorstelContract.js';
 import type { ContractUitkomst, ContractVoorstel } from './voorstelContract.js';
 import { filterOpEntitlement } from './voorstelVerificatie.ts';
 import type { ServerRecord } from './voorstelVerificatie.ts';
@@ -23,6 +23,7 @@ import { realistischBedrag, selecteerDekkingsmix } from './dekkingsmix.ts';
 import type { MixKandidaat, MixNiveau, MixResultaat } from './dekkingsmix.ts';
 import type { TierConfig } from './tierConfig.ts';
 import { bronOordeelKort } from './bronControle.ts';
+import { plantActies } from './actieplanStappen.ts';
 import type { BronOordeel } from './bronControle.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -370,6 +371,37 @@ export function beperkActies(acties: Array<Record<string, unknown>>): Array<Reco
   return [{ ...stukken[0], regelSleutel: null, financier: '', datum: vroegste, externeDeadline: null }, ...rest];
 }
 
+// Het contract laat hooguit MAX_ACTIES (30) acties per voorstel toe. Met een bredere reeks stappen per financier en tot 12 financiers zou het
+// laatste deel stilletjes wegvallen. Daarom worden de acties per financier (en de projecttaken apart) gevalideerd en daarna samengevoegd:
+// dezelfde controle op datums, dezelfde ontdubbeling, geen verlies.
+export function valideerActiesGegroepeerd(raw: Record<string, unknown>, ctx: Record<string, unknown>, acties: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const groepen = new Map<string, Array<Record<string, unknown>>>();
+
+  for (const a of acties) {
+    const k = String(a.regelSleutel ?? '');
+
+    groepen.set(k, [...(groepen.get(k) ?? []), a]);
+  }
+
+  const uit: Array<Record<string, unknown>> = [];
+  const gezien = new Set<string>();
+
+  for (const groep of groepen.values()) {
+    const u = valideerVoorstel({ ...raw, acties: groep } as never, ctx as never);
+
+    for (const a of ((u.voorstel?.acties ?? []) as Array<Record<string, unknown>>)) {
+      const s = String(a.sleutel);
+
+      if (gezien.has(s)) continue;
+
+      gezien.add(s);
+      uit.push(a);
+    }
+  }
+
+  return uit;
+}
+
 // De contractvalidatie draait zonder `bekendeBronnen` van de client: alleen wat de server zelf laadde. Bedragen kunnen daardoor nooit
 // buiten de grenzen van het record vallen en nooit het dekkingsdoel overschrijden.
 export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
@@ -412,12 +444,12 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
   let gevalideerd = eerste;
 
   if (eerste.voorstel) {
-    const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && r.bedrag != null).flatMap((r) => plantTerug(r, inv.vandaag)));
+    const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && r.bedrag != null).flatMap((r) => plantActies(r, inv.vandaag, { heeftBedrag: true })));
 
     if (acties.length) {
-      const tweede = schaalEnControleer({ ...gefilterd.raw, acties }, ctx);
+      const gevalideerdeActies = valideerActiesGegroepeerd(gefilterd.raw, ctx, acties);
 
-      if (tweede.voorstel) gevalideerd = tweede;
+      gevalideerd = { ...eerste, voorstel: { ...eerste.voorstel, acties: gevalideerdeActies } } as ContractUitkomst;
     }
   }
 
@@ -520,9 +552,16 @@ export function valideerOpslag(inv: {
   // Door de SERVER vastgestelde bronstatus per regelsleutel (zie bronControle.ts). Alleen gebruikt om in de taken te vermelden wat nog niet
   // is bevestigd; een ontbrekende of niet-gecontroleerde bron blokkeert het opslaan nooit.
   bronOordelen?: Record<string, BronOordeel>;
+  // Bedrag dat al in het dekkingsplan staat per regelsleutel (alleen nodig bij opnieuw proberen van het actieplan).
+  bestaandeBedragen?: Record<string, number | null>;
+  // Er mogen nul databaseregels zijn als het lid alleen online gevonden financiers wil bewaren.
+  zonderRegelsToegestaan?: boolean;
 }): OpslagUitkomst {
   const leeg = (algemeen: OpslagUitkomst['algemeen'], regelFouten: OpslagUitkomst['regelFouten'] = {}): OpslagUitkomst => ({ ok: false, regelFouten, algemeen, regels: [], acties: [], waarschuwingen: [] });
   const ruwe = Array.isArray(inv.regels) ? inv.regels.slice(0, OPSLAG_MAX_REGELS + 1) : [];
+
+  // Alleen online gevonden financiers (geen databaseregels) bewaren of hun taken herstellen: er is dan niets te valideren.
+  if (!ruwe.length && inv.zonderRegelsToegestaan) return { ok: true, regelFouten: {}, algemeen: null, regels: [], acties: [], waarschuwingen: [] };
 
   if (!ruwe.length) return leeg({ code: 'geen-regels', melding: 'Er is niets gekozen om op te slaan.' });
   if (ruwe.length > OPSLAG_MAX_REGELS) return leeg({ code: 'ongeldig', melding: `U kunt hooguit ${OPSLAG_MAX_REGELS} financiers tegelijk opslaan.` });
@@ -646,12 +685,20 @@ export function valideerOpslag(inv: {
 
   // Taken voor elke regel die het lid zelf kiest (ook zonder bedrag: een project zonder begroting kan toch een vervolgstap nodig hebben).
   const nieuwe = uitkomst.voorstel.regels.filter((r) => (inv.alleenActies ? r.staatAl : r.selecteerbaar && !r.staatAl));
-  const gepland = beperkActies(nieuwe.flatMap((r) => plantTerug(r, inv.vandaag)));
-  const metActies = gepland.length ? valideerVoorstel({ ...gefilterd.raw, acties: gepland }, ctx) : uitkomst;
-  const acties: OpslagActie[] = ((metActies.voorstel?.acties ?? []) as Array<Record<string, unknown>>)
+  // Per regel een reeks concrete vervolgstappen, ook zonder bekende deadline. De bronstatus die de SERVER vastlegde bepaalt of er een stap
+  // "bron zelf controleren" bijkomt; bij opnieuw proberen telt het bedrag dat al in het dekkingsplan staat (zelfde taken als de eerste poging).
+  const gepland = beperkActies(
+    nieuwe.flatMap((r) => {
+      const heeftBedrag = inv.alleenActies ? (inv.bestaandeBedragen?.[r.sleutel] ?? 0) > 0 : r.bedrag != null;
+
+      return plantActies(r, inv.vandaag, { bronOordeel: inv.bronOordelen?.[r.sleutel] ?? 'niet-gecontroleerd', heeftBedrag: inv.bedragenToegestaan ? heeftBedrag : undefined });
+    }),
+  );
+  const gevalideerdeActies = gepland.length ? valideerActiesGegroepeerd(gefilterd.raw, ctx, gepland) : ((uitkomst.voorstel?.acties ?? []) as Array<Record<string, unknown>>);
+  const acties: OpslagActie[] = gevalideerdeActies
     .filter((a) => !uitgesloten.has(String(a.sleutel)))
     .filter((a) => !a.regelSleutel || nieuwe.some((r) => r.sleutel === a.regelSleutel))
-    .slice(0, 60)
+    .slice(0, 120)
     .map((a) => ({
       sleutel: String(a.sleutel),
       regelSleutel: a.regelSleutel ? String(a.regelSleutel) : null,
@@ -762,9 +809,8 @@ export function bouwStartpunt(inv: {
   if (!eerste.voorstel) return { ...leeg, overgeslagen: gefilterd.overgeslagen.length };
 
   // Voorgestelde taken (alleen om te tonen; opslaan bepaalt ze opnieuw): terugplannen vanaf de deadline uit de DATABASE.
-  const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && !r.staatAl).flatMap((r) => plantTerug(r, inv.vandaag)));
-  const tweede = acties.length ? schaalEnControleer({ ...gefilterd.raw, acties }, ctx) : eerste;
-  const voorstel = tweede.voorstel ?? eerste.voorstel;
+  const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && !r.staatAl).flatMap((r) => plantActies(r, inv.vandaag)));
+  const voorstel = acties.length ? ({ ...eerste.voorstel, acties: valideerActiesGegroepeerd(gefilterd.raw, ctx, acties) } as ContractVoorstel) : eerste.voorstel;
 
   // Alles viel weg (niet beschikbaar met dit abonnement of bestaat niet meer): niets om te tonen, en niet te onderscheiden van "bestaat niet".
   if (!voorstel.regels.length) return { ...leeg, overgeslagen: gefilterd.overgeslagen.length };

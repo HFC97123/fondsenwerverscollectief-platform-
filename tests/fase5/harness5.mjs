@@ -42,7 +42,7 @@ export function uuid() {
   return `00000000-0000-4000-8000-${hex}`;
 }
 
-export const db = { subsidie_kompas_programs: [], subsidie_kompas_conversations: [], subsidie_kompas_program_funding: [], subsidie_kompas_knowledge_items: [] };
+export const db = { subsidie_kompas_programs: [], subsidie_kompas_conversations: [], subsidie_kompas_program_funding: [], subsidie_kompas_knowledge_items: [], subsidie_kompas_program_actions: [], subsidie_kompas_bron_controles: [] };
 export const fouten = [];
 
 const originalConsoleError = console.error;
@@ -179,7 +179,7 @@ function gebruikersClient(auth) {
 
       return { data: null, error: { code: 'PGRST202', message: 'onbekende functie' } };
     },
-    from: (t) => origAdmin.from(t),
+    from: (t) => (t === 'subsidie_kompas_program_actions' ? tabelBuilder(t) : origAdmin.from(t)),
   };
 }
 
