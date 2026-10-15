@@ -225,11 +225,13 @@ sectie('6. Online-only kandidaten: apart, niet gecontroleerd, nooit in de dekkin
   const premium = await genereer();
 
   check('Premium: de verkenner levert hoogstens 6 kandidaten', premium.json.werkwijze.onlineKandidaten === 6, JSON.stringify(premium.json.werkwijze));
-  check('Premium: hoogstens 3 online suggesties in het eerste voorstel', premium.json.onlineSuggesties.length <= 3);
+  check('Premium: de database haalt het doel al (120%) en toch minstens 3 online suggesties, niet meer dan nodig', premium.json.totalen.nodig === 0 && premium.json.onlineSuggesties.length === 3, `${premium.json.totalen.nodig} ${premium.json.onlineSuggesties.length}`);
+  check('Premium: dan is aanvullen niet nodig', premium.json.aanvullenMogelijk === false);
+  check('Premium: geen Premium-hint (alleen bij Pro)', premium.json.premiumHint === null);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('7. Premium-aanvullen: gericht op het resterende gat, cap 5, stop na 2');
+sectie('7. Premium-aanvullen: gericht op het resterende gat, stop zodra het doel gedekt is');
 {
   const klein = () => ({ regelingen: [regeling({ naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', min: 5000, max: 60000, id: '00000000-0000-4000-8000-0000000000a1' })], funders: [] });
   const voorstelVan = (bedrag) => ({ versie: 1, projectId: PID, status: 'concept', aannames: [], acties: [], regels: [{ type: 'regeling', id: '00000000-0000-4000-8000-0000000000a1', naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', bedrag }] });
@@ -247,7 +249,8 @@ sectie('7. Premium-aanvullen: gericht op het resterende gat, cap 5, stop na 2');
   check('het resterende gat komt van de SERVER (84.000 - 35.000 = 49.000)', j.rest.nodig === 49000 && j.rest.som === 35000, JSON.stringify(j.rest));
   check('de zoekopdracht noemt het resterende bedrag en sluit al bekende financiers uit', /ongeveer € 49000/.test(JSON.stringify(w.openaiBodies[0])) && /Noem NIET: .*Rotterdams Muziekfonds/.test(JSON.stringify(w.openaiBodies[0])));
   check('cap 5: de verkenner mag hoogstens 5 kandidaten opleveren', /Maximaal 5 kandidaten/.test(JSON.stringify(w.openaiBodies[0])));
-  check('stop na 2: hoogstens 2 gekwalificeerde online suggesties, ook al zijn er meer', j.onlineSuggesties.length === 2, String(j.onlineSuggesties.length));
+  check('stop zodra de indicatieve bedragen het resterende gat dekken (49.000 = 2 x 30.000), ook al zijn er meer', j.onlineSuggesties.length === 2 && j.onlineIndicatief >= 49000, `${j.onlineSuggesties.length} ${j.onlineIndicatief}`);
+  check('dat is het einde: geen nieuwe ronde nodig', j.nogAanvullen === false);
   check('de suggesties zijn niet gecontroleerd en worden niet in het voorstel gezet', j.onlineSuggesties.every((s) => s.gecontroleerd === false) && j.voorstel === undefined);
   check('de kostenmeter telt de web-zoekopdrachten', w.gebruikRijen.some((rij) => rij.action_type === 'fonds_scan_web' && rij.web_search_calls === 2 && rij.tier === 'premium'), JSON.stringify(w.gebruikRijen));
 
@@ -327,6 +330,78 @@ sectie('9. Statische eigenschappen van het genereren-blok');
   check('dynamische imports alleen uit ../_shared', [...blok.matchAll(/import\('([^']+)'\)/g)].every((m) => m[1].startsWith('../_shared/')));
   check('geen statische import van _shared in index.ts (chat-opstart onaangetast)', !/^import .*_shared/m.test(bron));
   check('standaard uit: de flag VOORSTEL_GENEREREN moet "aan" zijn', /Deno\.env\.get\('VOORSTEL_GENEREREN'\) !== 'aan'/.test(blok));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+sectie('10. Premium zoekt online door tot 120% gedekt is (minstens 3, meer dan 6 als er te weinig fondsen zijn); Pro krijgt een Premium-hint');
+{
+  const klein = () => ({ regelingen: [regeling({ naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', min: 5000, max: 20000, id: '00000000-0000-4000-8000-0000000000a1' })], funders: [] });
+  const kleine = (n) => online({ gever: `Klein Online Fonds ${n}`, regeling: `Kleine Regeling ${n}`, bedragMin: 1000, bedragMax: 4000 });
+
+  // Te weinig in de database en kleine online bedragen: meer dan 3, het eerste lijstje is de oriëntatie (6), er kan nog worden aangevuld.
+  resetGenereren({ ...klein(), profile: PREMIUM, online: [1, 2, 3, 4, 5, 6, 7, 8].map(kleine) });
+  const tekort = await genereer();
+  const t = tekort.json;
+
+  check('tekort: meer dan 3 online suggesties (tot de oriëntatie van 6), want het doel is nog niet gedekt', t.onlineSuggesties.length > 3 && t.onlineSuggesties.length <= 6, String(t.onlineSuggesties.length));
+  check('tekort: de database + indicaties halen 120% nog niet, dus aanvullen is mogelijk', t.aanvullenMogelijk === true && t.totalen.som + t.onlineIndicatief < t.totalen.doelBedrag, JSON.stringify([t.totalen, t.onlineIndicatief, t.aanvullenMogelijk]));
+  check('tekort: de online indicaties tellen NIET mee in de gevalideerde dekking', t.totalen.som === t.voorstel.regels.filter((x) => x.selecteerbaar && x.bedrag).reduce((x, r) => x + r.bedrag, 0));
+
+  // Zoveel online als nodig om het doel te halen, niet meer: grote bedragen -> toch minstens 3 (minimum), maar ook niet meer dan 3 bij dekking.
+  resetGenereren({ ...klein(), profile: PREMIUM, online: [1, 2, 3, 4, 5, 6].map((n) => online({ gever: `Groot Online Fonds ${n}`, regeling: `Grote Regeling ${n}`, bedragMin: 5000, bedragMax: 60000 })) });
+  const groot = await genereer();
+
+  check('grote online bedragen: minimaal 3 (ook al is het doel dan ruimschoots gedekt)', groot.json.onlineSuggesties.length === 3, String(groot.json.onlineSuggesties.length));
+
+  // Aanvullen: telt wat al getoond is mee, stopt bij dekking, en het totaal blijft binnen het maximum (10).
+  const voorstelVan = (bedrag) => ({ versie: 1, projectId: PID, status: 'concept', aannames: [], acties: [], regels: [{ type: 'regeling', id: '00000000-0000-4000-8000-0000000000a1', naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', bedrag }] });
+  const getoond = (n, bedrag) => Array.from({ length: n }, (_, i) => ({ gever: `Eerder Getoond ${i + 1}`, indicatiefBedrag: bedrag }));
+
+  resetGenereren({ ...klein(), profile: PREMIUM, online: [1, 2, 3, 4, 5, 6, 7].map(kleine) });
+  const rondeTwee = await aanvul(voorstelVan(20000), { getoond: getoond(6, 4000) });
+
+  check('aanvullen na 6 getoonde: het totale maximum is 10, dus hoogstens 4 kandidaten gevraagd', rondeTwee.status === 200 && /Maximaal 4 kandidaten/.test(JSON.stringify(w.openaiBodies[0])), `${rondeTwee.status} ${JSON.stringify(w.openaiBodies[0] || '').slice(0, 0)}`);
+  check('aanvullen: al getoonde financiers worden uitgesloten en niet opnieuw voorgesteld', /Noem NIET: .*Eerder Getoond 1/.test(JSON.stringify(w.openaiBodies[0])) && rondeTwee.json.onlineSuggesties.every((x) => !/Eerder Getoond/.test(x.gever)));
+  check('aanvullen: het gevraagde bedrag is het resterende gat min de al getoonde indicaties (6 x 4.000)', Number(/ongeveer € (\d+)/.exec(JSON.stringify(w.openaiBodies[0]))?.[1]) === rondeTwee.json.rest.nodig - 24000, JSON.stringify(rondeTwee.json.rest));
+  check('aanvullen: totaal nooit boven 10 (6 getoond + hoogstens 4 nieuwe)', rondeTwee.json.onlineSuggesties.length <= 4);
+
+  resetGenereren({ ...klein(), profile: PREMIUM, online: [1, 2, 3, 4].map(kleine) });
+  const vol = await aanvul(voorstelVan(20000), { getoond: getoond(10, 100) });
+
+  check('totaal maximum (10) bereikt: geen zoekopdracht, geen kosten', vol.status === 200 && vol.json.uitkomst === 'maximum-bereikt' && w.openaiAantal === 0, `${vol.status} ${vol.json?.uitkomst} ${w.openaiAantal}`);
+
+  resetGenereren({ ...klein(), profile: PREMIUM, online: [1].map(kleine) });
+  const gedekt = await aanvul(voorstelVan(20000), { getoond: getoond(3, 1_000_000) });
+
+  check('de al getoonde online indicaties dekken het gat al: geen zoekopdracht', gedekt.status === 200 && gedekt.json.uitkomst === 'doel-bereikt' && w.openaiAantal === 0);
+
+  // Een kwaadwillende client: rommel in "getoond" breekt niets en geeft niet meer zoekruimte dan het maximum.
+  resetGenereren({ ...klein(), profile: PREMIUM, online: [1, 2, 3, 4, 5, 6].map(kleine) });
+  const rommel = await aanvul(voorstelVan(20000), { getoond: [null, 5, { gever: 12 }, { gever: 'x', indicatiefBedrag: -5 }, { gever: 'y', indicatiefBedrag: 'veel' }, ...Array(50).fill({ gever: 'z', indicatiefBedrag: 1 })] });
+
+  check('rommel in getoond: geen crash, hoogstens 5 per ronde', rommel.status === 200 && rommel.json.onlineSuggesties.length <= 5, `${rommel.status}`);
+
+  // Pro: de hint is alleen een AANTAL, nooit een naam of detail van een Premium-fonds.
+  resetGenereren({ ...pool(), profile: PRO });
+  const proHint = await genereer();
+  const hint = proHint.json.premiumHint;
+
+  check('Pro: er is een Premium-hint met het aantal passende Premium-only fondsen', hint && Number.isInteger(hint.aantal) && hint.aantal >= 1, JSON.stringify(hint));
+  check('Pro: de hint bevat alleen { aantal }, geen namen, ids of andere details', hint && Object.keys(hint).join() === 'aantal');
+  check('Pro: het aantal klopt met wat Premium extra ziet (Premium Cultuurregeling; het exclusieve fonds telt NIET mee)', hint.aantal === 1, String(hint && hint.aantal));
+  check('Pro: nog steeds geen Premium-naam of exclusief fonds in het antwoord', NAMEN_VERBORGEN_VOOR_PRO.every((n) => !proHint.tekst.includes(n)), NAMEN_VERBORGEN_VOOR_PRO.filter((n) => proHint.tekst.includes(n)).join(','));
+  check('Pro: de Premium-regeling zit niet in het voorstel (de hint verandert de pool niet)', !regelNamen(proHint).includes('Premium Cultuurregeling'));
+
+  // Geen Premium-only fondsen: geen hint (geen schijnbelofte).
+  resetGenereren({ regelingen: [regeling({ naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', min: 5000, max: 60000, id: '00000000-0000-4000-8000-0000000000a1' })], funders: [], profile: PRO });
+  const geenHint = await genereer();
+
+  check('Pro zonder passende Premium-only fondsen: geen hint', geenHint.status === 200 && geenHint.json.premiumHint === null);
+
+  resetGenereren({ ...pool(), profile: { ...PRO, role: 'admin' } });
+  const admin = await genereer();
+
+  check('Admin krijgt geen Pro-hint', admin.status === 200 && admin.json.premiumHint === null);
 }
 
 console.log(`\nVOORSTEL-GENEREREN: ${stand.ok} OK, ${stand.fout} FAIL`);

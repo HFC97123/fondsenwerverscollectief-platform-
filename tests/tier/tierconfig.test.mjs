@@ -55,7 +55,10 @@ sectie('3. Pro en Premium verschillen alleen in pool, dekkingsdoel en online rui
   check('zelfde minimumscore, zelfde maximaal aandeel per fonds, zelfde mixgrootte', pro.minScore === premium.minScore && pro.maxAandeelPerFonds === premium.maxAandeelPerFonds && pro.maxRegelsInMix === premium.maxRegelsInMix);
   check('mixgrootte past binnen het voorstelcontract (MAX_REGELS 8, plus één reserve)', pro.maxRegelsInMix + 1 <= 8);
   check('observatiebudget: Pro 7, Premium 14, Free geen', pro.maandBudgetObservatieEur === 7 && premium.maandBudgetObservatieEur === 14 && tierConfigVoor('free').maandBudgetObservatieEur === null);
-  check('Premium online aanvullen: cap 5, stop na 2; Pro heeft dit niet', premium.onlineAanvullen?.maxKandidaten === 5 && premium.onlineAanvullen?.stopNaKandidaten === 2 && pro.onlineAanvullen === null);
+  check('Premium online aanvullen: cap 5 per ronde; Pro heeft dit niet', premium.onlineAanvullen?.maxKandidaten === 5 && pro.onlineAanvullen === null);
+  check('Premium online: doorzoeken tot 120% gedekt is: minstens 3 tonen, oriëntatie 6, totaal maximum 10 (boven 6 als er te weinig fondsen zijn)', premium.onlineOrientatie.minTonen === 3 && premium.onlineOrientatie.maxKandidaten === 6 && premium.onlineOrientatie.totaalMax === 10);
+  check('Pro heeft geen doorzoeken (vast kort lijstje: geen minTonen/totaalMax)', pro.onlineOrientatie.minTonen === undefined && pro.onlineOrientatie.totaalMax === undefined);
+  check('Premium-hint: alleen Pro', pro.premiumHint === true && premium.premiumHint === false && tierConfigVoor('free').premiumHint === false && tierConfigVoor('pro', true).premiumHint === false);
   check('Pro online oriëntatie is kleiner dan die van Premium', pro.onlineOrientatie.maxKandidaten < premium.onlineOrientatie.maxKandidaten && pro.onlineOrientatie.timeoutMs < premium.onlineOrientatie.timeoutMs);
   check('Premium vult alle ontbrekende kernvelden aan, Pro alleen indien nodig', premium.aanvullenVelden === 'alle-ontbrekende' && pro.aanvullenVelden === 'indien-nodig');
 }

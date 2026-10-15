@@ -13,6 +13,7 @@ export const STAP = { ONDERZOEKEN: 'onderzoeken', AANVULLEN: 'aanvullen', CONTRO
 export const STARTSTATUS = 'interesting'; // in de interface "Interessant"
 export const ONLINE_NOTITIE = 'Online gevonden door Subsidiekompas, nog niet gecontroleerd. Controleer de voorwaarden en deadline bij de financier.';
 
+const MAX_AANVUL_RONDES = 2;
 const isObject = (x) => typeof x === 'object' && x !== null && !Array.isArray(x);
 const lijst = (x) => (Array.isArray(x) ? x : []);
 const tekst = (x, max) => String(x == null ? '' : x).slice(0, max);
@@ -41,14 +42,25 @@ export async function draaiVoorstelFlow({ projectId, diensten, onStap }) {
     return { ok: true, genereer, aanvulling: null, preview: null };
   }
 
+  // Premium: doorzoeken tot het doel (120%) gedekt is. De server zegt of een volgende ronde zin heeft (aanvullenMogelijk / nogAanvullen) en bewaakt
+  // zelf het totale maximum; hier hoogstens MAX_AANVUL_RONDES rondes, en een mislukte ronde stopt het zoeken zonder foutmelding.
   let aanvulling = null;
+  let getoond = lijst(genereer.onlineSuggesties).filter(isObject);
+  let verder = genereer.aanvullenMogelijk === true;
 
-  if (genereer.aanvullenMogelijk === true) {
+  for (let ronde = 0; verder && ronde < MAX_AANVUL_RONDES; ronde += 1) {
     meld(STAP.AANVULLEN);
-    const a = await diensten.aanvullen({ projectId, voorstel: genereer.voorstel });
+    const a = await diensten.aanvullen({ projectId, voorstel: genereer.voorstel, getoond: getoond.map((x) => ({ gever: x.gever, indicatiefBedrag: x.indicatiefBedrag })) });
+    const antwoord = a && a.ok && isObject(a.antwoord) ? a.antwoord : null;
 
     // Mislukt het aanvullen, dan is het voorstel gewoon bruikbaar zonder: geen foutmelding, wel minder suggesties.
-    aanvulling = a && a.ok && isObject(a.antwoord) ? a.antwoord : null;
+    if (!antwoord) break;
+
+    const nieuw = lijst(antwoord.onlineSuggesties).filter(isObject);
+
+    aanvulling = { ...antwoord, onlineSuggesties: [...lijst(aanvulling && aanvulling.onlineSuggesties), ...nieuw] };
+    getoond = [...getoond, ...nieuw];
+    verder = antwoord.nogAanvullen === true && nieuw.length > 0;
   }
 
   meld(STAP.CONTROLEREN);
@@ -113,6 +125,7 @@ export function maakWerkModel({ genereer, aanvulling, preview }) {
   }
 
   const t = isObject(genereer.totalen) ? genereer.totalen : {};
+  const hint = isObject(genereer.premiumHint) && Number.isInteger(genereer.premiumHint.aantal) && genereer.premiumHint.aantal > 0 ? genereer.premiumHint.aantal : 0;
 
   return {
     uitkomst: String(genereer.uitkomst || ''),
@@ -121,6 +134,10 @@ export function maakWerkModel({ genereer, aanvulling, preview }) {
     regels,
     acties,
     suggesties,
+    // Pro: aantal passende fondsen dat alleen in Premium zichtbaar is (alleen een getal, de server noemt geen namen).
+    premiumHint: hint,
+    // Som van de indicaties van de online suggesties: een schatting, telt nooit mee in de dekking.
+    onlineIndicatief: suggesties.reduce((t2, x) => t2 + (x.indicatiefBedrag > 0 ? x.indicatiefBedrag : 0), 0),
     gat: Number.isFinite(t.gat) ? t.gat : 0,
     doelBedrag: Number.isFinite(t.doelBedrag) ? t.doelBedrag : 0,
     dekkingsdoel: Number.isFinite(genereer.dekkingsdoel) ? genereer.dekkingsdoel : 1,

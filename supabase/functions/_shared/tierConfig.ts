@@ -18,16 +18,21 @@ export type Tier = 'free' | 'pro' | 'premium';
 export type AccessTier = 'free' | 'pro' | 'premium';
 
 export interface OnlineOrientatieConfig {
-  // NOG NIET IN GEBRUIK (TIER-3): startwaarden voor de korte online oriëntatie. Geen marketingbelofte.
+  // Startwaarden voor de online oriëntatie (hoeveel kandidaten het model in de eerste ronde mag noemen). Geen marketingbelofte.
   maxKandidaten: number;
   maxZoekopdrachten: number; // alleen af te dwingen als de API een harde grens kent; anders is dit een instructie aan het model
   timeoutMs: number;
+  // Alleen Premium: de online oriëntatie loopt door tot het dekkingsdoel (120% van het financieringsgat) gedekt is. Ook als de database al
+  // genoeg levert toont het voorstel minstens `minTonen` online kandidaten; zijn er te weinig fondsen, dan mag het aantal boven
+  // `maxKandidaten` uitkomen, tot `totaalMax` in totaal (harde bovengrens voor de kosten). Zonder deze velden (Pro): vast kort aantal.
+  minTonen?: number;
+  totaalMax?: number;
 }
 
 export interface OnlineAanvullenConfig {
-  // NOG NIET IN GEBRUIK (TIER-3): gericht zoeken op het RESTERENDE gat. maxKandidaten is een CAP, geen doel.
+  // Gericht zoeken op het RESTERENDE gat (na de database en de eerste online ronde). maxKandidaten is een CAP per ronde, geen doel:
+  // er wordt gestopt zodra de indicatieve bedragen het resterende gat dekken, en nooit boven `totaalMax` van de oriëntatie.
   maxKandidaten: number;
-  stopNaKandidaten: number; // stop zodra de dekking voldoende is, uiterlijk hier
 }
 
 export interface TierConfig {
@@ -44,12 +49,14 @@ export interface TierConfig {
   minScore: number;
   // Maximaal aantal regels in de mix (excl. de ene reserve). Moet < MAX_REGELS van het voorstelcontract blijven.
   maxRegelsInMix: number;
-  // NOG NIET IN GEBRUIK
   onlineOrientatie: OnlineOrientatieConfig | null;
   onlineAanvullen: OnlineAanvullenConfig | null;
   // Welke ontbrekende velden de verificatiemotor mag aanvullen: 'geen', 'indien-nodig' (alleen voor een betrouwbare beoordeling) of
   // 'alle-ontbrekende' (elk ontbrekend kernveld, nooit een hele site voor één veld).
   aanvullenVelden: 'geen' | 'indien-nodig' | 'alle-ontbrekende';
+  // Alleen Pro: na het voorstel melden hoeveel passende fondsen alleen in Premium zichtbaar zijn (uitsluitend een AANTAL, nooit een naam of
+  // detail van zo'n fonds). Pas getoond als het aantal groter dan nul is en klopt met wat de engine voor dit project vond.
+  premiumHint: boolean;
   // Intern observatiebudget per gebruiker per maand in euro. UITSLUITEND meten: nooit blokkeren, afremmen, melden of een paywall.
   maandBudgetObservatieEur: number | null;
 }
@@ -65,6 +72,7 @@ const PRO: TierConfig = {
   onlineOrientatie: { maxKandidaten: 2, maxZoekopdrachten: 2, timeoutMs: 40_000 },
   onlineAanvullen: null,
   aanvullenVelden: 'indien-nodig',
+  premiumHint: true,
   maandBudgetObservatieEur: 7,
 };
 
@@ -76,9 +84,10 @@ const PREMIUM: TierConfig = {
   maxAandeelPerFonds: 0.5,
   minScore: 50,
   maxRegelsInMix: 6,
-  onlineOrientatie: { maxKandidaten: 6, maxZoekopdrachten: 6, timeoutMs: 60_000 },
-  onlineAanvullen: { maxKandidaten: 5, stopNaKandidaten: 2 },
+  onlineOrientatie: { maxKandidaten: 6, maxZoekopdrachten: 6, timeoutMs: 60_000, minTonen: 3, totaalMax: 10 },
+  onlineAanvullen: { maxKandidaten: 5 },
   aanvullenVelden: 'alle-ontbrekende',
+  premiumHint: false,
   maandBudgetObservatieEur: 14,
 };
 
@@ -93,6 +102,7 @@ const FREE: TierConfig = {
   onlineOrientatie: null,
   onlineAanvullen: null,
   aanvullenVelden: 'geen',
+  premiumHint: false,
   maandBudgetObservatieEur: null,
 };
 

@@ -342,7 +342,7 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, beschikbaar,
               <div>
                 <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E;`)}>Online gevonden: nog niet gecontroleerd</div>
                 <div style={css(`${TEKST} font-size: 12.5px; color: #7B8985;`)}>
-                  Deze financiers staan niet in onze database. Ze tellen niet mee in de dekking hierboven. U kunt ze op uw lijst zetten (Interessant, zonder bedrag) en zelf controleren.
+                  Deze financiers staan niet in onze database. Ze tellen niet mee in de dekking hierboven{model.onlineIndicatief > 0 ? ` (samen ongeveer ${formatEuro(model.onlineIndicatief)}, een schatting)` : ''}. U kunt ze op uw lijst zetten (Interessant, zonder bedrag) en zelf controleren.
                 </div>
               </div>
               {model.suggesties.map((s) => (
@@ -365,6 +365,18 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, beschikbaar,
                 </label>
               ))}
             </section>
+          )}
+
+          {model.premiumHint > 0 && (
+            <aside data-testid="voorstel-premium-hint" style={css(`${TEKST} padding: 12px 16px; border: 1px solid #CFE4D7; border-radius: 14px; background: #F3F9F5; color: #2C4A5E;`)}>
+              <strong>
+                Er {model.premiumHint === 1 ? 'is nog 1 fonds' : `zijn nog ${model.premiumHint} fondsen`}
+              </strong>{' '}
+              die bij dit project {model.premiumHint === 1 ? 'past' : 'passen'} en alleen met Premium te zien {model.premiumHint === 1 ? 'is' : 'zijn'}. Dat zijn minder bekende fondsen die lastig te vinden zijn.{' '}
+              <a href="#/kompas/abonneren?intent=PREMIUM" data-testid="voorstel-premium-link" style={css('color: #4E9A6C; font-weight: 800;')}>
+                Bekijk Premium
+              </a>
+            </aside>
           )}
 
           <div style={css('display: flex; flex-wrap: wrap; gap: 10px;')}>

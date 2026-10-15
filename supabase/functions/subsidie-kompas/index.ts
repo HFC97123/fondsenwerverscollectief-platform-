@@ -6161,7 +6161,7 @@ Deno.serve(async (req) => {
 
       const b = (geladen as { basis: GenereerBasis }).basis;
       const gebruikTier = isAdmin ? 'admin' : tier;
-      const { kandidaatNaarMix, kiesMixInvoer, bouwVoorstel, onlineSuggestiesUit, resterendeDekking, dekkingsMelding } = await import('../_shared/voorstelGenereren.ts');
+      const { kandidaatNaarMix, kiesMixInvoer, bouwVoorstel, onlineSuggestiesUit, kiesOnlineTonen, telPremiumHint, resterendeDekking, dekkingsMelding } = await import('../_shared/voorstelGenereren.ts');
       const { filterOpEntitlement } = await import('../_shared/voorstelVerificatie.ts');
       const { schaalEnControleer } = await import('../_shared/voorstelContract.js');
 
@@ -6210,18 +6210,53 @@ Deno.serve(async (req) => {
           return json({ ok: true, uitkomst: 'doel-bereikt', onlineSuggesties: [], rest, opgeslagen: false });
         }
 
-        const bekendeNamen = [...bestaandeVanBasis(b).namen, ...(gev.voorstel ? gev.voorstel.regels.flatMap((r: any) => [r.naam, r.gever]) : [])].filter(Boolean).slice(0, 25);
-        const extra = `Zoek gericht naar andere financiers die samen nog ongeveer € ${rest.nodig} kunnen bijdragen aan dit project (totale begroting € ${b.dekking.begroting}). Noem NIET: ${bekendeNamen.join('; ')}.`;
-        const run = await draaiEngineVoorProject(admin, apiKey, b, { maxKandidaten: aanvul.maxKandidaten, maxZoekopdrachten: aanvul.maxKandidaten, timeoutMs: 60_000 }, extra);
+        // Wat het lid al aan online suggesties kreeg (alleen namen en indicatieve bedragen; door de server begrensd). Die tellen mee voor het
+        // stoppen en voor het totale maximum, en worden niet nogmaals genoemd. De client kan hiermee hoogstens minder zoeken, nooit meer dan het maximum per aanroep.
+        const getoondRuw: any[] = Array.isArray((body as any).getoond) ? (body as any).getoond.slice(0, 20) : [];
+        const getoond = getoondRuw
+          .map((x) => ({ gever: String(x?.gever ?? '').replace(/\s+/g, ' ').trim().slice(0, 200), indicatief: typeof x?.indicatiefBedrag === 'number' && Number.isFinite(x.indicatiefBedrag) && x.indicatiefBedrag > 0 ? Math.min(Math.round(x.indicatiefBedrag), 10_000_000) : 0 }))
+          .filter((x) => x.gever);
+        const orient = b.config.onlineOrientatie;
+        const totaalMax = Math.max(0, (orient && orient.totaalMax) || 0);
+        const ruimte = Math.max(0, totaalMax - getoond.length);
+        const gedektDoorOnline = getoond.reduce((t, x) => t + x.indicatief, 0);
+        const nodigNaOnline = Math.max(0, rest.nodig - gedektDoorOnline);
+
+        if (nodigNaOnline <= 0) {
+          return json({ ok: true, uitkomst: 'doel-bereikt', onlineSuggesties: [], rest, onlineIndicatief: 0, totaalMax, opgeslagen: false });
+        }
+
+        if (ruimte <= 0) {
+          return json({ ok: true, uitkomst: 'maximum-bereikt', onlineSuggesties: [], rest, onlineIndicatief: 0, totaalMax, opgeslagen: false });
+        }
+
+        const bekendeNamen = [...bestaandeVanBasis(b).namen, ...getoond.map((x) => x.gever), ...(gev.voorstel ? gev.voorstel.regels.flatMap((r: any) => [r.naam, r.gever]) : [])].filter(Boolean).slice(0, 40);
+        const perRonde = Math.min(aanvul.maxKandidaten, ruimte);
+        const extra = `Zoek gericht naar andere financiers die samen nog ongeveer € ${nodigNaOnline} kunnen bijdragen aan dit project (totale begroting € ${b.dekking.begroting}). Noem NIET: ${bekendeNamen.join('; ')}.`;
+        const run = await draaiEngineVoorProject(admin, apiKey, b, { maxKandidaten: perRonde, maxZoekopdrachten: perRonde, timeoutMs: 60_000 }, extra);
 
         if (!run) return json({ ok: false, reden: 'fondsgegevens-onleesbaar', error: 'De fondsgegevens konden niet worden gelezen. Probeer het later opnieuw.' }, 503);
 
-        // Stop zodra het kan: hoogstens `stopNaKandidaten` gekwalificeerde online kandidaten, nooit het maximum als doel.
-        const suggesties = onlineSuggestiesUit(run.kandidaten, { gat: b.gat, nodig: rest.nodig, config: b.config, max: aanvul.stopNaKandidaten, uitsluiten: bekendeNamen });
+        // Stop zodra het kan: de gekwalificeerde online kandidaten op volgorde van score tot de indicatieve bedragen het resterende gat dekken.
+        // Het maximum per ronde en het totale maximum zijn een CAP, nooit een doel.
+        const kandidaten = onlineSuggestiesUit(run.kandidaten, { gat: b.gat, nodig: nodigNaOnline, config: b.config, max: perRonde, uitsluiten: bekendeNamen });
+        const gekozen = kiesOnlineTonen(kandidaten, { nodig: nodigNaOnline, min: 0, max: perRonde });
+        const suggesties = gekozen.tonen;
 
         await meldGebruik(admin, { userId: profileId, tier: gebruikTier, actie: 'fonds_scan_web', projectId: b.project.id, model: CHAT_MODEL, usage: run.web.usage, webZoekAanroepen: run.web.webAanroepen ?? 0, duurMs: Date.now() - tStart, succes: run.web.status !== 'mislukt' });
 
-        return json({ ok: true, uitkomst: suggesties.length ? 'aangevuld' : 'niets-gevonden', onlineSuggesties: suggesties, rest, webStatus: run.web.status, opgeslagen: false });
+        return json({
+          ok: true,
+          uitkomst: suggesties.length ? 'aangevuld' : 'niets-gevonden',
+          onlineSuggesties: suggesties,
+          rest,
+          onlineIndicatief: gekozen.indicatief,
+          // Nog een ronde zinvol? Alleen als er nog gat over is en het totale maximum niet bereikt is.
+          nogAanvullen: suggesties.length > 0 && gedektDoorOnline + gekozen.indicatief < rest.nodig && getoond.length + suggesties.length < totaalMax,
+          totaalMax,
+          webStatus: run.web.status,
+          opgeslagen: false,
+        });
       }
 
       // --- Genereren -------------------------------------------------------------------------------------------------------------
@@ -6260,7 +6295,14 @@ Deno.serve(async (req) => {
 
       const rest = resterendeDekking({ dekking: b.dekking, config: b.config, regels: uitkomst.gevalideerd.voorstel.regels as any[] });
       const uitgesloten = [...bestaandeVanBasis(b).namen, ...uitkomst.gevalideerd.voorstel.regels.flatMap((r: any) => [r.naam, r.gever])].filter(Boolean);
-      const onlineSuggesties = onlineSuggestiesUit(run.kandidaten, { gat: b.gat, nodig: rest.nodig, config: b.config, max: 3, uitsluiten: uitgesloten });
+      const orient = b.config.onlineOrientatie;
+      // Premium: minstens `minTonen` online suggesties (ook als de database het doel al haalt) en daarna door tot de indicatieve bedragen het
+      // doel dekken, tot het totale maximum. Pro: het vaste korte lijstje van de oriëntatie.
+      const alleOnline = onlineSuggestiesUit(run.kandidaten, { gat: b.gat, nodig: rest.nodig, config: b.config, max: orient && orient.totaalMax ? orient.totaalMax : 3, uitsluiten: uitgesloten });
+      const gekozenOnline = kiesOnlineTonen(alleOnline, { nodig: rest.nodig, min: orient ? orient.minTonen : undefined, max: orient && orient.minTonen != null ? orient.maxKandidaten : 3 });
+      const onlineSuggesties = gekozenOnline.tonen;
+      // Pro: alleen een aantal van passende fondsen die alleen Premium mag zien (nooit namen of details).
+      const premiumHint = tier === 'pro' && !isAdmin ? telPremiumHint(run.kandidaten, b.config) : 0;
       const mix = uitkomst.mix;
 
       await meldGebruik(admin, { userId: profileId, tier: gebruikTier, actie: 'fonds_scan_database', projectId: b.project.id, duurMs: Date.now() - tStart, succes: true });
@@ -6286,7 +6328,9 @@ Deno.serve(async (req) => {
         totalen: { gat: mix.gat, doelBedrag: mix.doelBedrag, som: rest.som, nodig: rest.nodig, dekking: mix.dekking },
         // Eerlijke uitleg van wat er gedaan is, zonder namen of aantallen die het lid niet mag zien.
         werkwijze: { onlineStatus: run.web.status, onlineKandidaten: run.web.kandidaten.length, gekwalificeerd: gekozen.length },
-        aanvullenMogelijk: Boolean(b.config.onlineAanvullen) && rest.nodig > 0,
+        aanvullenMogelijk: Boolean(b.config.onlineAanvullen) && rest.nodig > gekozenOnline.indicatief && onlineSuggesties.length < ((orient && orient.totaalMax) || 0),
+        onlineIndicatief: gekozenOnline.indicatief,
+        premiumHint: premiumHint > 0 ? { aantal: premiumHint } : null,
         opgeslagen: false,
       });
     } catch (_e) {

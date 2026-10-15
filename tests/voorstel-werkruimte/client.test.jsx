@@ -76,6 +76,29 @@ sectie('1. Flow: volgorde en niets opgeslagen');
   check('preview mislukt: model "niet gecontroleerd"', r6.ok && W.maakWerkModel(r6).gecontroleerd === false);
 }
 
+{
+  // Doorzoeken tot het doel gedekt is: maximaal 2 rondes, de server bepaalt of er een volgende ronde zin heeft.
+  const gen = genereerAntwoord({ aanvullenMogelijk: true, onlineSuggesties: [{ gever: 'Eerste BV', indicatiefBedrag: 4000 }] });
+  const log = [];
+  let n = 0;
+  const d = dienstenMet({ gen, log });
+  d.aanvullen = async (a) => { log.push(['aanvullen', a]); n += 1; return { ok: true, antwoord: { ok: true, uitkomst: 'aangevuld', nogAanvullen: true, onlineSuggesties: [{ gever: `Ronde ${n} BV`, indicatiefBedrag: 1000 * n }] } }; };
+  const res = await W.draaiVoorstelFlow({ projectId: 'p1', diensten: d });
+  const rondes = log.filter(([x]) => x === 'aanvullen');
+  check('doorzoeken: hoogstens 2 rondes, ook als de server "nog aanvullen" blijft zeggen', rondes.length === 2, String(rondes.length));
+  check('ronde 2 meldt wat in ronde 1 al getoond is (gever + schatting)', rondes[1][1].getoond.map((x) => x.gever).join() === 'Eerste BV,Ronde 1 BV' && rondes[1][1].getoond[1].indicatiefBedrag === 1000);
+  const mm = W.maakWerkModel(res);
+  check('model: alle online suggesties uit alle rondes, met som van de schattingen', mm.suggesties.length === 3 && mm.onlineIndicatief === 4000 + 1000 + 2000, `${mm.suggesties.length} ${mm.onlineIndicatief}`);
+  const d2 = dienstenMet({ gen, log: [] });
+  let n2 = 0;
+  d2.aanvullen = async () => { n2 += 1; return { ok: true, antwoord: { ok: true, uitkomst: 'aangevuld', nogAanvullen: false, onlineSuggesties: [{ gever: 'Enige BV', indicatiefBedrag: 1 }] } }; };
+  const r2 = await W.draaiVoorstelFlow({ projectId: 'p1', diensten: d2 });
+  check('server zegt klaar: één ronde', n2 === 1 && W.maakWerkModel(r2).suggesties.length === 2);
+  const pro = W.maakWerkModel({ genereer: genereerAntwoord({ premiumHint: { aantal: 3 } }), aanvulling: null, preview: null });
+  check('Pro-hint komt als getal in het model', pro.premiumHint === 3);
+  check('rare hint (tekst, negatief, nul) wordt genegeerd', [{ aantal: '3' }, { aantal: -1 }, { aantal: 0 }, 'x', null].every((h) => W.maakWerkModel({ genereer: genereerAntwoord({ premiumHint: h }), aanvulling: null, preview: null }).premiumHint === 0));
+}
+
 sectie('2. Werkmodel, totalen, buffer');
 {
   const res = await W.draaiVoorstelFlow({ projectId: 'p1', diensten: dienstenMet() });
@@ -143,7 +166,10 @@ sectie('4. Service');
   check('genereren: juiste mode, geen tier/bedrag in body', a.ok && client.log.invoke[0][1].mode === 'voorstel-genereren' && Object.keys(client.log.invoke[0][1]).sort().join() === 'mode,projectId');
   const b = await vraagVoorstelAanvullen({ projectId: 'p1', voorstel: { versie: 1, regels: [], acties: [] } });
   check('aanvullen: juiste mode', b.ok && client.log.invoke[1][1].mode === 'voorstel-aanvullen');
-  check('zonder projectId: fout, geen call', !(await vraagVoorstelGenereren({})).ok && client.log.invoke.length === 2);
+  await vraagVoorstelAanvullen({ projectId: 'p1', voorstel: { versie: 1, regels: [], acties: [] }, getoond: [{ gever: 'A BV', indicatiefBedrag: 5000, geheim: 'x' }, { gever: '', indicatiefBedrag: 1 }, null, { gever: 'B', indicatiefBedrag: -3 }] });
+  const gb = client.log.invoke[client.log.invoke.length - 1][1].getoond;
+  check('service: getoond bevat alleen gever en schatting, rommel eruit', JSON.stringify(gb) === JSON.stringify([{ gever: 'A BV', indicatiefBedrag: 5000 }, { gever: 'B', indicatiefBedrag: 0 }]), JSON.stringify(gb));
+  check('zonder projectId: fout, geen call', !(await vraagVoorstelGenereren({})).ok && client.log.invoke.length === 3);
   client.__zetSupabase({ functions: { invoke: async () => ({ data: null, error: { context: new Response(JSON.stringify({ reden: 'geen-begroting' }), { status: 422 }) } }) } });
   const c = await vraagVoorstelGenereren({ projectId: 'p1' });
   check('422 geen-begroting: nette melding', !c.ok && c.reden === 'geen-begroting' && /begroting/.test(c.melding));
@@ -243,6 +269,23 @@ sectie('6. Werkruimte (klik, bewerken, opslaan)');
   await act(async () => { await sleep(50); });
   check('online-suggestie getoond met "nog niet gecontroleerd" en standaard uit', !!q('[data-testid="voorstel-online"]') && /nog niet gecontroleerd/.test(q('[data-testid="voorstel-online"]').textContent) && !q('[data-testid="voorstel-suggestie"] input').checked);
   check('bron-link veilig (noopener)', /noopener/.test(q('[data-testid="voorstel-online"] a').getAttribute('rel')));
+}
+
+{
+  await toon(<VoorstelWerkruimte project={PROJECT_OK} beschikbaar opgeslagen diensten={dienstenMet({ gen: genereerAntwoord({ premiumHint: { aantal: 4 } }) })} />);
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await act(async () => { await sleep(50); });
+  const h = q('[data-testid="voorstel-premium-hint"]');
+  check('Pro-hint: aantal en uitleg zichtbaar, link naar Premium', !!h && /zijn nog 4 fondsen/.test(h.textContent) && /alleen met Premium/.test(h.textContent) && /intent=PREMIUM/.test(q('[data-testid="voorstel-premium-link"]').getAttribute('href')), h && h.textContent);
+  check('Pro-hint bevat geen namen van fondsen', !/Premium Cultuur|Gever/.test(h.textContent));
+  await toon(<VoorstelWerkruimte project={PROJECT_OK} beschikbaar opgeslagen diensten={dienstenMet({ gen: genereerAntwoord({ premiumHint: { aantal: 1 } }) })} />);
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await act(async () => { await sleep(50); });
+  check('enkelvoud bij 1 fonds', /is nog 1 fonds/.test(q('[data-testid="voorstel-premium-hint"]').textContent));
+  await toon(<VoorstelWerkruimte project={PROJECT_OK} beschikbaar opgeslagen diensten={dienstenMet()} />);
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await act(async () => { await sleep(50); });
+  check('geen hint zonder getal (Premium of niets gevonden)', !q('[data-testid="voorstel-premium-hint"]'));
 }
 
 console.log(`\n${stand.ok} geslaagd, ${stand.fout} mislukt`);

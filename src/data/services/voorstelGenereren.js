@@ -64,10 +64,17 @@ export function vraagVoorstelGenereren({ projectId }) {
 }
 
 // Alleen Premium: gericht aanvullend zoeken op het resterende gat. De server berekent het resterende gat zelf uit `voorstel`.
-export function vraagVoorstelAanvullen({ projectId, voorstel }) {
+// `getoond` = de online suggesties die het lid al kreeg ({ gever, indicatiefBedrag }): die tellen mee voor het stoppen en voor het totale
+// maximum, en worden niet nogmaals voorgesteld. Het zijn alleen namen en schattingen; de server begrenst en controleert alles opnieuw.
+export function vraagVoorstelAanvullen({ projectId, voorstel, getoond }) {
   if (typeof projectId !== 'string' || !projectId || !voorstel || typeof voorstel !== 'object') {
     return Promise.resolve({ ok: false, reden: 'fout', melding: ALGEMENE_FOUT, antwoord: null });
   }
 
-  return roep({ mode: 'voorstel-aanvullen', projectId, voorstel });
+  const lijst = (Array.isArray(getoond) ? getoond : [])
+    .filter((x) => x && typeof x.gever === 'string' && x.gever)
+    .slice(0, 20)
+    .map((x) => ({ gever: x.gever.slice(0, 200), indicatiefBedrag: Number.isFinite(x.indicatiefBedrag) && x.indicatiefBedrag > 0 ? Math.round(x.indicatiefBedrag) : 0 }));
+
+  return roep({ mode: 'voorstel-aanvullen', projectId, voorstel, getoond: lijst });
 }

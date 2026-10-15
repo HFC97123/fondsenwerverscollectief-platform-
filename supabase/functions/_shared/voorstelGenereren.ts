@@ -237,6 +237,58 @@ export function onlineSuggestiesUit(
   return uit;
 }
 
+// Hoeveel online suggesties tonen? `suggesties` staat op volgorde van score. Met `min`/`max` (Premium): minstens `min` (ook als de database het
+// doel al haalt), daarna doorgaan tot de indicatieve bedragen `nodig` dekken, nooit meer dan `max`. Zonder `min` (Pro): vast kort lijstje,
+// gelimiteerd op `max`. Online bedragen zijn indicaties en tellen NIET mee in de gevalideerde dekking; ze bepalen alleen wanneer we stoppen met zoeken.
+export function kiesOnlineTonen(
+  suggesties: readonly OnlineSuggestie[],
+  inv: { nodig: number; min?: number; max: number },
+): { tonen: OnlineSuggestie[]; indicatief: number; gedekt: boolean } {
+  const tonen: OnlineSuggestie[] = [];
+  let indicatief = 0;
+  const nodig = Math.max(0, Number.isFinite(inv.nodig) ? inv.nodig : 0);
+
+  if (inv.min == null) {
+    for (const s of suggesties.slice(0, Math.max(0, inv.max))) {
+      tonen.push(s);
+      indicatief += s.indicatiefBedrag != null && s.indicatiefBedrag > 0 ? s.indicatiefBedrag : 0;
+    }
+
+    return { tonen, indicatief, gedekt: nodig <= indicatief };
+  }
+
+  for (const s of suggesties) {
+    if (tonen.length >= inv.max) break;
+    if (tonen.length >= inv.min && indicatief >= nodig) break;
+
+    tonen.push(s);
+    indicatief += s.indicatiefBedrag != null && s.indicatiefBedrag > 0 ? s.indicatiefBedrag : 0;
+  }
+
+  return { tonen, indicatief, gedekt: indicatief >= nodig };
+}
+
+// Pro: hoeveel passende fondsen zijn er die alleen Premium mag zien? Uitsluitend een AANTAL (nooit namen of details). Het zijn de
+// database-kandidaten die de engine voor dit project relevant vond, met voldoende score, waarvan de entitlementlaag alleen de publieke
+// identiteit (niveau 'publiek') vrijgeeft. Exclusieve fondsen zijn al vóór de engine verwijderd en tellen dus nooit mee.
+export function telPremiumHint(kandidaten: ReadonlyArray<{ k: EngineKandidaat; niveau: MixNiveau }>, config: TierConfig): number {
+  if (!config.premiumHint) return 0;
+
+  const gezien = new Set<string>();
+
+  for (const { k, niveau } of kandidaten) {
+    if (niveau !== 'publiek' || k.relevant !== true || !isObject(k.row) || k.row._extern) continue;
+    if (!(Number.isFinite(k.score) && k.score >= config.minScore)) continue;
+
+    // Eén fonds telt één keer, ook als het als regeling en als deadline voorkomt.
+    const sleutel = tekst(k.row.funder_id || k.row.funder_naam || k.row.naam, 200).toLowerCase();
+
+    if (sleutel) gezien.add(sleutel);
+  }
+
+  return gezien.size;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 // 4. Mix -> ruw voorstel -> gevalideerd voorstel met acties
 
