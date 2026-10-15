@@ -96,7 +96,7 @@ sectie('5. Statische contracten: wiring, privacy en migratie');
 
   check('index.ts laadt gebruikLog alleen dynamisch (opstart verandert niet)', /await import\('\.\.\/_shared\/gebruikLog\.ts'\)/.test(index) && !/^import .*gebruikLog/m.test(index));
   // 9 bestaande punten + 3 van 'voorstel-genereren' / 'voorstel-aanvullen' (database-scan, web-scan bij genereren, web-scan bij aanvullen).
-  check('alle bestaande verbruikspunten melden ook aan de meter (9 + 3 van het genereren van een voorstel)', (index.match(/await meldGebruik\(admin,/g) || []).length === 12, String((index.match(/await meldGebruik\(admin,/g) || []).length));
+  check('alle bestaande verbruikspunten melden ook aan de meter (9 + 3 van het genereren van een voorstel + 1 van de broncontrole)', (index.match(/await meldGebruik\(admin,/g) || []).length === 13, String((index.match(/await meldGebruik\(admin,/g) || []).length));
   check('de bestaande legVerbruikVast-aanroepen zijn ongewijzigd aanwezig', (index.match(/await legVerbruikVast\(admin,/g) || []).length === 8);
   check('de meter wordt nooit afgewacht met een foutpad (alleen binnen meldGebruik met try/catch)', /async function meldGebruik[\s\S]*?try \{[\s\S]*?\} catch \(_\) \{/.test(index));
   check('geen enkele meldGebruik-aanroep geeft tekst, bericht of url mee', !/meldGebruik\(admin, \{[^}]*(berichten|tekst|prompt|content|url|query|text)/.test(index));

@@ -5684,6 +5684,275 @@ function schoneBronnen(bronnen: { title: string; url: string }[]): { title: stri
 }
 
 // ===========================================================================
+// VOORSTEL OPSLAAN (dekkingsplan + actieplan), Pro en Premium. Mode 'voorstel-opslaan', standaard UIT (VOORSTEL_GENEREREN=aan, dezelfde flag).
+// De ENIGE schrijfroute van de voorstelflow. Het lid kiest in de preview welke regels (type, id, bedrag) worden opgeslagen; de server
+//   1. controleert ingelogd, abonnement (Pro/Premium) en eigenaarschap van het project (een ander project geeft 404),
+//   2. laadt de gekozen records zelf (entitlementlaag), controleert bedragen tegen de grenzen van het record en het financieringsgat
+//      (../_shared/voorstelGenereren.ts: valideerOpslag; alles of niets, nooit stilletjes aanpassen),
+//   3. bepaalt de taken zelf (terugplannen vanaf de deadline uit de DATABASE; de browser levert geen taken of datums),
+//   4. schrijft met de JWT van het lid (niet met de servicerol), zodat RLS, triggers en kolomrechten blijven gelden,
+//   5. is herhaalbaar: een regel die er al staat is "bestaat al", een taak met dezelfde titel bij dezelfde regel wordt niet nog eens gemaakt.
+// Het actieplan kan los opnieuw worden geprobeerd (alleenActies). Een opgeslagen regel is NOOIT een toegekende of bevestigde financiering:
+// de status is altijd Interessant.
+// ===========================================================================
+const OPSLAAN_ACTIE = 'voorstel-opslaan';
+const STARTPUNT_ACTIE = 'voorstel-startpunt';
+const CONTROLEER_ACTIE = 'voorstel-controleer';
+const OPSLAAN_MAX_BODY_TEKENS = 30000;
+const OPSLAAN_MAX_SUGGESTIES = 10;
+const OPSLAAN_ONLINE_NOTITIE = 'Online gevonden door Subsidiekompas, nog niet gecontroleerd. Controleer de voorwaarden en deadline bij de financier.';
+
+function gebruikersClient(authHeader: string): any | null {
+  const url = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+  if (!url || !anonKey || !authHeader.startsWith('Bearer ')) return null;
+
+  return createClient(url, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+function opslagReden(error: any): 'bestaat-al' | 'niet-toegestaan' | 'ongeldig' | 'fout' {
+  if (error?.code === '23505') return 'bestaat-al';
+  if (error?.code === '42501') return 'niet-toegestaan';
+  if (error?.code === '23514') return 'ongeldig';
+
+  return 'fout';
+}
+
+// Lichte basis voor opslaan, controleren en een startpunt vanuit de chat: project van deze gebruiker, het dekkingsplan, de dekking en de tierconfig.
+// Anders dan laadGenereerBasis vereist dit GEEN discipline/doelgroep en GEEN begroting: een regel zonder bedrag mag altijd worden opgeslagen
+// (bedragen vragen wel om een begroting; dat bewaakt valideerOpslag).
+async function laadOpslagBasis(admin: any, authHeader: string, profileId: string, projectId: string, tier: string, isAdmin: boolean) {
+  const { tierConfigVoor } = await import('../_shared/tierConfig.ts');
+  const { gatVan } = await import('../_shared/voorstelGenereren.ts');
+  const { berekenDekking } = await import('../_shared/dekkingsplanRekenen.js');
+  const config = tierConfigVoor(tier, isAdmin);
+
+  if (!config.dekkingsplan) {
+    return { fout: { status: 403, body: { ok: false, reden: 'niet-beschikbaar-voor-abonnement', error: 'Het dekkingsplan met Subsidiekompas is een Pro- en Premium-functie.' } } as GenereerFout };
+  }
+
+  const { data: project } = await admin
+    .from('subsidie_kompas_programs')
+    .select('id, name, budget_total, own_contribution')
+    .eq('id', projectId)
+    .eq('user_id', profileId)
+    .is('archived_at', null)
+    .maybeSingle();
+
+  if (!project) return { fout: { status: 404, body: { ok: false, reden: 'project-niet-gevonden', error: 'Dit project is niet gevonden.' } } as GenereerFout };
+
+  const fundingRegels = await laadProjectFinanciering(authHeader, project.id);
+
+  if (!fundingRegels) return { fout: { status: 503, body: { ok: false, reden: 'dekkingsplan-onleesbaar', error: 'Het dekkingsplan kon niet worden gelezen. Probeer het later opnieuw.' } } as GenereerFout };
+
+  const dekking = berekenDekking({
+    begroting: project.budget_total,
+    regels: fundingRegels.map((r) => ({ status: r.status, requested: r.requested, awarded: r.awarded })),
+    overige: project.own_contribution,
+  });
+  const exclusiviteit = isAdmin || tier === 'premium' ? LEGE_EXCLUSIVITEIT : await laadExclusiviteit(admin);
+
+  return {
+    basis: { project, dekking, gat: gatVan(dekking), fundingRegels, config, rechten: bepaalRechten(tier, isAdmin), exclusiviteit, vandaag: vandaagIso(), tier, isAdmin },
+  };
+}
+
+type OpslagBasis = NonNullable<Awaited<ReturnType<typeof laadOpslagBasis>>['basis']>;
+type SchrijfBasis = { project: { id: string }; fundingRegels: OpslagBasis['fundingRegels'] };
+
+// Broncontroles (tabel subsidie_kompas_bron_controles, geschreven door DEZE functie met de servicerol). Elke fout, ook een ontbrekende tabel
+// (migratie nog niet toegepast), geeft null/false terug: dan geldt "niet gecontroleerd" en blijft opslaan gewoon werken.
+async function leesBronRijen(admin: any, userId: string, programId: string): Promise<any[] | null> {
+  try {
+    const { data, error } = await admin
+      .from('subsidie_kompas_bron_controles')
+      .select('record_type, record_id, status, verificatie_status, reden, record_versie, gecontroleerd_op')
+      .eq('user_id', userId)
+      .eq('program_id', programId)
+      .limit(500);
+
+    return error || !Array.isArray(data) ? null : data;
+  } catch (_e) {
+    return null;
+  }
+}
+
+async function bewaarBronRij(admin: any, userId: string, programId: string, rij: { type: string; id: string; status: string; verificatieStatus: string | null; reden: string | null; versie: string; op: string }): Promise<boolean> {
+  try {
+    const { error } = await admin.from('subsidie_kompas_bron_controles').upsert(
+      {
+        user_id: userId,
+        program_id: programId,
+        record_type: rij.type,
+        record_id: rij.id,
+        status: rij.status,
+        verificatie_status: rij.verificatieStatus,
+        reden: rij.reden ? rij.reden.slice(0, 60) : null,
+        record_versie: rij.versie,
+        gecontroleerd_op: rij.op,
+      },
+      { onConflict: 'program_id,record_type,record_id' },
+    );
+
+    return !error;
+  } catch (_e) {
+    return false;
+  }
+}
+
+// Bronoordeel per regelsleutel (r:<type>:<id>) voor de records die de server nu kent; 'verouderd' gezet als de controle niet meer bij het record past.
+async function bronOordelenVoor(rijen: any[] | null, records: Array<{ type: string; id: string; naam: string; website?: string | null; deadline?: string | null; min?: number | null; max?: number | null; niveau: string }>, nu: Date) {
+  const { recordVersie, beoordeelBronRij } = await import('../_shared/bronControle.ts');
+  const uit: Record<string, { status: string; gecontroleerdOp: string | null; reden: string | null }> = {};
+
+  for (const r of records) {
+    if (r.niveau !== 'volledig') continue;
+
+    const rij = rijen?.find((x) => x.record_type === r.type && String(x.record_id).toLowerCase() === String(r.id).toLowerCase()) ?? null;
+
+    uit[`r:${r.type}:${String(r.id).toLowerCase()}`] = beoordeelBronRij(rij, await recordVersie(r as any), nu);
+  }
+
+  return uit;
+}
+
+// VOORSTEL-OPSLAAN-BEGIN
+// De ENIGE plek in de Edge Function die in subsidie_kompas_program_funding en subsidie_kompas_program_actions schrijft: uitsluitend via de
+// gebruikers-client (RLS van het lid zelf), nooit via de admin-client, en alleen na een klik op Opslaan (mode 'voorstel-opslaan').
+type OpslagRegelUit = { sleutel: string; naam: string; status: 'opgeslagen' | 'bestaat-al' | 'mislukt'; reden?: string };
+
+async function schrijfOpslag(
+  client: any,
+  b: SchrijfBasis,
+  profileId: string,
+  plan: { regels: Array<{ sleutel: string; type: 'regeling' | 'fonds'; id: string; naam: string; bedrag: number | null; staatAl: boolean }>; acties: Array<{ sleutel: string; regelSleutel: string | null; titel: string; financier: string; datum: string | null; prioriteit: string; toelichting: string }> },
+  suggesties: Array<{ gever: string; naam: string; url: string | null }>,
+  alleenActies: boolean,
+) {
+  const { zelfdeFinancier } = await import('../_shared/voorstelContract.js');
+  const bestaandBij = (r: { type: string; id: string }) => b.fundingRegels.find((f) => (r.type === 'regeling' ? f.schemeId === r.id : f.funderId === r.id));
+  const fundingVan = new Map<string, string>();
+  const regels: OpslagRegelUit[] = [];
+
+  for (const r of plan.regels) {
+    const bestaand = bestaandBij(r);
+
+    if (alleenActies) {
+      if (bestaand) fundingVan.set(r.sleutel, bestaand.id);
+
+      continue;
+    }
+
+    if (r.staatAl || bestaand) {
+      regels.push({ sleutel: r.sleutel, naam: r.naam, status: 'bestaat-al' });
+      continue;
+    }
+
+    const { data, error } = await client
+      .from('subsidie_kompas_program_funding')
+      .insert({ user_id: profileId, program_id: b.project.id, scheme_id: r.type === 'regeling' ? r.id : null, funder_id: r.type === 'fonds' ? r.id : null, requested_amount: r.bedrag, status: 'interesting' })
+      .select('id')
+      .single();
+
+    if (error || !data?.id) {
+      const reden = opslagReden(error);
+
+      regels.push({ sleutel: r.sleutel, naam: r.naam, status: reden === 'bestaat-al' ? 'bestaat-al' : 'mislukt', reden });
+      continue;
+    }
+
+    fundingVan.set(r.sleutel, String(data.id));
+    regels.push({ sleutel: r.sleutel, naam: r.naam, status: 'opgeslagen' });
+  }
+
+  // --- Taken: alleen voor regels die nu zijn opgeslagen (of, bij opnieuw proberen, al in het dekkingsplan staan) -------------------
+  const actieplan = { status: 'geen' as 'geen' | 'klaar' | 'deels' | 'mislukt', aangemaakt: 0, bestond: 0, mislukt: 0 };
+  // Projecttaken (zonder regel) alleen als er minstens één regel is opgeslagen (of, bij opnieuw proberen, al in het dekkingsplan staat).
+  const teMaken = plan.acties.filter((a) => (a.regelSleutel ? fundingVan.has(a.regelSleutel) : fundingVan.size > 0));
+
+  if (teMaken.length) {
+    const { data: bestaande, error: leesFout } = await client.from('subsidie_kompas_program_actions').select('title, funding_id').eq('program_id', b.project.id).limit(1000);
+
+    if (leesFout || !Array.isArray(bestaande)) {
+      // Zonder te weten wat er al staat zouden dubbele taken kunnen ontstaan: liever niets schrijven en opnieuw laten proberen.
+      actieplan.mislukt = teMaken.length;
+      actieplan.status = 'mislukt';
+    } else {
+      const sleutelVan = (titel: string, fundingId: string | null) => `${fundingId ?? ''}|${titel.trim().toLowerCase()}`;
+      const aanwezig = new Set<string>(bestaande.map((x: any) => sleutelVan(String(x.title ?? ''), x.funding_id ? String(x.funding_id) : null)));
+      const nieuw: any[] = [];
+
+      for (const a of teMaken) {
+        const fundingId = a.regelSleutel ? fundingVan.get(a.regelSleutel) ?? null : null;
+        const k = sleutelVan(a.titel, fundingId);
+
+        if (aanwezig.has(k)) {
+          actieplan.bestond += 1;
+          continue;
+        }
+
+        aanwezig.add(k);
+        nieuw.push({
+          user_id: profileId,
+          program_id: b.project.id,
+          funding_id: fundingId,
+          title: a.titel,
+          financier_label: a.financier || null,
+          due_date: a.datum,
+          priority: a.prioriteit,
+          notes: a.toelichting || null,
+          status: 'todo',
+          source: 'chat',
+          proposed_at: new Date().toISOString(),
+        });
+      }
+
+      if (nieuw.length) {
+        const { error } = await client.from('subsidie_kompas_program_actions').insert(nieuw);
+
+        if (error) actieplan.mislukt = nieuw.length;
+        else actieplan.aangemaakt = nieuw.length;
+      }
+
+      actieplan.status = actieplan.mislukt === 0 ? 'klaar' : actieplan.aangemaakt + actieplan.bestond > 0 ? 'deels' : 'mislukt';
+    }
+  }
+
+  // --- Online gevonden financiers op naam: zonder bedrag, status Interessant, nadrukkelijk "nog niet gecontroleerd" -----------------------
+  const uitSuggesties: Array<{ naam: string; status: 'opgeslagen' | 'bestaat-al' | 'mislukt'; reden?: string }> = [];
+
+  for (const sg of suggesties) {
+    const naam = (sg.naam && sg.naam !== sg.gever ? `${sg.gever} - ${sg.naam}` : sg.gever).slice(0, 200);
+
+    if (b.fundingRegels.some((f) => zelfdeFinancier(f.naam, naam) || zelfdeFinancier(f.funder, sg.gever))) {
+      uitSuggesties.push({ naam, status: 'bestaat-al' });
+      continue;
+    }
+
+    const { error } = await client.from('subsidie_kompas_program_funding').insert({
+      user_id: profileId,
+      program_id: b.project.id,
+      financier_naam: naam,
+      requested_amount: null,
+      status: 'interesting',
+      notes: `${OPSLAAN_ONLINE_NOTITIE}${sg.url ? ` Bron: ${sg.url}` : ''}`.slice(0, 4000),
+    });
+
+    if (error) {
+      const reden = opslagReden(error);
+
+      uitSuggesties.push({ naam, status: reden === 'bestaat-al' ? 'bestaat-al' : 'mislukt', reden });
+    } else {
+      uitSuggesties.push({ naam, status: 'opgeslagen' });
+    }
+  }
+
+  return { regels, actieplan, suggesties: uitSuggesties };
+}
+// VOORSTEL-OPSLAAN-END
+
+// ===========================================================================
 // VOORSTEL GENEREREN (dekkingsplan + actieplan), Pro en Premium. Modes 'voorstel-genereren' en 'voorstel-aanvullen', standaard UIT
 // (VOORSTEL_GENEREREN=aan). SCHRIJFT NIETS: geen insert/update, geen taken, geen opslag; het lid slaat pas op na een eigen klik.
 //
@@ -5722,7 +5991,7 @@ type GenereerFout = { status: number; body: Record<string, unknown> };
 
 async function laadGenereerBasis(admin: any, authHeader: string, profileId: string, projectId: string, tier: string, isAdmin: boolean) {
   const { tierConfigVoor } = await import('../_shared/tierConfig.ts');
-  const { criteriaRuwUitProject, projectTekstVoorOnline, gatVan } = await import('../_shared/voorstelGenereren.ts');
+  const { criteriaRuwUitProject, projectTekstVoorOnline, documentUittreksel, gatVan } = await import('../_shared/voorstelGenereren.ts');
   const { berekenDekking } = await import('../_shared/dekkingsplanRekenen.js');
   const config = tierConfigVoor(tier, isAdmin);
 
@@ -5778,6 +6047,27 @@ async function laadGenereerBasis(admin: any, authHeader: string, profileId: stri
 
   const exclusiviteit = isAdmin || tier === 'premium' ? LEGE_EXCLUSIVITEIT : await laadExclusiviteit(admin);
 
+  // Geüploade projectdocumenten (laatste versie van elk, van deze gebruiker en dit project): een begrensd uittreksel voor de online oriëntatie.
+  // Fout of geen documenten = geen uittreksel; het voorstel werkt dan op de projectgegevens alleen.
+  let documenten: Array<{ naam: string; tekst: string }> = [];
+
+  try {
+    const { data: docs } = await admin
+      .from('subsidie_kompas_knowledge_items')
+      .select('title, file_name, extracted_text')
+      .eq('program_id', project.id)
+      .eq('user_id', profileId)
+      .is('superseded_at', null)
+      .order('created_at', { ascending: false })
+      .limit(DOCUMENT_MAX_AANTAL_LEZEN);
+
+    documenten = (Array.isArray(docs) ? docs : []).map((d: any) => ({ naam: String(d.file_name || d.title || 'Document'), tekst: String(d.extracted_text || '') }));
+  } catch (_e) {
+    documenten = [];
+  }
+
+  const uittreksel = documentUittreksel(documenten);
+
   return {
     basis: {
       project,
@@ -5786,7 +6076,8 @@ async function laadGenereerBasis(admin: any, authHeader: string, profileId: stri
       fundingRegels,
       taxonomie,
       criteria,
-      projectTekst: projectTekstVoorOnline(project),
+      projectTekst: projectTekstVoorOnline(project, documenten),
+      documentenGebruikt: uittreksel.aantal,
       aannames,
       config,
       rechten: bepaalRechten(tier, isAdmin),
@@ -5843,6 +6134,7 @@ function bestaandeVanBasis(b: GenereerBasis) {
   };
 }
 
+const DOCUMENT_MAX_AANTAL_LEZEN = 8;
 const GENEREREN_ACTIE = 'voorstel-genereren';
 const AANVULLEN_ACTIE = 'voorstel-aanvullen';
 
@@ -6122,6 +6414,325 @@ Deno.serve(async (req) => {
     return json({ error: 'Ongeldige aanvraag.' }, 400);
   }
 
+  // Voorstel opslaan (Pro/Premium): de enige schrijfroute van de voorstelflow, standaard uit. Zie het blok VOORSTEL OPSLAAN hierboven.
+  if (body.mode === OPSLAAN_ACTIE) {
+    if (!profileId) {
+      return json({ error: 'Log in om een dekkingsplan op te slaan.' }, 401);
+    }
+
+    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') {
+      return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
+    }
+
+    if (typeof body.projectId !== 'string' || !UUID_RE.test(body.projectId) || !Array.isArray(body.regels) || (body.suggesties !== undefined && !Array.isArray(body.suggesties))) {
+      return json({ error: 'Ongeldige aanvraag.' }, 400);
+    }
+
+    let tekensOpslaan = 0;
+
+    try {
+      tekensOpslaan = JSON.stringify({ r: body.regels, s: body.suggesties ?? [], u: body.uitgeslotenActies ?? [] }).length;
+    } catch (_e) {
+      return json({ error: 'Ongeldige aanvraag.' }, 400);
+    }
+
+    if (tekensOpslaan > OPSLAAN_MAX_BODY_TEKENS) return json({ error: 'Ongeldige aanvraag.' }, 413);
+
+    try {
+      const geladen = await laadOpslagBasis(admin, authHeader, profileId, body.projectId, tier, isAdmin);
+
+      if ('fout' in geladen && geladen.fout) return json(geladen.fout.body, geladen.fout.status);
+
+      const b = (geladen as { basis: OpslagBasis }).basis;
+      const { valideerOpslag } = await import('../_shared/voorstelGenereren.ts');
+      const { veiligeUrl } = await import('../_shared/voorstelContract.js');
+      const alleenActies = body.alleenActies === true;
+      const gevraagd = { regeling: new Set<string>(), fonds: new Set<string>() };
+
+      for (const r of (body.regels as any[]).slice(0, 13)) {
+        const id = typeof r?.id === 'string' && UUID_RE.test(r.id) ? r.id.toLowerCase() : '';
+
+        if (!id) continue;
+        if (r.type === 'regeling') gevraagd.regeling.add(id);
+        else if (r.type === 'fonds') gevraagd.fonds.add(id);
+      }
+
+      const records = await laadVoorstelRecords(admin, gevraagd, b.rechten, b.exclusiviteit);
+
+      if (!records) return json({ ok: false, reden: 'fondsgegevens-onleesbaar', error: 'De fondsgegevens konden niet worden gelezen. Probeer het later opnieuw.', opgeslagen: false }, 503);
+
+      // Wat de SERVER weet over de broncontrole van deze regels (project + soort + id, tijdstip, uitkomst), getoetst aan het huidige record.
+      const nu = new Date();
+      const bronRijen = await leesBronRijen(admin, profileId, b.project.id);
+      const bronOordelen = await bronOordelenVoor(bronRijen, records as any, nu);
+
+      const plan = valideerOpslag({
+        projectId: b.project.id,
+        vandaag: b.vandaag,
+        dekking: b.dekking,
+        bestaandeRegels: b.fundingRegels.filter((r) => r.bronStatus === 'zichtbaar').map((r) => ({ schemeId: r.schemeId, funderId: r.funderId, naam: r.naam, financierNaam: r.funder })),
+        bedragenToegestaan: b.dekking.heeftBegroting === true,
+        config: b.config,
+        records: records as any,
+        regels: body.regels,
+        uitgeslotenActies: body.uitgeslotenActies,
+        alleenActies,
+        bronOordelen: Object.fromEntries(Object.entries(bronOordelen).map(([k, v]) => [k, v.status])) as any,
+      });
+
+      if (!plan.ok) {
+        return json({ ok: false, reden: 'validatie', regelFouten: plan.regelFouten, algemeen: plan.algemeen, opgeslagen: false }, 422);
+      }
+
+      const suggesties = alleenActies
+        ? []
+        : (body.suggesties as any[] | undefined ?? [])
+            .slice(0, OPSLAAN_MAX_SUGGESTIES)
+            .map((x) => ({
+              gever: String(x?.gever ?? '').replace(/\s+/g, ' ').trim().slice(0, 150),
+              naam: String(x?.naam ?? '').replace(/\s+/g, ' ').trim().slice(0, 150),
+              // Alleen een https-bron wordt bewaard (veiligeUrl laat ook http toe).
+              url: (() => { const u = veiligeUrl(x?.url); return u && u.startsWith('https://') ? u : null; })(),
+            }))
+            .filter((x) => x.gever);
+      const client = gebruikersClient(authHeader);
+
+      if (!client) return json({ ok: false, reden: 'niet-geconfigureerd', error: 'Opslaan is nu niet mogelijk. Probeer het later opnieuw.', opgeslagen: false }, 503);
+
+      const uit = await schrijfOpslag(client, b, profileId, plan, suggesties, alleenActies);
+
+      // Een controle die niet meer bij het huidige record past (of te oud is) wordt ook in de tabel als verouderd vastgelegd, zodat de
+      // interface na opslaan niet "gecontroleerd" blijft tonen. Best effort: een fout hier verandert niets aan het opgeslagen dekkingsplan.
+      if (!alleenActies) {
+        for (const r of plan.regels) {
+          const o = bronOordelen[r.sleutel];
+
+          if (o && o.status === 'verouderd') {
+            const rij = bronRijen?.find((x) => x.record_type === r.type && String(x.record_id).toLowerCase() === r.id);
+
+            if (rij && rij.status !== 'verouderd') {
+              try {
+                await admin.from('subsidie_kompas_bron_controles').update({ status: 'verouderd' }).eq('user_id', profileId).eq('program_id', b.project.id).eq('record_type', r.type).eq('record_id', r.id);
+              } catch (_e) {
+                /* best effort */
+              }
+            }
+          }
+        }
+      }
+
+      const regelsMetBron = uit.regels.map((r) => {
+        const o = bronOordelen[r.sleutel];
+
+        return { ...r, bron: o ? { status: o.status, gecontroleerdOp: o.gecontroleerdOp, beschikbaar: bronRijen !== null } : { status: 'niet-gecontroleerd', gecontroleerdOp: null, beschikbaar: bronRijen !== null } };
+      });
+
+      console.log('[subsidie-kompas] voorstel_opslaan', JSON.stringify({ tier: isAdmin ? 'admin' : tier, alleenActies, regels: uit.regels.map((r) => r.status), actieplan: uit.actieplan.status, suggesties: uit.suggesties.length }));
+
+      return json({ ok: true, opgeslagen: uit.regels.some((r) => r.status === 'opgeslagen') || uit.suggesties.some((x) => x.status === 'opgeslagen') || uit.actieplan.aangemaakt > 0, regels: regelsMetBron, actieplan: uit.actieplan, suggesties: uit.suggesties, dekkingsdoel: b.config.dekkingsdoel, waarschuwingen: plan.waarschuwingen.slice(0, 20) });
+    } catch (_e) {
+      console.error('[subsidie-kompas] voorstel_opslaan_fout');
+
+      return json({ ok: false, reden: 'onverwachte-fout', error: 'Opslaan is niet gelukt. Er is niets dubbel opgeslagen; probeer het opnieuw.', opgeslagen: false }, 500);
+    }
+  }
+
+  // Startpunt vanuit de chat (Pro/Premium): dezelfde preview als "Maak dekkingsplan", met de financiers uit het gesprek. Schrijft niets.
+  if (body.mode === STARTPUNT_ACTIE) {
+    if (!profileId) {
+      return json({ error: 'Log in om een dekkingsplan voor te bereiden.' }, 401);
+    }
+
+    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') {
+      return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
+    }
+
+    if (typeof body.projectId !== 'string' || !UUID_RE.test(body.projectId) || !Array.isArray(body.regels) || body.regels.length > 40) {
+      return json({ error: 'Ongeldige aanvraag.' }, 400);
+    }
+
+    try {
+      const geladen = await laadOpslagBasis(admin, authHeader, profileId, body.projectId, tier, isAdmin);
+
+      if ('fout' in geladen && geladen.fout) return json(geladen.fout.body, geladen.fout.status);
+
+      const b = (geladen as { basis: OpslagBasis }).basis;
+      const { bouwStartpunt } = await import('../_shared/voorstelGenereren.ts');
+      const gevraagd = { regeling: new Set<string>(), fonds: new Set<string>() };
+
+      for (const r of (body.regels as any[]).slice(0, 12)) {
+        const id = typeof r?.id === 'string' && UUID_RE.test(r.id) ? r.id.toLowerCase() : '';
+
+        if (!id) continue;
+        if (r.type === 'regeling') gevraagd.regeling.add(id);
+        else if (r.type === 'fonds') gevraagd.fonds.add(id);
+      }
+
+      const records = await laadVoorstelRecords(admin, gevraagd, b.rechten, b.exclusiviteit);
+
+      if (!records) return json({ ok: false, reden: 'fondsgegevens-onleesbaar', error: 'De fondsgegevens konden niet worden gelezen. Probeer het later opnieuw.' }, 503);
+
+      const uit = bouwStartpunt({
+        projectId: b.project.id,
+        vandaag: b.vandaag,
+        dekking: b.dekking,
+        bestaandeRegels: b.fundingRegels.filter((r) => r.bronStatus === 'zichtbaar').map((r) => ({ schemeId: r.schemeId, funderId: r.funderId, naam: r.naam, financierNaam: r.funder })),
+        config: b.config,
+        records: records as any,
+        regels: body.regels,
+      });
+
+      if (!uit.ok || !uit.voorstel) {
+        return json({ ok: false, reden: 'geen-financiers', error: 'Deze financiers zijn niet beschikbaar met uw abonnement of bestaan niet meer.', opgeslagen: false }, 422);
+      }
+
+      return json({
+        ok: true,
+        uitkomst: 'startpunt',
+        melding: b.dekking.heeftBegroting === true ? null : 'Dit project heeft nog geen begroting: u kunt de financiers zonder bedrag opnemen en later bedragen invullen.',
+        voorstel: uit.voorstel,
+        waarschuwingen: [],
+        reserveSleutel: null,
+        onlineSuggesties: [],
+        // De buffer is een vaste instelling per abonnement (Pro 110%, Premium 120%), nooit een keuze van de browser en nooit stilzwijgend.
+        dekkingsdoel: uit.dekkingsdoel,
+        totalen: { gat: uit.totalen.gat, doelBedrag: uit.totalen.doelBedrag, som: 0, nodig: uit.totalen.doelBedrag, dekking: 0 },
+        overgeslagen: uit.overgeslagen,
+        aanvullenMogelijk: false,
+        premiumHint: null,
+        opgeslagen: false,
+      });
+    } catch (_e) {
+      console.error('[subsidie-kompas] voorstel_startpunt_fout');
+
+      return json({ ok: false, reden: 'onverwachte-fout', error: 'Het voorstel kon niet worden voorbereid. Er is niets opgeslagen.', opgeslagen: false }, 500);
+    }
+  }
+
+  // Broncontrole van EEN financier (Pro/Premium): de server controleert de bron met de B1-verificatiemotor en legt uitkomst en tijdstip zelf vast
+  // (subsidie_kompas_bron_controles). Schrijft verder niets: geen dekkingsplanregel, geen taak. Standaard uit (VOORSTEL_PREVIEW=aan).
+  if (body.mode === CONTROLEER_ACTIE) {
+    if (!profileId) {
+      return json({ error: 'Log in om een bron te laten controleren.' }, 401);
+    }
+
+    if (Deno.env.get('VOORSTEL_PREVIEW') !== 'aan') {
+      return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
+    }
+
+    const ctlId = typeof body.id === 'string' && UUID_RE.test(body.id) ? body.id.toLowerCase() : '';
+
+    if (typeof body.projectId !== 'string' || !UUID_RE.test(body.projectId) || (body.type !== 'regeling' && body.type !== 'fonds') || !ctlId) {
+      return json({ error: 'Ongeldige aanvraag.' }, 400);
+    }
+
+    const tStartCtl = Date.now();
+
+    try {
+      const geladen = await laadOpslagBasis(admin, authHeader, profileId, body.projectId, tier, isAdmin);
+
+      if ('fout' in geladen && geladen.fout) return json(geladen.fout.body, geladen.fout.status);
+
+      const b = (geladen as { basis: OpslagBasis }).basis;
+      const { recordVersie, beoordeelBronRij, bronUitkomstVan } = await import('../_shared/bronControle.ts');
+      const gevraagd = { regeling: new Set<string>(), fonds: new Set<string>() };
+
+      gevraagd[body.type as 'regeling' | 'fonds'].add(ctlId);
+
+      const records = await laadVoorstelRecords(admin, gevraagd, b.rechten, b.exclusiviteit);
+
+      if (!records) return json({ ok: false, reden: 'fondsgegevens-onleesbaar', error: 'De fondsgegevens konden niet worden gelezen. Probeer het later opnieuw.' }, 503);
+
+      const record = (records as any[]).find((r) => r.type === body.type && String(r.id).toLowerCase() === ctlId && r.niveau === 'volledig');
+
+      // Verborgen, van een hoger abonnement of onbekend: niet te onderscheiden.
+      if (!record) return json({ ok: false, reden: 'niet-beschikbaar', error: 'Deze financier is niet beschikbaar met uw abonnement of bestaat niet meer.' }, 404);
+
+      const sleutel = `r:${body.type}:${ctlId}`;
+      const nu = new Date();
+      const versie = await recordVersie(record);
+      const rijen = await leesBronRijen(admin, profileId, b.project.id);
+      const bestaand = rijen?.find((x) => x.record_type === body.type && String(x.record_id).toLowerCase() === ctlId) ?? null;
+      const oordeel = beoordeelBronRij(bestaand, versie, nu);
+      const dekking = { dekkingsdoel: b.config.dekkingsdoel, gat: b.gat };
+
+      // Een geldige, recente controle van dezelfde gegevens wordt hergebruikt (verversen, opnieuw openen): geen tweede ophaalronde. Een
+      // mislukte controle wordt nooit hergebruikt, en met opnieuw:true wordt altijd opnieuw gecontroleerd.
+      if (body.opnieuw !== true && (oordeel.status === 'gecontroleerd' || oordeel.status === 'onzeker')) {
+        return json({ ok: true, hergebruikt: true, controle: { sleutel, status: oordeel.status, verificatieStatus: bestaand?.verificatie_status ?? null, reden: oordeel.reden, gecontroleerdOp: oordeel.gecontroleerdOp, bewaard: true, hergebruikt: true }, dekking });
+      }
+
+      const { VOORSTEL_VERSIE } = await import('../_shared/voorstelContract.js');
+      const { maakVoorstelPreview } = await import('../_shared/voorstelVerificatie.ts');
+      const uitkomst = await maakVoorstelPreview(
+        {
+          raw: {
+            versie: VOORSTEL_VERSIE,
+            projectId: b.project.id,
+            gegenereerdOp: b.vandaag,
+            status: 'concept',
+            aannames: [],
+            regels: [{ type: body.type, id: ctlId, naam: String(record.naam ?? 'Onbekend').slice(0, 200), gever: String(record.gever ?? record.naam ?? '').slice(0, 200), bedrag: null, motivatie: '', onderdeel: '', onzekerheden: [] }],
+            acties: [],
+          },
+          uid: profileId,
+          projectId: b.project.id,
+          dekking: b.dekking,
+          bestaandeRegels: b.fundingRegels.filter((r) => r.bronStatus === 'zichtbaar').map((r) => ({ schemeId: r.schemeId, funderId: r.funderId, naam: r.naam, financierNaam: r.funder })),
+          bedragenToegestaan: b.dekking.heeftBegroting === true,
+          records: records as any,
+          geheim: null,
+          dekkingsdoel: b.config.dekkingsdoel,
+        },
+        { resolveHost: voorstelResolveHost },
+      );
+
+      const verificatie = uitkomst.ok ? uitkomst.verificaties.find((v) => v.sleutel === sleutel) ?? null : null;
+
+      await meldGebruik(admin, {
+        userId: profileId,
+        tier: isAdmin ? 'admin' : tier,
+        actie: 'proposal_preview',
+        projectId: b.project.id,
+        externePaginas: verificatie && verificatie.categorie !== 'niet_uitgevoerd' ? 1 : 0,
+        verificatiePaginas: verificatie && verificatie.categorie !== 'niet_uitgevoerd' ? 1 : 0,
+        duurMs: Date.now() - tStartCtl,
+        succes: uitkomst.ok,
+      });
+
+      if (!uitkomst.ok || !verificatie) {
+        console.error('[subsidie-kompas] voorstel_controleer_afgewezen', uitkomst.ok ? 'geen-verificatie' : uitkomst.reden);
+
+        return json({ ok: false, reden: 'controle-niet-mogelijk', error: 'De bron kon nu niet worden gecontroleerd. Probeer het later opnieuw.' }, 422);
+      }
+
+      const bu = bronUitkomstVan(verificatie);
+      const op = nu.toISOString();
+      // Een mislukte poging overschrijft een eerdere GELDIGE controle niet: die blijft bruikbaar, de poging zelf wordt wel teruggemeld.
+      const behoudt = bu.status === 'mislukt' && (oordeel.status === 'gecontroleerd' || oordeel.status === 'onzeker');
+      const bewaard = behoudt ? true : await bewaarBronRij(admin, profileId, b.project.id, { type: String(body.type), id: ctlId, status: bu.status, verificatieStatus: bu.verificatieStatus, reden: bu.reden, versie, op });
+
+      console.log('[subsidie-kompas] voorstel_controleer', JSON.stringify({ status: bu.status, reden: bu.reden, bewaard }));
+
+      return json({
+        ok: true,
+        hergebruikt: false,
+        voorstel: uitkomst.voorstel,
+        verificaties: [verificatie],
+        overgeslagen: uitkomst.overgeslagen,
+        totalen: uitkomst.totalen,
+        waarschuwingen: uitkomst.waarschuwingen,
+        controle: { sleutel, status: bu.status, verificatieStatus: bu.verificatieStatus, reden: bu.reden, gecontroleerdOp: op, bewaard, hergebruikt: false },
+        dekking,
+        opgeslagen: false,
+      });
+    } catch (_e) {
+      console.error('[subsidie-kompas] voorstel_controleer_fout');
+
+      return json({ ok: false, reden: 'onverwachte-fout', error: 'De bron kon nu niet worden gecontroleerd. Probeer het later opnieuw.' }, 500);
+    }
+  }
+
   // Voorstel genereren (Pro/Premium): schrijft niets, standaard uit. Zie het blok VOORSTEL GENEREREN hierboven.
   if (body.mode === GENEREREN_ACTIE || body.mode === AANVULLEN_ACTIE) {
     const aanvullen = body.mode === AANVULLEN_ACTIE;
@@ -6327,7 +6938,7 @@ Deno.serve(async (req) => {
         dekkingsdoel: b.config.dekkingsdoel,
         totalen: { gat: mix.gat, doelBedrag: mix.doelBedrag, som: rest.som, nodig: rest.nodig, dekking: mix.dekking },
         // Eerlijke uitleg van wat er gedaan is, zonder namen of aantallen die het lid niet mag zien.
-        werkwijze: { onlineStatus: run.web.status, onlineKandidaten: run.web.kandidaten.length, gekwalificeerd: gekozen.length },
+        werkwijze: { onlineStatus: run.web.status, onlineKandidaten: run.web.kandidaten.length, gekwalificeerd: gekozen.length, documenten: b.documentenGebruikt },
         aanvullenMogelijk: Boolean(b.config.onlineAanvullen) && rest.nodig > gekozenOnline.indicatief && onlineSuggesties.length < ((orient && orient.totaalMax) || 0),
         onlineIndicatief: gekozenOnline.indicatief,
         premiumHint: premiumHint > 0 ? { aantal: premiumHint } : null,

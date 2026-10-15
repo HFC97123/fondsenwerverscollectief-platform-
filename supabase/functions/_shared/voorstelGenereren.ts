@@ -15,13 +15,15 @@
 //     aangeboden (`onlineSuggesties`) en tellen nooit mee in de dekking.
 
 // @deno-types="./voorstelContract.d.ts"
-import { VOORSTEL_VERSIE, isEchteDatum, plantTerug, schaalEnControleer, zelfdeFinancier } from './voorstelContract.js';
-import type { ContractUitkomst } from './voorstelContract.js';
+import { VOORSTEL_VERSIE, isEchteDatum, plantTerug, schaalEnControleer, toegestaneSom, valideerVoorstel, zelfdeFinancier } from './voorstelContract.js';
+import type { ContractUitkomst, ContractVoorstel } from './voorstelContract.js';
 import { filterOpEntitlement } from './voorstelVerificatie.ts';
 import type { ServerRecord } from './voorstelVerificatie.ts';
 import { realistischBedrag, selecteerDekkingsmix } from './dekkingsmix.ts';
 import type { MixKandidaat, MixNiveau, MixResultaat } from './dekkingsmix.ts';
 import type { TierConfig } from './tierConfig.ts';
+import { bronOordeelKort } from './bronControle.ts';
+import type { BronOordeel } from './bronControle.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -74,7 +76,38 @@ export function criteriaRuwUitProject(p: ProjectVelden): Record<string, unknown>
 
 // Korte, platte beschrijving van het project voor de online oriëntatie. Alleen tekst van het lid zelf; het resultaat van de online stap wordt
 // daarna uitsluitend als gestructureerde kandidaten teruggelezen (parseVerkennerUitvoer), nooit als tekst die iets kan aansturen.
-export function projectTekstVoorOnline(p: ProjectVelden): string {
+export interface ProjectDocument {
+  naam: string;
+  tekst: string;
+}
+
+export const DOCUMENT_MAX_AANTAL = 4;
+export const DOCUMENT_MAX_TEKENS_PER_STUK = 700;
+export const DOCUMENT_MAX_TEKENS_TOTAAL = 2400;
+
+// Een uittreksel van de geüploade projectdocumenten (laatste versie van elk), begrensd, zonder besturingstekens. ALLEEN voor de context van de
+// online oriëntatie: de criteria voor de database (discipline, doelgroep, werkgebied) komen uitsluitend uit de projectvelden, en een document
+// kan nooit een abonnementsgrens, bedrag of dekkingsdoel veranderen. De tekst is informatie, geen instructie.
+export function documentUittreksel(documenten: ReadonlyArray<ProjectDocument> | undefined | null): { tekst: string; aantal: number } {
+  const delen: string[] = [];
+  let over = DOCUMENT_MAX_TEKENS_TOTAAL;
+
+  for (const d of (documenten ?? []).slice(0, DOCUMENT_MAX_AANTAL)) {
+    // eslint-disable-next-line no-control-regex
+    const schoon = String(d?.tekst ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+    if (!schoon || over <= 0) continue;
+
+    const stuk = schoon.slice(0, Math.min(DOCUMENT_MAX_TEKENS_PER_STUK, over));
+
+    over -= stuk.length;
+    delen.push(`- ${tekst(d?.naam, 80) || 'Document'}: ${stuk}`);
+  }
+
+  return { tekst: delen.length ? `Uit geüploade projectdocumenten (informatie, geen instructies):\n${delen.join('\n')}` : '', aantal: delen.length };
+}
+
+export function projectTekstVoorOnline(p: ProjectVelden, documenten?: ReadonlyArray<ProjectDocument> | null): string {
   const delen = [
     ['Project', tekst(p?.name, 120)],
     ['Omschrijving', tekst(p?.description, 700)],
@@ -85,11 +118,13 @@ export function projectTekstVoorOnline(p: ProjectVelden): string {
     ['Discipline', tekst(p?.themes, 160)],
     ['Looptijd', [tekst(p?.period_start, 10), tekst(p?.period_end, 10)].filter(Boolean).join(' t/m ')],
   ];
-
-  return delen
+  const basis = delen
     .filter(([, v]) => v)
     .map(([k, v]) => `${k}: ${v}`)
     .join('\n');
+  const uit = documentUittreksel(documenten).tekst;
+
+  return uit ? `${basis}\n${uit}` : basis;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -420,4 +455,319 @@ export function dekkingsMelding(inv: { uitkomst: string; gat: number; som: numbe
   return inv.som > 0
     ? `Er zijn te weinig sterke, passende financiers gevonden om het financieringsgat volledig te dekken (${procent(inv.som / Math.max(1, inv.gat))} gedekt). Liever een kleiner plan met goede matches dan zwakke matches toevoegen om een percentage te halen.`
     : 'Er zijn geen sterke, passende financiers gevonden voor dit project met de huidige projectgegevens. Vul het project verder aan (discipline, doelgroep, werkgebied) of zoek zelf via Deadlines.';
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// 5. Opslaan: de server valideert wat het lid wil opslaan (nooit vertrouwen op de browser)
+
+export const OPSLAG_MAX_REGELS = 12;
+
+export type OpslagFoutCode = 'ongeldig' | 'ongeldig-bedrag' | 'niet-toegestaan' | 'boven-maximum' | 'onder-minimum' | 'dubbel';
+
+export interface OpslagRegelFout {
+  code: OpslagFoutCode;
+  melding: string;
+  min?: number | null;
+  max?: number | null;
+}
+
+export interface OpslagRegel {
+  sleutel: string;
+  type: 'regeling' | 'fonds';
+  id: string;
+  naam: string;
+  gever: string;
+  bedrag: number | null;
+  staatAl: boolean;
+}
+
+export interface OpslagActie {
+  sleutel: string;
+  regelSleutel: string | null;
+  titel: string;
+  financier: string;
+  datum: string | null;
+  prioriteit: 'high' | 'normal' | 'low';
+  toelichting: string;
+}
+
+export interface OpslagUitkomst {
+  ok: boolean;
+  regelFouten: Record<string, OpslagRegelFout>;
+  algemeen: { code: 'geen-regels' | 'geen-begroting' | 'boven-financieringsgat' | 'ongeldig'; melding: string; toegestaneSom?: number } | null;
+  regels: OpslagRegel[];
+  acties: OpslagActie[];
+  waarschuwingen: Array<{ pad: string; code: string }>;
+}
+
+const euro = (n: number | null | undefined): string => (typeof n === 'number' ? `€ ${Math.round(n).toLocaleString('nl-NL')}` : '?');
+
+// invoer.regels: wat de browser wil opslaan ([{ type, id, bedrag }]). Alleen type, id en bedrag worden gebruikt; naam, deadline, grenzen en
+// voorwaarden komen uit de server-bekende records (na de entitlementlaag). Alles of niets: bij één foute regel wordt niets goedgekeurd, zodat
+// het lid de fout kan herstellen en de invoer behouden blijft.
+export function valideerOpslag(inv: {
+  projectId: string;
+  vandaag: string;
+  dekking: unknown;
+  bestaandeRegels: GenereerInvoer['bestaandeRegels'];
+  bedragenToegestaan: boolean;
+  config: TierConfig;
+  records: ServerRecord[];
+  regels: unknown;
+  uitgeslotenActies?: unknown;
+  // Opnieuw proberen van het actieplan: de regels staan al in het dekkingsplan; alleen de taken worden (opnieuw) bepaald.
+  alleenActies?: boolean;
+  // Door de SERVER vastgestelde bronstatus per regelsleutel (zie bronControle.ts). Alleen gebruikt om in de taken te vermelden wat nog niet
+  // is bevestigd; een ontbrekende of niet-gecontroleerde bron blokkeert het opslaan nooit.
+  bronOordelen?: Record<string, BronOordeel>;
+}): OpslagUitkomst {
+  const leeg = (algemeen: OpslagUitkomst['algemeen'], regelFouten: OpslagUitkomst['regelFouten'] = {}): OpslagUitkomst => ({ ok: false, regelFouten, algemeen, regels: [], acties: [], waarschuwingen: [] });
+  const ruwe = Array.isArray(inv.regels) ? inv.regels.slice(0, OPSLAG_MAX_REGELS + 1) : [];
+
+  if (!ruwe.length) return leeg({ code: 'geen-regels', melding: 'Er is niets gekozen om op te slaan.' });
+  if (ruwe.length > OPSLAG_MAX_REGELS) return leeg({ code: 'ongeldig', melding: `U kunt hooguit ${OPSLAG_MAX_REGELS} financiers tegelijk opslaan.` });
+
+  const regelFouten: Record<string, OpslagRegelFout> = {};
+  const gezien = new Set<string>();
+  const invoer: Array<{ sleutel: string; type: 'regeling' | 'fonds'; id: string; bedrag: number | null }> = [];
+
+  for (const r of ruwe) {
+    if (!isObject(r)) return leeg({ code: 'ongeldig', melding: 'Ongeldige aanvraag.' });
+
+    const type = r.type === 'regeling' || r.type === 'fonds' ? r.type : null;
+    const id = typeof r.id === 'string' && UUID.test(r.id) ? r.id.toLowerCase() : '';
+
+    if (!type || !id) return leeg({ code: 'ongeldig', melding: 'Ongeldige aanvraag.' });
+
+    const sleutel = `r:${type}:${id}`;
+
+    if (gezien.has(sleutel)) continue;
+
+    gezien.add(sleutel);
+
+    const b = r.bedrag;
+    let bedrag: number | null = null;
+
+    if (b !== null && b !== undefined && b !== '') {
+      const n = typeof b === 'number' ? b : NaN;
+
+      if (!Number.isFinite(n) || n < 0 || n > 100_000_000) {
+        regelFouten[sleutel] = { code: 'ongeldig-bedrag', melding: 'Dit bedrag is ongeldig. Vul een bedrag in als getal, bijvoorbeeld 12.500.' };
+        invoer.push({ sleutel, type, id, bedrag: null });
+        continue;
+      }
+
+      bedrag = n > 0 && !inv.alleenActies ? Math.round(n) : null;
+    }
+
+    invoer.push({ sleutel, type, id, bedrag });
+  }
+
+  if (!inv.bedragenToegestaan && invoer.some((r) => r.bedrag != null)) {
+    return leeg({ code: 'geen-begroting', melding: 'Dit project heeft geen begroting; zonder begroting kunnen geen bedragen worden opgeslagen.' }, regelFouten);
+  }
+
+  const recordsPerSleutel = new Map(inv.records.filter((r) => r && r.niveau === 'volledig').map((r) => [`r:${r.type}:${String(r.id).toLowerCase()}`, r]));
+  const ruw = {
+    versie: VOORSTEL_VERSIE,
+    projectId: inv.projectId,
+    gegenereerdOp: inv.vandaag,
+    status: 'concept',
+    aannames: [],
+    regels: invoer.map((r) => {
+      const rec = recordsPerSleutel.get(r.sleutel);
+
+      return { type: r.type, id: r.id, naam: tekst(rec?.naam || 'Onbekend', 200), gever: tekst(rec?.gever || rec?.naam || '', 200), bedrag: r.bedrag, motivatie: '', onderdeel: '', onzekerheden: [] };
+    }),
+    acties: [] as unknown[],
+  };
+  // Dezelfde entitlement-filter als de preview en het genereren: wat het abonnement niet volledig toestaat, bestaat voor dit lid niet.
+  const gefilterd = filterOpEntitlement(ruw, inv.records);
+  const toegestaan = new Set((gefilterd.raw.regels as Array<{ type: string; id: string }>).map((r) => `r:${r.type}:${String(r.id).toLowerCase()}`));
+
+  for (const r of invoer) {
+    if (!toegestaan.has(r.sleutel)) regelFouten[r.sleutel] = { code: 'niet-toegestaan', melding: 'Deze financier is niet beschikbaar met uw abonnement of bestaat niet meer.' };
+  }
+
+  const ctx = {
+    projectId: inv.projectId,
+    dekking: inv.dekking,
+    bestaandeRegels: inv.bestaandeRegels,
+    bedragenToegestaan: inv.bedragenToegestaan,
+    vandaag: inv.vandaag,
+    bekendeBronnen: gefilterd.bekend,
+    opgehaaldeBronnen: [],
+    dekkingsdoel: inv.config.dekkingsdoel,
+  };
+  // BEWUST zonder terugschalen: wat het lid kiest wordt gecontroleerd en eventueel afgewezen, nooit stilletjes aangepast.
+  const uitkomst = valideerVoorstel(gefilterd.raw, ctx);
+
+  if (!uitkomst.voorstel) return leeg({ code: 'ongeldig', melding: 'Het voorstel kon niet worden gecontroleerd. Probeer het opnieuw.' }, regelFouten);
+
+  const perSleutel = new Map(uitkomst.voorstel.regels.map((r) => [r.sleutel, r]));
+  const regels: OpslagRegel[] = [];
+
+  for (const r of invoer) {
+    const c = perSleutel.get(r.sleutel);
+
+    if (!c || regelFouten[r.sleutel]) continue;
+
+    if (!c.staatAl && r.bedrag != null) {
+      const { min, max } = c.grenzen;
+
+      if (max != null && r.bedrag > max) regelFouten[r.sleutel] = { code: 'boven-maximum', min, max, melding: `Dit bedrag is hoger dan het maximum van de financier (${euro(max)}).` };
+      else if (min != null && r.bedrag < min) regelFouten[r.sleutel] = { code: 'onder-minimum', min, max, melding: `Dit bedrag is lager dan het minimum van de financier (${euro(min)}).` };
+    }
+
+    regels.push({ sleutel: r.sleutel, type: r.type, id: r.id, naam: c.naam, gever: c.gever, bedrag: c.staatAl ? null : r.bedrag, staatAl: c.staatAl });
+  }
+
+  const totaalFout = uitkomst.fouten.find((f) => f.code === 'boven-financieringsgat');
+  const gat = gatVan(inv.dekking);
+  const max = toegestaneSom(gat, inv.config.dekkingsdoel);
+  const algemeen: OpslagUitkomst['algemeen'] = totaalFout
+    ? { code: 'boven-financieringsgat', toegestaneSom: max, melding: `Samen is dit meer dan het financieringsgat toelaat (${euro(max)} inclusief de buffer voor afwijzingen). Verlaag een of meer bedragen.` }
+    : null;
+
+  if (algemeen || Object.keys(regelFouten).length) {
+    return { ok: false, regelFouten, algemeen, regels, acties: [], waarschuwingen: uitkomst.waarschuwingen };
+  }
+
+  // Taken: terugplannen vanaf de deadlines die het contract uit de DATABASE nam (nooit van de browser), daarna dezelfde controle.
+  const uitgesloten = new Set((Array.isArray(inv.uitgeslotenActies) ? inv.uitgeslotenActies : []).filter((x): x is string => typeof x === 'string').slice(0, 100));
+  // Bij "alleen acties" zijn het juist de regels die AL in het dekkingsplan staan waarvoor de taken (opnieuw) worden bepaald.
+  if (inv.alleenActies) {
+    for (const r of regels) {
+      if (!r.staatAl) regelFouten[r.sleutel] = { code: 'ongeldig', melding: 'Deze financier staat nog niet in het dekkingsplan.' };
+    }
+
+    if (Object.keys(regelFouten).length) return { ok: false, regelFouten, algemeen: null, regels, acties: [], waarschuwingen: uitkomst.waarschuwingen };
+  }
+
+  // Taken voor elke regel die het lid zelf kiest (ook zonder bedrag: een project zonder begroting kan toch een vervolgstap nodig hebben).
+  const nieuwe = uitkomst.voorstel.regels.filter((r) => (inv.alleenActies ? r.staatAl : r.selecteerbaar && !r.staatAl));
+  const gepland = beperkActies(nieuwe.flatMap((r) => plantTerug(r, inv.vandaag)));
+  const metActies = gepland.length ? valideerVoorstel({ ...gefilterd.raw, acties: gepland }, ctx) : uitkomst;
+  const acties: OpslagActie[] = ((metActies.voorstel?.acties ?? []) as Array<Record<string, unknown>>)
+    .filter((a) => !uitgesloten.has(String(a.sleutel)))
+    .filter((a) => !a.regelSleutel || nieuwe.some((r) => r.sleutel === a.regelSleutel))
+    .slice(0, 60)
+    .map((a) => ({
+      sleutel: String(a.sleutel),
+      regelSleutel: a.regelSleutel ? String(a.regelSleutel) : null,
+      titel: tekst(a.titel, 200),
+      financier: tekst(a.financier, 200),
+      datum: typeof a.datum === 'string' && isEchteDatum(a.datum) ? a.datum : null,
+      prioriteit: a.prioriteit === 'high' || a.prioriteit === 'low' ? a.prioriteit : 'normal',
+      toelichting: tekst(a.toelichting, 600),
+    }));
+
+  // Ontbrekende informatie per regel, in gewone taal bij de EERSTE taak van die regel (de eerste stap die het lid doet): wat nog niet vaststaat.
+  const ontbreektVan = new Map<string, string>();
+
+  for (const r of nieuwe) {
+    const oordeel = inv.bronOordelen?.[r.sleutel] ?? 'niet-gecontroleerd';
+    const mist: string[] = [];
+
+    if (!(r.deadline && r.deadline.status === 'geverifieerd')) mist.push('de deadline is niet geverifieerd');
+    if (r.grenzen.min == null && r.grenzen.max == null) mist.push('de bijdragegrenzen zijn niet bekend');
+    if (oordeel !== 'gecontroleerd') mist.push(bronOordeelKort(oordeel));
+    if (mist.length) ontbreektVan.set(r.sleutel, `Nog niet vastgesteld: ${mist.join('; ')}.`);
+  }
+
+  const eerste = new Set<string>();
+  const metOntbrekend = acties.map((a) => {
+    const info = a.regelSleutel ? ontbreektVan.get(a.regelSleutel) : undefined;
+
+    if (!info || !a.regelSleutel || eerste.has(a.regelSleutel)) return a;
+
+    eerste.add(a.regelSleutel);
+
+    return { ...a, toelichting: tekst(a.toelichting ? `${a.toelichting} ${info}` : info, 600) };
+  });
+
+  return { ok: true, regelFouten: {}, algemeen: null, regels, acties: metOntbrekend, waarschuwingen: uitkomst.waarschuwingen };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// 6. Startpunt vanuit de chat: dezelfde preview als bij "Maak dekkingsplan", maar met de financiers die het lid in het gesprek kreeg.
+
+export interface StartpuntUitkomst {
+  ok: boolean;
+  voorstel: ContractVoorstel | null;
+  overgeslagen: number; // regels die voor dit lid niet (meer) beschikbaar zijn (niet te onderscheiden van niet bestaand)
+  totalen: { gat: number; doelBedrag: number };
+  dekkingsdoel: number;
+}
+
+// De browser levert alleen type + id; naam, grenzen, deadline, "staat al" en de voorgestelde taken komen uit de server-bekende records en het
+// contract. Er wordt GEEN bedrag voorgesteld: het lid kiest dat zelf (de chat kent geen bedragen). Schrijft niets.
+export function bouwStartpunt(inv: {
+  projectId: string;
+  vandaag: string;
+  dekking: unknown;
+  bestaandeRegels: GenereerInvoer['bestaandeRegels'];
+  config: TierConfig;
+  records: ServerRecord[];
+  regels: unknown;
+}): StartpuntUitkomst {
+  const gat = gatVan(inv.dekking);
+  const totalen = { gat, doelBedrag: Math.ceil(Math.round(gat * inv.config.dekkingsdoel * 100) / 100) };
+  const leeg: StartpuntUitkomst = { ok: false, voorstel: null, overgeslagen: 0, totalen, dekkingsdoel: inv.config.dekkingsdoel };
+  const ruwe = Array.isArray(inv.regels) ? inv.regels.slice(0, OPSLAG_MAX_REGELS) : [];
+  const gezien = new Set<string>();
+  const invoer: Array<{ type: 'regeling' | 'fonds'; id: string }> = [];
+
+  for (const r of ruwe) {
+    if (!isObject(r)) continue;
+
+    const type = r.type === 'regeling' || r.type === 'fonds' ? r.type : null;
+    const id = typeof r.id === 'string' && UUID.test(r.id) ? r.id.toLowerCase() : '';
+
+    if (!type || !id || gezien.has(`${type}:${id}`)) continue;
+
+    gezien.add(`${type}:${id}`);
+    invoer.push({ type, id });
+  }
+
+  if (!invoer.length) return leeg;
+
+  const perSleutel = new Map(inv.records.filter((r) => r && r.niveau === 'volledig').map((r) => [`${r.type}:${String(r.id).toLowerCase()}`, r]));
+  const ruw = {
+    versie: VOORSTEL_VERSIE,
+    projectId: inv.projectId,
+    gegenereerdOp: inv.vandaag,
+    status: 'concept',
+    aannames: [] as string[],
+    regels: invoer.map((r) => {
+      const rec = perSleutel.get(`${r.type}:${r.id}`);
+
+      return { type: r.type, id: r.id, naam: tekst(rec?.naam || 'Onbekend', 200), gever: tekst(rec?.gever || rec?.naam || '', 200), bedrag: null, motivatie: '', onderdeel: '', onzekerheden: [] };
+    }),
+    acties: [] as unknown[],
+  };
+  const gefilterd = filterOpEntitlement(ruw, inv.records);
+  const ctx = {
+    projectId: inv.projectId,
+    dekking: inv.dekking,
+    bestaandeRegels: inv.bestaandeRegels,
+    bedragenToegestaan: isObject(inv.dekking) && inv.dekking.heeftBegroting === true,
+    vandaag: inv.vandaag,
+    bekendeBronnen: gefilterd.bekend,
+    opgehaaldeBronnen: [],
+    dekkingsdoel: inv.config.dekkingsdoel,
+  };
+  const eerste = schaalEnControleer(gefilterd.raw, ctx);
+
+  if (!eerste.voorstel) return { ...leeg, overgeslagen: gefilterd.overgeslagen.length };
+
+  // Voorgestelde taken (alleen om te tonen; opslaan bepaalt ze opnieuw): terugplannen vanaf de deadline uit de DATABASE.
+  const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && !r.staatAl).flatMap((r) => plantTerug(r, inv.vandaag)));
+  const tweede = acties.length ? schaalEnControleer({ ...gefilterd.raw, acties }, ctx) : eerste;
+  const voorstel = tweede.voorstel ?? eerste.voorstel;
+
+  // Alles viel weg (niet beschikbaar met dit abonnement of bestaat niet meer): niets om te tonen, en niet te onderscheiden van "bestaat niet".
+  if (!voorstel.regels.length) return { ...leeg, overgeslagen: gefilterd.overgeslagen.length };
+
+  return { ok: true, voorstel, overgeslagen: gefilterd.overgeslagen.length, totalen, dekkingsdoel: inv.config.dekkingsdoel };
 }

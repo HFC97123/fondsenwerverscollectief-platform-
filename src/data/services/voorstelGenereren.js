@@ -22,7 +22,11 @@ async function leesFout(error) {
       const body = await res.json();
       const reden = typeof body.reden === 'string' ? body.reden : 'fout';
 
-      return { reden, melding: OVERZICHT[reden] || (typeof body.error === 'string' && body.error.length < 300 ? body.error : ALGEMENE_FOUT) };
+      // Bij een validatiefout van het opslaan geeft de server per regel de fout terug, zodat de invoer van het lid behouden blijft.
+      const regelFouten = body.regelFouten && typeof body.regelFouten === 'object' && !Array.isArray(body.regelFouten) ? body.regelFouten : null;
+      const algemeen = body.algemeen && typeof body.algemeen === 'object' ? body.algemeen : null;
+
+      return { reden, melding: OVERZICHT[reden] || (typeof body.error === 'string' && body.error.length < 300 ? body.error : ALGEMENE_FOUT), regelFouten, algemeen, status: res.status };
     }
   } catch (e) {
     // geen leesbare foutinhoud
@@ -42,7 +46,7 @@ async function roep(body) {
     if (error) {
       const f = await leesFout(error);
 
-      return { ok: false, reden: f.reden, melding: f.melding, antwoord: null };
+      return { ok: false, reden: f.reden, melding: f.melding, antwoord: null, regelFouten: f.regelFouten || null, algemeen: f.algemeen || null, status: f.status || null };
     }
 
     if (!data || typeof data !== 'object' || data.ok !== true) {
@@ -77,4 +81,70 @@ export function vraagVoorstelAanvullen({ projectId, voorstel, getoond }) {
     .map((x) => ({ gever: x.gever.slice(0, 200), indicatiefBedrag: Number.isFinite(x.indicatiefBedrag) && x.indicatiefBedrag > 0 ? Math.round(x.indicatiefBedrag) : 0 }));
 
   return roep({ mode: 'voorstel-aanvullen', projectId, voorstel, getoond: lijst });
+}
+
+// Startpunt vanuit de chat: dezelfde preview als hierboven, met de financiers die het lid in het gesprek kreeg (alleen type + id gaan mee).
+// De server bepaalt naam, grenzen, deadline, "staat al" en voorgestelde taken. Schrijft niets.
+export function vraagVoorstelStartpunt({ projectId, regels }) {
+  const lijst = (Array.isArray(regels) ? regels : [])
+    .filter((r) => r && (r.type === 'regeling' || r.type === 'fonds') && typeof r.id === 'string' && r.id)
+    .slice(0, 12)
+    .map((r) => ({ type: r.type, id: r.id }));
+
+  if (typeof projectId !== 'string' || !projectId || !lijst.length) {
+    return Promise.resolve({ ok: false, reden: 'fout', melding: ALGEMENE_FOUT, antwoord: null });
+  }
+
+  return roep({ mode: 'voorstel-startpunt', projectId, regels: lijst });
+}
+
+// Broncontrole van EEN financier. De server controleert de bron en legt uitkomst en tijdstip zelf vast; `opnieuw` forceert een nieuwe controle
+// (anders hergebruikt de server een geldige, recente controle van dezelfde gegevens, ook na verversen). De client bepaalt nooit een status.
+export function vraagBronControle({ projectId, type, id, opnieuw = false }) {
+  if (typeof projectId !== 'string' || !projectId || (type !== 'regeling' && type !== 'fonds') || typeof id !== 'string' || !id) {
+    return Promise.resolve({ ok: false, reden: 'fout', melding: 'De bron kon nu niet worden gecontroleerd.', antwoord: null });
+  }
+
+  return roep({ mode: 'voorstel-controleer', projectId, type, id, ...(opnieuw === true ? { opnieuw: true } : {}) });
+}
+
+// Opslaan (de enige schrijfroute): alleen type, id en bedrag per regel, plus gekozen online suggesties (naam, bron) en eventueel afgevinkte taken.
+// De server valideert alles opnieuw en bepaalt zelf de bronstatus en de taken. `alleenActies`: alleen het actieplan (opnieuw) aanmaken.
+export function vraagVoorstelOpslaan({ projectId, regels, suggesties = [], uitgeslotenActies = [], alleenActies = false }) {
+  if (typeof projectId !== 'string' || !projectId || !Array.isArray(regels)) {
+    return Promise.resolve({ ok: false, reden: 'fout', melding: ALGEMENE_FOUT, antwoord: null });
+  }
+
+  return roep({
+    mode: 'voorstel-opslaan',
+    projectId,
+    regels: regels.slice(0, 13).map((r) => ({ type: r.type, id: r.id, bedrag: Number.isFinite(r.bedrag) ? r.bedrag : null })),
+    suggesties: (Array.isArray(suggesties) ? suggesties : []).slice(0, 10).map((x) => ({ gever: String((x && x.gever) || '').slice(0, 150), naam: String((x && x.naam) || '').slice(0, 150), url: x && typeof x.url === 'string' ? x.url.slice(0, 500) : null })),
+    uitgeslotenActies: (Array.isArray(uitgeslotenActies) ? uitgeslotenActies : []).filter((x) => typeof x === 'string').slice(0, 100),
+    ...(alleenActies === true ? { alleenActies: true } : {}),
+  });
+}
+
+// Lees de broncontroles van een project (RLS: alleen eigen rijen; geschreven worden ze uitsluitend door de server). Zo blijft de bronstatus zichtbaar
+// na verversen en na opslaan. Een fout, of een tabel die er (nog) niet is, geeft { ok: false, rijen: [] }: dan is alles "niet gecontroleerd".
+export async function leesBronControles(projectId) {
+  if (!supabase || typeof projectId !== 'string' || !projectId) {
+    return { ok: false, rijen: [] };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('subsidie_kompas_bron_controles')
+      .select('record_type, record_id, status, verificatie_status, reden, gecontroleerd_op')
+      .eq('program_id', projectId)
+      .limit(500);
+
+    if (error || !Array.isArray(data)) {
+      return { ok: false, rijen: [] };
+    }
+
+    return { ok: true, rijen: data };
+  } catch (e) {
+    return { ok: false, rijen: [] };
+  }
 }

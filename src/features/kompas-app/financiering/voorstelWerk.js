@@ -1,32 +1,47 @@
 // De werking van "Maak dekkingsplan en actieplan met Subsidiekompas" aan de kant van de browser, ZUIVER (geen React, geen netwerk, geen opslag):
-//  - de volgorde van de stappen (onderzoeken -> aanvullen (Premium) -> controleren), met de diensten als parameter;
+//  - de volgorde van de stappen (onderzoeken -> aanvullen (Premium)), of het startpunt vanuit de chat, met de diensten als parameter;
+//  - het snel tonen van het voorstel en daarna de broncontrole per regel, als aparte aanroepen (mislukt er één, dan gaan de andere door);
 //  - het werkmodel waarmee het lid het voorstel bekijkt en aanpast (selectie, bedragen, taken, online suggesties);
 //  - de totalen onder de regels (dekking, buffer voor afwijzingen);
-//  - het opslagplan en de uitvoering daarvan, uitsluitend via de bestaande opslagpaden die als parameter worden meegegeven.
+//  - het opslaan: de browser stuurt ALLEEN type, id en bedrag per regel (plus gekozen online suggesties en afgevinkte taken); de server valideert
+//    opnieuw, bepaalt zelf de bronstatus en de taken, en schrijft.
 //
 // Wat de client hier NOOIT bepaalt: welke records bij het abonnement horen, de geldigheid van een bedrag of deadline, de dekkingsfactor
-// (Pro 110%, Premium 120%) en of iets "geverifieerd" is. Dat komt allemaal van de server; de client toont en past aan.
+// (Pro 110%, Premium 120%), of een bron "gecontroleerd" is, en welke taken en datums er komen. Dat komt allemaal van de server; de client toont en past aan.
 // Er wordt niets opgeslagen voordat `voerOpslagUit` wordt aangeroepen, en dat gebeurt alleen op een klik van het lid.
 import { formatEuro, leesBedragInvoer } from './dekkingsplan.js';
+import { BRON, BRON_CONTROLEREN, bronModel } from './bronStatus.js';
+import { bouwPreviewModel } from './voorstelPreviewModel.js';
 
-export const STAP = { ONDERZOEKEN: 'onderzoeken', AANVULLEN: 'aanvullen', CONTROLEREN: 'controleren' };
-export const STARTSTATUS = 'interesting'; // in de interface "Interessant"
-export const ONLINE_NOTITIE = 'Online gevonden door Subsidiekompas, nog niet gecontroleerd. Controleer de voorwaarden en deadline bij de financier.';
+export const STAP = { ONDERZOEKEN: 'onderzoeken', AANVULLEN: 'aanvullen', VOORBEREIDEN: 'voorbereiden' };
 
 const MAX_AANVUL_RONDES = 2;
+export const GELIJKTIJDIGE_CONTROLES = 2;
 const isObject = (x) => typeof x === 'object' && x !== null && !Array.isArray(x);
 const lijst = (x) => (Array.isArray(x) ? x : []);
 const tekst = (x, max) => String(x == null ? '' : x).slice(0, max);
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// 1. De stappen
+// 1. De stappen (snel): een voorstel, nog zonder broncontrole
 
-// diensten: { genereer({projectId}), aanvullen({projectId, voorstel}), preview({projectId, voorstel}) } -> { ok, antwoord, melding }
-// -> { ok: true, genereer, aanvulling, preview } | { ok: false, reden, melding }
-export async function draaiVoorstelFlow({ projectId, diensten, onStap }) {
+// diensten: { genereer({projectId}), aanvullen({projectId, voorstel, getoond}), startpunt({projectId, regels}) } -> { ok, antwoord, melding }
+// startpunt = { regels: [{ type, id }] } -> de financiers uit een gesprek met Subsidiekompas (de chat-ingang) in plaats van zelf zoeken.
+// -> { ok: true, genereer, aanvulling } | { ok: false, reden, melding }
+export async function draaiVoorstelFlow({ projectId, diensten, onStap, startpunt = null }) {
   const meld = (s) => {
     if (typeof onStap === 'function') onStap(s);
   };
+
+  if (startpunt) {
+    meld(STAP.VOORBEREIDEN);
+    const s = await diensten.startpunt({ projectId, regels: lijst(startpunt.regels) });
+
+    if (!s || !s.ok || !isObject(s.antwoord)) {
+      return { ok: false, reden: (s && s.reden) || 'fout', melding: (s && s.melding) || 'Het voorstel kon nu niet worden voorbereid. Er is niets opgeslagen.' };
+    }
+
+    return { ok: true, genereer: s.antwoord, aanvulling: null };
+  }
 
   meld(STAP.ONDERZOEKEN);
   const g = await diensten.genereer({ projectId });
@@ -39,7 +54,7 @@ export async function draaiVoorstelFlow({ projectId, diensten, onStap }) {
 
   // Het project is al volledig gedekt: er is niets voor te stellen.
   if (!isObject(genereer.voorstel)) {
-    return { ok: true, genereer, aanvulling: null, preview: null };
+    return { ok: true, genereer, aanvulling: null };
   }
 
   // Premium: doorzoeken tot het doel (120%) gedekt is. De server zegt of een volgende ronde zin heeft (aanvullenMogelijk / nogAanvullen) en bewaakt
@@ -63,21 +78,69 @@ export async function draaiVoorstelFlow({ projectId, diensten, onStap }) {
     verder = antwoord.nogAanvullen === true && nieuw.length > 0;
   }
 
-  meld(STAP.CONTROLEREN);
-  // Taken blijven bij de client van het eerste antwoord (de preview geeft er geen terug); de preview krijgt alleen de regels.
-  const p = await diensten.preview({ projectId, voorstel: { ...genereer.voorstel, acties: [] } });
-
-  return { ok: true, genereer, aanvulling, preview: p && p.ok && isObject(p.antwoord) ? p.antwoord : null };
+  return { ok: true, genereer, aanvulling };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// 2. Het werkmodel
+// 2. De broncontrole per regel: aparte aanroepen NA het tonen van het voorstel
 
-export function maakWerkModel({ genereer, aanvulling, preview }) {
+// Controleert één regel. Faalt dit, dan is dat alleen "Controle mislukt" voor deze regel; er komt nooit een uitzondering uit.
+// -> { sleutel, bron (bronModel), antwoord (het serverantwoord of null) }
+export async function controleerRegel({ projectId, regel, diensten, opnieuw = false }) {
+  const mislukt = { sleutel: regel.sleutel, bron: bronModel({ status: 'mislukt' }), antwoord: null };
+
+  try {
+    const res = await diensten.controleer({ projectId, type: regel.type, id: regel.id, opnieuw });
+    const c = res && res.ok && isObject(res.antwoord) ? res.antwoord.controle : null;
+
+    // Het antwoord moet over DEZE regel gaan; een ander of ontbrekend antwoord telt nooit als "gecontroleerd".
+    if (!isObject(c) || c.sleutel !== regel.sleutel || typeof c.status !== 'string') return mislukt;
+
+    return { sleutel: regel.sleutel, bron: bronModel(c), antwoord: res.antwoord };
+  } catch (e) {
+    return mislukt;
+  }
+}
+
+// Wie moet gecontroleerd worden: elke regel die nog niet in het dekkingsplan staat.
+export const teControleren = (model) => model.regels.filter((r) => r.selecteerbaar);
+
+// De begintoestand: alles wat gecontroleerd moet worden staat op "Controleren…".
+export function beginControles(model) {
+  return Object.fromEntries(teControleren(model).map((r) => [r.sleutel, { bron: BRON_CONTROLEREN, antwoord: null }]));
+}
+
+// Draait de controles met beperkte gelijktijdigheid. onUpdate(sleutel, { bron, antwoord }) per afgeronde regel. `geannuleerd()` stopt het
+// starten van nieuwe controles en onderdrukt late resultaten (bijvoorbeeld na sluiten). Resolve't pas als alles klaar is; gooit nooit.
+export async function draaiBronControles({ projectId, regels, diensten, onUpdate, geannuleerd = () => false, gelijktijdig = GELIJKTIJDIGE_CONTROLES, opnieuw = false }) {
+  const wachtrij = [...regels];
+
+  const werker = async () => {
+    for (;;) {
+      if (geannuleerd()) return;
+
+      const regel = wachtrij.shift();
+
+      if (!regel) return;
+
+      const res = await controleerRegel({ projectId, regel, diensten, opnieuw });
+
+      if (geannuleerd()) return;
+
+      if (typeof onUpdate === 'function') onUpdate(regel.sleutel, { bron: res.bron, antwoord: res.antwoord });
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(gelijktijdig, regels.length || 1)) }, werker));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// 3. Het werkmodel
+
+export function maakWerkModel({ genereer, aanvulling }) {
   if (!isObject(genereer)) return null;
 
-  // De preview is het door de server gecontroleerde voorstel; zonder preview tonen we het eerste voorstel, eerlijk als "niet gecontroleerd".
-  const bronVoorstel = preview && isObject(preview.voorstel) ? preview.voorstel : genereer.voorstel;
+  const bronVoorstel = genereer.voorstel;
   const regelsRuw = lijst(bronVoorstel && bronVoorstel.regels).filter(isObject);
   const reserveSleutel = typeof genereer.reserveSleutel === 'string' ? genereer.reserveSleutel : null;
   const sleutels = new Set(regelsRuw.map((r) => String(r.sleutel)));
@@ -91,9 +154,10 @@ export function maakWerkModel({ genereer, aanvulling, preview }) {
     grenzen: isObject(r.grenzen) ? { min: Number.isFinite(r.grenzen.min) ? r.grenzen.min : null, max: Number.isFinite(r.grenzen.max) ? r.grenzen.max : null } : { min: null, max: null },
     deadline: isObject(r.deadline) && r.deadline.status === 'geverifieerd' && typeof r.deadline.datum === 'string' ? r.deadline.datum : null,
     selecteerbaar: r.selecteerbaar === true && r.staatAl !== true,
+    staatAl: r.staatAl === true,
     reserve: r.sleutel === reserveSleutel,
   }));
-  const acties = lijst(genereer.voorstel && genereer.voorstel.acties)
+  const acties = lijst(bronVoorstel && bronVoorstel.acties)
     .filter(isObject)
     .filter((a) => !a.regelSleutel || sleutels.has(String(a.regelSleutel)))
     .map((a) => ({
@@ -126,24 +190,58 @@ export function maakWerkModel({ genereer, aanvulling, preview }) {
 
   const t = isObject(genereer.totalen) ? genereer.totalen : {};
   const hint = isObject(genereer.premiumHint) && Number.isInteger(genereer.premiumHint.aantal) && genereer.premiumHint.aantal > 0 ? genereer.premiumHint.aantal : 0;
+  const werkwijze = isObject(genereer.werkwijze) ? genereer.werkwijze : {};
 
   return {
     uitkomst: String(genereer.uitkomst || ''),
     melding: typeof genereer.melding === 'string' ? genereer.melding : null,
-    gecontroleerd: Boolean(preview),
     regels,
     acties,
     suggesties,
+    // Het ongewijzigde voorstel van de server: de basis voor de weergave per regel (details, grenzen, deadline volgens de database).
+    ruwVoorstel: isObject(bronVoorstel) ? bronVoorstel : null,
     // Pro: aantal passende fondsen dat alleen in Premium zichtbaar is (alleen een getal, de server noemt geen namen).
     premiumHint: hint,
+    // Hoeveel geüploade projectdocumenten de server heeft meegenomen in de online oriëntatie (alleen een aantal).
+    documenten: Number.isInteger(werkwijze.documenten) && werkwijze.documenten > 0 ? werkwijze.documenten : 0,
     // Som van de indicaties van de online suggesties: een schatting, telt nooit mee in de dekking.
     onlineIndicatief: suggesties.reduce((t2, x) => t2 + (x.indicatiefBedrag > 0 ? x.indicatiefBedrag : 0), 0),
     gat: Number.isFinite(t.gat) ? t.gat : 0,
     doelBedrag: Number.isFinite(t.doelBedrag) ? t.doelBedrag : 0,
     dekkingsdoel: Number.isFinite(genereer.dekkingsdoel) ? genereer.dekkingsdoel : 1,
-    // Voor de weergave (details en verificatie per regel): het antwoord van de preview, of het eerste voorstel zonder verificaties.
-    weergave: preview && isObject(preview) ? preview : { ok: true, voorstel: genereer.voorstel, verificaties: [], overgeslagen: [], totalen: {} },
   };
+}
+
+// De weergave per regel: de ruwe regels van de server + wat de aparte broncontroles opleverden. -> [regelModel] (zie voorstelPreviewModel.js),
+// elk met `bron` (bronModel), `toonVerificatie` (alleen als deze sessie de verificatiedetails kreeg) en een kopstatus die de BRONSTATUS toont.
+export function bouwRegelWeergaven(model, controles) {
+  if (!model || !model.ruwVoorstel) return [];
+
+  const verificaties = [];
+
+  for (const r of model.regels) {
+    const c = controles && controles[r.sleutel];
+    const v = c && c.antwoord && Array.isArray(c.antwoord.verificaties) ? c.antwoord.verificaties.find((x) => isObject(x) && x.sleutel === r.sleutel) : null;
+
+    if (v) verificaties.push(v);
+  }
+
+  const basis = bouwPreviewModel({ ok: true, voorstel: model.ruwVoorstel, verificaties, overgeslagen: [], totalen: {} });
+
+  if (!basis.ok) return [];
+
+  return basis.regels.map((rm) => {
+    const c = controles && controles[rm.sleutel];
+    const bron = c ? c.bron : null;
+    const metDetails = Boolean(c && c.antwoord && Array.isArray(c.antwoord.verificaties) && c.antwoord.verificaties.some((x) => isObject(x) && x.sleutel === rm.sleutel));
+
+    return {
+      ...rm,
+      bron,
+      toonVerificatie: metDetails,
+      kop: { ...rm.kop, status: bron ? { sleutel: bron.status, label: bron.label } : null },
+    };
+  });
 }
 
 export function beginSelectie(model) {
@@ -155,14 +253,20 @@ export function beginSelectie(model) {
   };
 }
 
+// Vanuit de chat kiest het lid zelf wat meegaat: alles wat niet al in het dekkingsplan staat staat standaard aan, zonder bedrag.
+export function beginSelectieChat(model) {
+  return { regels: new Set(model.regels.filter((r) => r.selecteerbaar).map((r) => r.sleutel)), acties: new Set(model.acties.map((a) => a.sleutel)), suggesties: new Set() };
+}
+
 export function beginBedragen(model) {
   return Object.fromEntries(model.regels.map((r) => [r.sleutel, r.bedrag != null ? String(r.bedrag).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '']));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// 3. Totalen en controles op wat het lid aanpast
+// 4. Totalen en controles op wat het lid aanpast
 
 // -> { voorgesteld, gat, dekking (0 t/m 1+ of null), bovenGat, bovenDoel, fouten: { [sleutel]: 'ongeldig' | 'onder-minimum' | 'boven-maximum' } }
+// Dit zijn waarschuwingen voor onderweg; de SERVER controleert bij het opslaan alles opnieuw en weigert wat niet klopt.
 export function berekenSelectieTotaal(model, selectie, bedragen) {
   const fouten = {};
   let voorgesteld = 0;
@@ -203,21 +307,24 @@ export function dekkingTekst(totaal, model) {
   return totaal.bovenGat ? `${procent}% van het financieringsgat, inclusief buffer voor afwijzingen` : `${procent}% van het financieringsgat`;
 }
 
+// De buffer voor afwijzingen ligt vast per abonnement (Pro 110%, Premium 120%) en wordt altijd zichtbaar gemaakt; er is nooit een stilzwijgende buffer.
 export function bufferUitleg(model) {
   const procent = Math.round((model.dekkingsdoel - 1) * 100);
 
   return procent > 0
-    ? `Het voorstel mag tot ${Math.round(model.dekkingsdoel * 100)}% van het gat komen (${formatEuro(model.doelBedrag)}): afwijzingen zijn normaal, dus een deel is een buffer. Het voorstel is geen toezegging.`
-    : '';
+    ? `Buffer voor afwijzingen: ${procent}% (vast voor uw abonnement). Het voorstel mag tot ${Math.round(model.dekkingsdoel * 100)}% van het gat komen (${formatEuro(model.doelBedrag)}): afwijzingen zijn normaal, dus een deel is een buffer. Het voorstel is geen toezegging.`
+    : 'Er is voor uw abonnement geen buffer voor afwijzingen ingesteld: het voorstel mag niet boven het financieringsgat uitkomen.';
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// 4. Opslaan (alleen op een klik van het lid)
+// 5. Opslaan (alleen op een klik van het lid), via de server
 
-// -> { regels: [{ sleutel, type, id, naam, bedrag, acties: [...] }], projectActies: [...], suggesties: [...], ongeldig: [sleutel] }
-export function bouwOpslagPlan(model, selectie, bedragen) {
+// -> { regels: [{ type, id, bedrag }], suggesties, uitgeslotenActies, ongeldig: [sleutel], gekozen: [sleutel] }
+// De browser stuurt ALLEEN type, id en bedrag: geen naam, deadline, grens, bronstatus of taak. De server haalt dat zelf op.
+export function bouwOpslagVerzoek(model, selectie, bedragen) {
   const ongeldig = [];
   const regels = [];
+  const gekozen = [];
 
   for (const r of model.regels) {
     if (!selectie.regels.has(r.sleutel)) continue;
@@ -229,64 +336,95 @@ export function bouwOpslagPlan(model, selectie, bedragen) {
       continue;
     }
 
-    regels.push({ sleutel: r.sleutel, type: r.type, id: r.id, naam: r.naam, bedrag: b.waarde, acties: model.acties.filter((a) => a.regelSleutel === r.sleutel && selectie.acties.has(a.sleutel)) });
+    regels.push({ type: r.type, id: r.id, bedrag: b.waarde });
+    gekozen.push(r.sleutel);
   }
 
   return {
     regels,
-    projectActies: model.acties.filter((a) => !a.regelSleutel && selectie.acties.has(a.sleutel)),
-    suggesties: model.suggesties.filter((s) => selectie.suggesties.has(s.sleutel)),
+    gekozen,
+    suggesties: model.suggesties.filter((s) => selectie.suggesties.has(s.sleutel)).map((s) => ({ gever: s.gever, naam: s.naam, url: s.url })),
+    // De taken zelf bepaalt de server; het lid kan alleen taken AFVINKEN, en dat gaat als lijst met sleutels.
+    uitgeslotenActies: model.acties.filter((a) => !selectie.acties.has(a.sleutel)).map((a) => a.sleutel),
     ongeldig,
   };
 }
 
-// diensten: { voegRegelToe, voegFinancierToe, voegActieToe } = de bestaande opslagpaden. Een mislukking van één onderdeel stopt de rest niet;
-// alles wordt teruggemeld. -> samenvatting met aantallen en per onderdeel de reden.
-export async function voerOpslagUit({ projectId, plan, diensten }) {
-  const uit = { regelsToegevoegd: 0, regelsBestondAl: [], regelsMislukt: [], actiesToegevoegd: 0, actiesMislukt: 0, suggestiesToegevoegd: 0, suggestiesMislukt: [] };
+const ACTIEPLAN_STATUS = ['geen', 'klaar', 'deels', 'mislukt'];
 
-  for (const r of plan.regels) {
-    const res = await diensten.voegRegelToe({
-      projectId,
-      schemeId: r.type === 'regeling' ? r.id : null,
-      funderId: r.type === 'fonds' ? r.id : null,
-      requested: r.bedrag,
-      status: STARTSTATUS,
-    });
+function leesOpslagAntwoord(a) {
+  const ap = isObject(a.actieplan) ? a.actieplan : {};
 
-    if (!res.ok) {
-      if (res.reden === 'bestaat-al') uit.regelsBestondAl.push(r.naam);
-      else uit.regelsMislukt.push({ naam: r.naam, reden: res.reden || 'fout' });
-
-      // Zonder gekoppelde regel geen taken die ernaar verwijzen.
-      continue;
-    }
-
-    uit.regelsToegevoegd += 1;
-
-    for (const a of r.acties) {
-      const t = await diensten.voegActieToe({ projectId, titel: a.titel, financier: a.financier || r.naam, deadline: a.datum, prioriteit: a.prioriteit, notitie: a.toelichting, fundingId: res.id, bron: 'chat' });
-
-      if (t.ok) uit.actiesToegevoegd += 1;
-      else uit.actiesMislukt += 1;
-    }
-  }
-
-  for (const a of plan.projectActies) {
-    const t = await diensten.voegActieToe({ projectId, titel: a.titel, financier: '', deadline: a.datum, prioriteit: a.prioriteit, notitie: a.toelichting, fundingId: null, bron: 'chat' });
-
-    if (t.ok) uit.actiesToegevoegd += 1;
-    else uit.actiesMislukt += 1;
-  }
-
-  for (const s of plan.suggesties) {
-    const naam = (s.naam === s.gever || !s.naam ? s.gever : `${s.gever} - ${s.naam}`).slice(0, 200);
-    const notitie = `${ONLINE_NOTITIE}${s.url ? ` Bron: ${s.url}` : ''}`;
-    const res = await diensten.voegFinancierToe({ projectId, naam, bedrag: null, status: STARTSTATUS, deadline: null, notitie });
-
-    if (res.ok) uit.suggestiesToegevoegd += 1;
-    else uit.suggestiesMislukt.push({ naam, reden: res.reden || 'fout' });
-  }
-
-  return uit;
+  return {
+    ok: true,
+    opgeslagen: a.opgeslagen === true,
+    regels: lijst(a.regels)
+      .filter(isObject)
+      .map((r) => ({
+        sleutel: String(r.sleutel || ''),
+        naam: tekst(r.naam, 200),
+        status: ['opgeslagen', 'bestaat-al', 'mislukt'].includes(r.status) ? r.status : 'mislukt',
+        reden: typeof r.reden === 'string' ? r.reden : null,
+        bron: bronModel(isObject(r.bron) ? r.bron : { status: 'niet-gecontroleerd' }),
+      })),
+    actieplan: {
+      status: ACTIEPLAN_STATUS.includes(ap.status) ? ap.status : 'mislukt',
+      aangemaakt: Number.isInteger(ap.aangemaakt) ? ap.aangemaakt : 0,
+      bestond: Number.isInteger(ap.bestond) ? ap.bestond : 0,
+      mislukt: Number.isInteger(ap.mislukt) ? ap.mislukt : 0,
+    },
+    suggesties: lijst(a.suggesties)
+      .filter(isObject)
+      .map((s) => ({ naam: tekst(s.naam, 200), status: ['opgeslagen', 'bestaat-al', 'mislukt'].includes(s.status) ? s.status : 'mislukt', reden: typeof s.reden === 'string' ? s.reden : null })),
+    dekkingsdoel: Number.isFinite(a.dekkingsdoel) ? a.dekkingsdoel : null,
+  };
 }
+
+// diensten.opslaan({ projectId, regels, suggesties, uitgeslotenActies, alleenActies }) -> { ok, antwoord, melding, regelFouten, algemeen }
+// -> { ok: true, ...uitkomst } | { ok: false, soort: 'validatie', regelFouten, algemeen } | { ok: false, soort: 'fout', melding }
+// Bij 'validatie' is er NIETS opgeslagen en blijft alle invoer van het lid behouden; de fouten horen bij een regel (sleutel r:<type>:<id>).
+export async function voerOpslagUit({ projectId, verzoek, diensten }) {
+  try {
+    const res = await diensten.opslaan({ projectId, regels: verzoek.regels, suggesties: verzoek.suggesties, uitgeslotenActies: verzoek.uitgeslotenActies });
+
+    if (res && res.ok && isObject(res.antwoord)) return leesOpslagAntwoord(res.antwoord);
+
+    if (res && (isObject(res.regelFouten) || isObject(res.algemeen))) {
+      const regelFouten = {};
+
+      for (const [k, f] of Object.entries(isObject(res.regelFouten) ? res.regelFouten : {})) {
+        if (isObject(f)) regelFouten[k] = { code: tekst(f.code, 40), melding: tekst(f.melding, 300) };
+      }
+
+      return { ok: false, soort: 'validatie', regelFouten, algemeen: isObject(res.algemeen) ? { code: tekst(res.algemeen.code, 40), melding: tekst(res.algemeen.melding, 300) } : null };
+    }
+
+    return { ok: false, soort: 'fout', melding: (res && res.melding) || 'Opslaan is niet gelukt. Probeer het opnieuw; er wordt niets dubbel opgeslagen.' };
+  } catch (e) {
+    return { ok: false, soort: 'fout', melding: 'Opslaan is niet gelukt. Probeer het opnieuw; er wordt niets dubbel opgeslagen.' };
+  }
+}
+
+// Alleen het actieplan opnieuw aanmaken voor regels die al in het dekkingsplan staan. Het dekkingsplan zelf blijft zoals het is; de server maakt
+// geen taken dubbel aan (titel + regel).
+export async function herstelActieplan({ projectId, model, uitkomst, verzoek, diensten }) {
+  const klaar = new Set(uitkomst.regels.filter((r) => r.status === 'opgeslagen' || r.status === 'bestaat-al').map((r) => r.sleutel));
+  const regels = model.regels.filter((r) => klaar.has(r.sleutel)).map((r) => ({ type: r.type, id: r.id, bedrag: null }));
+
+  try {
+    const res = await diensten.opslaan({ projectId, regels, suggesties: [], uitgeslotenActies: verzoek.uitgeslotenActies, alleenActies: true });
+
+    if (res && res.ok && isObject(res.antwoord)) {
+      const a = leesOpslagAntwoord(res.antwoord);
+
+      // De server telt zelf: 'aangemaakt' = nu nieuw, 'bestond' = stond er al (ook de taken van de eerste poging). Dus NIET optellen met de eerste uitkomst.
+      return { ok: true, actieplan: a.actieplan };
+    }
+  } catch (e) {
+    // valt door naar de foutmelding
+  }
+
+  return { ok: false, melding: 'Het actieplan kon niet worden aangemaakt. Uw dekkingsplan is opgeslagen en ongewijzigd; probeer het opnieuw.' };
+}
+
+export { BRON };

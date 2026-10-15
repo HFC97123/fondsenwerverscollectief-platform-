@@ -210,8 +210,8 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
     'src/features/kompas-app/useKompasApp.js',
   ];
   // Fase 5 koppelt de chat bewust aan de fundingbron, maar uitsluitend binnen met FASE5-BEGIN/FASE5-END gemarkeerde
-  // blokken; daarbuiten (en in useKompasApp.js) blijft elke verwijzing verboden.
-  const zonderFase5 = (t) => t.replace(/\/\/ FASE5-BEGIN[\s\S]*?\/\/ FASE5-END/g, '').replace(/\{\/\* FASE5-BEGIN[\s\S]*?FASE5-END \*\/\}/g, '');
+  // blokken en de ene server-opslagplek van het voorstel (VOORSTEL-OPSLAAN-BEGIN/END); daarbuiten (en in useKompasApp.js) blijft elke verwijzing verboden.
+  const zonderFase5 = (t) => t.replace(/\/\/ FASE5-BEGIN[\s\S]*?\/\/ FASE5-END/g, '').replace(/\/\/ VOORSTEL-OPSLAAN-BEGIN[\s\S]*?\/\/ VOORSTEL-OPSLAAN-END/g, '').replace(/\{\/\* FASE5-BEGIN[\s\S]*?FASE5-END \*\/\}/g, '');
   verboden.forEach((f) => check(`22: ${f} verwijst buiten de FASE5-blokken niet naar de nieuwe fundingbron (askKompas/chat/Edge Function ongewijzigd)`, !nieuweBron.test(zonderFase5(lees(f)))));
   const bestanden = [...loop('src/data'), ...loop('src/shared')].filter((f) => /\.(js|jsx|ts)$/.test(f) && !f.endsWith('projectFinanciering.js'));
   // Sinds de financieringsopschoning (okt 2026) lezen exports de enige financiële bron, maar uitsluitend via de

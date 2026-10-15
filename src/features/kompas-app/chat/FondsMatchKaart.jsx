@@ -11,6 +11,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { formatDatum } from '../financiering/dekkingsplan.js';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
+import VoorstelWerkruimte from '../financiering/VoorstelWerkruimte.jsx';
+import { voorstelGeneratieBeschikbaar } from '../financiering/voorstelFlow.js';
 import { ITEM_STATUS, beginStatussen, itemSleutel, kopTekst, samenvattingTekst, telStatussen, voegItemsToe, zoekFundingId } from './fondsMatches.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 13px; line-height: 1.5; color: #4B5C58;";
@@ -22,6 +24,10 @@ const CSS_KAART = `
 .fwk-fm button:disabled { cursor: default; opacity: 0.6; }
 `;
 
+// Chat-ingang van de gedeelde flow: staat de flow aan, dan gaat "toevoegen" nooit rechtstreeks naar de database. De financiers uit het gesprek gaan naar
+// dezelfde voorbereiding als bij Projectfinanciering (preview met bedragen, broncontrole per regel, servervalidatie, opslaan door de server met
+// actieplan). Staat de flow uit, dan werkt de kaart zoals voorheen.
+//
 // Per bericht maar één keer automatisch toevoegen (een expliciete opdracht), ook als de kaart opnieuw wordt getekend.
 const AUTO_GEDAAN = new Set();
 
@@ -49,12 +55,13 @@ function StatusRegel({ status, projectId }) {
   return null;
 }
 
-export default function FondsMatchKaart({ lijst, berichtId, projectNaam, projecten, onGewijzigd, onBespreek, bezigMetAntwoord = false }) {
+export default function FondsMatchKaart({ lijst, berichtId, projectNaam, projecten, onGewijzigd, onBespreek, bezigMetAntwoord = false, voorstelAan = voorstelGeneratieBeschikbaar(), diensten }) {
   const { projectId, items, intentie } = lijst;
   const [statussen, setStatussen] = useState(() => beginStatussen(items));
   const [gekozen, setGekozen] = useState({});
   const [bevestigd, setBevestigd] = useState(intentie !== 'toevoegen');
   const [meldingBulk, setMeldingBulk] = useState('');
+  const [werk, setWerk] = useState(null); // { items, nr }: de gedeelde voorbereiding is open voor deze items
   const statusRef = useRef(statussen);
   const bezigRef = useRef(false);
 
@@ -70,8 +77,33 @@ export default function FondsMatchKaart({ lijst, berichtId, projectNaam, project
     });
   }, []);
 
+  // Na opslaan door de server: de kaart toont per financier wat er is gebeurd.
+  const naOpslaan = useCallback(
+    (uit) => {
+      if (!uit || !Array.isArray(uit.regels)) return;
+
+      uit.regels.forEach((r) => {
+        const sleutel = String(r.sleutel || '').replace(/^r:/, '');
+
+        if (r.status === 'opgeslagen') zetStatus(sleutel, ITEM_STATUS.TOEGEVOEGD);
+        else if (r.status === 'bestaat-al') zetStatus(sleutel, ITEM_STATUS.STAAT_AL);
+      });
+
+      if (uit.regels.some((r) => r.status === 'opgeslagen') && onGewijzigd) onGewijzigd();
+    },
+    [zetStatus, onGewijzigd],
+  );
+
   const voeg = useCallback(
     async (lijstItems) => {
+      if (voorstelAan) {
+        const open = lijstItems.filter((i) => statusRef.current[itemSleutel(i)] !== ITEM_STATUS.TOEGEVOEGD && statusRef.current[itemSleutel(i)] !== ITEM_STATUS.STAAT_AL);
+
+        if (open.length) setWerk((cur) => ({ items: open, nr: (cur ? cur.nr : 0) + 1 }));
+
+        return null;
+      }
+
       if (bezigRef.current) {
         return null;
       }
@@ -90,7 +122,7 @@ export default function FondsMatchKaart({ lijst, berichtId, projectNaam, project
         bezigRef.current = false;
       }
     },
-    [projectId, projecten, zetStatus, onGewijzigd],
+    [projectId, projecten, zetStatus, onGewijzigd, voorstelAan],
   );
 
   // Expliciete opdracht: "Scan ... en zet de kansrijke in mijn dekkingsplan" -> direct toevoegen (één keer).
@@ -185,11 +217,11 @@ export default function FondsMatchKaart({ lijst, berichtId, projectNaam, project
           <div style={css('display: flex; gap: 8px; flex-wrap: wrap;')}>
             {geselecteerd.length > 0 && (
               <button type="button" data-testid="fm-selectie-toevoegen" disabled={bezig || bezigMetAntwoord} style={css(KNOP)} onClick={() => bulkToevoegen(geselecteerd)}>
-                Selectie toevoegen aan projectfinanciering ({geselecteerd.length})
+                {voorstelAan ? `Selectie voorbereiden voor het dekkingsplan (${geselecteerd.length})` : `Selectie toevoegen aan projectfinanciering (${geselecteerd.length})`}
               </button>
             )}
             <button type="button" data-testid="fm-alles-toevoegen" disabled={bezig || bezigMetAntwoord} style={css(KNOP_PRIMAIR)} onClick={() => bulkToevoegen(nogTeDoen)}>
-              Alles toevoegen aan projectfinanciering
+              {voorstelAan ? 'Alles voorbereiden voor het dekkingsplan' : 'Alles toevoegen aan projectfinanciering'}
             </button>
           </div>
         )}
@@ -228,7 +260,7 @@ export default function FondsMatchKaart({ lijst, berichtId, projectNaam, project
                   <div style={css('display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px;')}>
                     {kanToevoegen && (
                       <button type="button" data-testid="fm-toevoegen" disabled={bezig || bezigMetAntwoord} style={css(KNOP_PRIMAIR)} onClick={() => eenToevoegen(item)}>
-                        Toevoegen aan projectfinanciering
+                        {voorstelAan ? 'Controleren en toevoegen' : 'Toevoegen aan projectfinanciering'}
                       </button>
                     )}
                     {status === ITEM_STATUS.BEZIG && (
@@ -249,6 +281,20 @@ export default function FondsMatchKaart({ lijst, berichtId, projectNaam, project
       <div data-testid="fm-samenvatting" role="status" aria-live="polite" style={css(`${TEKST} font-weight: 700; color: #3E7F59; min-height: 0;`)}>
         {meldingBulk}
       </div>
+
+      {voorstelAan && werk && (
+        <div data-testid="fm-voorbereiding" style={css('margin-top: 6px;')}>
+          <VoorstelWerkruimte
+            key={werk.nr}
+            project={{ id: projectId, naam: projectNaam }}
+            startpunt={{ regels: werk.items.map((i) => ({ type: i.type, id: i.id })) }}
+            autoStart
+            diensten={diensten}
+            onOpgeslagen={naOpslaan}
+            onSluit={() => setWerk(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }

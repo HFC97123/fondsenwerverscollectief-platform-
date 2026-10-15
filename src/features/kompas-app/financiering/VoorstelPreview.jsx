@@ -107,8 +107,52 @@ function Rij({ label, children, testId }) {
   );
 }
 
+const BRON_STIJL = {
+  controleren: { bg: '#E6EFF6', rand: '#BFD5E6', kleur: '#2C4A5E', teken: '…' },
+  gecontroleerd: { bg: '#E3F2E8', rand: '#B7DCC4', kleur: '#2F7A4D', teken: '✓' },
+  onzeker: { bg: '#FBF1E3', rand: '#EEDCC0', kleur: '#8A5A16', teken: '?' },
+  mislukt: { bg: '#FBE9E7', rand: '#F0C4BE', kleur: '#A3382B', teken: '!' },
+  niet_gecontroleerd: { bg: '#EEF1F0', rand: '#D8DFDC', kleur: '#5D6B67', teken: '–' },
+};
+
+function datumTekst(iso) {
+  const t = Date.parse(iso || '');
+
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+}
+
+// De bronstatus van de regel: of de bron is gecontroleerd. Los van de financieringsstatus; "Gecontroleerd" zegt niets over toekenning.
+function BronBlok({ bron, onOpnieuw, bezig }) {
+  const s = BRON_STIJL[bron.status] || BRON_STIJL.niet_gecontroleerd;
+  const kanOpnieuw = typeof onOpnieuw === 'function' && bron.status !== 'controleren';
+
+  return (
+    <div data-testid="bronblok" data-status={bron.status} style={css('display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: #F7F9F8; border: 1px solid #E1EAE4;')}>
+      <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap;')}>
+        <span data-testid="bron-status" data-status={bron.status} style={css(`display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; border: 1px solid ${s.rand}; background: ${s.bg}; color: ${s.kleur}; font-family: 'Mulish', sans-serif; font-size: 12.5px; font-weight: 800;`)}>
+          <span aria-hidden="true">{s.teken}</span>
+          Bron: {bron.label}
+        </span>
+        {bron.gecontroleerdOp && <span style={css(`${TEKST} font-size: 12.5px; color: #7B8985;`)}>{bron.hergebruikt ? 'Eerder gecontroleerd op' : 'Gecontroleerd op'} {datumTekst(bron.gecontroleerdOp)}</span>}
+      </div>
+      <div data-testid="bron-uitleg" style={css(`${TEKST} font-size: 13px;`)}>
+        {bron.uitleg}
+        {bron.redenTekst ? ` ${bron.redenTekst}` : ''}
+      </div>
+      {kanOpnieuw && (
+        <div>
+          <button type="button" data-testid="bron-opnieuw" disabled={bezig} onClick={onOpnieuw} style={css("min-height: 36px; padding: 0 14px; border: 1px solid #CFDDD5; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer;")}>
+            {bron.status === 'mislukt' ? 'Opnieuw proberen' : 'Opnieuw controleren'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // De details van één voorgestelde regel. Alleen weergave van wat de server leverde; bevat zelf geen enkele controle.
-export function VoorstelRegelDetail({ r }) {
+// `bron` (optioneel): de bronstatus uit de aparte broncontrole; `toonVerificatie` (standaard aan): het blok met de verificatiedetails van de preview.
+export function VoorstelRegelDetail({ r, bron = null, toonVerificatie = true, onOpnieuw = null, bezig = false }) {
   return (
     <div data-testid="voorstel-regel-detail" style={css('display: flex; flex-direction: column; gap: 12px;')}>
       <style>{STIJL_DETAIL}</style>
@@ -158,7 +202,8 @@ export function VoorstelRegelDetail({ r }) {
         </div>
       )}
 
-      <Verificatie v={r.verificatie} reden={r.reden} eindgebruikerTekst={r.eindgebruikerTekst} />
+      {bron && <BronBlok bron={bron} onOpnieuw={onOpnieuw} bezig={bezig} />}
+      {toonVerificatie && <Verificatie v={r.verificatie} reden={r.reden} eindgebruikerTekst={r.eindgebruikerTekst} />}
     </div>
   );
 }

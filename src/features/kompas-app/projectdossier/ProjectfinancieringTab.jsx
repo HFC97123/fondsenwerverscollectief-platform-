@@ -10,6 +10,8 @@ import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { ActieplanVoorProject } from '../financiering/ActieplanBlok.jsx';
 import VoorstelWerkruimte from '../financiering/VoorstelWerkruimte.jsx';
+import { bronVoorRegel, datumTekst } from '../financiering/bronStatus.js';
+import { leesBronControles } from '../../../data/services/voorstelGenereren.js';
 import FinancierFormulier from '../financiering/FinancierFormulier.jsx';
 import {
   STATUSSEN,
@@ -65,7 +67,7 @@ function Legenda({ dekking }) {
   );
 }
 
-function Regel({ regel, onWijzig, onVerwijder }) {
+function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
   const [aangevraagd, setAangevraagd] = useState(bedragVoorInvoer(regel.requested));
   const [toegekend, setToegekend] = useState(bedragVoorInvoer(regel.awarded));
   const [notitie, setNotitie] = useState(regel.notitie || '');
@@ -141,6 +143,14 @@ function Regel({ regel, onWijzig, onVerwijder }) {
           <div style={css('margin-top: 6px;')}>
             <StatusChip status={regel.status} />
           </div>
+          {/* De bronstatus is los van de financieringsstatus hierboven: gecontroleerd betekent alleen dat de bron is gecontroleerd, niet dat er is toegekend. */}
+          {bron && (
+            <div data-testid="pf-regel-bron" data-bron-status={bron.status} title={bron.uitleg} style={css(`${TEKST} margin-top: 6px; font-size: 12.5px; font-weight: 700; color: ${{ gecontroleerd: '#2F7A4D', onzeker: '#8A5A16', mislukt: '#A3382B' }[bron.status] || '#5D6B67'};`)}>
+              Bron: {bron.label}
+              {bron.gecontroleerdOp && bron.status === 'gecontroleerd' ? ` op ${datumTekst(bron.gecontroleerdOp)}` : ''}
+              {bron.verouderd ? ' (gegevens veranderd of controle te oud)' : ''}
+            </div>
+          )}
         </div>
 
         <div>
@@ -275,6 +285,24 @@ function Regel({ regel, onWijzig, onVerwijder }) {
 export default function ProjectfinancieringTab({ project, financiering, dekking }) {
   const { status, fout, regels, wijzig, verwijder, laad } = financiering;
   const [actieVersie, setActieVersie] = useState(0);
+  const [bronRijen, setBronRijen] = useState([]);
+
+  // De bronstatus per regel komt uit de tabel die de SERVER bijhoudt: ze blijft dus staan na verversen en na opslaan.
+  const aantalRegels = regels.length;
+
+  useEffect(() => {
+    let actief = true;
+
+    if (project && project.id && status === 'klaar') {
+      leesBronControles(project.id).then((res) => {
+        if (actief) setBronRijen(res.rijen);
+      });
+    }
+
+    return () => {
+      actief = false;
+    };
+  }, [project && project.id, status, aantalRegels, actieVersie]);
 
   return (
     <div data-testid="tab-projectfinanciering" style={css('display: flex; flex-direction: column; gap: 18px;')}>
@@ -358,7 +386,7 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
             </div>
             <div style={css('display: flex; flex-direction: column; gap: 12px;')}>
               {regels.map((r) => (
-                <Regel key={r.id} regel={r} onWijzig={wijzig} onVerwijder={verwijder} />
+                <Regel key={r.id} regel={r} bron={bronVoorRegel(r, bronRijen)} onWijzig={wijzig} onVerwijder={verwijder} />
               ))}
             </div>
           </>

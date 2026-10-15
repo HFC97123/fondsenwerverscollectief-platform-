@@ -52,6 +52,14 @@ export function resetGenereren(extra = {}) {
     onlineStatus: 'completed',
     openaiBodies: [],
     openaiAantal: 0,
+    db: { funding: [], actions: [] },
+    dbActief: false,
+    dbFout: null,
+    dbSchrijfLog: [],
+    bron: [],
+    bronFout: null,
+    bronSchrijfLog: [],
+    documenten: [],
     ...extra,
   });
 }
@@ -65,8 +73,54 @@ const from = (tabel) => {
     return b;
   }
 
+  if (tabel === 'subsidie_kompas_bron_controles') return bronFrom();
+
+  if (tabel === 'subsidie_kompas_knowledge_items') {
+    const f = {};
+    const d = { select() { return d; }, eq(k, v) { f[k] = v; return d; }, is() { return d; }, order() { return d; }, limit() { return d; }, then(ok, nok) { w.tabellen.push(tabel); return Promise.resolve({ data: (w.documenten || []).filter((x) => !f.program_id || x.program_id === f.program_id), error: null }).then(ok, nok); } };
+
+    return d;
+  }
+
   return basisAdmin.from(tabel);
 };
+
+// In-memory tabel subsidie_kompas_bron_controles voor de ADMIN-client (de server schrijft; het lid leest via RLS). Unieke sleutel zoals in de migratie.
+// w.bron = rijen; w.bronFout = 'tabel-weg' (migratie niet toegepast: elke aanroep geeft 42P01) | 'schrijven' (alleen schrijven mislukt); w.bronSchrijfLog.
+function bronFrom() {
+  const filters = {};
+  let op = 'select';
+  let lading = null;
+  const b = {
+    select() { return b; },
+    eq(k, v) { filters[k] = v; return b; },
+    limit() { return b; },
+    upsert(rij) { op = 'upsert'; lading = rij; return b; },
+    update(rij) { op = 'update'; lading = rij; return b; },
+    then(ok, nok) {
+      if (w.bronFout === 'tabel-weg') return Promise.resolve({ data: null, error: { code: '42P01', message: 'relation does not exist' } }).then(ok, nok);
+
+      if (op === 'select') return Promise.resolve({ data: w.bron.filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v)).map((r) => ({ ...r })), error: null }).then(ok, nok);
+
+      w.bronSchrijfLog.push({ op, lading });
+
+      if (w.bronFout === 'schrijven') return Promise.resolve({ error: { code: 'XX000' } }).then(ok, nok);
+
+      if (op === 'upsert') {
+        const i = w.bron.findIndex((r) => r.program_id === lading.program_id && r.record_type === lading.record_type && r.record_id === lading.record_id);
+
+        if (i >= 0) w.bron[i] = { ...w.bron[i], ...lading };
+        else w.bron.push({ ...lading });
+      } else {
+        w.bron.filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v)).forEach((r) => Object.assign(r, lading));
+      }
+
+      return Promise.resolve({ error: null }).then(ok, nok);
+    },
+  };
+
+  return b;
+}
 
 const rpc = async (naam, args) => {
   if (naam === 'kompas_exclusieve_funders' && w.exclusiefFout) {
@@ -84,8 +138,77 @@ const rpc = async (naam, args) => {
   return basisRpc(naam, args);
 };
 
+// In-memory database voor het OPSLAAN (alleen via de gebruikersclient, met de JWT van het lid): twee tabellen met de unieke regels van de echte database.
+// w.db = { funding: [], actions: [] }; w.dbFout = { funding?: {code}, actions?: {code}, actionsLezen?: true } om fouten te simuleren;
+// w.dbSchrijfLog = elke schrijfpoging { tabel, rij(en) }.
+
+function gebruikersFrom(tabel) {
+  const filters = {};
+  const b = {
+    select() { return b; },
+    eq(k, v) { filters[k] = v; return b; },
+    limit() { return b; },
+    insert(rij) {
+      const rijen = Array.isArray(rij) ? rij : [rij];
+
+      w.dbSchrijfLog.push({ tabel, rijen });
+
+      const fout = w.dbFout?.[tabel === 'subsidie_kompas_program_funding' ? 'funding' : 'actions'];
+      const probeer = () => {
+        if (fout) return { error: fout, data: null };
+
+        for (const r of rijen) {
+          if (!r.user_id || r.user_id !== w.user?.id) return { error: { code: '42501', message: 'rls' }, data: null };
+
+          if (tabel === 'subsidie_kompas_program_funding') {
+            const dubbel = w.db.funding.some((f) => f.program_id === r.program_id && ((r.scheme_id && f.scheme_id === r.scheme_id) || (r.funder_id && f.funder_id === r.funder_id) || (r.financier_naam && f.financier_naam && f.financier_naam.toLowerCase() === r.financier_naam.toLowerCase())));
+
+            if (dubbel) return { error: { code: '23505', message: 'dubbel' }, data: null };
+          }
+        }
+
+        const nieuw = rijen.map((r) => ({ id: `${tabel === 'subsidie_kompas_program_funding' ? 'f' : 'a'}0000000-0000-4000-8000-${String(w.db[tabel === 'subsidie_kompas_program_funding' ? 'funding' : 'actions'].length + 1).padStart(12, '0')}`, ...r }));
+
+        w.db[tabel === 'subsidie_kompas_program_funding' ? 'funding' : 'actions'].push(...nieuw);
+
+        return { error: null, data: nieuw[0] };
+      };
+      const res = probeer();
+
+      return { select() { return { single: async () => res }; }, then(ok, nok) { return Promise.resolve({ error: res.error }).then(ok, nok); } };
+    },
+    then(ok, nok) {
+      if (tabel === 'subsidie_kompas_program_actions') {
+        if (w.dbFout?.actionsLezen) return Promise.resolve({ data: null, error: { code: 'XX000' } }).then(ok, nok);
+
+        return Promise.resolve({ data: w.db.actions.filter((a) => a.program_id === filters.program_id), error: null }).then(ok, nok);
+      }
+
+      return Promise.resolve({ data: [], error: null }).then(ok, nok);
+    },
+  };
+
+  return b;
+}
+
+const dekkingsplanUitDb = () =>
+  w.db.funding.map((f) => ({
+    id: f.id, bron_status: 'zichtbaar', bron_type: f.scheme_id ? 'regeling' : f.funder_id ? 'fonds' : null, scheme_id: f.scheme_id ?? null, funder_id: f.funder_id ?? null,
+    bron_naam: f.financier_naam ?? w.naamVanBron?.[f.scheme_id || f.funder_id] ?? 'Bron', funder_naam: f.financier_naam ?? '', status: f.status, requested_amount: f.requested_amount ?? null, awarded_amount: null, eigen_deadline: null, effectieve_deadline: null,
+  }));
+
+const rpcMetDb = async (naam, args) => {
+  if (naam === 'kompas_dekkingsplan' && w.dbActief) {
+    w.rpcs.push(naam);
+
+    return { data: dekkingsplanUitDb(), error: null };
+  }
+
+  return rpc(naam, args);
+};
+
 const admin = { auth: basisAdmin.auth, from, rpc };
-const gebruikersClient = { rpc };
+const gebruikersClient = { rpc: rpcMetDb, from: gebruikersFrom };
 
 globalThis.__createClient = (_url, _key, opties) => (opties?.global?.headers?.Authorization ? gebruikersClient : admin);
 

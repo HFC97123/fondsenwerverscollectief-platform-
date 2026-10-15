@@ -26,9 +26,13 @@ const STATUS_KLEUR = {
   onzeker: '#8A5A16',
   conflict: '#A3382B',
   niet_gecontroleerd: '#5D6B67',
+  // Bronstatus (voorstel): de bron wordt gecontroleerd, is gecontroleerd, of de controle is mislukt. Los van de financieringsstatus.
+  controleren: '#2C4A5E',
+  gecontroleerd: '#2F7A4D',
+  mislukt: '#A3382B',
 };
 
-const STATUS_TEKEN = { geverifieerd: '✓', gedeeltelijk: '◐', onzeker: '?', conflict: '!', niet_gecontroleerd: '–' };
+const STATUS_TEKEN = { geverifieerd: '✓', gedeeltelijk: '◐', onzeker: '?', conflict: '!', niet_gecontroleerd: '–', controleren: '…', gecontroleerd: '✓', mislukt: '!' };
 
 // props:
 //   titel        string          naam van de regeling of het fonds
