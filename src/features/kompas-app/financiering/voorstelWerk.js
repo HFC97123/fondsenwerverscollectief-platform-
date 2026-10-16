@@ -433,4 +433,40 @@ export async function herstelActieplan({ projectId, model, uitkomst, verzoek, di
   return { ok: false, melding: 'Het actieplan kon niet worden aangemaakt. Uw dekkingsplan is opgeslagen en ongewijzigd; probeer het opnieuw.' };
 }
 
+// Open taken van het actieplan die de server heeft bewaard (blijft na verversen). Geeft het aantal terug; 0 bij een fout of ontbrekende tabel.
+export async function leesOpenTaken({ projectId, diensten }) {
+  try {
+    if (!diensten || typeof diensten.leesOpen !== 'function') return 0;
+
+    const res = await diensten.leesOpen(projectId);
+
+    return res && res.ok && Number.isInteger(res.aantal) && res.aantal > 0 ? res.aantal : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+// Het actieplan opnieuw laten aanmaken uit wat de server bewaard heeft. De server telt zelf; er komen geen dubbele taken.
+export async function herstelOpenActieplan({ projectId, diensten }) {
+  try {
+    const res = await diensten.herstelOpen({ projectId });
+
+    if (res && res.ok && isObject(res.antwoord)) {
+      const ap = isObject(res.antwoord.actieplan) ? res.antwoord.actieplan : {};
+
+      return {
+        ok: true,
+        status: ACTIEPLAN_STATUS.includes(ap.status) ? ap.status : 'mislukt',
+        aangemaakt: Number.isInteger(ap.aangemaakt) ? ap.aangemaakt : 0,
+        bestond: Number.isInteger(ap.bestond) ? ap.bestond : 0,
+        openstaand: Number.isInteger(res.antwoord.openstaand) ? res.antwoord.openstaand : Number.isInteger(ap.mislukt) ? ap.mislukt : 0,
+      };
+    }
+  } catch (e) {
+    // valt door naar de foutmelding
+  }
+
+  return { ok: false, melding: 'Het actieplan kon niet worden aangemaakt. Uw dekkingsplan is opgeslagen en ongewijzigd; probeer het opnieuw.' };
+}
+
 export { BRON };

@@ -58,6 +58,8 @@ function maakServer(o = {}) {
     poort: {}, // id -> { belofte, los } : houdt een controle vast tot de test hem vrijgeeft
     uitkomst: o.uitkomst || {}, // id -> 'gecontroleerd' | 'onzeker' | 'mislukt' | 'netwerk' | 'crash'
     valideer: o.valideer || null,
+    open: new Map(), // taken die de server bewaart voor opnieuw proberen (tabel subsidie_kompas_actieplan_open): overleeft verversen
+    herstelFalen: o.herstelFalen || 0,
   };
   const gen = o.gen === undefined ? genereerAntwoord() : o.gen;
   const start = o.start === undefined ? startpuntAntwoord() : o.start;
@@ -95,6 +97,22 @@ function maakServer(o = {}) {
 
       return { ok: true, antwoord: { ok: true, verificaties: [], controle: { sleutel: sl(a.id, a.type), status: uit, verificatieStatus: null, reden: uit === 'mislukt' ? 'ophalen_mislukt' : null, gecontroleerdOp: op, bewaard: uit !== 'mislukt', hergebruikt: false } } };
     },
+    leesOpen: async (projectId) => { s.log.push(['leesOpen', projectId]); return { ok: true, aantal: s.open.size }; },
+    herstelOpen: async (a) => {
+      s.log.push(['herstelOpen', a]);
+
+      if (s.herstelFalen > 0) { s.herstelFalen -= 1; return { ok: false, reden: 'fout', melding: 'x' }; }
+
+      let aangemaakt = 0; let bestond = 0;
+
+      for (const [tk, t] of s.open) {
+        if (s.taken.has(tk)) bestond += 1; else { s.taken.set(tk, t); aangemaakt += 1; }
+      }
+
+      s.open.clear();
+
+      return { ok: true, antwoord: { ok: true, actieplan: { status: aangemaakt + bestond ? 'klaar' : 'geen', aangemaakt, bestond, mislukt: 0 }, openstaand: 0 } };
+    },
     opslaan: async (a) => {
       s.log.push(['opslaan', a]);
 
@@ -130,9 +148,10 @@ function maakServer(o = {}) {
         totaal += 1;
 
         if (s.taken.has(tk)) { bestond += 1; continue; }
-        if (s.taakFalen > 0) { s.taakFalen -= 1; mislukt += 1; continue; }
+        if (s.taakFalen > 0) { s.taakFalen -= 1; mislukt += 1; s.open.set(tk, { fundingId: sleutel, titel }); continue; }
 
         s.taken.set(tk, { fundingId: sleutel, titel });
+        s.open.delete(tk);
         aangemaakt += 1;
       }
 
@@ -496,7 +515,7 @@ sectie('7. Project-ingang in het scherm: voorstel eerst, dan Controleren… per 
   const s = maakServer();
   s.houdVast(ID1); s.houdVast(ID2);
   await toon(werkruimte(s));
-  check('start: niets aangeroepen', s.log.length === 0 && q('[data-testid="voorstel-werkruimte"]').dataset.ingang === 'project');
+  check('start: niets aangeroepen (alleen het lezen van open taken van een eerdere keer)', s.log.filter(([n]) => n !== 'leesOpen').length === 0 && q('[data-testid="voorstel-werkruimte"]').dataset.ingang === 'project');
   await klik(q('[data-testid="voorstel-start-knop"]'));
   await rust();
   check('voorstel direct zichtbaar, vóór de broncontrole klaar is', !!q('[data-testid="voorstel-resultaat"]') && q('[data-testid="voorstel-resultaat"]').dataset.controles === 'bezig');
@@ -828,6 +847,78 @@ sectie('12b. Bespreek met Subsidiekompas per regel, vervolgacties voor online su
   check('herstel stuurt de reeds opgeslagen suggestie opnieuw mee, alleen acties', herstel.alleenActies === true && herstel.suggesties.length === 1 && herstel.suggesties[0].gever === 'Online BV');
   check('herstel maakt geen tweede suggestie en geen dubbele stappen', s.fundings.size === 3 && [...s.taken.keys()].filter((k) => k.startsWith('online:')).length === 3);
   await klik(q('[data-testid="voorstel-sluiten"]'));
+}
+
+sectie('9b. Na verversen: de server bewaart de open taken, "Actieplan opnieuw proberen" blijft beschikbaar');
+{
+  const s = maakServer({ taakFalen: 1 });
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(80);
+  await klik(q('[data-testid="voorstel-opslaan"]'));
+  await rust();
+  check('eerste keer: actieplan deels, 1 taak bewaard door de server', q('[data-testid="voorstel-actieplan"]').dataset.status === 'deels' && s.open.size === 1 && s.taken.size === 1);
+  check('geen tweede banner naast de samenvatting', !q('[data-testid="actieplan-open"]'));
+
+  // VERVERSEN: alle schermstatus is weg, alleen de server weet nog iets.
+  await weg();
+  await toon(werkruimte(s));
+  await rust(60);
+  check('na verversen: banner met aantal en uitleg', !!q('[data-testid="actieplan-open"]') && q('[data-testid="actieplan-open"]').dataset.aantal === '1' && /nog niet compleet/.test(q('[data-testid="actieplan-open"]').textContent) && /geen dubbele taken/.test(q('[data-testid="actieplan-open"]').textContent));
+  check('de knop staat er', !!q('[data-testid="actieplan-open-opnieuw"]'));
+
+  // Mislukt: banner en knop blijven, melding zichtbaar.
+  s.herstelFalen = 1;
+  await klik(q('[data-testid="actieplan-open-opnieuw"]'));
+  await rust();
+  check('herstel mislukt: foutmelding, banner en knop blijven, taak nog open', /ongewijzigd/.test(q('[data-testid="actieplan-open-fout"]').textContent) && !!q('[data-testid="actieplan-open-opnieuw"]') && s.open.size === 1);
+
+  // Dubbelklik: één herstel-aanroep.
+  let gemeld = null;
+  await weg();
+  await toon(werkruimte(s, { onOpgeslagen: (u) => { gemeld = u; } }));
+  await rust(60);
+  const voor = s.log.filter(([n]) => n === 'herstelOpen').length;
+  await act(async () => {
+    const k = q('[data-testid="actieplan-open-opnieuw"]');
+    k.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    k.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await sleep(60);
+  });
+  check('dubbelklik: één herstel-aanroep, de browser stuurt alleen het project mee', s.log.filter(([n]) => n === 'herstelOpen').length === voor + 1 && JSON.stringify(s.log.filter(([n]) => n === 'herstelOpen').pop()[1]) === JSON.stringify({ projectId: PID }));
+  check('herstel lukt: 2 taken, wachtrij leeg, geen dubbelen, dekkingsplan ongewijzigd', s.taken.size === 2 && s.open.size === 0 && s.fundings.size === 2);
+  check('banner toont de bevestiging, knop weg', !!q('[data-testid="actieplan-open-klaar"]') && /aangevuld/.test(q('[data-testid="actieplan-open-klaar"]').textContent) && !q('[data-testid="actieplan-open-opnieuw"]'));
+  check('onOpgeslagen meldt het nieuwe actieplan (zodat de pagina herlaadt)', gemeld && gemeld.actieplan.status === 'klaar');
+
+  // Nog een verversing: niets meer open, geen banner.
+  await weg();
+  await toon(werkruimte(s));
+  await rust(60);
+  check('opnieuw verversen: geen banner meer', !q('[data-testid="actieplan-open"]'));
+}
+{
+  // Zonder migratie / tabel (leesOpen levert ok:false): geen banner, geen fout. Chat-ingang: nooit een banner.
+  const s = maakServer();
+  s.diensten.leesOpen = async () => ({ ok: false, aantal: 0 });
+  await weg();
+  await toon(werkruimte(s));
+  await rust(60);
+  check('tabel niet beschikbaar: geen banner en geen foutmelding', !q('[data-testid="actieplan-open"]') && !q('[role="alert"]'));
+
+  const s2 = maakServer();
+  s2.open.set('x|y', { titel: 'y' });
+  await weg();
+  await toon(werkruimte(s2, { startpunt: { regels: [{ type: 'regeling', id: ID1 }] } }));
+  await rust(60);
+  check('chat-ingang toont de projectbanner niet', !q('[data-testid="actieplan-open"]') && !s2.log.some(([n]) => n === 'leesOpen'));
+
+  // Een dienst zonder leesOpen (oudere testdiensten) breekt niets.
+  const s3 = maakServer();
+  delete s3.diensten.leesOpen;
+  await weg();
+  await toon(werkruimte(s3));
+  await rust(60);
+  check('diensten zonder leesOpen: scherm werkt gewoon', !!q('[data-testid="voorstel-werkruimte"]') && !q('[data-testid="actieplan-open"]'));
 }
 
 sectie('13. Statische eigenschappen van de client');

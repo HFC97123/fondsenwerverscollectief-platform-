@@ -59,6 +59,12 @@ export function resetGenereren(extra = {}) {
     bron: [],
     bronFout: null,
     bronSchrijfLog: [],
+    gebruikFout: null, // 'tabel-weg' (kompas_gebruik_log bestaat niet: PGRST205) | 'gooit' | 'hangt'
+    migratieC: true, // kolom voorstel_sleutel + unieke index (program_id, voorstel_sleutel) + wachtrijtabel aanwezig
+    wachtrij: [],
+    wachtrijFout: null, // 'schrijven' | 'tabel-weg'
+    wachtrijLog: [],
+    leesVertraging: false, // true: elke leesactie op taken wacht een macrotaak, zodat gelijktijdige verzoeken allebei lezen vóór er iemand schrijft
     documenten: [],
     ...extra,
   });
@@ -74,6 +80,20 @@ const from = (tabel) => {
   }
 
   if (tabel === 'subsidie_kompas_bron_controles') return bronFrom();
+  if (tabel === 'subsidie_kompas_actieplan_open') return wachtrijFrom();
+  if (tabel === 'kompas_gebruik_log') {
+    return {
+      insert(rij) {
+        if (w.gebruikFout === 'gooit') throw new Error('boem');
+        if (w.gebruikFout === 'hangt') return new Promise(() => {});
+        if (w.gebruikFout === 'tabel-weg') return Promise.resolve({ error: { code: 'PGRST205', message: "Could not find the table 'public.kompas_gebruik_log' in the schema cache" } });
+
+        w.gebruikRijen.push(rij);
+
+        return Promise.resolve({ error: null });
+      },
+    };
+  }
 
   if (tabel === 'subsidie_kompas_knowledge_items') {
     const f = {};
@@ -122,6 +142,49 @@ function bronFrom() {
   return b;
 }
 
+
+// In-memory wachtrij subsidie_kompas_actieplan_open voor de ADMIN-client. Unieke sleutel (program_id, sleutel) zoals in migratie C.
+function wachtrijFrom() {
+  const filters = {};
+  let inSleutels = null;
+  let op = 'select';
+  let lading = null;
+  const b = {
+    select() { return b; },
+    eq(k, v) { filters[k] = v; return b; },
+    in(k, v) { inSleutels = { k, v }; return b; },
+    limit() { return b; },
+    upsert(rijen) { op = 'upsert'; lading = Array.isArray(rijen) ? rijen : [rijen]; return b; },
+    delete() { op = 'delete'; return b; },
+    then(ok, nok) {
+      if (!w.migratieC || w.wachtrijFout === 'tabel-weg') return Promise.resolve({ data: null, error: { code: '42P01', message: 'relation does not exist' } }).then(ok, nok);
+
+      const past = (r) => Object.entries(filters).every(([k, v]) => r[k] === v) && (!inSleutels || inSleutels.v.includes(r[inSleutels.k]));
+
+      if (op === 'select') return Promise.resolve({ data: w.wachtrij.filter(past).map((r) => ({ ...r })), error: null }).then(ok, nok);
+
+      w.wachtrijLog.push({ op, lading, filters: { ...filters } });
+
+      if (w.wachtrijFout === 'schrijven') return Promise.resolve({ error: { code: 'XX000' } }).then(ok, nok);
+
+      if (op === 'upsert') {
+        for (const r of lading) {
+          const i = w.wachtrij.findIndex((x) => x.program_id === r.program_id && x.sleutel === r.sleutel);
+
+          if (i >= 0) w.wachtrij[i] = { ...w.wachtrij[i], ...r };
+          else w.wachtrij.push({ ...r });
+        }
+      } else {
+        w.wachtrij = w.wachtrij.filter((r) => !past(r));
+      }
+
+      return Promise.resolve({ error: null }).then(ok, nok);
+    },
+  };
+
+  return b;
+}
+
 const rpc = async (naam, args) => {
   if (naam === 'kompas_exclusieve_funders' && w.exclusiefFout) {
     w.rpcs.push(naam);
@@ -148,6 +211,40 @@ function gebruikersFrom(tabel) {
     select() { return b; },
     eq(k, v) { filters[k] = v; return b; },
     limit() { return b; },
+    upsert(rij, opties = {}) {
+      const rijen = Array.isArray(rij) ? rij : [rij];
+
+      w.dbSchrijfLog.push({ tabel, rijen, upsert: true });
+
+      const fout = w.dbFout?.actions;
+      const gemaakt = [];
+      let error = null;
+
+      if (fout) error = fout;
+      else if (tabel !== 'subsidie_kompas_program_actions') error = { code: 'XX000' };
+      else if (!w.migratieC) error = { code: 'PGRST204', message: "Could not find the 'voorstel_sleutel' column" };
+      else if (rijen.some((r) => !r.user_id || r.user_id !== w.user?.id)) error = { code: '42501', message: 'rls' };
+      else {
+        // Eén statement: ON CONFLICT (program_id, voorstel_sleutel) DO NOTHING. Sleutels die al bestaan (ook van een gelijktijdig verzoek) worden overgeslagen.
+        for (const r of rijen) {
+          const dubbel = w.db.actions.some((a) => a.program_id === r.program_id && a.voorstel_sleutel && a.voorstel_sleutel === r.voorstel_sleutel);
+
+          if (dubbel) {
+            if (opties.ignoreDuplicates !== true) { error = { code: '23505', message: 'dubbel' }; break; }
+            continue;
+          }
+
+          const nieuwRij = { id: `a0000000-0000-4000-8000-${String(w.db.actions.length + 1).padStart(12, '0')}`, ...r };
+
+          w.db.actions.push(nieuwRij);
+          gemaakt.push({ voorstel_sleutel: r.voorstel_sleutel });
+        }
+      }
+
+      const res = { data: error ? null : gemaakt, error };
+
+      return { select() { return Promise.resolve(res); } };
+    },
     insert(rij) {
       const rijen = Array.isArray(rij) ? rij : [rij];
 
@@ -159,6 +256,8 @@ function gebruikersFrom(tabel) {
 
         for (const r of rijen) {
           if (!r.user_id || r.user_id !== w.user?.id) return { error: { code: '42501', message: 'rls' }, data: null };
+          if (tabel === 'subsidie_kompas_program_actions' && 'voorstel_sleutel' in r && !w.migratieC) return { error: { code: 'PGRST204', message: 'kolom bestaat niet' }, data: null };
+          if (tabel === 'subsidie_kompas_program_actions' && r.voorstel_sleutel && w.db.actions.some((a) => a.program_id === r.program_id && a.voorstel_sleutel === r.voorstel_sleutel)) return { error: { code: '23505', message: 'dubbel' }, data: null };
 
           if (tabel === 'subsidie_kompas_program_funding') {
             const dubbel = w.db.funding.some((f) => f.program_id === r.program_id && ((r.scheme_id && f.scheme_id === r.scheme_id) || (r.funder_id && f.funder_id === r.funder_id) || (r.financier_naam && f.financier_naam && f.financier_naam.toLowerCase() === r.financier_naam.toLowerCase())));
@@ -181,7 +280,12 @@ function gebruikersFrom(tabel) {
       if (tabel === 'subsidie_kompas_program_actions') {
         if (w.dbFout?.actionsLezen) return Promise.resolve({ data: null, error: { code: 'XX000' } }).then(ok, nok);
 
-        return Promise.resolve({ data: w.db.actions.filter((a) => a.program_id === filters.program_id), error: null }).then(ok, nok);
+        const lees = () => ({ data: w.db.actions.filter((a) => a.program_id === filters.program_id).map((a) => ({ title: a.title, funding_id: a.funding_id })), error: null });
+
+        // Het antwoord is een momentopname: een gelijktijdig verzoek ziet de taken van de ander pas als die al zijn geschreven.
+        if (w.leesVertraging) { const stand = lees(); return new Promise((r) => setTimeout(r, 5)).then(() => stand).then(ok, nok); }
+
+        return Promise.resolve(lees()).then(ok, nok);
       }
 
       return Promise.resolve({ data: [], error: null }).then(ok, nok);

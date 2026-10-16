@@ -5732,6 +5732,7 @@ function schoneBronnen(bronnen: { title: string; url: string }[]): { title: stri
 // de status is altijd Interessant.
 // ===========================================================================
 const OPSLAAN_ACTIE = 'voorstel-opslaan';
+const ACTIEPLAN_HERSTEL_ACTIE = 'voorstel-actieplan-herstel';
 const STARTPUNT_ACTIE = 'voorstel-startpunt';
 const CONTROLEER_ACTIE = 'voorstel-controleer';
 const OPSLAAN_MAX_BODY_TEKENS = 30000;
@@ -5860,6 +5861,7 @@ type OpslagRegelUit = { sleutel: string; naam: string; status: 'opgeslagen' | 'b
 
 async function schrijfOpslag(
   client: any,
+  admin: any,
   b: SchrijfBasis,
   profileId: string,
   plan: { regels: Array<{ sleutel: string; type: 'regeling' | 'fonds'; id: string; naam: string; bedrag: number | null; staatAl: boolean }>; acties: Array<{ sleutel: string; regelSleutel: string | null; titel: string; financier: string; datum: string | null; prioriteit: string; toelichting: string }> },
@@ -5951,61 +5953,138 @@ async function schrijfOpslag(
   }
 
   // --- Taken: alleen voor regels die nu zijn opgeslagen (of, bij opnieuw proberen, al in het dekkingsplan staan) -------------------
-  const actieplan = { status: 'geen' as 'geen' | 'klaar' | 'deels' | 'mislukt', aangemaakt: 0, bestond: 0, mislukt: 0 };
   // Projecttaken (zonder regel) alleen als er minstens één regel is opgeslagen (of, bij opnieuw proberen, al in het dekkingsplan staat).
   const regelTaken = plan.acties.filter((a) => (a.regelSleutel ? fundingVan.has(a.regelSleutel) : fundingVan.size > 0)).map((a) => ({ fundingId: a.regelSleutel ? fundingVan.get(a.regelSleutel) ?? null : null, titel: a.titel, financier: a.financier, datum: a.datum, prioriteit: a.prioriteit, toelichting: a.toelichting }));
-  const teMaken = [...regelTaken, ...onlineTaken];
+  const actieplan = await schrijfTaken(client, admin, profileId, b.project.id, [...regelTaken, ...onlineTaken]);
 
-  if (teMaken.length) {
-    const { data: bestaande, error: leesFout } = await client.from('subsidie_kompas_program_actions').select('title, funding_id').eq('program_id', b.project.id).limit(1000);
+  return { regels, actieplan, suggesties: uitSuggesties };
+}
 
-    if (leesFout || !Array.isArray(bestaande)) {
-      // Zonder te weten wat er al staat zouden dubbele taken kunnen ontstaan: liever niets schrijven en opnieuw laten proberen.
-      actieplan.mislukt = teMaken.length;
-      actieplan.status = 'mislukt';
-    } else {
-      const sleutelVan = (titel: string, fundingId: string | null) => `${fundingId ?? ''}|${titel.trim().toLowerCase()}`;
-      const aanwezig = new Set<string>(bestaande.map((x: any) => sleutelVan(String(x.title ?? ''), x.funding_id ? String(x.funding_id) : null)));
-      const nieuw: any[] = [];
+// --- Taken van het actieplan: atomair en herstelbaar ---------------------------------------------------------------------------------
+// Elke taak krijgt een sleutel (financieringsregel + titel). Met migratie C (kolom voorstel_sleutel + unieke index per project) schrijft de database
+// ZELF geen tweede taak met dezelfde sleutel toe: INSERT ... ON CONFLICT DO NOTHING is atomair, dus gelijktijdige verzoeken (dubbelklik, twee
+// tabbladen, automatische herhaling) maken nooit dezelfde taak twee keer aan. Zonder die migratie valt het terug op de oude controle in code
+// (eerst lezen, dan schrijven), die bij exact gelijktijdige verzoeken niet waterdicht is; dat staat dan in het antwoord (atomair: false).
+// Taken die niet lukken worden door de SERVER bewaard in subsidie_kompas_actieplan_open, zodat "Actieplan opnieuw proberen" ook na verversen
+// bestaat. Zonder die tabel werkt opslaan gewoon door en blijft opnieuw proberen beperkt tot dit scherm (bewaard: false).
+type TaakIn = { fundingId: string | null; titel: string; financier: string; datum: string | null; prioriteit: string; toelichting: string };
+type ActieplanUit = { status: 'geen' | 'klaar' | 'deels' | 'mislukt'; aangemaakt: number; bestond: number; mislukt: number; bewaard: boolean; atomair: boolean };
 
-      for (const a of teMaken) {
-        const fundingId = a.fundingId;
-        const k = sleutelVan(a.titel, fundingId);
+const taakSleutel = (titel: string, fundingId: string | null) => `${fundingId ?? ''}|${titel.trim().toLowerCase()}`.slice(0, 400);
+// Foutcodes waaraan te zien is dat migratie C ontbreekt (kolom onbekend, geen passende unieke index).
+const MIGRATIE_C_ONTBREEKT = new Set(['42703', '42P10', 'PGRST204']);
 
-        if (aanwezig.has(k)) {
-          actieplan.bestond += 1;
-          continue;
-        }
+async function bewaarOpenTaken(admin: any, userId: string, programId: string, taken: TaakIn[]): Promise<boolean> {
+  try {
+    const { error } = await admin.from('subsidie_kompas_actieplan_open').upsert(
+      taken.map((t) => ({
+        user_id: userId,
+        program_id: programId,
+        funding_id: t.fundingId,
+        sleutel: taakSleutel(t.titel, t.fundingId),
+        title: t.titel.trim().slice(0, 200),
+        financier_label: t.financier ? t.financier.slice(0, 200) : null,
+        due_date: t.datum,
+        priority: t.prioriteit,
+        notes: t.toelichting ? t.toelichting.slice(0, 4000) : null,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: 'program_id,sleutel' },
+    );
 
-        aanwezig.add(k);
-        nieuw.push({
-          user_id: profileId,
-          program_id: b.project.id,
-          funding_id: fundingId,
-          title: a.titel,
-          financier_label: a.financier || null,
-          due_date: a.datum,
-          priority: a.prioriteit,
-          notes: a.toelichting || null,
-          status: 'todo',
-          source: 'chat',
-          proposed_at: new Date().toISOString(),
-        });
+    return !error;
+  } catch (_e) {
+    return false;
+  }
+}
+
+async function ruimOpenTakenOp(admin: any, programId: string, taken: TaakIn[]): Promise<void> {
+  try {
+    const sleutels = taken.map((t) => taakSleutel(t.titel, t.fundingId));
+
+    for (let i = 0; i < sleutels.length; i += 50) {
+      await admin.from('subsidie_kompas_actieplan_open').delete().eq('program_id', programId).in('sleutel', sleutels.slice(i, i + 50));
+    }
+  } catch (_e) {
+    /* best effort: een rij die blijft staan wordt bij de volgende poging als "bestaat al" opgeruimd */
+  }
+}
+
+async function schrijfTaken(client: any, admin: any, userId: string, programId: string, teMaken: TaakIn[]): Promise<ActieplanUit> {
+  const uit: ActieplanUit = { status: 'geen', aangemaakt: 0, bestond: 0, mislukt: 0, bewaard: true, atomair: true };
+
+  if (!teMaken.length) return uit;
+
+  const { data: bestaande, error: leesFout } = await client.from('subsidie_kompas_program_actions').select('title, funding_id').eq('program_id', programId).limit(1000);
+  let nieuw: TaakIn[] = [];
+  let mislukt: TaakIn[] = [];
+
+  if (leesFout || !Array.isArray(bestaande)) {
+    // Zonder te weten wat er al staat zouden dubbele taken kunnen ontstaan: liever niets schrijven en de taken bewaren voor opnieuw proberen.
+    mislukt = teMaken;
+  } else {
+    const aanwezig = new Set<string>(bestaande.map((x: any) => taakSleutel(String(x.title ?? ''), x.funding_id ? String(x.funding_id) : null)));
+
+    for (const a of teMaken) {
+      const k = taakSleutel(a.titel, a.fundingId);
+
+      if (aanwezig.has(k)) {
+        uit.bestond += 1;
+        continue;
       }
 
-      if (nieuw.length) {
-        const { error } = await client.from('subsidie_kompas_program_actions').insert(nieuw);
+      aanwezig.add(k);
+      nieuw.push(a);
+    }
 
-        if (error) actieplan.mislukt = nieuw.length;
-        else actieplan.aangemaakt = nieuw.length;
+    if (nieuw.length) {
+      const rij = (a: TaakIn, metSleutel: boolean) => ({
+        user_id: userId,
+        program_id: programId,
+        funding_id: a.fundingId,
+        title: a.titel,
+        financier_label: a.financier || null,
+        due_date: a.datum,
+        priority: a.prioriteit,
+        notes: a.toelichting || null,
+        status: 'todo',
+        source: 'chat',
+        proposed_at: new Date().toISOString(),
+        ...(metSleutel ? { voorstel_sleutel: taakSleutel(a.titel, a.fundingId) } : {}),
+      });
+      // Atomair: de database slaat een sleutel die al bestaat (ook als een gelijktijdig verzoek hem net heeft aangemaakt) stil over.
+      const { data: gemaakt, error } = await client
+        .from('subsidie_kompas_program_actions')
+        .upsert(nieuw.map((a) => rij(a, true)), { onConflict: 'program_id,voorstel_sleutel', ignoreDuplicates: true })
+        .select('voorstel_sleutel');
+
+      if (!error && Array.isArray(gemaakt)) {
+        uit.aangemaakt = gemaakt.length;
+        uit.bestond += nieuw.length - gemaakt.length;
+      } else if (error && MIGRATIE_C_ONTBREEKT.has(String(error.code))) {
+        // Migratie C is er nog niet: oude route (de controle hierboven in code), zonder databasegarantie.
+        uit.atomair = false;
+
+        const { error: oud } = await client.from('subsidie_kompas_program_actions').insert(nieuw.map((a) => rij(a, false)));
+
+        if (oud) mislukt = nieuw;
+        else uit.aangemaakt = nieuw.length;
+      } else {
+        mislukt = nieuw;
       }
-
-      actieplan.status = actieplan.mislukt === 0 ? 'klaar' : actieplan.aangemaakt + actieplan.bestond > 0 ? 'deels' : 'mislukt';
     }
   }
 
+  uit.mislukt = mislukt.length;
 
-  return { regels, actieplan, suggesties: uitSuggesties };
+  const gelukt = teMaken.filter((a) => !mislukt.includes(a));
+
+  if (mislukt.length) uit.bewaard = await bewaarOpenTaken(admin, userId, programId, mislukt);
+  if (gelukt.length) await ruimOpenTakenOp(admin, programId, gelukt);
+
+  uit.status = uit.mislukt === 0 ? 'klaar' : uit.aangemaakt + uit.bestond > 0 ? 'deels' : 'mislukt';
+
+  return uit;
 }
 // VOORSTEL-OPSLAAN-END
 
@@ -6562,7 +6641,7 @@ Deno.serve(async (req) => {
 
       if (!client) return json({ ok: false, reden: 'niet-geconfigureerd', error: 'Opslaan is nu niet mogelijk. Probeer het later opnieuw.', opgeslagen: false }, 503);
 
-      const uit = await schrijfOpslag(client, b, profileId, plan, suggesties, alleenActies);
+      const uit = await schrijfOpslag(client, admin, b, profileId, plan, suggesties, alleenActies);
 
       // Een controle die niet meer bij het huidige record past (of te oud is) wordt ook in de tabel als verouderd vastgelegd, zodat de
       // interface na opslaan niet "gecontroleerd" blijft tonen. Best effort: een fout hier verandert niets aan het opgeslagen dekkingsplan.
@@ -6597,6 +6676,60 @@ Deno.serve(async (req) => {
       console.error('[subsidie-kompas] voorstel_opslaan_fout');
 
       return json({ ok: false, reden: 'onverwachte-fout', error: 'Opslaan is niet gelukt. Er is niets dubbel opgeslagen; probeer het opnieuw.', opgeslagen: false }, 500);
+    }
+  }
+
+  // Actieplan opnieuw proberen, ook na verversen: de server maakt de taken aan die hij zelf als "nog niet aangemaakt" heeft bewaard
+  // (subsidie_kompas_actieplan_open). De browser stuurt alleen het project mee en kan dus geen taken kiezen of verzinnen.
+  if (body.mode === ACTIEPLAN_HERSTEL_ACTIE) {
+    if (!profileId) {
+      return json({ error: 'Log in om het actieplan opnieuw te proberen.' }, 401);
+    }
+
+    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') {
+      return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
+    }
+
+    if (typeof body.projectId !== 'string' || !UUID_RE.test(body.projectId)) {
+      return json({ error: 'Ongeldige aanvraag.' }, 400);
+    }
+
+    try {
+      const { tierConfigVoor } = await import('../_shared/tierConfig.ts');
+
+      if (!tierConfigVoor(tier, isAdmin).dekkingsplan) {
+        return json({ ok: false, reden: 'niet-beschikbaar-voor-abonnement', error: 'Het dekkingsplan met Subsidiekompas is een Pro- en Premium-functie.' }, 403);
+      }
+
+      const { data: project } = await admin.from('subsidie_kompas_programs').select('id').eq('id', body.projectId).eq('user_id', profileId).is('archived_at', null).maybeSingle();
+
+      if (!project) return json({ ok: false, reden: 'project-niet-gevonden', error: 'Dit project is niet gevonden.' }, 404);
+
+      const client = gebruikersClient(authHeader);
+
+      if (!client) return json({ ok: false, reden: 'niet-geconfigureerd', error: 'Opnieuw proberen is nu niet mogelijk. Probeer het later opnieuw.' }, 503);
+
+      const { data: open, error: leesFout } = await admin
+        .from('subsidie_kompas_actieplan_open')
+        .select('funding_id, title, financier_label, due_date, priority, notes')
+        .eq('user_id', profileId)
+        .eq('program_id', project.id)
+        .limit(200);
+
+      if (leesFout || !Array.isArray(open)) {
+        return json({ ok: false, reden: 'wachtrij-onleesbaar', error: 'Het actieplan kon niet worden gelezen. Probeer het later opnieuw.' }, 503);
+      }
+
+      const taken: TaakIn[] = open.map((r: any) => ({ fundingId: r.funding_id ? String(r.funding_id) : null, titel: String(r.title ?? ''), financier: String(r.financier_label ?? ''), datum: r.due_date ? String(r.due_date) : null, prioriteit: String(r.priority ?? 'normal'), toelichting: String(r.notes ?? '') }));
+      const actieplan = await schrijfTaken(client, admin, profileId, project.id, taken);
+
+      console.log('[subsidie-kompas] voorstel_actieplan_herstel', JSON.stringify({ tier: isAdmin ? 'admin' : tier, open: taken.length, status: actieplan.status, aangemaakt: actieplan.aangemaakt, bestond: actieplan.bestond, mislukt: actieplan.mislukt, atomair: actieplan.atomair }));
+
+      return json({ ok: true, actieplan, openstaand: actieplan.mislukt });
+    } catch (_e) {
+      console.error('[subsidie-kompas] voorstel_actieplan_herstel_fout');
+
+      return json({ ok: false, reden: 'onverwachte-fout', error: 'Opnieuw proberen is niet gelukt. Uw dekkingsplan en bestaande taken zijn ongewijzigd; probeer het opnieuw.' }, 500);
     }
   }
 

@@ -148,3 +148,32 @@ export async function leesBronControles(projectId) {
     return { ok: false, rijen: [] };
   }
 }
+
+// Actieplan opnieuw proberen, ook na verversen: de taken die de SERVER als "nog niet aangemaakt" heeft bewaard (tabel subsidie_kompas_actieplan_open,
+// alleen lezen voor het lid). Een fout, of een tabel die er (nog) niet is, geeft { ok: false, aantal: 0 }: dan is er niets om opnieuw te proberen.
+export async function leesOpenActieplan(projectId) {
+  if (!supabase || typeof projectId !== 'string' || !projectId) {
+    return { ok: false, aantal: 0 };
+  }
+
+  try {
+    const { data, error } = await supabase.from('subsidie_kompas_actieplan_open').select('id').eq('program_id', projectId).limit(200);
+
+    if (error || !Array.isArray(data)) {
+      return { ok: false, aantal: 0 };
+    }
+
+    return { ok: true, aantal: data.length };
+  } catch (e) {
+    return { ok: false, aantal: 0 };
+  }
+}
+
+// De server maakt de bewaarde open taken aan. De browser stuurt alleen het project mee: geen taken, geen regels, geen datums.
+export function vraagActieplanHerstel({ projectId }) {
+  if (typeof projectId !== 'string' || !projectId) {
+    return Promise.resolve({ ok: false, reden: 'fout', melding: ALGEMENE_FOUT, antwoord: null });
+  }
+
+  return roep({ mode: 'voorstel-actieplan-herstel', projectId });
+}

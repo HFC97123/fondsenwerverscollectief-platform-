@@ -49,7 +49,7 @@ const staat = () => {
   w.regelingen.forEach((r) => { bronnen[r.regeling_id] = { naam: r.naam, funder: r.funder_naam, website: r.funder_website, deadline: r.deadline_datum }; });
   w.funders.forEach((f) => { bronnen[f.funder_id] = { naam: f.funder_naam, funder: f.funder_naam, website: f.funder_website, deadline: null }; });
 
-  return { funding: w.db.funding.map(lid), actions: w.db.actions.map(lid), bron: w.bron.map(lid), bronnen };
+  return { funding: w.db.funding.map(lid), actions: w.db.actions.map(lid), bron: w.bron.map(lid), open: w.wachtrij.map(lid), bronnen };
 };
 
 async function serverCall(body) {
@@ -77,7 +77,7 @@ const server = http.createServer((req, res) => {
     let html = readFileSync(join(WEB, 'index.html'), 'utf8');
     const patch = `<script>window.__STAAT=${JSON.stringify(staat())};window.__SEED_PATCH=function(seed,h){var S=window.__STAAT,T=seed.tables,P=h.P2;
       Object.assign(T.subsidie_kompas_programs.find(function(p){return p.id===P}),{name:'Rotterdam Beats',description:'Een muziekproject voor jongeren in Rotterdam.',goals:'Talentontwikkeling',activities:'Workshops en optredens',location:'Rotterdam',target_groups:'Jongeren',budget_total:100000,own_contribution:20000});
-      T.subsidie_kompas_program_actions=S.actions;T.subsidie_kompas_bron_controles=S.bron;
+      T.subsidie_kompas_program_actions=S.actions;T.subsidie_kompas_bron_controles=S.bron;T.subsidie_kompas_actieplan_open=S.open;
       T.subsidie_kompas_program_funding=T.subsidie_kompas_program_funding.filter(function(r){return r.program_id!==P}).concat(S.funding);
       Object.assign(seed.bronnen,S.bronnen);};</script>`;
 
@@ -120,6 +120,7 @@ async function nieuwePagina(tier = 'pro', viewport = { width: 1280, height: 1000
       d.subsidie_kompas_program_funding = d.subsidie_kompas_program_funding.filter((x) => x.program_id !== P).concat(r.staat.funding);
       d.subsidie_kompas_program_actions = r.staat.actions;
       d.subsidie_kompas_bron_controles = r.staat.bron;
+      d.subsidie_kompas_actieplan_open = r.staat.open;
       Object.assign(window.__SEED.bronnen, r.staat.bronnen);
 
       if (r.status >= 200 && r.status < 300) return { data: r.json, error: null };
@@ -225,6 +226,63 @@ sectie('1. Pro: voorstel maken, controleren, opslaan na een fout, actieplan opni
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------
+sectie('1b. Actieplan mislukt, PAGINA VERVERST: "Actieplan opnieuw proberen" blijft beschikbaar (door de server bewaard)');
+{
+  resetGenereren({ ...pool(), profile: PRO, dbActief: true });
+  aanroepen = [];
+  faal = { opslaan: 0 };
+  const { context, page } = await nieuwePagina('pro');
+
+  check('begin: geen banner voor open taken', (await t(page, 'actieplan-open').count()) === 0);
+  await t(page, 'voorstel-start-knop').click();
+  await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 20000 }).catch(() => {});
+  w.dbFout = { actions: { code: 'XX000' } };
+  await t(page, 'voorstel-opslaan').click();
+  await page.waitForSelector('[data-testid="voorstel-opgeslagen"]', { timeout: 15000 });
+
+  const n = w.db.funding.length;
+  const open = w.wachtrij.length;
+
+  check('dekkingsplan staat, geen enkele taak, de server bewaarde alle open taken', n >= 2 && w.db.actions.length === 0 && open >= 8, `${n} ${w.db.actions.length} ${open}`);
+
+  // VERVERSEN: de browser start helemaal opnieuw; alleen de database blijft.
+  await page.reload();
+  await page.waitForSelector('[data-testid="actieplan-open"]', { timeout: 15000 });
+  await page.screenshot({ path: join(SHOTS, '08-banner-na-verversen.png'), fullPage: true });
+  check('na verversen: banner met het aantal open taken en uitleg', (await t(page, 'actieplan-open').getAttribute('data-aantal')) === String(open) && /nog niet compleet/.test(await tekstVan(page, 'actieplan-open')), await tekstVan(page, 'actieplan-open'));
+  check('na verversen: de knop "Actieplan opnieuw proberen" is er', (await t(page, 'actieplan-open-opnieuw').count()) === 1);
+  check('na verversen: het dekkingsplan toont de opgeslagen regels', (await t(page, 'pf-regel').count()) === n);
+
+  // Opnieuw proberen terwijl de fout nog actief is: eerlijke melding, alles blijft staan.
+  aanroepen = [];
+  await t(page, 'actieplan-open-opnieuw').click();
+  await page.waitForSelector('[data-testid="actieplan-open-fout"], [data-testid="actieplan-open"][data-aantal]', { timeout: 10000 });
+  await sleep(600);
+  check('herstel terwijl de fout nog actief is: geen taken, wachtrij en knop blijven', w.db.actions.length === 0 && w.wachtrij.length === open && (await t(page, 'actieplan-open-opnieuw').count()) === 1, `${w.db.actions.length} ${w.wachtrij.length}`);
+
+  // Fout opgelost, nu gaat de browser alleen het project-id sturen.
+  w.dbFout = null;
+  await t(page, 'actieplan-open-opnieuw').dblclick();
+  await page.waitForSelector('[data-testid="actieplan-open-klaar"]', { timeout: 15000 });
+  await page.screenshot({ path: join(SHOTS, '09-banner-hersteld.png'), fullPage: true });
+  const herstelAanroepen = aanroepen.filter((m) => m === 'voorstel-actieplan-herstel').length;
+
+  check('dubbelklik op de knop: geen tweede gelijktijdige aanroep', herstelAanroepen <= 2, String(herstelAanroepen));
+  check('taken aangemaakt, wachtrij leeg, geen dubbelen, dekkingsplan ongewijzigd', w.db.actions.length >= 8 && w.wachtrij.length === 0 && dubbelen() === 0 && w.db.funding.length === n, `${w.db.actions.length} ${w.wachtrij.length} ${dubbelen()}`);
+  check('elke taak heeft de sleutel van de database (atomaire ontdubbeling)', w.db.actions.every((a) => typeof a.voorstel_sleutel === 'string' && a.voorstel_sleutel.includes('|')));
+  check('elke regel heeft meerdere vervolgstappen', w.db.funding.every((f) => w.db.actions.filter((x) => x.funding_id === f.id).length >= 4));
+
+  // Nogmaals verversen: banner weg, taken zichtbaar.
+  await page.reload();
+  await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
+  await sleep(600);
+  check('na nog een verversing: geen banner meer, taken zichtbaar in Acties & deadlines', (await t(page, 'actieplan-open').count()) === 0 && (await t(page, 'ap-taak').count()) >= 1);
+  check('geen pageerrors', page.fouten.length === 0, page.fouten.join(' | '));
+  await context.close();
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------
 sectie('2. Premium: online suggestie met beoordelingsroute (onzekere status behouden) en Bespreek-link');
 {
   const klein = { regelingen: [regeling({ naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', min: 5000, max: 20000, id: A1 })], funders: [], dns: { [`www.${H1}`]: ['93.184.216.34'] }, paginas: { [`https://www.${H1}/aanvragen`]: GOED } };
@@ -289,7 +347,7 @@ sectie('3. Verversen terwijl het actieplan was mislukt: wat kan het lid dan nog?
   await sleep(500);
   const afgeleid = await t(page, 'ap-afgeleid-actie').count();
 
-  check('na verversen: de regels staan er, en per regel een afgeleide actie met "Maak er een taak van" (de knop Opnieuw proberen hoort bij de sessie)', (await t(page, 'pf-regel').count()) === n && afgeleid >= n && (await t(page, 'ap-maak-taak').count()) >= n, `${afgeleid}`);
+  check('na verversen: de regels staan er, en per regel een afgeleide actie met "Maak er een taak van" en ook de bewaarde "Actieplan opnieuw proberen" van de server', (await t(page, 'pf-regel').count()) === n && afgeleid >= n && (await t(page, 'ap-maak-taak').count()) >= n && (await t(page, 'actieplan-open-opnieuw').count()) === 1, `${afgeleid}`);
   await page.screenshot({ path: join(SHOTS, '20-na-verversen-zonder-taken.png'), fullPage: true });
   await t(page, 'voorstel-start-knop').click();
   await page.waitForSelector('[data-testid="voorstel-resultaat"], [data-testid="voorstel-fout"]', { timeout: 20000 });

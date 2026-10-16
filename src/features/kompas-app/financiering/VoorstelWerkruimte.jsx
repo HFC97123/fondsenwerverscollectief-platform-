@@ -3,7 +3,7 @@
 // toont en past aan. Er wordt NIETS opgeslagen vóór de klik "Opslaan in dit project". De logica staat in voorstelWerk.js (zuiver, getest).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
-import { vraagBronControle, vraagVoorstelAanvullen, vraagVoorstelGenereren, vraagVoorstelOpslaan, vraagVoorstelStartpunt } from '../../../data/services/voorstelGenereren.js';
+import { leesOpenActieplan, vraagActieplanHerstel, vraagBronControle, vraagVoorstelAanvullen, vraagVoorstelGenereren, vraagVoorstelOpslaan, vraagVoorstelStartpunt } from '../../../data/services/voorstelGenereren.js';
 import BespreekLink from './BespreekLink.jsx';
 import FinancieringsRegel from './FinancieringsRegel.jsx';
 import VoorstelStart from './VoorstelStart.jsx';
@@ -24,6 +24,8 @@ import {
   draaiBronControles,
   draaiVoorstelFlow,
   herstelActieplan,
+  herstelOpenActieplan,
+  leesOpenTaken,
   maakWerkModel,
   teControleren,
   voerOpslagUit,
@@ -51,6 +53,8 @@ const STANDAARD_DIENSTEN = {
   startpunt: vraagVoorstelStartpunt,
   controleer: vraagBronControle,
   opslaan: vraagVoorstelOpslaan,
+  leesOpen: leesOpenActieplan,
+  herstelOpen: vraagActieplanHerstel,
 };
 
 function Voortgang({ stap }) {
@@ -185,10 +189,34 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
   const [opslagFouten, setOpslagFouten] = useState(null); // { regelFouten, algemeen, melding }
   const [actieplanBezig, setActieplanBezig] = useState(false);
   const [actieplanFout, setActieplanFout] = useState('');
+  const [openAantal, setOpenAantal] = useState(0); // taken die de server voor opnieuw proberen heeft bewaard (blijft na verversen)
+  const [openBezig, setOpenBezig] = useState(false);
+  const [openFout, setOpenFout] = useState('');
+  const [openKlaar, setOpenKlaar] = useState('');
+  const dienstenRef = useRef(diensten);
+  const openRef = useRef(false);
   const bezigRef = useRef(false);
   const actieplanRef = useRef(false);
   const generatieRef = useRef(0);
   const projectId = project && project.id;
+
+  dienstenRef.current = diensten;
+
+  // Na verversen: staan er taken van een eerder, niet afgemaakt actieplan klaar bij de server? Dan blijft "Actieplan opnieuw proberen" beschikbaar.
+  // Niet tijdens een lopende flow en niet vanuit de chat; in de samenvatting na opslaan staat dezelfde knop al.
+  useEffect(() => {
+    if (startpunt || !projectId || fase === 'opslaan' || fase === 'opgeslagen' || fase === 'bezig') return undefined;
+
+    let actief = true;
+
+    leesOpenTaken({ projectId, diensten: dienstenRef.current }).then((n) => {
+      if (actief) setOpenAantal(n);
+    });
+
+    return () => {
+      actief = false;
+    };
+  }, [projectId, fase, startpunt]);
 
   // Broncontroles: aparte aanroepen NA het tonen van het voorstel. Een nieuwe start of sluiten maakt late antwoorden ongeldig.
   const startControles = useCallback(
@@ -379,6 +407,38 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
     }
   };
 
+  const openOpnieuw = async () => {
+    if (openRef.current || !projectId) return;
+
+    openRef.current = true;
+    setOpenBezig(true);
+    setOpenFout('');
+    setOpenKlaar('');
+
+    try {
+      const res = await herstelOpenActieplan({ projectId, diensten: dienstenRef.current });
+
+      if (res.ok) {
+        setOpenAantal(res.openstaand);
+
+        if (res.openstaand === 0) {
+          const n = res.aangemaakt + res.bestond;
+
+          setOpenKlaar(`Het actieplan is aangevuld: ${n} ${n === 1 ? 'taak staat' : 'taken staan'} nu bij uw financiers.`);
+        } else {
+          setOpenFout(`Niet alles is gelukt: ${res.openstaand} ${res.openstaand === 1 ? 'taak ontbreekt' : 'taken ontbreken'} nog. Probeer het opnieuw.`);
+        }
+
+        if (typeof onOpgeslagen === 'function') onOpgeslagen({ actieplan: { status: res.status, aangemaakt: res.aangemaakt, bestond: res.bestond, mislukt: res.openstaand } });
+      } else {
+        setOpenFout(res.melding);
+      }
+    } finally {
+      openRef.current = false;
+      setOpenBezig(false);
+    }
+  };
+
   const nietsGekozen = selectie ? selectie.regels.size === 0 && selectie.suggesties.size === 0 : true;
   const heeftFout = totaal ? Object.values(totaal.fouten).includes('ongeldig') : false;
   const fouten = opslagFouten || { regelFouten: {}, algemeen: null, melding: '' };
@@ -387,6 +447,33 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
   return (
     <div data-testid="voorstel-werkruimte" data-fase={fase} data-ingang={startpunt ? 'chat' : 'project'} style={css('display: flex; flex-direction: column; gap: 18px;')}>
       {metStartknop && <VoorstelStart project={project} beschikbaar={beschikbaar} opgeslagen={opgeslagen} bezig={fase === 'bezig' || fase === 'opslaan'} onStart={start} />}
+
+      {!startpunt && fase !== 'opgeslagen' && (openAantal > 0 || openKlaar) && (
+        <section data-testid="actieplan-open" data-aantal={openAantal} style={css(`${TEKST} padding: 12px 16px; border-radius: 14px; background: ${openAantal > 0 ? '#FBF1E3' : '#F3F9F5'}; color: ${openAantal > 0 ? '#8A5A16' : '#2C4A5E'}; display: flex; flex-direction: column; gap: 8px;`)}>
+          {openAantal > 0 && (
+            <div>
+              <strong>Het actieplan van Subsidiekompas is nog niet compleet:</strong> {openAantal} {openAantal === 1 ? 'taak is' : 'taken zijn'} nog niet aangemaakt. Uw dekkingsplan is opgeslagen en blijft zoals het is. U kunt alleen het actieplan opnieuw laten aanmaken; er komen geen dubbele taken.
+            </div>
+          )}
+          {openKlaar && openAantal === 0 && (
+            <div data-testid="actieplan-open-klaar" role="status">
+              <strong>{openKlaar}</strong>
+            </div>
+          )}
+          {openFout && (
+            <div role="alert" data-testid="actieplan-open-fout" style={css('color: #9E3B2C;')}>
+              {openFout}
+            </div>
+          )}
+          {openAantal > 0 && (
+            <div>
+              <button type="button" data-testid="actieplan-open-opnieuw" disabled={openBezig} onClick={openOpnieuw} style={css(KNOP_STIL)}>
+                {openBezig ? 'Actieplan wordt aangemaakt…' : 'Actieplan opnieuw proberen'}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       {fase === 'bezig' && <Voortgang stap={stap} />}
 

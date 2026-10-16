@@ -29,6 +29,8 @@ export type GebruikTier = 'free' | 'pro' | 'premium' | 'admin';
 const TIERS: readonly GebruikTier[] = ['free', 'pro', 'premium', 'admin'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const GEBRUIK_TABEL = 'kompas_gebruik_log';
+// Een database die niet antwoordt mag het antwoord aan het lid nooit ophouden: na deze tijd geven we het vastleggen op (de meting is dan mislukt).
+export const GEBRUIK_MAX_WACHT_MS = 1500;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Prijzen: ÉÉN plek. Bij een prijswijziging van de leverancier alleen hier aanpassen.
@@ -157,7 +159,15 @@ export async function legGebruik(admin: any, inv: GebruikInvoer): Promise<boolea
 
     if (!rij || !admin || typeof admin.from !== 'function') return false;
 
-    const { error } = await admin.from(GEBRUIK_TABEL).insert(rij);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const verlopen = new Promise<{ error: { code: string } }>((klaar) => {
+      timer = setTimeout(() => klaar({ error: { code: 'timeout' } }), GEBRUIK_MAX_WACHT_MS);
+    });
+    const uitkomst = await Promise.race([Promise.resolve(admin.from(GEBRUIK_TABEL).insert(rij)), verlopen]);
+
+    clearTimeout(timer);
+
+    const error = (uitkomst as any)?.error;
 
     if (error) {
       console.error('[subsidie-kompas] gebruik_vastleggen_mislukt'); // vaste tekst: geen inhoud, geen foutdetails met gegevens
