@@ -319,7 +319,8 @@ export default function VoorstelWerkruimte({
       setStap(startpunt ? STAP.VOORBEREIDEN : STAP.ONDERZOEKEN);
 
       const terugNaarProfiel = (tekstFout, tekstMelding) => {
-        setMelding(tekstFout || tekstMelding || 'Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen.');
+        // Een technische fout krijgt een vaste, begrijpelijke tekst; een inhoudelijke uitleg (bijv. geen passende fondsen) blijft staan.
+        setMelding(tekstMelding || (tekstFout ? 'Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen. Probeer het opnieuw.' : 'Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen.'));
         setFase('fout');
       };
 

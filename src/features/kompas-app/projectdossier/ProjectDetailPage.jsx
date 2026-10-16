@@ -5,7 +5,7 @@
 // - Projectfinanciering gebruikt subsidie_kompas_program_funding (via kompas_dekkingsplan) en dezelfde
 //   rekenmodule als het Dashboard; er is geen tweede waarheid.
 // - Documenten en Gesprekken tonen bestaande gegevens van dit project (geen nieuwe opslag).
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
 import { useApp } from '../useKompasApp.js';
@@ -260,6 +260,19 @@ export default function ProjectDetailPage({ projectId }) {
   const tabRefs = useRef({});
   const [bewerk, setBewerkState] = useState(leesBewerk);
   const [opgeslagen, setOpgeslagen] = useState('');
+
+  // Een link binnen dezelfde pagina (bijv. "Projectprofiel aanpassen" vanuit Projectfinanciering) verandert alleen de hash:
+  // tab en bewerkformulier volgen dan de URL.
+  useEffect(() => {
+    const volg = () => {
+      setTab(leesTab());
+      setBewerkState(leesBewerk());
+    };
+
+    window.addEventListener('hashchange', volg);
+
+    return () => window.removeEventListener('hashchange', volg);
+  }, []);
 
   const setBewerk = useCallback((aan, melding) => {
     setBewerkState(aan);
