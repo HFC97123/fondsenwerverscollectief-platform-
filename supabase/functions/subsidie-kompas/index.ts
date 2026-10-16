@@ -71,6 +71,23 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// Servervlag van de voorstelflow (VOORSTEL_GENEREREN en VOORSTEL_PREVIEW), met een testerslijst. Bewust in dit bestand en zonder import: de chat-opstart blijft
+// onaangetast (zie de statische controle in de tests).
+//   'aan'      alle ingelogde Pro- en Premium-leden (de tier-controle blijft daarnaast gelden);
+//   'testers'  uitsluitend gebruikers in de secret VOORSTEL_TESTERS (komma-gescheiden gebruikers-id's, uuid, maximaal 25);
+//   alles anders (leeg, afwezig, typefout) = UIT. Faalt dicht: een typefout opent nooit voor iedereen. Zonder geldige gebruiker altijd UIT.
+const VLAG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function voorstelVlagAan(vlag: string | undefined | null, testersRuw: string | undefined | null, gebruikerId: string | null | undefined): boolean {
+  if (typeof gebruikerId !== 'string' || !VLAG_UUID_RE.test(gebruikerId)) return false;
+  if (vlag === 'aan') return true;
+  if (vlag !== 'testers' || typeof testersRuw !== 'string') return false;
+
+  const testers = testersRuw.split(',').map((d) => d.trim().toLowerCase()).filter((d) => VLAG_UUID_RE.test(d)).slice(0, 25);
+
+  return testers.includes(gebruikerId.toLowerCase());
+}
+
 const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-4o';
 
 // STAP 3 (websearch, 2026-09-13): apart, eigen model uitsluitend voor de
@@ -6788,7 +6805,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Log in om een dekkingsplan op te slaan.' }, 401);
     }
 
-    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') {
+    if (!voorstelVlagAan(Deno.env.get('VOORSTEL_GENEREREN'), Deno.env.get('VOORSTEL_TESTERS'), profileId)) {
       return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
     }
 
@@ -6919,7 +6936,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Log in om het actieplan opnieuw te proberen.' }, 401);
     }
 
-    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') {
+    if (!voorstelVlagAan(Deno.env.get('VOORSTEL_GENEREREN'), Deno.env.get('VOORSTEL_TESTERS'), profileId)) {
       return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
     }
 
@@ -6972,7 +6989,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Log in om een dekkingsplan voor te bereiden.' }, 401);
     }
 
-    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') {
+    if (!voorstelVlagAan(Deno.env.get('VOORSTEL_GENEREREN'), Deno.env.get('VOORSTEL_TESTERS'), profileId)) {
       return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
     }
 
@@ -7045,7 +7062,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Log in om een bron te laten controleren.' }, 401);
     }
 
-    if (Deno.env.get('VOORSTEL_PREVIEW') !== 'aan') {
+    if (!voorstelVlagAan(Deno.env.get('VOORSTEL_PREVIEW'), Deno.env.get('VOORSTEL_TESTERS'), profileId)) {
       return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
     }
 
@@ -7168,7 +7185,7 @@ Deno.serve(async (req) => {
   // bijgewerkt als `ookHandmatig: true` uitdrukkelijk is meegestuurd; de standaard is dat handmatige wijzigingen blijven staan.
   if (body.mode === ACTIEPLAN_HERPLAN_ACTIE) {
     if (!profileId) return json({ error: 'Log in om het actieplan te herplannen.' }, 401);
-    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
+    if (!voorstelVlagAan(Deno.env.get('VOORSTEL_GENEREREN'), Deno.env.get('VOORSTEL_TESTERS'), profileId)) return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
     if (typeof body.projectId !== 'string' || !UUID_RE.test(body.projectId)) return json({ error: 'Ongeldige aanvraag.' }, 400);
     if (body.toepassen !== undefined && (!Array.isArray(body.toepassen) || body.toepassen.length > 100 || body.toepassen.some((x: unknown) => typeof x !== 'string' || !UUID_RE.test(x)))) return json({ error: 'Ongeldige aanvraag.' }, 400);
 
@@ -7306,7 +7323,7 @@ Deno.serve(async (req) => {
   // Zoekprofiel samenstellen (projectroute en chatroute): schrijft niets.
   if (body.mode === ZOEKPROFIEL_ACTIE) {
     if (!profileId) return json({ error: 'Log in om een zoekprofiel op te stellen.' }, 401);
-    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
+    if (!voorstelVlagAan(Deno.env.get('VOORSTEL_GENEREREN'), Deno.env.get('VOORSTEL_TESTERS'), profileId)) return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
     if (typeof body.projectId !== 'string' || !UUID_RE.test(body.projectId)) return json({ error: 'Ongeldige aanvraag.' }, 400);
     if (body.berichten !== undefined && (!Array.isArray(body.berichten) || body.berichten.length > ZOEKPROFIEL_MAX_BERICHTEN)) return json({ error: 'Ongeldige aanvraag.' }, 400);
 
@@ -7368,7 +7385,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Log in om een dekkingsplan te laten voorstellen.' }, 401);
     }
 
-    if (Deno.env.get('VOORSTEL_GENEREREN') !== 'aan') {
+    if (!voorstelVlagAan(Deno.env.get('VOORSTEL_GENEREREN'), Deno.env.get('VOORSTEL_TESTERS'), profileId)) {
       return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
     }
 
@@ -7608,7 +7625,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Log in om een voorstel te bekijken.' }, 401);
     }
 
-    if (Deno.env.get('VOORSTEL_PREVIEW') !== 'aan') {
+    if (!voorstelVlagAan(Deno.env.get('VOORSTEL_PREVIEW'), Deno.env.get('VOORSTEL_TESTERS'), profileId)) {
       return json({ error: 'Deze functie is nog niet beschikbaar.' }, 404);
     }
 

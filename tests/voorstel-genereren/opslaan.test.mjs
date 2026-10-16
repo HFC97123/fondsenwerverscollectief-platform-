@@ -254,7 +254,7 @@ sectie('8. Statische eigenschappen van het opslaan-blok');
   check('de servicerol schrijft alleen in de broncontroles (upsert, update naar verouderd) en de wachtrij open taken (upsert, delete)', adminSchrijft.length > 0 && adminSchrijft.every((x) => ['subsidie_kompas_bron_controles.upsert', 'subsidie_kompas_bron_controles.update', 'subsidie_kompas_actieplan_open.upsert', 'subsidie_kompas_actieplan_open.delete'].includes(x)) && projectBlok.length > 0, JSON.stringify(adminSchrijft));
   check('status is altijd Interessant: geen toegekend of aangevraagd', !/status: '(awarded|submitted|preparing)'/.test(blok) && (blok.match(/status: 'interesting'/g) || []).length >= 2);
   check('de tier en het dekkingsdoel komen van de server', /tierConfigVoor|b\.config/.test(blok) && !/body\.tier|body\.dekkingsdoel|body\.config|body\.acties|body\.voorstel/.test(blok));
-  check('de flag VOORSTEL_GENEREREN moet "aan" zijn', /Deno\.env\.get\('VOORSTEL_GENEREREN'\) !== 'aan'/.test(blok));
+  check('de flag VOORSTEL_GENEREREN gaat via voorstelVlagAan (aan of testers)', /!voorstelVlagAan\(Deno\.env\.get\('VOORSTEL_GENEREREN'\), Deno\.env\.get\('VOORSTEL_TESTERS'\), profileId\)/.test(blok));
   check('dynamische imports alleen uit ../_shared', [...blok.matchAll(/import\('([^']+)'\)/g)].every((m) => m[1].startsWith('../_shared/')));
   check('geen taalmodel, geen netwerk in dit blok', !/fetch\(|chat\/completions|openai/i.test(blok));
 }

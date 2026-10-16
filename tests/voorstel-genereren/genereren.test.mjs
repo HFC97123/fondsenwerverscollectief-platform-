@@ -329,7 +329,7 @@ sectie('9. Statische eigenschappen van het genereren-blok');
   check('de tier komt uit de server (tierConfigVoor), nooit uit het verzoek', /tierConfigVoor\(tier, isAdmin\)/.test(blok) && !/body\.tier|body\.dekkingsdoel|body\.config/.test(blok));
   check('dynamische imports alleen uit ../_shared', [...blok.matchAll(/import\('([^']+)'\)/g)].every((m) => m[1].startsWith('../_shared/')));
   check('geen statische import van _shared in index.ts (chat-opstart onaangetast)', !/^import .*_shared/m.test(bron));
-  check('standaard uit: de flag VOORSTEL_GENEREREN moet "aan" zijn', /Deno\.env\.get\('VOORSTEL_GENEREREN'\) !== 'aan'/.test(blok));
+  check('standaard uit: de flag VOORSTEL_GENEREREN gaat via voorstelVlagAan (aan of testers)', /!voorstelVlagAan\(Deno\.env\.get\('VOORSTEL_GENEREREN'\), Deno\.env\.get\('VOORSTEL_TESTERS'\), profileId\)/.test(blok));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

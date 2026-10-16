@@ -252,7 +252,7 @@ sectie('7. Statische contracten: niets gekoppeld, niets geactiveerd');
   const modes = [...index.matchAll(/mode\s*===\s*['"]((?:voorstel|verificatie|verifieer)[a-z-]*)['"]/g)].map((m) => m[1]);
 
   check('index.ts kent precies een voorstel-/verificatiemode: voorstel-preview', modes.length === 1 && modes[0] === 'voorstel-preview', JSON.stringify(modes));
-  check('de mode staat standaard uit (omgevingsvlag VOORSTEL_PREVIEW)', /Deno\.env\.get\('VOORSTEL_PREVIEW'\) !== 'aan'/.test(index));
+  check('de mode staat standaard uit (omgevingsvlag VOORSTEL_PREVIEW: aan of testers)', /!voorstelVlagAan\(Deno\.env\.get\('VOORSTEL_PREVIEW'\), Deno\.env\.get\('VOORSTEL_TESTERS'\), profileId\)/.test(index));
 }
 
 klaar('RESULTAAT');
