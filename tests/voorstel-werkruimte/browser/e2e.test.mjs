@@ -504,7 +504,7 @@ sectie('5. PROJECTROUTE: financieringsbehoefte nog onbekend (geen begroting): we
   const { context, page } = await nieuwePagina('pro');
 
   check('zonder begroting is de startknop toch actief: aanvullen gebeurt in het profiel', await t(page, 'voorstel-start-knop').isEnabled());
-  check('uitleg bij de knop: zoeken kan, matching op bedrag beperkt', /matching op bedrag is dan beperkt/.test(await tekstVan(page, 'voorstel-aanvullen-in-profiel')), await tekstVan(page, 'voorstel-aanvullen-in-profiel'));
+  check('geen uitleg bij de knop: het systeem vraagt het zelf uit in het profiel', (await page.locator('[data-testid="voorstel-aanvullen-in-profiel"]').count()) === 0);
   await t(page, 'voorstel-start-knop').click();
   await page.waitForSelector('[data-testid="zp-bevestig"]', { timeout: 25000 });
   await page.screenshot({ path: join(SHOTS, '40-onbekend-bedrag-profiel.png'), fullPage: true });

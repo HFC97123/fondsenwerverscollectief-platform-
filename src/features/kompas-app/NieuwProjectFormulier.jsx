@@ -119,7 +119,7 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
         </Field>
 
         <Field>
-          Discipline
+          Disciplines
           {/* Alleen waarden uit de tabel themas (dezelfde lijst als de matching); geen vrije tekst. */}
           <ClassificatieSelect
             opties={themas}
@@ -127,7 +127,7 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
             onChange={(nieuw) => setVeld('discipline', nieuw)}
             multi
             placeholder="Selecteer discipline(s)"
-            ariaLabel="Discipline"
+            ariaLabel="Disciplines"
           />
           <TrefwoordVoorstellen testid="np-voorstel-discipline" voorstellen={voorstellen.discipline} onKies={(n) => setVeld('discipline', [...alsLijst(form.discipline), n])} onNegeer={negeer('discipline')} />
         </Field>

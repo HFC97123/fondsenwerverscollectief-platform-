@@ -147,7 +147,7 @@ function OverzichtTab({ project, financiering, store, bewerk, setBewerk }) {
           <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px 24px;')}>
             <Veld label="Programma of onderdeel">{project.programma}</Veld>
             <Veld label="Doelgroep">{doelgroep}</Veld>
-            <Veld label="Discipline">{discipline}</Veld>
+            <Veld label="Disciplines">{discipline}</Veld>
             <Veld label="Werkgebied / locatie">{project.regio}</Veld>
             <Veld label="Looptijd">{periode}</Veld>
             <div style={css('grid-column: 1 / -1; min-width: 0;')}>

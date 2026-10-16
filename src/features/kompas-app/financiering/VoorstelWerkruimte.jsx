@@ -8,7 +8,6 @@ import { haalClassificatiesOp } from '../../../data/services/classificaties.js';
 import BespreekLink from './BespreekLink.jsx';
 import FinancieringsRegel from './FinancieringsRegel.jsx';
 import VoorstelStart from './VoorstelStart.jsx';
-import ZoekprofielBevestigen from './ZoekprofielBevestigen.jsx';
 import { VoorstelRegelDetail } from './VoorstelPreview.jsx';
 import { formatDatum, formatEuro, leesBedragInvoer } from './dekkingsplan.js';
 import {
@@ -33,7 +32,7 @@ import {
   voerOpslagUit,
 } from './voorstelWerk.js';
 import { BRON_CONTROLEREN } from './bronStatus.js';
-import { bewaarConcept, bouwZoekprofielVerzoek, controleerProfiel, heeftWijzigingen, leesConcept, maakProfielState, voegSamen, wisConcept } from './zoekprofielModel.js';
+import { bewaarConcept, bouwZoekprofielVerzoek, controleerProfiel, heeftWijzigingen, maakProfielState, voegSamen, wisConcept } from './zoekprofielModel.js';
 import { VOORSTEL_STAPPEN } from './voorstelFlow.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
@@ -63,6 +62,8 @@ const STANDAARD_DIENSTEN = {
   leesOpen: leesOpenActieplan,
   herstelOpen: vraagActieplanHerstel,
 };
+
+const projectprofielLink = (id) => `#/kompas/projecten/${encodeURIComponent(id || '')}?bewerk=1`;
 
 function Voortgang({ stap }) {
   const actief = STAPPEN_ACTIEF[stap] ?? 2;
@@ -225,7 +226,6 @@ export default function VoorstelWerkruimte({
   const [profiel, setProfiel] = useState(null); // de bewerkbare toestand van het zoekprofiel (zoekprofielModel)
   const [profielFout, setProfielFout] = useState('');
   const [profielMelding, setProfielMelding] = useState('');
-  const [profielHersteld, setProfielHersteld] = useState(false);
   const [lijsten, setLijsten] = useState(null);
   const [lijstenFout, setLijstenFout] = useState(false);
   const [opnieuwBezig, setOpnieuwBezig] = useState(false);
@@ -246,6 +246,7 @@ export default function VoorstelWerkruimte({
   const [openKlaar, setOpenKlaar] = useState('');
   const dienstenRef = useRef(diensten);
   const profielRef = useRef(null);
+  const draaiRef = useRef(null);
   const opslagRef = useRef(opslag === undefined ? standaardOpslag() : opslag);
   const openRef = useRef(false);
   const bezigRef = useRef(false);
@@ -318,9 +319,8 @@ export default function VoorstelWerkruimte({
       setStap(startpunt ? STAP.VOORBEREIDEN : STAP.ONDERZOEKEN);
 
       const terugNaarProfiel = (tekstFout, tekstMelding) => {
-        setProfielFout(tekstFout || '');
-        setProfielMelding(tekstMelding || '');
-        setFase('profiel');
+        setMelding(tekstFout || tekstMelding || 'Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen.');
+        setFase('fout');
       };
 
       try {
@@ -407,6 +407,8 @@ export default function VoorstelWerkruimte({
 
       setProfielFout('');
 
+      let volgende = null;
+
       try {
         const [res, cls] = await Promise.all([diensten.zoekprofiel({ projectId, berichten: profielBerichten }), haalLijsten(diensten)]);
 
@@ -433,15 +435,13 @@ export default function VoorstelWerkruimte({
 
         const vers = maakProfielState(ruw, { route: profielRoute });
 
-        if (opnieuw && profielRef.current) {
+        // Het projectprofiel IS het zoekprofiel: geen tweede formulier. Is het profiel bruikbaar, dan zoekt Subsidiekompas meteen;
+        // zo niet, dan gaat het lid naar het Projectprofiel om aan te vullen.
+        if (!opnieuw) {
+          setProfiel(vers);
+          volgende = controleerProfiel(vers, cls && !cls.fout ? cls.lijsten : null).ok ? { zoek: bouwZoekprofielVerzoek(vers) } : { aanvullen: true };
+        } else if (profielRef.current) {
           setProfiel(voegSamen(profielRef.current, vers));
-        } else {
-          const concept = leesConcept(opslagRef.current, projectId, profielRoute);
-          const bewerkt = Boolean(concept && heeftWijzigingen(concept));
-
-          setProfiel(bewerkt ? voegSamen(concept, vers) : vers);
-          setProfielHersteld(bewerkt);
-          setFase('profiel');
         }
       } catch (e) {
         if (generatieRef.current !== generatie) return;
@@ -455,37 +455,17 @@ export default function VoorstelWerkruimte({
         bezigRef.current = false;
         setOpnieuwBezig(false);
       }
+
+      if (volgende && volgende.zoek && generatieRef.current === generatie) draaiRef.current(volgende.zoek);
+      else if (volgende && volgende.aanvullen && generatieRef.current === generatie) setFase('aanvullen');
     },
     [projectId, diensten, profielBerichten, profielRoute],
   );
 
+  draaiRef.current = draai;
+
   // Eén startpunt voor de knop en voor "Opnieuw proberen": met profielstap eerst het profiel, anders direct zoeken zoals voorheen.
   const start = useCallback(() => (profielStap ? laadProfiel() : draai(null)), [profielStap, laadProfiel, draai]);
-
-  // Terug naar het profiel om aan te passen: het huidige voorstel (nog niets opgeslagen) wordt losgelaten en late broncontroles worden genegeerd.
-  const naarProfiel = () => {
-    generatieRef.current += 1;
-    setModel(null);
-    setSelectie(null);
-    setControles({});
-    setFase('profiel');
-  };
-
-  const bevestigProfiel = () => {
-    if (!profiel || bezigRef.current) return;
-
-    if (!controleerProfiel(profiel, lijstenFout ? null : lijsten).ok) return;
-
-    draai(bouwZoekprofielVerzoek(profiel));
-  };
-
-  // Opnieuw beginnen vanuit het project: de eigen wijzigingen worden bewust weggegooid (alleen op een klik van het lid).
-  const beginProfielOpnieuw = () => {
-    wisConcept(opslagRef.current, projectId, profielRoute);
-    setProfiel(null);
-    setProfielHersteld(false);
-    laadProfiel();
-  };
 
   // Vanuit de chat start het voorbereiden meteen (het lid heeft daar al op de knop geklikt).
   useEffect(() => {
@@ -649,28 +629,15 @@ export default function VoorstelWerkruimte({
     <div data-testid="voorstel-werkruimte" data-fase={fase} data-ingang={startpunt ? 'chat' : profielRoute} style={css('display: flex; flex-direction: column; gap: 18px;')}>
       {toonStartknop && fase !== 'profiel' && <VoorstelStart project={project} beschikbaar={beschikbaar} opgeslagen={opgeslagen} metProfielStap={profielStap} bezig={fase === 'bezig' || fase === 'opslaan' || fase === 'profiel-laden'} onStart={start} />}
 
-      {fase === 'profiel-laden' && (
-        <section data-testid="zoekprofiel-laden" role="status" aria-live="polite" style={css(KAART)}>
-          <h2 style={css(`${LABEL} margin: 0;`)}>Zoekprofiel</h2>
-          <div style={css(TEKST)}>Subsidiekompas leest {profielRoute === 'chat' ? 'uw gesprek en uw project' : 'uw projectgegevens en de geüploade documenten'} en stelt het zoekprofiel op. Er wordt niets opgeslagen en nog niets gezocht.</div>
-        </section>
-      )}
+      {fase === 'profiel-laden' && <Voortgang stap={STAP.ONDERZOEKEN} />}
 
-      {fase === 'profiel' && profiel && (
-        <ZoekprofielBevestigen
-          state={profiel}
-          onChange={setProfiel}
-          lijsten={lijstenFout ? null : lijsten}
-          lijstenFout={lijstenFout}
-          fout={profielFout}
-          melding={profielMelding}
-          hersteld={profielHersteld}
-          onBevestig={bevestigProfiel}
-          onAnnuleer={sluit}
-          onOpnieuwOpstellen={() => laadProfiel({ opnieuw: true })}
-          onBeginOpnieuw={beginProfielOpnieuw}
-          opnieuwBezig={opnieuwBezig}
-        />
+      {fase === 'aanvullen' && (
+        <section role="status" data-testid="voorstel-profiel-aanvullen" style={css(`${TEKST} padding: 14px 18px; border: 1px solid #EEDCC0; border-radius: 16px; background: #FBF1E3; color: #8A5A16; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;`)}>
+          <span>Vul in het projectprofiel minstens één discipline of doelgroep in.</span>
+          <a href={projectprofielLink(projectId)} data-testid="voorstel-naar-projectprofiel" style={css('color: #4E9A6C; font-weight: 800;')}>
+            Projectprofiel aanvullen
+          </a>
+        </section>
       )}
 
       {!startpunt && fase !== 'opgeslagen' && (openAantal > 0 || openKlaar) && (
@@ -710,10 +677,10 @@ export default function VoorstelWerkruimte({
               <button type="button" data-testid="voorstel-opnieuw" onClick={start} style={css(KNOP_STIL)}>
                 Opnieuw proberen
               </button>
-              {profielStap && profiel && (
-                <button type="button" data-testid="voorstel-terug-profiel" onClick={naarProfiel} style={css(KNOP_STIL)}>
-                  Terug naar het zoekprofiel
-                </button>
+              {profielStap && (
+                <a href={projectprofielLink(projectId)} data-testid="voorstel-terug-profiel" style={css(`${KNOP_STIL} display: inline-flex; align-items: center; text-decoration: none;`)}>
+                  Projectprofiel aanpassen
+                </a>
               )}
             </div>
           )}
@@ -743,22 +710,17 @@ export default function VoorstelWerkruimte({
             )
           )}
 
-          {model.zoekprofiel === 'bevestigd-profiel' && profiel && (
-            <div data-testid="voorstel-zoekprofiel-gebruikt" style={css(`${TEKST} font-size: 13px; padding: 10px 14px; border-radius: 12px; background: #F3F9F5; color: #2C4A5E; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;`)}>
-              <span>
-                <strong>Gezocht op uw bevestigde zoekprofiel.</strong> Pas het aan om een ander resultaat te krijgen; wat u hieronder niet opslaat blijft onaangeroerd.
-              </span>
-              {fase === 'klaar' && (
-                <button type="button" data-testid="voorstel-profiel-aanpassen" onClick={naarProfiel} style={css(`${KNOP_STIL} min-height: 36px;`)}>
-                  Zoekprofiel aanpassen
-                </button>
-              )}
+          {model.zoekprofiel === 'bevestigd-profiel' && fase === 'klaar' && (
+            <div data-testid="voorstel-zoekprofiel-gebruikt" style={css(`${TEKST} font-size: 13px;`)}>
+              <a href={projectprofielLink(projectId)} data-testid="voorstel-profiel-aanpassen" style={css('color: #4E9A6C; font-weight: 800;')}>
+                Projectprofiel aanpassen
+              </a>
             </div>
           )}
 
           {model.profielAfgevallen.length > 0 && (
             <div data-testid="voorstel-profiel-afgevallen" role="status" style={css(`${TEKST} font-size: 13px; padding: 10px 14px; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
-              Deze termen uit uw zoekprofiel staan niet als categorie in de database en zijn daarom niet gebruikt bij het zoeken: {model.profielAfgevallen.map((x) => x.term).join(', ')}.
+              Deze termen uit uw projectprofiel staan niet als categorie in de database en zijn daarom niet gebruikt bij het zoeken: {model.profielAfgevallen.map((x) => x.term).join(', ')}.
             </div>
           )}
 

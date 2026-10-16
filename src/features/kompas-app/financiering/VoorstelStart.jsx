@@ -5,7 +5,7 @@
 import React, { useMemo } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { beoordeelProject } from './voorstel.js';
-import { ONTBREKEND_LABEL, VOORSTEL_STAPPEN, voorstelGeneratieBeschikbaar } from './voorstelFlow.js';
+import { ONTBREKEND_LABEL, voorstelGeneratieBeschikbaar } from './voorstelFlow.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #7B8985;";
@@ -21,7 +21,6 @@ function lijstTekst(items) {
 export default function VoorstelStart({ project, beschikbaar = voorstelGeneratieBeschikbaar(), opgeslagen = true, bezig = false, onStart, metProfielStap = false }) {
   const oordeel = useMemo(() => beoordeelProject({ project }), [project]);
   const essentieel = oordeel.ontbrekend.filter((o) => o.soort === 'essentieel').map((o) => ONTBREKEND_LABEL[o.veld]).filter(Boolean);
-  const aanvullend = oordeel.ontbrekend.filter((o) => o.soort !== 'essentieel').map((o) => ONTBREKEND_LABEL[o.veld]).filter(Boolean);
   // Knop alleen aan als de flow werkt, het project is opgeslagen, de essentiële gegevens er zijn, er een begroting is (anders valt er niets te dekken) en er niet al iets bezig is.
   const projectKlaar = oordeel.kanOnderzoeken && oordeel.bedragenToegestaan;
   const actief = beschikbaar && opgeslagen && (projectKlaar || metProfielStap) && !bezig;
@@ -34,8 +33,7 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
     >
       <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;')}>
         <div style={css('min-width: 0; flex: 1 1 280px;')}>
-          <h2 style={css(`${LABEL} margin: 0 0 4px;`)}>Subsidiekompas</h2>
-          <div style={css(`${TEKST} font-weight: 700; color: #2C4A5E;`)}>Laat een dekkingsplan en actieplan voor dit project voorstellen. U bekijkt en past alles aan; er wordt niets opgeslagen zonder uw klik.{metProfielStap ? ' Eerst controleert en bevestigt u het zoekprofiel.' : ''}</div>
+          <h2 style={css(`${LABEL} margin: 0;`)}>Subsidiekompas</h2>
         </div>
         <button
           type="button"
@@ -56,52 +54,27 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
       {!actief && !bezig && !(beschikbaar && opgeslagen) && (
         <div role="status" data-testid="voorstel-nog-niet" style={css(`${TEKST} padding: 10px 14px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
           {opgeslagen
-            ? 'Het maken van een voorstel is nog niet beschikbaar. Het wordt stap voor stap opgebouwd en de knop gaat pas aan als de hele flow werkt. Uw bestaande financiering en acties hieronder werken al.'
-            : 'Sla dit project eerst op (Projecten); daarna kunt u een voorstel laten maken.'}
-        </div>
-      )}
-
-      {beschikbaar && opgeslagen && !projectKlaar && !bezig && metProfielStap && (
-        <div role="status" data-testid="voorstel-aanvullen-in-profiel" style={css(`${TEKST} padding: 10px 14px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
-          {oordeel.kanOnderzoeken
-            ? 'De projectbegroting is nog niet ingevuld. U kunt wel passende fondsen zoeken, maar de matching op bedrag is dan beperkt en er worden geen bedragen voorgesteld.'
-            : 'Er ontbreken nog projectgegevens. U vult ze aan in het zoekprofiel hierna; u hoeft niets opnieuw te doorlopen.'}
+            ? 'Nog niet beschikbaar.'
+            : 'Sla dit project eerst op.'}
         </div>
       )}
 
       {beschikbaar && opgeslagen && !projectKlaar && !bezig && !metProfielStap && (
         <div role="status" data-testid="voorstel-eerst-aanvullen" style={css(`${TEKST} padding: 10px 14px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
           {oordeel.kanOnderzoeken
-            ? 'Vul eerst de projectbegroting in; zonder begroting kan Subsidiekompas geen sluitend dekkingsplan met bedragen maken.'
-            : 'Vul eerst de ontbrekende projectgegevens aan (zie hieronder); daarna kan Subsidiekompas een voorstel maken.'}
+            ? 'Vul eerst de projectbegroting in.'
+            : 'Vul eerst de ontbrekende projectgegevens aan.'}
         </div>
       )}
 
-      <ol data-testid="voorstel-stappen" style={css(`${TEKST} margin: 0; padding-left: 20px; font-size: 13px; color: #6D7C77;`)}>
-        {VOORSTEL_STAPPEN.map((s) => (
-          <li key={s}>{s}</li>
-        ))}
-      </ol>
-
-      <div data-testid="voorstel-project-controle" style={css(`${TEKST} font-size: 13px;`)}>
-        {essentieel.length > 0 ? (
-          <>
-            Voor een voorstel heeft Subsidiekompas nog nodig: <strong>{lijstTekst(essentieel)}</strong>.{' '}
-            <a href={`#/kompas/projecten/${project && project.id}?tab=overzicht`} style={css('color: #4E9A6C; font-weight: 800;')}>
-              Projectgegevens aanvullen
-            </a>
-          </>
-        ) : (
-          <>Doel en uitvoeringsgebied van dit project zijn bekend.</>
-        )}
-        {oordeel.ontbrekend.some((o) => o.veld === 'begroting') && (
-          <div data-testid="voorstel-zonder-begroting" style={css('margin-top: 4px; color: #6D7C77;')}>
-            Zonder projectbegroting kan Subsidiekompas financiers verkennen, maar geen sluitend dekkingsplan met bedragen maken.
-          </div>
-        )}
-        {aanvullend.length > 0 && essentieel.length === 0 && <div style={css('margin-top: 4px; color: #6D7C77;')}>Handig om aan te vullen: {lijstTekst(aanvullend)}.</div>}
-        {oordeel.tegenstrijdigheden.length > 0 && <div style={css('margin-top: 4px; color: #8A5A16;')}>Er zijn tegenstrijdige projectgegevens; Subsidiekompas vraagt u dan welke juist is.</div>}
-      </div>
+      {!metProfielStap && essentieel.length > 0 && (
+        <div data-testid="voorstel-project-controle" style={css(`${TEKST} font-size: 13px;`)}>
+          Nog nodig: <strong>{lijstTekst(essentieel)}</strong>.{' '}
+          <a href={`#/kompas/projecten/${project && project.id}?tab=overzicht`} style={css('color: #4E9A6C; font-weight: 800;')}>
+            Aanvullen
+          </a>
+        </div>
+      )}
     </section>
   );
 }
