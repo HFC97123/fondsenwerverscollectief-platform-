@@ -18,6 +18,7 @@
 
 // @deno-types="./voorstelContract.d.ts"
 import { MAX_REGELS, berekenTotalen, isEchteDatum, schaalEnControleer, toegestaneSom, veiligeUrl } from './voorstelContract.js';
+import type { PlanningBron } from './actieplanPlanning.ts';
 import type { BekendRecord, ContractRegel, ContractVoorstel } from './voorstelContract.js';
 import { zoekFragmenten } from './fragmentZoeker.ts';
 import { bouwMetadata } from './voorstelMetadata.ts';
@@ -55,6 +56,8 @@ export interface ServerRecord {
   doelgroepen?: string[];
   werkgebieden?: string[];
   aanvraagcriteria?: string | null; // vrije tekst; hier staat ook het aanvragertype (geen aparte kolom)
+  // Wat de database weet over het plannen van de aanvraag (rondes, beoordelingsdatum, behandeltermijn, vergaderdatum). Alleen bij niveau 'volledig'.
+  planning?: PlanningBron | null;
 }
 
 export interface PreviewInvoer {

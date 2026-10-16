@@ -157,7 +157,8 @@ sectie('6. Het component en de service zijn read-only');
 
   const regelComp = readFileSync('src/features/kompas-app/financiering/FinancieringsRegel.jsx', 'utf8');
 
-  check('preview-component: geen eigen knoppen of klikacties (read-only)', !/<button|onClick|onSubmit|<form|<input|<textarea|<select/.test(code(comp)));
+  // Read-only: de enige knop is "Opnieuw controleren" (data-testid bron-opnieuw, sinds de broncontrole per regel); die roept alleen de doorgegeven callback aan, de component zelf doet niets.
+check('preview-component: geen eigen knoppen of klikacties (read-only), behalve de ene callback-knop bron-opnieuw', (code(comp).match(/<button/g) || []).length === 1 && /data-testid="bron-opnieuw"[^>]*onClick=\{onOpnieuw\}/.test(code(comp)) && !/onSubmit|<form|<input|<textarea|<select/.test(code(comp)) && (code(comp).match(/onClick/g) || []).length === 1);
   check('gedeelde regel: precies een knop (de kopregel) met aria-expanded en aria-controls, een onClick die alleen open/dicht wisselt', (code(regelComp).match(/<button/g) || []).length === 1 && /aria-expanded=\{open\}/.test(regelComp) && /aria-controls=\{paneelId\}/.test(regelComp) && (code(regelComp).match(/onClick/g) || []).length === 1 && /const wissel = \(\) => \{[\s\S]*?\};/.test(regelComp));
   check('gedeelde regel: geen netwerk, opslag, supabase of voorstel-/verificatielogica', !/fetch\(|supabase|localStorage|sessionStorage|\.insert\(|\.rpc\(|functions\.invoke|voorstel|verificatie|dangerouslySetInnerHTML/i.test(code(regelComp).replace(/data-testid="financieringsregel[^"]*"/g, '')));
   check('gedeelde regel: standaard ingeklapt, details in een region die verborgen is zolang dicht', /defaultOpen = false/.test(regelComp) && /role="region"/.test(regelComp) && /hidden=\{!open\}/.test(regelComp));

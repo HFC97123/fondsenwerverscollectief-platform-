@@ -921,6 +921,432 @@ sectie('9b. Na verversen: de server bewaart de open taken, "Actieplan opnieuw pr
   check('diensten zonder leesOpen: scherm werkt gewoon', !!q('[data-testid="voorstel-werkruimte"]') && !q('[data-testid="actieplan-open"]'));
 }
 
+// ===========================================================================================================================
+// Zoekprofiel bekijken en bevestigen (beide routes): model, projectroute, chatroute
+const Z = await import('../../src/features/kompas-app/financiering/zoekprofielModel.js');
+const { default: ChatZoekprofielKaart } = await import('../../src/features/kompas-app/chat/ChatZoekprofielKaart.jsx');
+
+const LIJSTEN = { themas: ['Cultuur', 'Sport', 'Jeugd', 'Welzijn', 'Educatie', 'Natuur'], doelgroepen: ['Jongeren', 'Ouderen', 'Kinderen', 'Vluchtelingen'], regios: ['Rotterdam', 'Zuid-Holland', 'Nederland'], error: null };
+const profielRuw = (extra = {}) => ({
+  versie: 1, route: 'project', omschrijving: 'Sportprogramma voor jongeren in Rotterdam-Zuid', trefwoorden: ['sport', 'jongeren'],
+  disciplines: [{ naam: 'Sport', bron: 'project' }, { naam: 'Cultuur', bron: 'ai' }],
+  werkvelden: [{ naam: 'Welzijn', bron: 'ai' }],
+  doelgroepen: [{ naam: 'Jongeren', bron: 'project' }, { naam: 'Kinderen', bron: 'project' }],
+  werkgebieden: [{ naam: 'Rotterdam', bron: 'project' }, { naam: 'Zuid-Holland', bron: 'project' }],
+  locatie: 'Rotterdam-Zuid', periode: { start: '2027-01-01', eind: '2027-12-31', bron: 'project' },
+  financieringsbehoefte: { gat: 55000, totaalBudget: 100000, eigenBijdrage: 45000, bekend: true },
+  ontbrekend: [], onzeker: [{ soort: 'discipline', term: 'hiphop', reden: 'Geen discipline in de database; niet gebruikt voor het zoeken.' }], vragen: [],
+  bronnen: { projectvelden: true, documenten: 2, gesprek: false, ai: 'gebruikt' }, ...extra,
+});
+const zonderBedragProfiel = () => profielRuw({ financieringsbehoefte: { gat: null, totaalBudget: null, eigenBijdrage: null, bekend: false }, ontbrekend: ['financieringsbehoefte'], vragen: ['Wat is de totale begroting en welk deel zoekt u bij fondsen?'] });
+const onbekendAntwoord = () => genereerAntwoord({
+  uitkomst: 'bedrag-onbekend', melding: 'Het bedrag dat u bij fondsen zoekt is nog niet bekend, dus de matching op bedrag is beperkt: test.', reserveSleutel: null,
+  voorstel: { versie: 1, regels: [regel(1, ID1, { bedrag: null }), regel(2, ID2, { bedrag: null })], acties: [actie('a1', sl(ID1)), actie('a2', sl(ID2))] },
+  totalen: { gat: 0, doelBedrag: 0, som: 0, nodig: 0, dekking: 0 }, werkwijze: { bedrag: 'onbekend', zoekprofiel: 'bevestigd-profiel', documenten: 2, profielToetsing: { gebruikt: {}, afgevallen: [{ soort: 'thema', term: 'hiphop' }] } },
+});
+
+function metProfiel(s, o = {}) {
+  s.profielNu = o.profiel === undefined ? profielRuw() : o.profiel;
+  s.zoekFalen = o.zoekFalen || 0;
+  s.genereerFalen = o.genereerFalen || 0;
+
+  const gen0 = s.diensten.genereer;
+
+  s.diensten.genereer = async (a) => {
+    if (s.genereerFalen > 0) { s.genereerFalen -= 1; s.log.push(['genereer', a]); return { ok: false, reden: 'fout', melding: 'Het voorstel kon nu niet worden gemaakt (test).' }; }
+
+    return gen0(a);
+  };
+  s.diensten.zoekprofiel = async (a) => {
+    s.log.push(['zoekprofiel', a]);
+
+    if (s.zoekFalen > 0) { s.zoekFalen -= 1; return { ok: false, reden: 'fout', melding: 'Het zoekprofiel kon nu niet worden opgesteld (test).' }; }
+
+    return { ok: true, antwoord: { ok: true, profiel: typeof s.profielNu === 'function' ? s.profielNu(a) : s.profielNu, opgeslagen: false } };
+  };
+  s.diensten.classificaties = async () => (o.lijstenFout ? { themas: [], doelgroepen: [], regios: [], error: { message: 'x' } } : LIJSTEN);
+
+  return s;
+}
+
+const aanroepen = (s, naam) => s.log.filter(([n]) => n === naam).map(([, a]) => a);
+
+// -------------------------------------------------------------------------------------------------------------------------
+sectie('14. Zoekprofiel (model): meervoudige waarden, controle, samenvoegen en concept');
+{
+  const st = Z.maakProfielState(profielRuw());
+  check('meerdere disciplines, doelgroepen en werkgebieden blijven staan (niets teruggebracht tot één)', st.disciplines.length === 2 && st.doelgroepen.length === 2 && st.werkgebieden.length === 2 && st.werkvelden.length === 1);
+  check('bron per item blijft behouden (project, ai)', st.disciplines[0].bron === 'project' && st.disciplines[1].bron === 'ai');
+  check('disciplines en werkvelden: dezelfde lijst (themas), geen eigen werkveld-tabel', Z.LIJST_VELDEN.find((v) => v.sleutel === 'disciplines').bron === 'themas' && Z.LIJST_VELDEN.find((v) => v.sleutel === 'werkvelden').bron === 'themas');
+
+  const drie = Z.zetLijst(st, 'disciplines', ['Sport', 'Cultuur', 'Natuur']);
+  check('derde discipline erbij: alle drie, bestaande houden hun herkomst, nieuwe = door u gekozen', drie.disciplines.map((i) => `${i.naam}:${i.bron}`).join() === 'Sport:project,Cultuur:ai,Natuur:gebruiker' && drie.gewijzigd.disciplines === true);
+  check('de andere velden zijn onaangeroerd', drie.doelgroepen.length === 2 && !drie.gewijzigd.doelgroepen);
+  const verplaatst = Z.zetLijst(st, 'disciplines', ['Sport', 'Cultuur', 'Welzijn']);
+  check('een thema staat in hooguit één van disciplines en werkvelden (laatst gewijzigde lijst wint, niets verdwijnt)', verplaatst.werkvelden.length === 0 && verplaatst.disciplines.some((i) => i.naam === 'Welzijn') && verplaatst.gewijzigd.werkvelden === true);
+  check('dubbele namen (hoofdletters/accenten) tellen één keer', Z.zetLijst(st, 'doelgroepen', ['Jongeren', 'jongeren', 'JONGEREN']).doelgroepen.length === 1);
+
+  const verzoek = Z.bouwZoekprofielVerzoek(drie);
+  check('verzoek: alle lijsten volledig, als {naam, bron}', verzoek.disciplines.length === 3 && verzoek.doelgroepen.length === 2 && verzoek.werkgebieden.length === 2 && verzoek.werkvelden.length === 1 && verzoek.disciplines.every((i) => Object.keys(i).sort().join() === 'bron,naam'));
+  check('verzoek: periode, locatie en financieringsbehoefte meegenomen; route klopt', verzoek.periode.start === '2027-01-01' && verzoek.locatie === 'Rotterdam-Zuid' && verzoek.financieringsbehoefte.gat === 55000 && verzoek.financieringsbehoefte.bekend === true && verzoek.route === 'project');
+  check('verzoek bevat geen interne toestand (gewijzigd, voorstellen, onzeker)', !('gewijzigd' in verzoek) && !('voorstellen' in verzoek) && !('onzeker' in verzoek));
+  check('chatprofiel krijgt route chat', Z.bouwZoekprofielVerzoek(Z.maakProfielState(profielRuw({ route: 'chat' }), { route: 'chat' })).route === 'chat');
+
+  // Controle
+  check('volledig profiel: ok, met lijsten', Z.controleerProfiel(st, LIJSTEN).ok === true);
+  const leeg = Z.zetLijst(Z.zetLijst(Z.zetLijst(st, 'disciplines', []), 'werkvelden', []), 'doelgroepen', []);
+  const cLeeg = Z.controleerProfiel(leeg, LIJSTEN);
+  check('zonder discipline, werkveld én doelgroep: niet ok (daarop wordt gezocht)', !cLeeg.ok && !!cLeeg.fouten.algemeen);
+  check('alleen een doelgroep is genoeg om te zoeken', Z.controleerProfiel(Z.zetLijst(Z.zetLijst(Z.zetLijst(st, 'disciplines', []), 'werkvelden', []), 'doelgroepen', ['Jongeren']), LIJSTEN).ok);
+  const onbekend = Z.zetLijst(st, 'disciplines', ['Sport', 'Verzonnen']);
+  const cOnb = Z.controleerProfiel(onbekend, LIJSTEN);
+  check('een waarde buiten de databaselijst wordt benoemd en blokkeert', !cOnb.ok && /Verzonnen/.test(cOnb.fouten.disciplines));
+  check('zonder geladen lijsten: geen vals alarm', Z.controleerProfiel(onbekend, null).ok === true);
+  const veel = Z.zetLijst(st, 'doelgroepen', Array.from({ length: 13 }, (_, i) => `D${i}`));
+  check('meer dan 12 in één lijst: duidelijke fout (de server gebruikt er hoogstens 12)', /12/.test(Z.controleerProfiel(veel, null).fouten.doelgroepen || ''));
+  check('einddatum vóór startdatum: fout', !Z.controleerProfiel(Z.zetVeld(Z.zetVeld(st, 'periodeStart', '2027-06-01'), 'periodeEind', '2027-01-01'), LIJSTEN).ok);
+  check('bekende financieringsbehoefte: geen waarschuwing over het bedrag', !Z.controleerProfiel(st, LIJSTEN).waarschuwingen.some((w) => /bedrag/.test(w)));
+  const onbekendBedrag = Z.maakProfielState(zonderBedragProfiel());
+  const cB = Z.controleerProfiel(onbekendBedrag, LIJSTEN);
+  check('onbekend bedrag: wél zoeken (ok) met de waarschuwing dat de matching op bedrag beperkt is', cB.ok === true && cB.waarschuwingen.some((w) => /matching op bedrag is dan beperkt/.test(w)));
+  check('financieringTekst: bekend -> bedrag uit het project, niet opnieuw invullen', /Nog te financieren: € 55\.000/.test(Z.financieringTekst(st, (n) => `€ ${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`)) && /hoeft u niet opnieuw/.test(Z.financieringTekst(st)));
+  check('financieringTekst: onbekend -> zoeken kan, geen bedragen voorgesteld', /nog niet bekend/.test(Z.financieringTekst(onbekendBedrag)) && /geen bedragen voorgesteld/.test(Z.financieringTekst(onbekendBedrag)));
+
+  // Onzekere koppelingen
+  check('onzekere term gemeld door de server staat zichtbaar in de toestand', st.onzeker.length === 1 && st.onzeker[0].term === 'hiphop');
+  const gekoppeld = Z.koppelOnzeker(st, 'hiphop', 'werkvelden', 'Jeugd');
+  check('onzeker koppelen aan een databasecategorie: term weg, categorie toegevoegd', gekoppeld.onzeker.length === 0 && gekoppeld.werkvelden.map((i) => i.naam).includes('Jeugd'));
+  const genegeerd = Z.negeerOnzeker(st, 'hiphop');
+  check('onzeker negeren: weg en onthouden', genegeerd.onzeker.length === 0 && genegeerd.genegeerd.includes('hiphop'));
+
+  // Samenvoegen na "opnieuw opstellen": handmatige aanpassingen worden nooit stil overschreven
+  const bewerkt = Z.zetVeld(Z.zetLijst(st, 'disciplines', ['Natuur']), 'omschrijving', 'Mijn eigen omschrijving');
+  const vers = Z.maakProfielState(profielRuw({ omschrijving: 'Nieuwe omschrijving van de server', disciplines: [{ naam: 'Sport', bron: 'project' }, { naam: 'Educatie', bron: 'ai' }], doelgroepen: [{ naam: 'Ouderen', bron: 'ai' }] }));
+  const samen = Z.voegSamen(bewerkt, vers);
+  check('bewerkte omschrijving blijft staan', samen.omschrijving === 'Mijn eigen omschrijving');
+  check('bewerkte disciplines blijven staan; wat de server méér voorstelt komt apart (niet automatisch toegevoegd)', samen.disciplines.map((i) => i.naam).join() === 'Natuur' && samen.voorstellen.disciplines.map((i) => i.naam).sort().join() === 'Educatie,Sport');
+  check('niet-bewerkte velden worden wel ververst (doelgroepen)', samen.doelgroepen.map((i) => i.naam).join() === 'Ouderen' && !samen.voorstellen.doelgroepen);
+  const overgenomen = Z.neemVoorstelOver(samen, 'disciplines', 'Educatie');
+  check('voorstel overnemen: erbij als door u gekozen, uit de voorstellen', overgenomen.disciplines.map((i) => i.naam).join() === 'Natuur,Educatie' && overgenomen.voorstellen.disciplines.length === 1);
+  check('samenvoegen zonder concept: het verse profiel', Z.voegSamen(null, vers) === vers);
+  check('genegeerde onzekere termen komen niet terug', Z.voegSamen({ ...bewerkt, genegeerd: ['hiphop'] }, vers).onzeker.every((o) => o.term !== 'hiphop'));
+
+  // Concept bewaren
+  const mem = new Map();
+  const opslag = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, v), removeItem: (k) => mem.delete(k) };
+  check('concept bewaren lukt', Z.bewaarConcept(opslag, PID, bewerkt) === true);
+  const terug = Z.leesConcept(opslag, PID, 'project');
+  check('concept terug: dezelfde lijsten en omschrijving, gewijzigd-vlaggen intact', terug.disciplines.map((i) => i.naam).join() === 'Natuur' && terug.omschrijving === 'Mijn eigen omschrijving' && terug.gewijzigd.disciplines === true && terug.gewijzigd.omschrijving === true);
+  check('concept is per route gescheiden (chat ziet het projectconcept niet)', Z.leesConcept(opslag, PID, 'chat') === null && Z.conceptSleutel(PID, 'chat') !== Z.conceptSleutel(PID, 'project'));
+  check('concept is per project gescheiden', Z.leesConcept(opslag, ID1, 'project') === null);
+  Z.wisConcept(opslag, PID, 'project');
+  check('concept wissen', Z.leesConcept(opslag, PID, 'project') === null);
+  const kapot = { getItem: () => { throw new Error('geblokkeerd'); }, setItem: () => { throw new Error('vol'); }, removeItem: () => { throw new Error('x'); } };
+  check('opslag die faalt breekt niets (bewaren false, lezen null, wissen stil)', Z.bewaarConcept(kapot, PID, bewerkt) === false && Z.leesConcept(kapot, PID, 'project') === null && (Z.wisConcept(kapot, PID, 'project'), true));
+  check('zonder opslag: geen fout', Z.bewaarConcept(null, PID, bewerkt) === false && Z.leesConcept(null, PID, 'project') === null);
+  mem.set(Z.conceptSleutel(PID, 'project'), '{kapot');
+  check('kapot concept wordt genegeerd', Z.leesConcept(opslag, PID, 'project') === null);
+  mem.set(Z.conceptSleutel(PID, 'project'), JSON.stringify({ versie: 9, state: {} }));
+  check('concept van een andere versie wordt genegeerd', Z.leesConcept(opslag, PID, 'project') === null);
+  const trefw = Z.zetTrefwoorden(st, 'Sport, sport; jeugd\nWijk, ' + Array.from({ length: 15 }, (_, i) => `w${i}`).join(','));
+  check('trefwoorden: ontdubbeld, kleine letters, hoogstens 10', trefw.trefwoorden.length === 10 && trefw.trefwoorden[0] === 'sport' && trefw.trefwoorden.filter((w) => w === 'sport').length === 1);
+}
+
+// -------------------------------------------------------------------------------------------------------------------------
+const typTekst = async (el, waarde) => {
+  await act(async () => {
+    const set = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value').set;
+    set.call(el, waarde);
+    el.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+};
+const veld = (id) => q(`[data-testid="zp-veld-${id}"]`);
+const chips = (id) => [...veld(id).querySelectorAll('button[aria-label$=" verwijderen"]')].map((b) => b.getAttribute('aria-label').replace(/ verwijderen$/, ''));
+const optieKnop = (id, naam) => [...veld(id).querySelectorAll('button[role="option"]')].find((b) => b.textContent.replace('✓', '').trim() === naam);
+async function kiesOptie(id, naam) {
+  const trigger = veld(id).querySelector('button[aria-haspopup="listbox"]');
+
+  if (trigger.getAttribute('aria-expanded') !== 'true') await klik(trigger);
+
+  await klik(optieKnop(id, naam));
+}
+const verwijderChip = (id, naam) => klik(veld(id).querySelector(`button[aria-label="${naam} verwijderen"]`));
+const bevestigKnop = () => q('[data-testid="zp-bevestig"]');
+const schoon = async () => { await weg(); localStorage.clear(); };
+
+sectie('15. Projectroute: zoekprofiel bekijken, aanpassen en bevestigen vóór het zoeken');
+{
+  localStorage.clear();
+  const s = metProfiel(maakServer());
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  check('start opent eerst het zoekprofiel (route project); er is nog niet gezocht of opgeslagen', q('[data-testid="zoekprofiel"]').dataset.route === 'project' && aanroepen(s, 'genereer').length === 0 && aanroepen(s, 'opslaan').length === 0);
+  check('het profiel wordt via de zoekprofielservice opgevraagd (projectroute: zonder berichten)', aanroepen(s, 'zoekprofiel').length === 1 && aanroepen(s, 'zoekprofiel')[0].projectId === PID && !aanroepen(s, 'zoekprofiel')[0].berichten);
+  check('uitleg noemt projectgegevens en documenten; niets wordt opgeslagen of gezocht voor de klik', /projectgegevens en 2 geüploade documenten/.test(q('[data-testid="zoekprofiel"]').textContent) && /Er wordt niets opgeslagen en niets gezocht voordat u op “Zoek passende fondsen”/.test(q('[data-testid="zoekprofiel"]').textContent));
+  check('meerdere waarden getoond: 2 disciplines, 1 werkveld, 2 doelgroepen, 2 werkgebieden', chips('disciplines').join() === 'Sport,Cultuur' && chips('werkvelden').join() === 'Welzijn' && chips('doelgroepen').join() === 'Jongeren,Kinderen' && chips('werkgebieden').join() === 'Rotterdam,Zuid-Holland');
+  check('herkomst per lijst zichtbaar (uit uw project / aangevuld door Subsidiekompas)', /uit uw project: Sport/.test(q('[data-testid="zp-bron-disciplines"]').textContent) && /aangevuld door Subsidiekompas: Cultuur/.test(q('[data-testid="zp-bron-disciplines"]').textContent));
+  check('financieringsbehoefte uit het project, niet opnieuw gevraagd', q('[data-testid="zp-financiering"]').dataset.bekend === 'ja' && /55\.000/.test(q('[data-testid="zp-financiering"]').textContent) && /niet opnieuw/.test(q('[data-testid="zp-financiering"]').textContent));
+  check('onzekere koppeling zichtbaar met reden-uitleg', !!q('[data-testid="zp-onzeker"]') && /hiphop/.test(q('[data-testid="zp-onzeker"]').textContent));
+  check('knop "Zoek passende fondsen" actief', /Zoek passende fondsen/.test(bevestigKnop().textContent) && !bevestigKnop().disabled);
+
+  // Aanpassen: meerdere waarden tegelijk
+  await kiesOptie('disciplines', 'Natuur');
+  await kiesOptie('doelgroepen', 'Ouderen');
+  await verwijderChip('doelgroepen', 'Kinderen');
+  await kiesOptie('werkgebieden', 'Nederland');
+  await kiesOptie('werkvelden', 'Jeugd');
+  await typTekst(q('[data-testid="zp-omschrijving"]'), 'Aangepaste omschrijving door het lid');
+  check('na aanpassen: 3 disciplines, 2 werkvelden, 2 doelgroepen, 3 werkgebieden', chips('disciplines').join() === 'Sport,Cultuur,Natuur' && chips('werkvelden').join() === 'Welzijn,Jeugd' && chips('doelgroepen').join() === 'Jongeren,Ouderen' && chips('werkgebieden').join() === 'Rotterdam,Zuid-Holland,Nederland', [chips('disciplines'), chips('werkvelden'), chips('doelgroepen'), chips('werkgebieden')].join(' | '));
+  check('nieuwe keuzes staan als "door u gekozen"', /door u gekozen: Natuur/.test(q('[data-testid="zp-bron-disciplines"]').textContent) && /door u gekozen: Nederland/.test(q('[data-testid="zp-bron-werkgebieden"]').textContent));
+  check('het concept wordt op dit apparaat bewaard (melding)', !!q('[data-testid="zp-concept-bewaard"]') && !!localStorage.getItem(Z.conceptSleutel(PID, 'project')));
+
+  // Bevestigen -> genereren met het volledige profiel
+  await klik(bevestigKnop());
+  await rust(80);
+  const g = aanroepen(s, 'genereer');
+  check('bevestigen: precies één genereren-aanroep MET het bevestigde profiel', g.length === 1 && g[0].projectId === PID && !!g[0].zoekprofiel);
+  const zp = g[0].zoekprofiel;
+  check('alle gekozen waarden gaan mee (niet teruggebracht tot één): disciplines/werkvelden/doelgroepen/werkgebieden', zp.disciplines.map((i) => i.naam).join() === 'Sport,Cultuur,Natuur' && zp.werkvelden.map((i) => i.naam).join() === 'Welzijn,Jeugd' && zp.doelgroepen.map((i) => i.naam).join() === 'Jongeren,Ouderen' && zp.werkgebieden.map((i) => i.naam).join() === 'Rotterdam,Zuid-Holland,Nederland');
+  check('de aangepaste omschrijving en de financieringsbehoefte gaan mee', zp.omschrijving === 'Aangepaste omschrijving door het lid' && zp.financieringsbehoefte.gat === 55000 && zp.route === 'project');
+  check('na het zoeken: het bekende voorstel-scherm (resultaat), "gezocht op uw bevestigde zoekprofiel" verschijnt niet bij de standaardserver zonder werkwijze', !!q('[data-testid="voorstel-resultaat"]') && qa('[data-testid="voorstel-rij"]').length === 3);
+}
+await schoon();
+{
+  // De server meldt dat het profiel gebruikt is en welke termen afvielen
+  const s = metProfiel(maakServer({ gen: genereerAntwoord({ werkwijze: { zoekprofiel: 'bevestigd-profiel', bedrag: 'bekend', documenten: 0, profielToetsing: { gebruikt: {}, afgevallen: [{ soort: 'thema', term: 'hiphop' }, { soort: 'doelgroep', term: 'tieners' }] } } }) }));
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  await klik(bevestigKnop());
+  await rust(80);
+  check('"Gezocht op uw bevestigde zoekprofiel" met knop om het aan te passen', !!q('[data-testid="voorstel-zoekprofiel-gebruikt"]') && !!q('[data-testid="voorstel-profiel-aanpassen"]'));
+  check('termen die de server niet in de database vond worden benoemd (niet stil weggelaten)', /hiphop, tieners/.test(q('[data-testid="voorstel-profiel-afgevallen"]').textContent));
+  check('met een bekend bedrag: totalen en bedragvelden zoals voorheen', !!q('[data-testid="voorstel-totalen"]') && qa('[data-testid="voorstel-bedrag"]').length === 3 && !q('[data-testid="voorstel-bedrag-onbekend"]'));
+  // Terug naar het profiel: de aanpassingen staan er nog, er is niets opgeslagen
+  await klik(q('[data-testid="voorstel-profiel-aanpassen"]'));
+  check('terug naar het profiel met alles erin; niets opgeslagen', !!q('[data-testid="zoekprofiel"]') && chips('disciplines').join() === 'Sport,Cultuur' && aanroepen(s, 'opslaan').length === 0);
+}
+await schoon();
+{
+  // Fout bij het zoeken: het profiel en alle wijzigingen blijven behouden
+  const s = metProfiel(maakServer(), { genereerFalen: 1 });
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  await kiesOptie('disciplines', 'Natuur');
+  await kiesOptie('werkgebieden', 'Nederland');
+  await verwijderChip('doelgroepen', 'Kinderen');
+  await typTekst(q('[data-testid="zp-omschrijving"]'), 'Mijn tekst');
+  await klik(bevestigKnop());
+  await rust(80);
+  check('fout: terug in het profiel (niet in een losse foutpagina) met de foutmelding', q('[data-testid="voorstel-werkruimte"]').dataset.fase === 'profiel' && /kon nu niet worden gemaakt \(test\)/.test(q('[data-testid="zp-fout"]').textContent) && /Uw zoekprofiel is behouden/.test(q('[data-testid="zp-fout"]').textContent));
+  check('na de fout: alle wijzigingen nog aanwezig', chips('disciplines').join() === 'Sport,Cultuur,Natuur' && chips('werkgebieden').join() === 'Rotterdam,Zuid-Holland,Nederland' && chips('doelgroepen').join() === 'Jongeren' && q('[data-testid="zp-omschrijving"]').value === 'Mijn tekst');
+  check('de server kreeg het profiel precies één keer; er is niets opgeslagen', aanroepen(s, 'genereer').length === 1 && aanroepen(s, 'opslaan').length === 0);
+  await klik(bevestigKnop());
+  await rust(80);
+  check('opnieuw proberen: dezelfde wijzigingen gaan mee en het voorstel verschijnt', aanroepen(s, 'genereer').length === 2 && aanroepen(s, 'genereer')[1].zoekprofiel.disciplines.length === 3 && aanroepen(s, 'genereer')[1].zoekprofiel.omschrijving === 'Mijn tekst' && !!q('[data-testid="voorstel-resultaat"]'));
+}
+await schoon();
+{
+  // Verversen midden in het aanpassen: het concept komt terug; een nieuw serverprofiel overschrijft de eigen wijzigingen niet
+  const s = metProfiel(maakServer());
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  await kiesOptie('disciplines', 'Natuur');
+  await typTekst(q('[data-testid="zp-omschrijving"]'), 'Eigen omschrijving');
+  await weg();
+  s.profielNu = profielRuw({ omschrijving: 'Nieuw van de server', disciplines: [{ naam: 'Sport', bron: 'project' }, { naam: 'Educatie', bron: 'ai' }], doelgroepen: [{ naam: 'Vluchtelingen', bron: 'ai' }] });
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  check('na verversen: melding dat eerdere wijzigingen zijn teruggezet', !!q('[data-testid="zp-hersteld"]'));
+  check('eigen omschrijving en disciplines blijven staan (niet stil overschreven)', q('[data-testid="zp-omschrijving"]').value === 'Eigen omschrijving' && chips('disciplines').join() === 'Sport,Cultuur,Natuur');
+  check('niet-bewerkte velden zijn ververst met het nieuwe serverprofiel (doelgroepen)', chips('doelgroepen').join() === 'Vluchtelingen');
+  check('wat de server nu méér voorstelt staat apart ("+ Educatie"), niet automatisch toegevoegd', !chips('disciplines').includes('Educatie') && /Educatie/.test(q('[data-testid="zp-voorstel-disciplines"]').textContent));
+  await klik(q('[data-testid="zp-voorstel-neem-over"]'));
+  check('voorstel overnemen: toegevoegd aan de keuze', chips('disciplines').includes('Educatie'));
+  // Opnieuw opstellen midden in het aanpassen
+  s.profielNu = profielRuw({ omschrijving: 'Nog nieuwer', disciplines: [{ naam: 'Jeugd', bron: 'ai' }] });
+  await klik(q('[data-testid="zp-opnieuw"]'));
+  await rust(60);
+  check('"Profiel opnieuw opstellen": 2e aanroep van de zoekprofielservice; eigen wijzigingen blijven', aanroepen(s, 'zoekprofiel').length === 3 && q('[data-testid="zp-omschrijving"]').value === 'Eigen omschrijving' && chips('disciplines').join() === 'Sport,Cultuur,Natuur,Educatie');
+  // Opnieuw beginnen vanuit het project: de eigen wijzigingen worden bewust (op een klik) weggegooid
+  await klik(q('[data-testid="zp-begin-opnieuw"]'));
+  await rust(80);
+  check('"Opnieuw beginnen vanuit het project": eigen wijzigingen weg, het verse serverprofiel staat er', q('[data-testid="zp-omschrijving"]').value === 'Nog nieuwer' && chips('disciplines').join() === 'Jeugd' && !q('[data-testid="zp-hersteld"]'));
+}
+await schoon();
+{
+  // Opslaan wist het concept en het volledige vervolg (preview, bronnen, opslaan, actieplan) draait ongewijzigd
+  const s = metProfiel(maakServer());
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  await kiesOptie('disciplines', 'Natuur');
+  await klik(bevestigKnop());
+  await rust(100);
+  check('doorstroom: broncontrole per regel draait na het voorstel', aanroepen(s, 'controleer').length === 3);
+  await klik(q('[data-testid="voorstel-opslaan"]'));
+  await rust(80);
+  check('doorstroom: opslaan met type, id en bedrag; actieplan klaar', q('[data-testid="voorstel-werkruimte"]').dataset.fase === 'opgeslagen' && aanroepen(s, 'opslaan').length === 1 && q('[data-testid="voorstel-actieplan"]').dataset.status === 'klaar');
+  check('het opslagverzoek bevat geen zoekprofiel of bronstatus (zelfde opslaglogica als altijd)', Object.keys(aanroepen(s, 'opslaan')[0]).sort().join() === 'projectId,regels,suggesties,uitgeslotenActies' && aanroepen(s, 'opslaan')[0].regels.every((r) => Object.keys(r).sort().join() === 'bedrag,id,type'));
+  check('na opslaan is het concept gewist', localStorage.getItem(Z.conceptSleutel(PID, 'project')) === null);
+}
+await schoon();
+{
+  // Premium: aanvullen gebruikt hetzelfde bevestigde profiel
+  const s = metProfiel(maakServer({ gen: genereerAntwoord({ aanvullenMogelijk: true, onlineSuggesties: [{ gever: 'Online Fonds', naam: 'Online Fonds', indicatiefBedrag: 5000 }] }), aanv: { ok: true, onlineSuggesties: [], nogAanvullen: false } }));
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  await klik(bevestigKnop());
+  await rust(100);
+  const a = aanroepen(s, 'aanvullen');
+  check('aanvullen krijgt hetzelfde bevestigde zoekprofiel mee als genereren', a.length >= 1 && JSON.stringify(a[0].zoekprofiel) === JSON.stringify(aanroepen(s, 'genereer')[0].zoekprofiel));
+}
+await schoon();
+{
+  // Onbekende financieringsbehoefte: wel zoeken, met uitleg; geen bedragen; opslaan zonder bedrag
+  const project = { ...PROJECT_OK, begroting: null };
+  const s = metProfiel(maakServer({ gen: onbekendAntwoord() }), { profiel: zonderBedragProfiel() });
+  await toon(<VoorstelWerkruimte project={project} beschikbaar opgeslagen diensten={s.diensten} />);
+  check('zonder projectbegroting is de startknop toch actief (aanvullen gebeurt in het profiel)', !q('[data-testid="voorstel-start-knop"]').disabled && !!q('[data-testid="voorstel-aanvullen-in-profiel"]') && /matching op bedrag is dan beperkt/.test(q('[data-testid="voorstel-aanvullen-in-profiel"]').textContent));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  check('profiel: financieringsbehoefte onbekend, met de uitleg en gerichte vraag; zoeken blijft mogelijk', q('[data-testid="zp-financiering"]').dataset.bekend === 'nee' && /matching op bedrag is dan beperkt/.test(q('[data-testid="zp-financiering"]').textContent) && /Wat is de totale begroting/.test(q('[data-testid="zp-vragen"]').textContent) && !bevestigKnop().disabled);
+  check('en de waarschuwing staat bij de knop', /matching op bedrag is dan beperkt/.test(q('[data-testid="zp-waarschuwingen"]').textContent));
+  await klik(bevestigKnop());
+  await rust(100);
+  const zp = aanroepen(s, 'genereer')[0].zoekprofiel;
+  check('genereren gaat met bekend=false en zonder bedragen', zp.financieringsbehoefte.bekend === false && zp.financieringsbehoefte.gat === null);
+  check('voorstel zonder bedragen: duidelijke melding dat de matching op bedrag beperkt is', !!q('[data-testid="voorstel-bedrag-onbekend"]') && /matching op bedrag is daarom beperkt/.test(q('[data-testid="voorstel-bedrag-onbekend"]').textContent));
+  check('geen totalen/dekking/bedragvelden; financiers staan wel aan', !q('[data-testid="voorstel-totalen"]') && qa('[data-testid="voorstel-bedrag"]').length === 0 && qa('[data-testid="voorstel-rij"]').length === 2 && qa('[data-testid="voorstel-kies"]').every((c) => c.checked));
+  check('termen die niet gevonden zijn worden gemeld', /hiphop/.test(q('[data-testid="voorstel-profiel-afgevallen"]').textContent));
+  check('aanvullen wordt niet aangeroepen zonder bedrag', aanroepen(s, 'aanvullen').length === 0);
+  await rust(60);
+  await klik(q('[data-testid="voorstel-opslaan"]'));
+  await rust(80);
+  check('opslaan kan zonder bedrag: regels met bedrag null; actieplan klaar', aanroepen(s, 'opslaan')[0].regels.every((r) => r.bedrag === null) && aanroepen(s, 'opslaan')[0].regels.length === 2 && q('[data-testid="voorstel-actieplan"]').dataset.status === 'klaar');
+}
+await schoon();
+{
+  // Controle in het scherm: lege keuze, waarde buiten de lijst, lijsten niet te laden
+  const s = metProfiel(maakServer());
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  for (const n of ['Sport', 'Cultuur']) await verwijderChip('disciplines', n);
+  await verwijderChip('werkvelden', 'Welzijn');
+  for (const n of ['Jongeren', 'Kinderen']) await verwijderChip('doelgroepen', n);
+  check('zonder discipline, werkveld en doelgroep: knop uit, uitleg zichtbaar, niets gezocht', bevestigKnop().disabled && !!q('[data-testid="zp-algemeen"]') && aanroepen(s, 'genereer').length === 0);
+  await kiesOptie('doelgroepen', 'Ouderen');
+  check('alleen een doelgroep is genoeg: knop weer aan', !bevestigKnop().disabled);
+}
+await schoon();
+{
+  const s = metProfiel(maakServer(), { profiel: profielRuw({ disciplines: [{ naam: 'Verzonnen thema', bron: 'ai' }, { naam: 'Sport', bron: 'project' }] }) });
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  check('waarde die niet in de databaselijst staat: foutmelding bij het veld en geen zoekactie', bevestigKnop().disabled && /Verzonnen thema/.test(q('[data-testid="zp-fout-disciplines"]').textContent));
+  await verwijderChip('disciplines', 'Verzonnen thema');
+  check('na weghalen: knop weer aan', !bevestigKnop().disabled && !q('[data-testid="zp-fout-disciplines"]'));
+}
+await schoon();
+{
+  const s = metProfiel(maakServer(), { lijstenFout: true });
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  check('lijsten niet te laden: waarschuwing; bestaande keuzes blokkeren niet; zoeken kan', !!q('[data-testid="zp-lijsten-fout"]') && !bevestigKnop().disabled && !q('[data-testid="zp-fout-disciplines"]'));
+}
+await schoon();
+{
+  // Het zoekprofiel zelf kan niet worden opgesteld
+  const s = metProfiel(maakServer(), { zoekFalen: 1 });
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  check('profiel mislukt: melding en "Opnieuw proberen"; niets gezocht of opgeslagen', q('[data-testid="voorstel-werkruimte"]').dataset.fase === 'fout' && /kon nu niet worden opgesteld \(test\)/.test(q('[data-testid="voorstel-fout"]').textContent) && aanroepen(s, 'genereer').length === 0 && aanroepen(s, 'opslaan').length === 0);
+  await klik(q('[data-testid="voorstel-opnieuw"]'));
+  await rust(60);
+  check('opnieuw proberen toont het profiel', !!q('[data-testid="zoekprofiel"]'));
+}
+await schoon();
+{
+  // Geen sterke financiers: terug naar het profiel om aan te passen (niet naar een doodlopende foutpagina)
+  const s = metProfiel(maakServer({ gen: genereerAntwoord({ uitkomst: 'geen-passende-financiers', melding: 'Er zijn geen sterke, passende financiers gevonden.', voorstel: { versie: 1, regels: [], acties: [] }, reserveSleutel: null, werkwijze: { zoekprofiel: 'bevestigd-profiel', bedrag: 'bekend' } }) }));
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(60);
+  await kiesOptie('disciplines', 'Natuur');
+  await klik(bevestigKnop());
+  await rust(80);
+  check('geen resultaat: terug in het profiel met uitleg; keuzes behouden', !!q('[data-testid="zp-melding"]') && /geen sterke, passende financiers/.test(q('[data-testid="zp-melding"]').textContent) && chips('disciplines').includes('Natuur'));
+}
+await schoon();
+
+sectie('16. Chatroute: dezelfde stap, dezelfde service en dezelfde keten');
+{
+  const berichten = [{ role: 'user', content: 'Ik wil een sportproject voor jongeren starten in Rotterdam.' }, { role: 'user', content: 'We zoeken ongeveer 50.000 euro.' }];
+  const gesprekProfiel = (a) => profielRuw({ route: a.berichten && a.berichten.length ? 'chat' : 'project', bronnen: { projectvelden: true, documenten: 0, gesprek: true, ai: 'gebruikt' }, disciplines: [{ naam: 'Sport', bron: 'gesprek' }, { naam: 'Jeugd', bron: 'gesprek' }], doelgroepen: [{ naam: 'Jongeren', bron: 'gesprek' }] });
+  const s = metProfiel(maakServer());
+  s.profielNu = gesprekProfiel;
+  const project = { id: PID, naam: 'Sportproject' };
+  let gewijzigd = 0;
+  await toon(<ChatZoekprofielKaart project={project} berichten={berichten} diensten={s.diensten} onGewijzigd={() => { gewijzigd += 1; }} />);
+  check('chat: ingeklapte kaart met uitleg; nog niets aangeroepen', !!q('[data-testid="chat-zoekprofiel-open"]') && /pas gezocht als u op “Zoek passende fondsen” klikt/.test(q('[data-testid="chat-zoekprofiel"]').textContent) && s.log.length === 0);
+  await klik(q('[data-testid="chat-zoekprofiel-open"]'));
+  await rust(80);
+  check('chat: zoekprofielservice met de berichten van het lid (dezelfde dienst als in het project)', aanroepen(s, 'zoekprofiel').length === 1 && aanroepen(s, 'zoekprofiel')[0].berichten.length === 2 && aanroepen(s, 'zoekprofiel')[0].projectId === PID);
+  check('chat: dezelfde bewerkbare samenvatting (route chat), gevuld uit het gesprek', q('[data-testid="zoekprofiel"]').dataset.route === 'chat' && /uw gesprek en uw project/.test(q('[data-testid="zoekprofiel"]').textContent) && chips('disciplines').join() === 'Sport,Jeugd' && /uit het gesprek: Sport, Jeugd/.test(q('[data-testid="zp-bron-disciplines"]').textContent));
+  check('chat: geen startknop van het project in de kaart; geen tweede flow', !q('[data-testid="voorstel-start-knop"]') && !q('[data-testid="voorstel-start"]'));
+  await kiesOptie('disciplines', 'Natuur');
+  await kiesOptie('doelgroepen', 'Ouderen');
+  await kiesOptie('werkgebieden', 'Nederland');
+  await klik(bevestigKnop());
+  await rust(100);
+  const g = aanroepen(s, 'genereer');
+  check('chat: bevestigen roept dezelfde genereren-dienst aan met het profiel (route chat, alle waarden)', g.length === 1 && g[0].zoekprofiel.route === 'chat' && g[0].zoekprofiel.disciplines.map((i) => i.naam).join() === 'Sport,Jeugd,Natuur' && g[0].zoekprofiel.doelgroepen.map((i) => i.naam).join() === 'Jongeren,Ouderen' && g[0].zoekprofiel.werkgebieden.map((i) => i.naam).join() === 'Rotterdam,Zuid-Holland,Nederland');
+  check('chat: zelfde voorstelscherm met broncontrole per regel (dezelfde keten)', !!q('[data-testid="voorstel-resultaat"]') && aanroepen(s, 'controleer').length === 3 && q('[data-testid="voorstel-werkruimte"]').dataset.ingang === 'chat');
+  await klik(q('[data-testid="voorstel-opslaan"]'));
+  await rust(80);
+  check('chat: opslaan via dezelfde server-opslag (type/id/bedrag), actieplan klaar, de chat wordt ververst', aanroepen(s, 'opslaan').length === 1 && aanroepen(s, 'opslaan')[0].regels.every((r) => Object.keys(r).sort().join() === 'bedrag,id,type') && q('[data-testid="voorstel-actieplan"]').dataset.status === 'klaar' && gewijzigd >= 1);
+  check('chat: concept van de chatroute is gewist na opslaan', localStorage.getItem(Z.conceptSleutel(PID, 'chat')) === null);
+}
+await schoon();
+{
+  // Chat: fout bij het zoeken, onbekend bedrag, sluiten
+  const berichten = [{ role: 'user', content: 'Ik zoek geld voor een buurtfeest.' }];
+  const s = metProfiel(maakServer({ gen: onbekendAntwoord() }), { profiel: zonderBedragProfiel(), genereerFalen: 1 });
+  await toon(<ChatZoekprofielKaart project={{ id: PID, naam: 'Buurtfeest' }} berichten={berichten} diensten={s.diensten} />);
+  await klik(q('[data-testid="chat-zoekprofiel-open"]'));
+  await rust(80);
+  check('chat: financieringsbehoefte onbekend -> niet opnieuw gevraagd maar zoeken kan, met uitleg', q('[data-testid="zp-financiering"]').dataset.bekend === 'nee' && !bevestigKnop().disabled && /matching op bedrag is dan beperkt/.test(q('[data-testid="zp-waarschuwingen"]').textContent));
+  await kiesOptie('doelgroepen', 'Ouderen');
+  await klik(bevestigKnop());
+  await rust(80);
+  check('chat: fout -> terug in het profiel, invoer behouden, concept bewaard onder de chatroute (niet onder het project)', !!q('[data-testid="zp-fout"]') && chips('doelgroepen').includes('Ouderen') && localStorage.getItem(Z.conceptSleutel(PID, 'chat')) !== null && localStorage.getItem(Z.conceptSleutel(PID, 'project')) === null);
+  await klik(bevestigKnop());
+  await rust(100);
+  check('chat: opnieuw proberen -> voorstel zonder bedragen met de melding', !!q('[data-testid="voorstel-bedrag-onbekend"]') && qa('[data-testid="voorstel-bedrag"]').length === 0);
+  await klik(q('[data-testid="voorstel-verwerp"]'));
+  await rust(40);
+  check('chat: sluiten zonder opslaan -> kaart weer ingeklapt, niets opgeslagen', !!q('[data-testid="chat-zoekprofiel-open"]') && aanroepen(s, 'opslaan').length === 0);
+  await klik(q('[data-testid="chat-zoekprofiel-open"]'));
+  await rust(80);
+  check('chat: heropenen -> eerdere wijzigingen teruggezet', !!q('[data-testid="zp-hersteld"]') && chips('doelgroepen').includes('Ouderen'));
+}
+await schoon();
+{
+  // Chat zonder project: geen kaart
+  await toon(<ChatZoekprofielKaart project={null} berichten={[]} />);
+  check('chat zonder project: de kaart verschijnt niet', q('[data-testid="chat-zoekprofiel"]') === null);
+}
+await schoon();
+
 sectie('13. Statische eigenschappen van de client');
 {
   const lees = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -934,6 +1360,19 @@ sectie('13. Statische eigenschappen van de client');
   check('de client rekent zelf geen dekkingsfactor uit (geen 1.1/1.2/110/120)', !/\b1\.1\b|\b1\.2\b|\b110\b|\b120\b/.test(werk.replace(/\/\/.*$/gm, '')));
   check('opslagverzoek bevat nergens naam/bron/status uit de browser', /regels\.push\(\{ type: r\.type, id: r\.id, bedrag: b\.waarde \}\)/.test(werk));
   check('client markeert zelf nooit iets als gecontroleerd', !/status:\s*'gecontroleerd'/.test(werk.replace(/\/\/.*$/gm, '')));
+  // Zoekprofiel: geen tweede matchingflow, geen netwerk in het model, geen directe databasetoegang in de nieuwe schermen
+  const model = lees('src/features/kompas-app/financiering/zoekprofielModel.js');
+  const bevestigen = lees('src/features/kompas-app/financiering/ZoekprofielBevestigen.jsx');
+  const chatKaart = lees('src/features/kompas-app/chat/ChatZoekprofielKaart.jsx');
+  const toolPagina = lees('src/features/kompas-app/KompasToolPage.jsx');
+  const code = (t) => t.replace(/\/\/.*$/gm, '');
+  check('zoekprofielModel is zuiver: geen netwerk, geen supabase, geen React', !/fetch\(|supabase|XMLHttp|from 'react'/.test(code(model)));
+  check('ZoekprofielBevestigen praat niet met het netwerk of de database (alleen tonen en doorgeven)', !/fetch\(|supabase|\.from\(|vraag[A-Z]/.test(code(bevestigen)));
+  check('ChatZoekprofielKaart heeft geen eigen matching of service: alleen VoorstelWerkruimte (dezelfde keten)', !/supabase|fetch\(|vraag[A-Z]|\.from\(/.test(code(chatKaart)) && /VoorstelWerkruimte/.test(chatKaart));
+  check('de werkruimte gebruikt voor beide routes dezelfde zoekprofielservice en dezelfde genereren-aanroep', (bron.match(/vraagZoekprofiel/g) || []).length >= 2 && (bron.match(/draaiVoorstelFlow\(/g) || []).length === 1);
+  check('de chatpagina toont de zoekprofielkaart alleen met een echt project en als de flow aan staat', /ChatZoekprofielKaart/.test(toolPagina) && /isEchtId\(gekoppeldProjectId\) && voorstelGeneratieBeschikbaar\(\)/.test(toolPagina));
+  check('het model noemt geen nieuwe werkveld-taxonomie: werkvelden komen uit dezelfde tabel als disciplines', /sleutel: 'werkvelden'[^}]*bron: 'themas'/.test(model) && /sleutel: 'disciplines'[^}]*bron: 'themas'/.test(model));
+  check('het concept staat niet in de database (alleen browseropslag, geen migratie)', !/\.insert\(|\.upsert\(|subsidie_kompas_/.test(code(model)));
 }
 
 console.error = origError;

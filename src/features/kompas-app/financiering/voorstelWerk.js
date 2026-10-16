@@ -27,7 +27,9 @@ const tekst = (x, max) => String(x == null ? '' : x).slice(0, max);
 // diensten: { genereer({projectId}), aanvullen({projectId, voorstel, getoond}), startpunt({projectId, regels}) } -> { ok, antwoord, melding }
 // startpunt = { regels: [{ type, id }] } -> de financiers uit een gesprek met Subsidiekompas (de chat-ingang) in plaats van zelf zoeken.
 // -> { ok: true, genereer, aanvulling } | { ok: false, reden, melding }
-export async function draaiVoorstelFlow({ projectId, diensten, onStap, startpunt = null }) {
+// zoekprofiel (optioneel) = het door het lid bevestigde profiel (zoekprofielModel.bouwZoekprofielVerzoek); het gaat mee naar genereren EN aanvullen,
+// zodat beide stappen op dezelfde criteria zoeken. De server toetst het opnieuw aan de database.
+export async function draaiVoorstelFlow({ projectId, diensten, onStap, startpunt = null, zoekprofiel = null }) {
   const meld = (s) => {
     if (typeof onStap === 'function') onStap(s);
   };
@@ -44,7 +46,7 @@ export async function draaiVoorstelFlow({ projectId, diensten, onStap, startpunt
   }
 
   meld(STAP.ONDERZOEKEN);
-  const g = await diensten.genereer({ projectId });
+  const g = await diensten.genereer(zoekprofiel ? { projectId, zoekprofiel } : { projectId });
 
   if (!g || !g.ok || !isObject(g.antwoord)) {
     return { ok: false, reden: (g && g.reden) || 'fout', melding: (g && g.melding) || 'Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen.' };
@@ -65,7 +67,7 @@ export async function draaiVoorstelFlow({ projectId, diensten, onStap, startpunt
 
   for (let ronde = 0; verder && ronde < MAX_AANVUL_RONDES; ronde += 1) {
     meld(STAP.AANVULLEN);
-    const a = await diensten.aanvullen({ projectId, voorstel: genereer.voorstel, getoond: getoond.map((x) => ({ gever: x.gever, indicatiefBedrag: x.indicatiefBedrag })) });
+    const a = await diensten.aanvullen({ projectId, voorstel: genereer.voorstel, getoond: getoond.map((x) => ({ gever: x.gever, indicatiefBedrag: x.indicatiefBedrag })), ...(zoekprofiel ? { zoekprofiel } : {}) });
     const antwoord = a && a.ok && isObject(a.antwoord) ? a.antwoord : null;
 
     // Mislukt het aanvullen, dan is het voorstel gewoon bruikbaar zonder: geen foutmelding, wel minder suggesties.
@@ -191,6 +193,8 @@ export function maakWerkModel({ genereer, aanvulling }) {
   const t = isObject(genereer.totalen) ? genereer.totalen : {};
   const hint = isObject(genereer.premiumHint) && Number.isInteger(genereer.premiumHint.aantal) && genereer.premiumHint.aantal > 0 ? genereer.premiumHint.aantal : 0;
   const werkwijze = isObject(genereer.werkwijze) ? genereer.werkwijze : {};
+  const toetsing = isObject(werkwijze.profielToetsing) ? werkwijze.profielToetsing : null;
+  const afgevallen = toetsing ? lijst(toetsing.afgevallen).filter(isObject).map((x) => ({ soort: tekst(x.soort, 20), term: tekst(x.term, 80) })).filter((x) => x.term) : [];
 
   return {
     uitkomst: String(genereer.uitkomst || ''),
@@ -204,6 +208,11 @@ export function maakWerkModel({ genereer, aanvulling }) {
     premiumHint: hint,
     // Hoeveel geüploade projectdocumenten de server heeft meegenomen in de online oriëntatie (alleen een aantal).
     documenten: Number.isInteger(werkwijze.documenten) && werkwijze.documenten > 0 ? werkwijze.documenten : 0,
+    // Het bedrag dat het lid zoekt is niet bekend: de server zoekt dan op inhoud, doelgroep en werkgebied en stelt geen bedragen voor.
+    bedragOnbekend: werkwijze.bedrag === 'onbekend' || genereer.uitkomst === 'bedrag-onbekend',
+    // Met welk zoekprofiel gezocht is ('bevestigd-profiel' of 'projectvelden') en welke termen de server niet in de database vond (en dus niet gebruikte).
+    zoekprofiel: werkwijze.zoekprofiel === 'bevestigd-profiel' ? 'bevestigd-profiel' : 'projectvelden',
+    profielAfgevallen: afgevallen,
     // Som van de indicaties van de online suggesties: een schatting, telt nooit mee in de dekking.
     onlineIndicatief: suggesties.reduce((t2, x) => t2 + (x.indicatiefBedrag > 0 ? x.indicatiefBedrag : 0), 0),
     gat: Number.isFinite(t.gat) ? t.gat : 0,

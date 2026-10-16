@@ -6,7 +6,7 @@
 import http from 'node:http';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { PID, w, resetGenereren, regeling, fonds, online } from '../../voorstel-genereren/wereld.mjs';
+import { PID, w, resetGenereren, regeling, fonds, online, projectRij, TAXONOMIE } from '../../voorstel-genereren/wereld.mjs';
 import '../../../supabase/functions/subsidie-kompas/index.ts';
 
 const WEB = process.env.WEB || resolve('tests/voorstel-werkruimte/browser/web');
@@ -39,8 +39,10 @@ const pool = () => ({
 });
 
 // ------------------------------------------------------------------------------------------------------------------ server + brug
-let faal = { opslaan: 0 };
+let faal = { opslaan: 0, genereren: 0 };
 let aanroepen = [];
+let verzoeken = []; // alle bodies die de browser naar de Edge Function stuurde (voor controle van wat er echt over de lijn ging)
+let seedBegroting = { totaal: 100000, eigen: 20000 }; // de begroting van het project zoals de BROWSER het kent (de server leest zijn eigen project)
 
 const staat = () => {
   const lid = (r) => ({ ...r, user_id: 'u1' });
@@ -53,7 +55,19 @@ const staat = () => {
 };
 
 async function serverCall(body) {
-  aanroepen.push(body.mode);
+  aanroepen.push(body.mode || 'chat');
+  verzoeken.push(body);
+
+  // Gewone chatberichten (geen voorstel-mode): een vast antwoord; de chatbot zelf valt buiten deze test. Het gaat om de kaart onder het gesprek.
+  if (!body.mode) {
+    return { status: 200, json: { answer: 'Mooi project! Ik kijk met u mee naar passende fondsen.', sources: [] }, staat: staat() };
+  }
+
+  if (body.mode === 'voorstel-genereren' && faal.genereren > 0) {
+    faal.genereren -= 1;
+
+    return { status: 500, json: { error: 'interne fout' }, staat: staat() };
+  }
 
   if (body.mode === 'voorstel-opslaan' && faal.opslaan > 0) {
     faal.opslaan -= 1;
@@ -76,7 +90,8 @@ const server = http.createServer((req, res) => {
   if (pad === '/' || pad === '/index.html') {
     let html = readFileSync(join(WEB, 'index.html'), 'utf8');
     const patch = `<script>window.__STAAT=${JSON.stringify(staat())};window.__SEED_PATCH=function(seed,h){var S=window.__STAAT,T=seed.tables,P=h.P2;
-      Object.assign(T.subsidie_kompas_programs.find(function(p){return p.id===P}),{name:'Rotterdam Beats',description:'Een muziekproject voor jongeren in Rotterdam.',goals:'Talentontwikkeling',activities:'Workshops en optredens',location:'Rotterdam',target_groups:'Jongeren',budget_total:100000,own_contribution:20000});
+      Object.assign(T.subsidie_kompas_programs.find(function(p){return p.id===P}),{name:'Rotterdam Beats',description:'Een muziekproject voor jongeren in Rotterdam.',goals:'Talentontwikkeling',activities:'Workshops en optredens',location:'Rotterdam',target_groups:'Jongeren',budget_total:${JSON.stringify(seedBegroting.totaal)},own_contribution:${JSON.stringify(seedBegroting.eigen)}});
+      var TX=${JSON.stringify(TAXONOMIE)};T.themas=TX.themas.map(function(n){return {naam:n}});T.doelgroepen=TX.doelgroepen.map(function(n){return {naam:n}});T.regios=TX.regios.map(function(n){return {naam:n}});
       T.subsidie_kompas_program_actions=S.actions;T.subsidie_kompas_bron_controles=S.bron;T.subsidie_kompas_actieplan_open=S.open;
       T.subsidie_kompas_program_funding=T.subsidie_kompas_program_funding.filter(function(r){return r.program_id!==P}).concat(S.funding);
       Object.assign(seed.bronnen,S.bronnen);};</script>`;
@@ -104,7 +119,7 @@ const BASE = `http://localhost:${PORT}/index.html`;
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
 
-async function nieuwePagina(tier = 'pro', viewport = { width: 1280, height: 1000 }) {
+async function nieuwePagina(tier = 'pro', viewport = { width: 1280, height: 1000 }, { hash = `#/kompas/projecten/${PID}?tab=projectfinanciering`, wacht = '[data-testid="voorstel-start-knop"]' } = {}) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
 
@@ -130,14 +145,35 @@ async function nieuwePagina(tier = 'pro', viewport = { width: 1280, height: 1000
   });
   // Het onboarding-/meldingenlaagje van de testpagina mag de klikken niet afvangen.
   await context.addInitScript(() => document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = 'div[style*="z-index: 2000"]{display:none !important}'; document.head.appendChild(s); }));
-  await page.goto(`${BASE}?tier=${tier}#/kompas/projecten/${PID}?tab=projectfinanciering`);
-  await page.waitForSelector('[data-testid="voorstel-start-knop"]', { timeout: 15000 });
+  // De chat probeert eerst te streamen via fetch; dat is er in deze test niet. De fallback (supabase.functions.invoke) gaat via de brug hierboven.
+  await context.route('**/functions/v1/**', (r) => r.fulfill({ status: 500, body: 'geen stream' }));
+  await page.goto(`${BASE}?tier=${tier}${hash}`);
+  await page.waitForSelector(wacht, { timeout: 15000 });
 
   return { context, page };
 }
 
 const t = (page, id) => page.locator(`[data-testid="${id}"]`);
+
+// Het zoekprofiel is de stap tussen "Maak dekkingsplan…" en het voorstel: wachten tot het er is en bevestigen (of stoppen als het misging).
+async function bevestigProfiel(page) {
+  await page.waitForSelector('[data-testid="zp-bevestig"], [data-testid="voorstel-fout"]', { timeout: 25000 });
+
+  if (await t(page, 'zp-bevestig').count()) await t(page, 'zp-bevestig').click();
+}
+const chipsVan = (page, id) => page.locator(`[data-testid="zp-veld-${id}"] button[aria-label$=" verwijderen"]`).evaluateAll((b) => b.map((x) => x.getAttribute('aria-label').replace(/ verwijderen$/, '')));
+async function kies(page, id, naam) {
+  const veldSel = `[data-testid="zp-veld-${id}"]`;
+  const trigger = page.locator(`${veldSel} button[aria-haspopup="listbox"]`);
+
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+
+  await page.locator(`${veldSel} button[role="option"]`).filter({ hasText: new RegExp(`^\\s*${naam}\\s*✓?\\s*$`) }).first().click();
+}
+const verwijder = (page, id, naam) => page.locator(`[data-testid="zp-veld-${id}"] button[aria-label="${naam} verwijderen"]`).click();
+const concept = (page) => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('fwk-zoekprofiel-concept')));
 const tekstVan = async (page, id) => ((await t(page, id).count()) ? (await t(page, id).first().innerText()) : '');
+const namenVan = (l) => (l || []).map((x) => x.naam);
 const dubbelen = () => {
   const sleutels = w.db.actions.map((a) => `${a.funding_id}|${a.title}`);
 
@@ -156,6 +192,7 @@ sectie('1. Pro: voorstel maken, controleren, opslaan na een fout, actieplan opni
   check('startknop is actief (vlaggen aan, project compleet)', (await knop.isEnabled()) && /Maak dekkingsplan en actieplan met Subsidiekompas/.test(await knop.innerText()));
   await page.screenshot({ path: join(SHOTS, '01-start.png'), fullPage: true });
   await knop.click();
+  await bevestigProfiel(page);
   await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 20000 });
   await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 20000 }).catch(() => {});
   await sleep(400);
@@ -217,7 +254,8 @@ sectie('1. Pro: voorstel maken, controleren, opslaan na een fout, actieplan opni
 
   // Opnieuw starten na verversen: opgeslagen regels worden niet nogmaals voorgesteld/opgeslagen.
   await t(page, 'voorstel-start-knop').click();
-  await page.waitForSelector('[data-testid="voorstel-resultaat"], [data-testid="voorstel-fout"]', { timeout: 20000 });
+  await bevestigProfiel(page);
+  await page.waitForSelector('[data-testid="voorstel-resultaat"], [data-testid="voorstel-fout"], [data-testid="zp-melding"]', { timeout: 20000 });
   await sleep(500);
   await page.screenshot({ path: join(SHOTS, '07-opnieuw-starten.png'), fullPage: true });
   check('na verversen opnieuw starten: geen dubbele regels of taken in de database', w.db.funding.length === n && dubbelen() === 0);
@@ -235,6 +273,7 @@ sectie('1b. Actieplan mislukt, PAGINA VERVERST: "Actieplan opnieuw proberen" bli
 
   check('begin: geen banner voor open taken', (await t(page, 'actieplan-open').count()) === 0);
   await t(page, 'voorstel-start-knop').click();
+  await bevestigProfiel(page);
   await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 20000 });
   await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 20000 }).catch(() => {});
   w.dbFout = { actions: { code: 'XX000' } };
@@ -293,6 +332,7 @@ sectie('2. Premium: online suggestie met beoordelingsroute (onzekere status beho
   const { context, page } = await nieuwePagina('premium');
 
   await t(page, 'voorstel-start-knop').click();
+  await bevestigProfiel(page);
   await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 30000 });
   await page.waitForSelector('[data-testid="voorstel-online"]', { timeout: 30000 });
   await sleep(500);
@@ -334,6 +374,7 @@ sectie('3. Verversen terwijl het actieplan was mislukt: wat kan het lid dan nog?
   const { context, page } = await nieuwePagina('pro');
 
   await t(page, 'voorstel-start-knop').click();
+  await bevestigProfiel(page);
   await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 20000 });
   await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 20000 }).catch(() => {});
   await t(page, 'voorstel-opslaan').click();
@@ -350,13 +391,225 @@ sectie('3. Verversen terwijl het actieplan was mislukt: wat kan het lid dan nog?
   check('na verversen: de regels staan er, en per regel een afgeleide actie met "Maak er een taak van" en ook de bewaarde "Actieplan opnieuw proberen" van de server', (await t(page, 'pf-regel').count()) === n && afgeleid >= n && (await t(page, 'ap-maak-taak').count()) >= n && (await t(page, 'actieplan-open-opnieuw').count()) === 1, `${afgeleid}`);
   await page.screenshot({ path: join(SHOTS, '20-na-verversen-zonder-taken.png'), fullPage: true });
   await t(page, 'voorstel-start-knop').click();
-  await page.waitForSelector('[data-testid="voorstel-resultaat"], [data-testid="voorstel-fout"]', { timeout: 20000 });
+  await bevestigProfiel(page);
+  await page.waitForSelector('[data-testid="voorstel-resultaat"], [data-testid="voorstel-fout"], [data-testid="zp-melding"]', { timeout: 20000 });
   await sleep(600);
-  const uitleg = (await tekstVan(page, 'voorstel-fout')) + (await tekstVan(page, 'voorstel-resultaat'));
+  const uitleg = (await tekstVan(page, 'voorstel-fout')) + (await tekstVan(page, 'zp-melding')) + (await tekstVan(page, 'voorstel-resultaat'));
 
   console.log(`  INFO opnieuw starten na verversen toont: ${uitleg.replace(/\s+/g, ' ').slice(0, 300)}`);
   await page.screenshot({ path: join(SHOTS, '21-opnieuw-starten-na-mislukt.png'), fullPage: true });
   check('geen dubbele regels, geen pageerrors', w.db.funding.length === n && page.fouten.length === 0, page.fouten.join(' | '));
+  await context.close();
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------
+const AI_PROFIEL = { themas: ['Muziek', 'Cultuur', 'Sport', 'Hiphop'], kern_themas: ['Muziek', 'Sport'], doelgroepen: ['Jongeren', 'Ouderen'], regios: ['Rotterdam', 'Zuid-Holland'], locatie: 'Rotterdam-Zuid', trefwoorden: ['hiphop', 'talentontwikkeling'], aanvragertype: 'organisatie', periode_start: null, periode_eind: null, niet_gekoppeld: [{ soort: 'discipline', term: 'Hiphop' }] };
+
+sectie('4. PROJECTROUTE: zoekprofiel bekijken, meerdere waarden aanpassen, fout, behoud van invoer, bevestigen, preview, opslaan, actieplan');
+{
+  resetGenereren({ ...pool(), profile: PRO, dbActief: true, zoekprofielAi: AI_PROFIEL });
+  aanroepen = [];
+  verzoeken = [];
+  faal = { opslaan: 0, genereren: 0 };
+  seedBegroting = { totaal: 100000, eigen: 20000 };
+  const { context, page } = await nieuwePagina('pro');
+
+  await t(page, 'voorstel-start-knop').click();
+  await page.waitForSelector('[data-testid="zp-bevestig"]', { timeout: 25000 });
+  await sleep(300);
+  await page.screenshot({ path: join(SHOTS, '30-project-zoekprofiel.png'), fullPage: true });
+  const profielBody = verzoeken.find((b) => b.mode === 'voorstel-zoekprofiel');
+  const eerst = { d: await chipsVan(page, 'disciplines'), v: await chipsVan(page, 'werkvelden'), g: await chipsVan(page, 'doelgroepen'), r: await chipsVan(page, 'werkgebieden') };
+
+  check('de eerste stap vraagt ALLEEN het zoekprofiel (route project: zonder gesprek); nog niet gezocht en niets opgeslagen', Boolean(profielBody) && !profielBody.berichten && !aanroepen.includes('voorstel-genereren') && w.db.funding.length === 0, JSON.stringify(aanroepen));
+  check('de echte server vult het profiel uit projectvelden en AI: meerdere disciplines, doelgroepen en werkgebieden', eerst.d.includes('Muziek') && eerst.d.includes('Sport') && eerst.v.includes('Cultuur') && eerst.g.includes('Jongeren') && eerst.g.includes('Ouderen') && eerst.r.includes('Rotterdam') && eerst.r.includes('Zuid-Holland'), JSON.stringify(eerst));
+  check('"Hiphop" heeft geen databasecategorie: zichtbaar als niet zeker gekoppeld, niet stil gebruikt', /Hiphop/.test(await tekstVan(page, 'zp-onzeker')) && !JSON.stringify(eerst).includes('Hiphop'));
+  check('financieringsbehoefte uit het project: bekend, niet opnieuw gevraagd', (await t(page, 'zp-financiering').getAttribute('data-bekend')) === 'ja' && /niet opnieuw/.test(await tekstVan(page, 'zp-financiering')), await tekstVan(page, 'zp-financiering'));
+  check('lijsten komen uit de database-tabellen (themas, doelgroepen, regios): keuzevelden werken, geen "lijsten niet geladen"', (await t(page, 'zp-lijsten-fout').count()) === 0);
+
+  // Aanpassen
+  await kies(page, 'disciplines', 'Natuur');
+  await kies(page, 'werkvelden', 'Jeugd en kinderen');
+  await kies(page, 'werkgebieden', 'Amsterdam');
+  await verwijder(page, 'doelgroepen', 'Ouderen');
+  await sleep(200);
+  const aangepast = { d: await chipsVan(page, 'disciplines'), v: await chipsVan(page, 'werkvelden'), g: await chipsVan(page, 'doelgroepen'), r: await chipsVan(page, 'werkgebieden') };
+
+  check('na aanpassen: Natuur erbij, Jeugd en kinderen erbij, Amsterdam erbij, Ouderen weg; de rest blijft', aangepast.d.includes('Natuur') && aangepast.d.includes('Muziek') && aangepast.d.includes('Sport') && aangepast.v.includes('Jeugd en kinderen') && aangepast.v.includes('Cultuur') && aangepast.r.includes('Amsterdam') && aangepast.r.length === eerst.r.length + 1 && !aangepast.g.includes('Ouderen') && aangepast.g.includes('Jongeren'), JSON.stringify(aangepast));
+  await page.locator('[data-testid="zp-omschrijving"]').fill('Een muziekproject voor jongeren in heel Zuid-Holland (aangepast).');
+  check('de wijzigingen zijn op dit apparaat bewaard (concept)', (await concept(page)).length === 1 && (await t(page, 'zp-concept-bewaard').count()) === 1);
+  await page.screenshot({ path: join(SHOTS, '31-project-zoekprofiel-aangepast.png'), fullPage: true });
+
+  // Fout bij het zoeken (technisch 500): terug naar het profiel met ALLES nog erin
+  faal.genereren = 1;
+  await t(page, 'zp-bevestig').click();
+  await page.waitForSelector('[data-testid="zp-fout"]', { timeout: 20000 });
+  await sleep(300);
+  await page.screenshot({ path: join(SHOTS, '32-project-fout-invoer-behouden.png'), fullPage: true });
+  const naFout = { d: await chipsVan(page, 'disciplines'), v: await chipsVan(page, 'werkvelden'), g: await chipsVan(page, 'doelgroepen'), r: await chipsVan(page, 'werkgebieden') };
+
+  check('bij een fout: duidelijke melding in het profiel, nergens iets opgeslagen', /Uw zoekprofiel is behouden/.test(await tekstVan(page, 'zp-fout')) && w.db.funding.length === 0 && w.db.actions.length === 0, await tekstVan(page, 'zp-fout'));
+  check('bij een fout: alle gekozen waarden en de omschrijving zijn behouden', JSON.stringify(naFout) === JSON.stringify(aangepast) && (await page.locator('[data-testid="zp-omschrijving"]').inputValue()).includes('(aangepast)'), JSON.stringify(naFout));
+
+  // Opnieuw: nu gaat het door
+  await t(page, 'zp-bevestig').click();
+  await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 40000 });
+  await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 25000 }).catch(() => {});
+  await sleep(300);
+  const genBody = verzoeken.filter((b) => b.mode === 'voorstel-genereren').pop();
+  const namen = (l) => (l || []).map((x) => x.naam);
+
+  check('de server kreeg het BEVESTIGDE profiel met alle waarden (niet teruggebracht tot één)', Boolean(genBody && genBody.zoekprofiel) && namen(genBody.zoekprofiel.disciplines).includes('Natuur') && namen(genBody.zoekprofiel.disciplines).includes('Muziek') && namen(genBody.zoekprofiel.werkvelden).includes('Jeugd en kinderen') && namen(genBody.zoekprofiel.werkgebieden).includes('Amsterdam') && namen(genBody.zoekprofiel.werkgebieden).includes('Zuid-Holland') && !namen(genBody.zoekprofiel.doelgroepen).includes('Ouderen') && genBody.zoekprofiel.omschrijving.includes('(aangepast)'), JSON.stringify(genBody && genBody.zoekprofiel && { d: namen(genBody.zoekprofiel.disciplines), r: namen(genBody.zoekprofiel.werkgebieden) }));
+  check('het voorstel meldt dat op het bevestigde zoekprofiel is gezocht', (await t(page, 'voorstel-zoekprofiel-gebruikt').count()) === 1 && /bevestigde zoekprofiel/.test(await tekstVan(page, 'voorstel-zoekprofiel-gebruikt')));
+  check('de bestaande preview: regels met bedragen, buffer 110%, bronstatus per regel (server-eigen controle)', (await t(page, 'voorstel-rij').count()) >= 2 && /110/.test(await tekstVan(page, 'voorstel-buffer')) && aanroepen.filter((m) => m === 'voorstel-controleer').length >= 1 && w.bron.length >= 1);
+  await page.screenshot({ path: join(SHOTS, '33-project-voorstel-na-profiel.png'), fullPage: true });
+
+  // Terug naar het profiel vanuit het voorstel: aanpassingen staan er nog, niets is opgeslagen
+  await t(page, 'voorstel-profiel-aanpassen').click();
+  await page.waitForSelector('[data-testid="zp-bevestig"]', { timeout: 10000 });
+  check('"Zoekprofiel aanpassen" uit het voorstel: profiel met alle aanpassingen, niets opgeslagen', JSON.stringify(await chipsVan(page, 'disciplines')) === JSON.stringify(aangepast.d) && w.db.funding.length === 0);
+  await t(page, 'zp-bevestig').click();
+  await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 40000 });
+  await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 25000 }).catch(() => {});
+  await sleep(300);
+
+  // Opslaan en actieplan
+  const rijen = await t(page, 'voorstel-rij').count();
+
+  await t(page, 'voorstel-opslaan').click();
+  await page.waitForSelector('[data-testid="voorstel-opgeslagen"]', { timeout: 25000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="voorstel-actieplan"]')?.dataset.status === 'klaar', null, { timeout: 15000 });
+  const opslagBody = verzoeken.filter((b) => b.mode === 'voorstel-opslaan').pop();
+
+  check('opslaan: dezelfde server-opslag; de browser stuurt alleen type, id en bedrag (geen profiel, geen bronstatus)', opslagBody.regels.every((r) => Object.keys(r).sort().join() === 'bedrag,id,type') && !('zoekprofiel' in opslagBody));
+  check('dekkingsplan opgeslagen (status Interessant) met actieplan: meerdere taken per financier, geen dubbelen', w.db.funding.length >= 2 && w.db.funding.every((f) => f.status === 'interesting') && w.db.actions.length >= 8 && dubbelen() === 0 && rijen >= 2, `${w.db.funding.length} ${w.db.actions.length}`);
+  check('de taken hebben een planning (herkomst van de datums)', w.db.actions.some((a) => a.datum_herkomst));
+  check('na opslaan is het concept gewist', (await concept(page)).length === 0);
+  await page.screenshot({ path: join(SHOTS, '34-project-opgeslagen.png'), fullPage: true });
+  await page.reload();
+  await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
+  check('na verversen: de regels staan in het dekkingsplan, taken in Acties & deadlines', (await t(page, 'pf-regel').count()) === w.db.funding.length && (await t(page, 'ap-taak').count()) >= 1);
+  check('geen pageerrors in de hele projectroute', page.fouten.length === 0, page.fouten.join(' | '));
+  await context.close();
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------
+sectie('5. PROJECTROUTE: financieringsbehoefte nog onbekend (geen begroting): wel zoeken, zonder bedragen, opslaan zonder bedrag');
+{
+  resetGenereren({ ...pool(), profile: PRO, dbActief: true, zoekprofielAi: AI_PROFIEL, project: projectRij({ budget_total: null, own_contribution: null }) });
+  aanroepen = [];
+  verzoeken = [];
+  faal = { opslaan: 0, genereren: 0 };
+  seedBegroting = { totaal: null, eigen: null };
+  const { context, page } = await nieuwePagina('pro');
+
+  check('zonder begroting is de startknop toch actief: aanvullen gebeurt in het profiel', await t(page, 'voorstel-start-knop').isEnabled());
+  check('uitleg bij de knop: zoeken kan, matching op bedrag beperkt', /matching op bedrag is dan beperkt/.test(await tekstVan(page, 'voorstel-aanvullen-in-profiel')), await tekstVan(page, 'voorstel-aanvullen-in-profiel'));
+  await t(page, 'voorstel-start-knop').click();
+  await page.waitForSelector('[data-testid="zp-bevestig"]', { timeout: 25000 });
+  await page.screenshot({ path: join(SHOTS, '40-onbekend-bedrag-profiel.png'), fullPage: true });
+  check('profiel: financieringsbehoefte onbekend, met uitleg, de gerichte vraag en de knop blijft actief', (await t(page, 'zp-financiering').getAttribute('data-bekend')) === 'nee' && /matching op bedrag is dan beperkt/.test(await tekstVan(page, 'zp-financiering')) && /totale begroting/.test(await tekstVan(page, 'zp-vragen')) && (await t(page, 'zp-bevestig').isEnabled()));
+  await t(page, 'zp-bevestig').click();
+  await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 40000 });
+  await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 25000 }).catch(() => {});
+  await sleep(300);
+  const gen = verzoeken.filter((b) => b.mode === 'voorstel-genereren').pop();
+
+  check('de server kreeg een profiel met bekend=false en gaf toch een voorstel (uitkomst bedrag-onbekend)', gen.zoekprofiel.financieringsbehoefte.bekend === false && (await t(page, 'voorstel-bedrag-onbekend').count()) === 1);
+  check('melding: de matching op bedrag is beperkt; geen totalen, dekking of bedragvelden', /matching op bedrag is daarom beperkt/.test(await tekstVan(page, 'voorstel-bedrag-onbekend')) && (await t(page, 'voorstel-totalen').count()) === 0 && (await t(page, 'voorstel-bedrag').count()) === 0);
+  check('financiers staan aan en zijn op inhoud, doelgroep en werkgebied gekozen', (await t(page, 'voorstel-rij').count()) >= 1 && (await t(page, 'voorstel-kies').evaluateAll((l) => l.every((c) => c.checked))));
+  check('geen "aanvullen" zonder bekend bedrag', !aanroepen.includes('voorstel-aanvullen'));
+  await page.screenshot({ path: join(SHOTS, '41-onbekend-bedrag-voorstel.png'), fullPage: true });
+  await t(page, 'voorstel-opslaan').click();
+  await page.waitForSelector('[data-testid="voorstel-opgeslagen"]', { timeout: 25000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="voorstel-actieplan"]')?.dataset.status === 'klaar', null, { timeout: 15000 });
+  check('opgeslagen zonder bedrag (requested_amount leeg), met actieplan', w.db.funding.length >= 1 && w.db.funding.every((f) => f.requested_amount === null || f.requested_amount === undefined) && w.db.actions.length >= 4 && dubbelen() === 0, JSON.stringify(w.db.funding.map((f) => f.requested_amount)));
+  await page.screenshot({ path: join(SHOTS, '42-onbekend-bedrag-opgeslagen.png'), fullPage: true });
+  check('geen pageerrors', page.fouten.length === 0, page.fouten.join(' | '));
+  await context.close();
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------
+async function chatNaarKaart(page) {
+  await t(page, 'chat-invoer').fill('Ik wil een muziekproject voor jongeren starten in Rotterdam en Zuid-Holland.');
+  await t(page, 'chat-invoer').press('Enter');
+  await page.waitForSelector('[data-testid="chat-zoekprofiel-open"]', { timeout: 20000 });
+}
+
+sectie('6. CHATROUTE: na het gesprek hetzelfde zoekprofiel bekijken en bevestigen; dezelfde keten tot en met het actieplan');
+{
+  resetGenereren({ ...pool(), profile: PRO, dbActief: true, zoekprofielAi: AI_PROFIEL });
+  aanroepen = [];
+  verzoeken = [];
+  faal = { opslaan: 0, genereren: 0 };
+  seedBegroting = { totaal: 100000, eigen: 20000 };
+  const { context, page } = await nieuwePagina('pro', undefined, { hash: `#/kompas?project=${PID}`, wacht: '[data-testid="chat-invoer"]' });
+
+  check('chat: vóór het eerste bericht is er geen zoekprofielkaart', (await t(page, 'chat-zoekprofiel').count()) === 0);
+  await chatNaarKaart(page);
+  await page.screenshot({ path: join(SHOTS, '50-chat-kaart.png'), fullPage: true });
+  check('chat: onder het gesprek staat de kaart; er is nog niets aangeroepen voor het profiel', /Zoek passende fondsen/.test(await tekstVan(page, 'chat-zoekprofiel')) && !aanroepen.includes('voorstel-zoekprofiel') && !aanroepen.includes('voorstel-genereren'), JSON.stringify(aanroepen));
+  await t(page, 'chat-zoekprofiel-open').click();
+  await page.waitForSelector('[data-testid="zp-bevestig"]', { timeout: 25000 });
+  await sleep(300);
+  const pBody = verzoeken.find((b) => b.mode === 'voorstel-zoekprofiel');
+
+  check('chat: dezelfde zoekprofielservice, nu MET de berichten van het lid (route chat)', Boolean(pBody) && Array.isArray(pBody.berichten) && pBody.berichten.some((m) => /muziekproject voor jongeren/.test(m.content)) && (await t(page, 'zoekprofiel').getAttribute('data-route')) === 'chat');
+  check('chat: dezelfde bewerkbare samenvatting met meerdere waarden', (await chipsVan(page, 'disciplines')).length >= 2 && (await chipsVan(page, 'doelgroepen')).length >= 2 && (await chipsVan(page, 'werkgebieden')).length >= 2, JSON.stringify([await chipsVan(page, 'disciplines'), await chipsVan(page, 'doelgroepen'), await chipsVan(page, 'werkgebieden')]));
+  check('chat: financieringsbehoefte uit het project, niet opnieuw gevraagd', (await t(page, 'zp-financiering').getAttribute('data-bekend')) === 'ja');
+  await page.screenshot({ path: join(SHOTS, '51-chat-zoekprofiel.png'), fullPage: true });
+  await kies(page, 'disciplines', 'Natuur');
+  await kies(page, 'werkgebieden', 'Amsterdam');
+  await verwijder(page, 'doelgroepen', 'Ouderen');
+  const chatAangepast = { d: await chipsVan(page, 'disciplines'), g: await chipsVan(page, 'doelgroepen'), r: await chipsVan(page, 'werkgebieden') };
+
+  faal.genereren = 1;
+  await t(page, 'zp-bevestig').click();
+  await page.waitForSelector('[data-testid="zp-fout"]', { timeout: 20000 });
+  await page.screenshot({ path: join(SHOTS, '52-chat-fout-invoer-behouden.png'), fullPage: true });
+  check('chat: fout -> terug in het profiel, alle wijzigingen behouden, concept onder de chatroute', JSON.stringify({ d: await chipsVan(page, 'disciplines'), g: await chipsVan(page, 'doelgroepen'), r: await chipsVan(page, 'werkgebieden') }) === JSON.stringify(chatAangepast) && (await concept(page)).length === 1 && (await concept(page))[0].includes(':chat:'), JSON.stringify(await concept(page)));
+  await t(page, 'zp-bevestig').click();
+  await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 40000 });
+  await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 25000 }).catch(() => {});
+  await sleep(300);
+  const gBody = verzoeken.filter((b) => b.mode === 'voorstel-genereren').pop();
+
+  check('chat: dezelfde genereren-aanroep met het bevestigde profiel (route chat, alle waarden)', gBody.zoekprofiel.route === 'chat' && namenVan(gBody.zoekprofiel.disciplines).includes('Natuur') && namenVan(gBody.zoekprofiel.werkgebieden).includes('Amsterdam') && !namenVan(gBody.zoekprofiel.doelgroepen).includes('Ouderen'));
+  check('chat: zelfde preview met bedragen, buffer en bronstatus per regel', (await t(page, 'voorstel-rij').count()) >= 2 && /110/.test(await tekstVan(page, 'voorstel-buffer')) && w.bron.length >= 1 && (await t(page, 'voorstel-werkruimte').getAttribute('data-ingang')) === 'chat');
+  await page.screenshot({ path: join(SHOTS, '53-chat-voorstel.png'), fullPage: true });
+  await t(page, 'voorstel-opslaan').click();
+  await page.waitForSelector('[data-testid="voorstel-opgeslagen"]', { timeout: 25000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="voorstel-actieplan"]')?.dataset.status === 'klaar', null, { timeout: 15000 });
+  check('chat: opgeslagen via dezelfde server-opslag; dekkingsplan en actieplan staan in de database, geen dubbelen', w.db.funding.length >= 2 && w.db.actions.length >= 8 && dubbelen() === 0 && w.db.actions.some((a) => a.datum_herkomst));
+  check('chat: concept gewist na opslaan', (await concept(page)).length === 0);
+  await page.screenshot({ path: join(SHOTS, '54-chat-opgeslagen.png'), fullPage: true });
+  check('geen pageerrors in de chatroute', page.fouten.length === 0, page.fouten.join(' | '));
+  await context.close();
+}
+
+sectie('6b. CHATROUTE: financieringsbehoefte nog onbekend');
+{
+  resetGenereren({ ...pool(), profile: PRO, dbActief: true, zoekprofielAi: AI_PROFIEL, project: projectRij({ budget_total: null, own_contribution: null }) });
+  aanroepen = [];
+  verzoeken = [];
+  faal = { opslaan: 0, genereren: 0 };
+  seedBegroting = { totaal: null, eigen: null };
+  const { context, page } = await nieuwePagina('pro', undefined, { hash: `#/kompas?project=${PID}`, wacht: '[data-testid="chat-invoer"]' });
+
+  await chatNaarKaart(page);
+  await t(page, 'chat-zoekprofiel-open').click();
+  await page.waitForSelector('[data-testid="zp-bevestig"]', { timeout: 25000 });
+  check('chat: onbekend bedrag -> uitleg in het profiel; zoeken kan', (await t(page, 'zp-financiering').getAttribute('data-bekend')) === 'nee' && /matching op bedrag is dan beperkt/.test(await tekstVan(page, 'zp-waarschuwingen')) && (await t(page, 'zp-bevestig').isEnabled()));
+  await page.screenshot({ path: join(SHOTS, '60-chat-onbekend-bedrag.png'), fullPage: true });
+  await t(page, 'zp-bevestig').click();
+  await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 40000 });
+  await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 25000 }).catch(() => {});
+  check('chat: voorstel zonder bedragen met de melding dat de matching op bedrag beperkt is', (await t(page, 'voorstel-bedrag-onbekend').count()) === 1 && (await t(page, 'voorstel-bedrag').count()) === 0);
+  await t(page, 'voorstel-opslaan').click();
+  await page.waitForSelector('[data-testid="voorstel-opgeslagen"]', { timeout: 25000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="voorstel-actieplan"]')?.dataset.status === 'klaar', null, { timeout: 15000 });
+  check('chat: opgeslagen zonder bedrag, met actieplan', w.db.funding.length >= 1 && w.db.funding.every((f) => f.requested_amount === null || f.requested_amount === undefined) && w.db.actions.length >= 4);
+  check('geen pageerrors', page.fouten.length === 0, page.fouten.join(' | '));
   await context.close();
 }
 

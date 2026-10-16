@@ -68,7 +68,7 @@ export interface MixRegel {
   onzekerheden: string[];
 }
 
-export type MixUitkomst = 'doel-bereikt' | 'onvoldoende-sterke-matches' | 'geen-gat' | 'geen-kandidaten' | 'niet-beschikbaar';
+export type MixUitkomst = 'bedrag-onbekend' | 'doel-bereikt' | 'onvoldoende-sterke-matches' | 'geen-gat' | 'geen-kandidaten' | 'niet-beschikbaar';
 
 export interface MixResultaat {
   uitkomst: MixUitkomst;
@@ -149,22 +149,14 @@ const stap2 = (n: number) => Math.round(n * 100) / 100;
 export const MELDING_TE_WEINIG_STERKE_MATCHES =
   'Er zijn te weinig sterke, passende financiers gevonden om het financieringsgat realistisch volledig te dekken. Liever een kleiner plan met goede matches dan zwakke matches toevoegen om een percentage te halen.';
 
-// Selecteert de kleinste sterke mix. `kandidaten` komen uit de engine (al door de entitlementlaag). Volgorde van de invoer is niet
-// bepalend: er wordt hier deterministisch op score (aflopend) en naam gesorteerd.
-export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[]; gat: unknown; config: TierConfig }): MixResultaat {
-  const { config } = inv;
-  const gat = getal(inv.gat) ?? 0;
-  const doelBedrag = Math.ceil(Math.round(gat * config.dekkingsdoel * 100) / 100); // zelfde afronding als toegestaneSom in het contract
-  const leeg = (uitkomst: MixUitkomst, melding: string | null = null): MixResultaat => ({ uitkomst, gat, doelBedrag, som: 0, dekking: 0, mix: [], reserve: null, afgewezen: [], melding });
-
-  if (!config.dekkingsplan || config.maxRegelsInMix <= 0) return leeg('niet-beschikbaar');
-  if (gat <= 0) return leeg('geen-gat');
-
+// Wie komt in aanmerking: dezelfde poorten voor de mix met bedragen en voor de lijst zonder bedragen (volledig zichtbaar, tier toegestaan,
+// relevant, genoeg score, geen dubbelen). Geeft de geschikte kandidaten (ongesorteerd) en de afgewezen met reden.
+export function filterGeschikt(kandidaten: readonly MixKandidaat[], config: TierConfig): { geschikt: MixKandidaat[]; afgewezen: MixResultaat['afgewezen'] } {
   const afgewezen: MixResultaat['afgewezen'] = [];
   const gezien = new Set<string>();
   const geschikt: MixKandidaat[] = [];
 
-  for (const k of inv.kandidaten || []) {
+  for (const k of kandidaten || []) {
     if (!k || typeof k.sleutel !== 'string') continue;
 
     const afw = (code: AfwijsCode) => afgewezen.push({ sleutel: k.sleutel, code });
@@ -200,6 +192,36 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
 
     geschikt.push(k);
   }
+
+  return { geschikt, afgewezen };
+}
+
+// Het bedrag van het project is (nog) onbekend: geen mix en geen bedragen, wel de sterkste passende financiers op volgorde van score. Zelfde
+// poorten als selecteerDekkingsmix; het aantal is begrensd door de mix-grootte van het abonnement. Nooit een bedrag verzinnen.
+export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]; config: TierConfig }): { regels: MixKandidaat[]; afgewezen: MixResultaat['afgewezen'] } {
+  if (!inv.config.dekkingsplan || inv.config.maxRegelsInMix <= 0) return { regels: [], afgewezen: [] };
+
+  const { geschikt, afgewezen } = filterGeschikt(inv.kandidaten, inv.config);
+
+  geschikt.sort((a, b) => b.score - a.score || a.naam.localeCompare(b.naam, 'nl') || a.sleutel.localeCompare(b.sleutel));
+
+  for (const k of geschikt.slice(inv.config.maxRegelsInMix)) afgewezen.push({ sleutel: k.sleutel, code: 'mix-vol' });
+
+  return { regels: geschikt.slice(0, inv.config.maxRegelsInMix), afgewezen };
+}
+
+// Selecteert de kleinste sterke mix. `kandidaten` komen uit de engine (al door de entitlementlaag). Volgorde van de invoer is niet
+// bepalend: er wordt hier deterministisch op score (aflopend) en naam gesorteerd.
+export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[]; gat: unknown; config: TierConfig }): MixResultaat {
+  const { config } = inv;
+  const gat = getal(inv.gat) ?? 0;
+  const doelBedrag = Math.ceil(Math.round(gat * config.dekkingsdoel * 100) / 100); // zelfde afronding als toegestaneSom in het contract
+  const leeg = (uitkomst: MixUitkomst, melding: string | null = null): MixResultaat => ({ uitkomst, gat, doelBedrag, som: 0, dekking: 0, mix: [], reserve: null, afgewezen: [], melding });
+
+  if (!config.dekkingsplan || config.maxRegelsInMix <= 0) return leeg('niet-beschikbaar');
+  if (gat <= 0) return leeg('geen-gat');
+
+  const { geschikt, afgewezen } = filterGeschikt(inv.kandidaten, config);
 
   if (!geschikt.length) return { ...leeg('geen-kandidaten', MELDING_TE_WEINIG_STERKE_MATCHES), afgewezen };
 

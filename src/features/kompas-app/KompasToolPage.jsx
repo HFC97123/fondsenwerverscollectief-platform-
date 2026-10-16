@@ -53,6 +53,8 @@ import ProjectContextPanel from './chat/ProjectContextPanel.jsx';
 import { geldigProjectId, projectVoorBestaandGesprek, projectVoorChatVerzoek, projectVoorWeergave } from './chat/actiefProject.js';
 // FASE5-BEGIN
 import FondsMatchKaart from './chat/FondsMatchKaart.jsx';
+import ChatZoekprofielKaart from './chat/ChatZoekprofielKaart.jsx';
+import { voorstelGeneratieBeschikbaar } from './financiering/voorstelFlow.js';
 import { kaartVoorBericht } from './chat/fondsMatches.js';
 import { leesChatUrl, wisChatUrl, zetChatUrl } from './chat/gesprekUrl.js';
 import { haalDekkingsplan } from '../../data/services/projectFinanciering.js';
@@ -1482,6 +1484,18 @@ export default function KompasToolPage() {
               ) : (
                 <DenkKompas />
               ))}
+
+              {/* Zoekprofiel uit het gesprek (bekijken, aanpassen, bevestigen): onderaan het gesprek, alleen met een echt project en als de flow aan staat. Blijft
+                  staan terwijl er een nieuw antwoord komt, zodat een geopend profiel niet verdwijnt. Zelfde werkruimte, matching, preview, validatie,
+                  dekkingsplan en actieplan als Projectfinanciering; geen tweede flow. */}
+              {hasPlanTools && actiefProject && isEchtId(gekoppeldProjectId) && voorstelGeneratieBeschikbaar() && messages.some((x) => x.fromUser) && (
+                <ChatZoekprofielKaart
+                  key={`zp:${gekoppeldProjectId}`}
+                  project={{ id: gekoppeldProjectId, naam: actiefProjectNaam }}
+                  berichten={messages.filter((x) => x.fromUser && typeof x.content === 'string').map((x) => ({ role: 'user', content: x.content }))}
+                  onGewijzigd={() => setFundingVersie((v) => v + 1)}
+                />
+              )}
             </div>
           )}
 

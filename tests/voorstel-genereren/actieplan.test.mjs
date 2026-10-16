@@ -53,8 +53,8 @@ sectie('1. Regel zonder bekende deadline: concrete eigen stappen, geen verzonnen
   const alle = w.db.actions;
 
   check('opgeslagen en actieplan klaar', uit.status === 200 && uit.json.actieplan.status === 'klaar' && t.length >= 5 && alle.length === t.length + 1, JSON.stringify(uit.json?.actieplan));
-  check('meer dan alleen een verificatietaak: voorwaarden, contact, stukken, planning', ['verifiëren', 'Voorwaarden', 'Contact opnemen', 'Projectstukken', 'Aanvraagplanning'].every((k) => alle.some((x) => x.title.includes(k))), alle.map((x) => x.title).join(' | '));
-  check('elke stap heeft een datum vanaf vandaag en is een eigen streefdatum', alle.every((x) => x.due_date && x.due_date >= vandaag && /Eigen streefdatum/.test(x.notes || '')));
+  check('meer dan alleen een verificatietaak: navragen, passendheid, adviseur, stukken, schrijven, indienen', ['Aanvraagmoment en behandeltermijn', 'Passendheid', 'Subsidieadviseur', 'Projectstukken', 'schrijven', 'indienen'].every((k) => alle.some((x) => x.title.includes(k))), alle.map((x) => x.title).join(' | '));
+  check('geen deadline bekend: begint met navragen; elke datum is hooguit een als aanname gelabelde eigen streefdatum vanaf vandaag', alle.every((x) => !x.due_date || (x.due_date >= vandaag && /planningsaanname/.test(x.notes || ''))) && /Aanvraagmoment en behandeltermijn/.test(t.find((x) => x.due_date && /navragen/.test(x.title))?.title || ''));
   check('geen enkele stap doet alsof er een deadline van de financier is', t.every((x) => !/deadline van de financier is/i.test(x.notes || '')));
   check('stappen zijn gekoppeld aan de regel', t.every((x) => x.funding_id === f.id));
   check('bron niet gecontroleerd: stap "bron zelf controleren"', t.some((x) => /Bron van .* zelf controleren/.test(x.title)));
@@ -79,7 +79,7 @@ sectie('3. Regel met geverifieerde deadline blijft terugplannen; veel regels ver
   wereld();
   await opslaan([r('regeling', A1, 30000)]);
   const t = takenVan(fundingVan(A1));
-  check('geverifieerde deadline: alle datums voor of op de deadline', t.length >= 4 && t.every((x) => x.due_date <= '2026-12-15'));
+  check('geverifieerde deadline: alle datums voor of op de deadline', t.length >= 4 && t.filter((x) => !/Ontvangstbevestiging|Aanvullende vragen|Beoordelings|Verwachte beslissing|Vervolgstappen/.test(x.title)).every((x) => x.due_date <= '2026-12-15'));
 
   const veel = Array.from({ length: 8 }, (_, i) => regeling({ naam: `Regeling ${i + 1}`, gever: `Gever ${i + 1}`, min: 1000, max: 20000, id: id(0x100 + i), deadline: i % 2 ? null : '2026-12-15' }));
   wereld({ ...pool(veel) });
@@ -99,7 +99,7 @@ sectie('4. Online suggestie: bruikbare beoordelingsroute, onzekere status behoud
   const taken = (f) => takenVan(f);
 
   check('suggesties opgeslagen als Interessant, zonder bedrag, "nog niet gecontroleerd"', op.length === 2 && op.every((f) => f.status === 'interesting' && f.requested_amount === null && /nog niet gecontroleerd/.test(f.notes)));
-  check('elke suggestie krijgt 3 stappen: beoordelen, voorwaarden nagaan, beslissen', op.every((f) => taken(f).length === 3) && taken(op[0]).some((x) => /beoordelen/.test(x.title)) && taken(op[0]).some((x) => /Voorwaarden, deadline en bijdrage/.test(x.title)) && taken(op[0]).some((x) => /Beslissen of/.test(x.title)));
+  check('elke suggestie krijgt 3 stappen: beoordelen, voorwaarden nagaan, beslissen', op.every((f) => taken(f).length === 3) && taken(op[0]).some((x) => /beoordelen/.test(x.title)) && taken(op[0]).some((x) => /Aanvraagmoment en behandeltermijn/.test(x.title)) && taken(op[0]).some((x) => /Beslissen of/.test(x.title)));
   check('stappen noemen de financier en de bron, geen deadline of bedrag verzonnen', taken(op[0]).every((x) => x.title.includes('Online Fonds BV - Kleine Regeling') && /Eigen streefdatum/.test(x.notes || '')) && /online\.example\.nl/.test(taken(op[0])[0].notes));
   check('datums zijn eigen streefdata vanaf vandaag', op.every((f) => taken(f).every((x) => x.due_date >= vandaag)));
   check('antwoord bevat fundingId voor regels en suggesties (voor Bespreek met Subsidiekompas)', uit.json.regels.every((x) => /^[0-9a-f-]{36}$/.test(x.fundingId || '')) && uit.json.suggesties.every((x) => /^[0-9a-f-]{36}$/.test(x.fundingId || '')), JSON.stringify(uit.json.suggesties));

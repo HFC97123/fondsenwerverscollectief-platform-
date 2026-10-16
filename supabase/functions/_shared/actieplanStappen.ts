@@ -1,19 +1,19 @@
 // Concrete vervolgstappen (het actieplan) per financieringsmogelijkheid. ZUIVER: geen database, geen netwerk.
 //
-// Vroeger waren er alleen taken als de deadline bekend en geverifieerd was; zonder bekende deadline bleef er één verificatietaak over. Nu krijgt
-// ELKE gekozen mogelijkheid een bruikbare reeks vervolgstappen, met deze regels:
-//   - Een externe deadline van de financier wordt alleen gebruikt als hij uit onze database komt en geverifieerd is (dan: terugplannen vanaf die
-//     datum, zoals voorheen). Zonder geverifieerde deadline zijn alle datums EIGEN streefdatums vanaf vandaag, en dat staat er ook bij.
-//   - Wat nog niet vaststaat (deadline, bijdragegrenzen, bedrag, bronstatus) wordt een eigen vervolgstap en staat in de toelichting.
+// De planning zelf (voorbereiden, indienen, opvolgen, herkomst per datum) zit in actieplanPlanning.ts. Dit bestand zet de uitkomst om naar
+// actiestappen voor het contract en voegt de stappen toe die uit andere gegevens volgen:
+//   - Wat nog niet vaststaat (bijdragegrenzen, bedrag, bronstatus) wordt een eigen vervolgstap en staat in de toelichting.
 //   - Een goede bronstatus ('gecontroleerd') betekent niet dat het lid in aanmerking komt: de stappen blijven "voorwaarden controleren".
 //   - Een mislukte of ontbrekende broncontrole blokkeert niets; er komt een stap "bron zelf controleren" bij.
-//
+//   - Een deadline wordt alleen gebruikt als het contract hem als geverifieerd (uit onze database) kent.
 // De validatie van datums (nooit voor vandaag, nooit na een geverifieerde deadline) en het ontdubbelen doet valideerVoorstel (het contract).
 // @deno-types="./voorstelContract.d.ts"
-import { isEchteDatum, plantTerug } from './voorstelContract.js';
+import { isEchteDatum, navragenTitel } from './voorstelContract.js';
 import type { ContractRegel } from './voorstelContract.js';
 import { bronOordeelTekst } from './bronControle.ts';
 import type { BronOordeel } from './bronControle.ts';
+import { planFinancier } from './actieplanPlanning.ts';
+import type { PlanningBron, PlanningOpties, PlanSamenvatting } from './actieplanPlanning.ts';
 
 const MAX_TITEL = 200;
 
@@ -29,40 +29,62 @@ function plusDagen(iso: string, dagen: number): string | null {
 
 type Stap = Record<string, unknown>;
 
+const EIGEN_DATUM = 'Voorlopige planningsaanname, geen datum van de financier: eigen streefdatum. U kunt de datum aanpassen.';
+
+// Een losse eigen stap (zonder planningsmotor): altijd een eigen streefdatum en dus herkomst 'aanname'.
 function stap(regel: ContractRegel, vandaag: string, dagen: number, titel: string, prioriteit: 'high' | 'normal' | 'low', toelichting: string): Stap {
+  const datum = plusDagen(vandaag, dagen);
+
   return {
     titel: titel.slice(0, MAX_TITEL),
     regelSleutel: regel.sleutel,
     financier: regel.naam,
-    datum: plusDagen(vandaag, dagen),
+    datum,
     datumType: 'streef',
     externeDeadline: null,
     prioriteit,
     toelichting,
     automatisch: true,
+    fase: null,
+    datumHerkomst: datum ? 'aanname' : null,
+    datumBron: datum ? `eigen streefdatum, ${dagen} dagen na vandaag` : null,
+    datumControle: null,
   };
 }
 
-const EIGEN_DATUM = 'Eigen streefdatum, geen deadline van de financier.';
+export interface PlantOpties {
+  bronOordeel?: BronOordeel; // alleen bekend bij het OPSLAAN (de server leest dan de vastgelegde broncontrole)
+  heeftBedrag?: boolean; // of het lid nu een bedrag voor deze regel koos
+  planning?: PlanningBron | null; // wat de database over het plannen van deze financier weet (server)
+  planningOpties?: PlanningOpties;
+}
 
-// Reeks stappen voor één regel. `bronOordeel` is alleen bekend bij het OPSLAAN (de server leest dan de vastgelegde broncontrole); bij het tonen van
-// het voorstel is hij undefined en komt er geen bronstap in het voorstel. `heeftBedrag`: of het lid nu een bedrag voor deze regel koos.
-export function plantActies(regel: ContractRegel, vandaag: string, opties: { bronOordeel?: BronOordeel; heeftBedrag?: boolean } = {}): Stap[] {
+export interface PlantUitkomst {
+  acties: Stap[];
+  samenvatting: PlanSamenvatting;
+}
+
+// Plan voor één regel: de reeks stappen plus de samenvatting (modus, voorbereidingstijd, aannames, waarschuwingen) voor de interface.
+export function plantRegel(regel: ContractRegel, vandaag: string, opties: PlantOpties = {}): PlantUitkomst {
   const geverifieerd = Boolean(regel.deadline && regel.deadline.status === 'geverifieerd' && regel.deadline.datum && isEchteDatum(regel.deadline.datum));
-  const uit: Stap[] = [];
-
-  if (geverifieerd) {
-    // Bekende deadline: terugplannen vanaf die datum (voorwaarden, vooroverleg, stukken, voorbereiden, indienen).
-    uit.push(...plantTerug(regel, vandaag));
-  } else {
-    uit.push(
-      stap(regel, vandaag, 7, `Deadline en openstelling van ${regel.naam} verifiëren`, 'high', `De deadline is niet geverifieerd. Controleer de actuele openstelling bij de financier voordat u verder plant. ${EIGEN_DATUM}`),
-      stap(regel, vandaag, 10, `Voorwaarden en doelgroep van ${regel.naam} met uw project vergelijken`, 'high', `Lees de actuele voorwaarden op de website van de financier en noteer wat niet past of onduidelijk is. ${EIGEN_DATUM}`),
-      stap(regel, vandaag, 14, `Contact opnemen met ${regel.naam}: vooroverleg of vragen over passendheid`, 'normal', `Vraag naar de eerstvolgende ronde, de deadline en of uw project past. ${EIGEN_DATUM}`),
-      stap(regel, vandaag, 21, 'Projectstukken verzamelen (begroting, plan, statuten)', 'normal', EIGEN_DATUM),
-      stap(regel, vandaag, 28, `Aanvraagplanning voor ${regel.naam} maken zodra de deadline bekend is`, 'normal', `Zodra de deadline is bevestigd, plant u de stappen terug vanaf die datum (voorbereiden, laten reviewen, indienen). ${EIGEN_DATUM}`),
-    );
-  }
+  // De deadline van het CONTRACT geldt (alleen geverifieerd = uit onze database); een niet-geverifieerde datum telt hier nooit.
+  const planning: PlanningBron = { ...(opties.planning ?? {}), deadline: geverifieerd ? regel.deadline.datum : null };
+  const plan = planFinancier(regel.naam, planning, vandaag, { bedrag: regel.bedrag, ...(opties.planningOpties ?? {}) });
+  const uit: Stap[] = plan.stappen.map((s) => ({
+    titel: s.titel,
+    regelSleutel: regel.sleutel,
+    financier: regel.naam,
+    datum: s.datum,
+    datumType: 'streef',
+    externeDeadline: s.externeDeadline,
+    prioriteit: s.prioriteit,
+    toelichting: s.toelichting,
+    automatisch: true,
+    fase: s.fase,
+    datumHerkomst: s.datumHerkomst,
+    datumBron: s.datumBron,
+    datumControle: s.datumControle,
+  }));
 
   // Wat nog niet vaststaat wordt een eigen stap.
   if (regel.grenzen && regel.grenzen.min == null && regel.grenzen.max == null) {
@@ -79,7 +101,12 @@ export function plantActies(regel: ContractRegel, vandaag: string, opties: { bro
     uit.push(stap(regel, vandaag, 5, `Bron van ${regel.naam} zelf controleren`, 'high', `${bronOordeelTekst(o)} ${EIGEN_DATUM}`));
   }
 
-  return uit;
+  return { acties: uit, samenvatting: plan.samenvatting };
+}
+
+// Reeks stappen voor één regel (zie plantRegel).
+export function plantActies(regel: ContractRegel, vandaag: string, opties: PlantOpties = {}): Stap[] {
+  return plantRegel(regel, vandaag, opties).acties;
 }
 
 // Een stap voor een online gevonden financier (staat niet in onze database): nooit gecontroleerd, nooit een deadline of bedrag.
@@ -91,7 +118,7 @@ export function plantOnlineActies(naam: string, url: string | null, vandaag: str
 
   return [
     { titel: kort(`${naam} beoordelen: past dit bij uw project?`), datum: d(7), prioriteit: 'high', toelichting: `Online gevonden door Subsidiekompas en niet gecontroleerd. Beoordeel of de financier bestaat, actief is en bij uw doelgroep en werkgebied past.${bron} Eigen streefdatum.` },
-    { titel: kort(`Voorwaarden, deadline en bijdrage van ${naam} nagaan`), datum: d(14), prioriteit: 'normal', toelichting: `Er is geen deadline, bijdragegrens of bedrag bekend. Noteer wat u vindt en zet pas daarna een bedrag in uw dekkingsplan. Eigen streefdatum.` },
+    { titel: kort(navragenTitel(naam)), datum: d(14), prioriteit: 'normal', toelichting: `Er is geen deadline, behandeltermijn, bijdragegrens of bedrag bekend. Vraag het aanvraagmoment en de behandeltermijn na, noteer ook de voorwaarden en bijdragegrenzen en zet pas daarna een bedrag in uw dekkingsplan. Eigen streefdatum.` },
     { titel: kort(`Beslissen of ${naam} in uw dekkingsplan komt`), datum: d(21), prioriteit: 'normal', toelichting: 'Kies na uw beoordeling: opnemen met een bedrag, laten staan als reserve, of verwijderen. Eigen streefdatum.' },
   ];
 }

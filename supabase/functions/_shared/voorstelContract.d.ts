@@ -7,6 +7,7 @@ export function veiligeUrl(waarde: unknown): string | null;
 export function zelfdeFinancier(a: unknown, b: unknown): boolean;
 export const MAX_DEKKINGSDOEL: number;
 export function toegestaneSom(gat: number, dekkingsdoel?: unknown): number;
+export function navragenTitel(naam: string): string;
 export function plantTerug(regel: ContractRegel, vandaag: string): Array<Record<string, unknown>>;
 export interface ContractRegel {
   type: 'regeling' | 'fonds' | 'online';

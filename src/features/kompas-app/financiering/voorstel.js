@@ -381,17 +381,33 @@ const STAPPEN = [
   { soort: 'indienen', titel: (n) => `Aanvraag bij ${n} indienen`, offset: 3, prioriteit: 'high' },
 ];
 
+// Eerste stap van elk plan zonder betrouwbare deadline. Eén vaste titel, zodat de planningsmotor, dit vangnet en het ontdubbelen dezelfde
+// stap herkennen.
+export function navragenTitel(naam) {
+  return `Aanvraagmoment en behandeltermijn van ${naam} navragen`.slice(0, MAX.titel);
+}
+
+// Herkomst van een actiedatum: uit de bron, berekend uit een bekende deadline of termijn, of een voorlopige planningsaanname.
+export const DATUM_HERKOMST = ['bron', 'berekend', 'aanname'];
+// Fases van het actieplan. 'ontvangst' t/m 'vervolg' vinden NA het indienen plaats en mogen dus na de deadline vallen.
+export const ACTIE_FASES = ['navragen', 'passendheid', 'adviseur', 'contact', 'stukken', 'schrijven', 'review', 'indienen', 'ontvangst', 'vragen', 'beoordeling', 'besluit', 'vervolg'];
+const NA_INDIENEN = ['ontvangst', 'vragen', 'beoordeling', 'besluit', 'vervolg'];
+
 export function verificatieActie(regel, vandaag) {
   return {
-    titel: `Deadline en openstelling van ${regel.naam} verifiëren`.slice(0, MAX.titel),
+    titel: navragenTitel(regel.naam),
     regelSleutel: regel.sleutel,
     financier: regel.naam,
     datum: isEchteDatum(vandaag) ? voegDagenToe(vandaag, 7) : null,
     datumType: DATUM_TYPE.STREEF,
     externeDeadline: null,
     prioriteit: 'high',
-    toelichting: 'De deadline is niet geverifieerd. Controleer de actuele openstelling bij de financier voordat u verder plant. Eigen streefdatum, geen deadline van de financier.',
+    toelichting: 'Er is geen betrouwbare aanvraagdeadline bekend. Vraag het aanvraagmoment en de behandeltermijn na bij de financier of lees ze op de website na. Voorlopige planningsaanname, geen datum van de financier: eigen streefdatum. U kunt de datum aanpassen.',
     automatisch: true,
+    fase: 'navragen',
+    datumHerkomst: 'aanname',
+    datumBron: 'eigen streefdatum om dit nu uit te zoeken',
+    datumControle: null,
   };
 }
 
@@ -754,13 +770,16 @@ export function valideerVoorstel(raw, ctx) {
     }
 
     // Terugplanning: een interne streefdatum ligt niet in het verleden en niet na de externe deadline.
+    const fase = ACTIE_FASES.includes(a.fase) ? a.fase : null;
+
     if (datum && a.datumType !== DATUM_TYPE.EXTERN) {
       if (vandaag && datum < vandaag) {
         datum = vandaag;
         waarschuw(pad, 'streefdatum-verleden');
       }
 
-      if (extern && datum > extern) {
+      // Opvolging (ontvangst, beoordeling, besluit) vindt na het indienen plaats en mag dus na de deadline liggen.
+      if (extern && datum > extern && !NA_INDIENEN.includes(fase)) {
         datum = vandaag && voegDagenToe(extern, -3) < vandaag ? vandaag : voegDagenToe(extern, -3);
         waarschuw(pad, 'streefdatum-na-deadline');
       }
@@ -776,6 +795,10 @@ export function valideerVoorstel(raw, ctx) {
       prioriteit: PRIORITEITEN.includes(a.prioriteit) ? a.prioriteit : 'normal',
       toelichting: kort(a.toelichting, MAX.toelichting),
       automatisch: a.automatisch === true,
+      fase,
+      datumHerkomst: datum && DATUM_HERKOMST.includes(a.datumHerkomst) ? a.datumHerkomst : null,
+      datumBron: datum ? kort(a.datumBron, 300) || null : null,
+      datumControle: datum && isEchteDatum(tekst(a.datumControle).slice(0, 10)) ? tekst(a.datumControle).slice(0, 10) : null,
     };
 
     actie.sleutel = actieSleutelVan(actie);

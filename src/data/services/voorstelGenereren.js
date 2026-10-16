@@ -59,18 +59,28 @@ async function roep(body) {
   }
 }
 
-export function vraagVoorstelGenereren({ projectId }) {
+// `zoekprofiel` (optioneel) is het door het lid gecontroleerde profiel uit vraagZoekprofiel(); de server toetst het opnieuw aan de database.
+export function vraagVoorstelGenereren({ projectId, zoekprofiel = null }) {
   if (typeof projectId !== 'string' || !projectId) {
     return Promise.resolve({ ok: false, reden: 'fout', melding: ALGEMENE_FOUT, antwoord: null });
   }
 
-  return roep({ mode: 'voorstel-genereren', projectId });
+  return roep({ mode: 'voorstel-genereren', projectId, ...(zoekprofiel && typeof zoekprofiel === 'object' ? { zoekprofiel } : {}) });
+}
+
+// Stelt het zoekprofiel op uit het project (en documenten) of uit een gesprek (`berichten`: [{ role: 'user', content }]). Schrijft niets.
+export function vraagZoekprofiel({ projectId, berichten = null }) {
+  if (typeof projectId !== 'string' || !projectId) {
+    return Promise.resolve({ ok: false, reden: 'fout', melding: ALGEMENE_FOUT, antwoord: null });
+  }
+
+  return roep({ mode: 'voorstel-zoekprofiel', projectId, ...(Array.isArray(berichten) && berichten.length ? { berichten } : {}) });
 }
 
 // Alleen Premium: gericht aanvullend zoeken op het resterende gat. De server berekent het resterende gat zelf uit `voorstel`.
 // `getoond` = de online suggesties die het lid al kreeg ({ gever, indicatiefBedrag }): die tellen mee voor het stoppen en voor het totale
 // maximum, en worden niet nogmaals voorgesteld. Het zijn alleen namen en schattingen; de server begrenst en controleert alles opnieuw.
-export function vraagVoorstelAanvullen({ projectId, voorstel, getoond }) {
+export function vraagVoorstelAanvullen({ projectId, voorstel, getoond, zoekprofiel = null }) {
   if (typeof projectId !== 'string' || !projectId || !voorstel || typeof voorstel !== 'object') {
     return Promise.resolve({ ok: false, reden: 'fout', melding: ALGEMENE_FOUT, antwoord: null });
   }
@@ -80,7 +90,7 @@ export function vraagVoorstelAanvullen({ projectId, voorstel, getoond }) {
     .slice(0, 20)
     .map((x) => ({ gever: x.gever.slice(0, 200), indicatiefBedrag: Number.isFinite(x.indicatiefBedrag) && x.indicatiefBedrag > 0 ? Math.round(x.indicatiefBedrag) : 0 }));
 
-  return roep({ mode: 'voorstel-aanvullen', projectId, voorstel, getoond: lijst });
+  return roep({ mode: 'voorstel-aanvullen', projectId, voorstel, getoond: lijst, ...(zoekprofiel && typeof zoekprofiel === 'object' ? { zoekprofiel } : {}) });
 }
 
 // Startpunt vanuit de chat: dezelfde preview als hierboven, met de financiers die het lid in het gesprek kreeg (alleen type + id gaan mee).
@@ -176,4 +186,14 @@ export function vraagActieplanHerstel({ projectId }) {
   }
 
   return roep({ mode: 'voorstel-actieplan-herstel', projectId });
+}
+
+// Stelt aangepaste data voor na gewijzigde deadlines. Zonder `toepassen` alleen een voorstel; met `toepassen` (taak-id's) worden alleen die
+// taken gewijzigd, en handmatig aangepaste taken blijven ongemoeid tenzij `ookHandmatig` is aangevinkt.
+export function vraagActieplanHerplan({ projectId, toepassen = null, ookHandmatig = false }) {
+  if (typeof projectId !== 'string' || !projectId) {
+    return Promise.resolve({ ok: false, reden: 'fout', melding: ALGEMENE_FOUT, antwoord: null });
+  }
+
+  return roep({ mode: 'voorstel-actieplan-herplan', projectId, ...(Array.isArray(toepassen) ? { toepassen } : {}), ...(ookHandmatig === true ? { ookHandmatig: true } : {}) });
 }

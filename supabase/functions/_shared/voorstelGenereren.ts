@@ -19,14 +19,24 @@ import { VOORSTEL_VERSIE, isEchteDatum, schaalEnControleer, toegestaneSom, valid
 import type { ContractUitkomst, ContractVoorstel } from './voorstelContract.js';
 import { filterOpEntitlement } from './voorstelVerificatie.ts';
 import type { ServerRecord } from './voorstelVerificatie.ts';
-import { realistischBedrag, selecteerDekkingsmix } from './dekkingsmix.ts';
+import { realistischBedrag, selecteerDekkingsmix, selecteerZonderBedrag } from './dekkingsmix.ts';
 import type { MixKandidaat, MixNiveau, MixResultaat } from './dekkingsmix.ts';
 import type { TierConfig } from './tierConfig.ts';
 import { bronOordeelKort } from './bronControle.ts';
-import { plantActies } from './actieplanStappen.ts';
+import { plantActies, plantRegel } from './actieplanStappen.ts';
+import type { PlanningBron, PlanningOpties, PlanSamenvatting } from './actieplanPlanning.ts';
 import type { BronOordeel } from './bronControle.ts';
 
+const MELDING_GEEN_PASSENDE_FINANCIERS = 'Er zijn met dit zoekprofiel geen sterke, passende financiers gevonden. Pas het zoekprofiel aan (bijvoorbeeld een extra discipline of werkgebied) en probeer het opnieuw.';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Planningsgegevens die de SERVER voor deze regel uit de database las (nooit van de browser). Alleen bij niveau 'volledig'.
+export function planningVan(records: readonly ServerRecord[] | undefined, regel: { type: string; id: string | null }): PlanningBron | null {
+  const r = (records ?? []).find((x) => x && x.niveau === 'volledig' && x.type === regel.type && String(x.id).toLowerCase() === String(regel.id ?? '').toLowerCase());
+
+  return r?.planning ?? null;
+}
 
 const tekst = (x: unknown, max: number): string => String(x ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -339,6 +349,9 @@ export interface GenereerInvoer {
   // Wat de server van de gekozen records weet (serverRecordUitRij, na de entitlementlaag). Records zonder niveau 'volledig' vallen af.
   records: ServerRecord[];
   aannames?: readonly string[];
+  planningOpties?: PlanningOpties;
+  // Het bedrag van het project is nog onbekend (geen begroting): de sterkste passende financiers ZONDER bedragen en zonder dekkingsdoel.
+  zonderBedrag?: boolean;
 }
 
 export interface GenereerUitkomst {
@@ -390,6 +403,9 @@ export function valideerActiesGegroepeerd(raw: Record<string, unknown>, ctx: Rec
     const u = valideerVoorstel({ ...raw, acties: groep } as never, ctx as never);
 
     for (const a of ((u.voorstel?.acties ?? []) as Array<Record<string, unknown>>)) {
+      // Het contract voegt aan elke groep vangnetacties voor ANDERE regels toe; die horen bij hun eigen groep (met de echte planning).
+      if (String(a.regelSleutel ?? '') !== String(groep[0]?.regelSleutel ?? '')) continue;
+
       const s = String(a.sleutel);
 
       if (gezien.has(s)) continue;
@@ -406,7 +422,31 @@ export function valideerActiesGegroepeerd(raw: Record<string, unknown>, ctx: Rec
 // buiten de grenzen van het record vallen en nooit het dekkingsdoel overschrijden.
 export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
   const perSleutel = new Map(inv.kandidaten.map((k) => [k.mix.sleutel, k]));
-  const mix = selecteerDekkingsmix({ kandidaten: inv.kandidaten.map((k) => k.mix), gat: gatVan(inv.dekking), config: inv.config });
+  const zonder = inv.zonderBedrag === true;
+  const lijstZonder = zonder ? selecteerZonderBedrag({ kandidaten: inv.kandidaten.map((k) => k.mix), config: inv.config }) : null;
+  const mix: MixResultaat = lijstZonder
+    ? {
+        uitkomst: lijstZonder.regels.length ? 'bedrag-onbekend' : 'geen-kandidaten',
+        gat: 0,
+        doelBedrag: 0,
+        som: 0,
+        dekking: 0,
+        mix: lijstZonder.regels.map((k) => ({
+          sleutel: k.sleutel,
+          type: k.type,
+          id: k.id,
+          naam: k.naam,
+          score: k.score,
+          bedrag: null as unknown as number,
+          grond: 'aandeel-van-gat' as const,
+          uitleg: 'Het bedrag van dit project is nog onbekend: er is geen bedrag voorgesteld.',
+          onzekerheden: ['Er is nog geen bedrag voorgesteld: de matching op bedrag is beperkt. Controleer de bijdragegrenzen van de financier.', ...(k.cofinanciering ? [`Cofinancieringseis (niet automatisch doorgerekend): ${String(k.cofinanciering).slice(0, 200)}`] : [])],
+        })),
+        reserve: null,
+        afgewezen: lijstZonder.afgewezen,
+        melding: lijstZonder.regels.length ? null : MELDING_GEEN_PASSENDE_FINANCIERS,
+      }
+    : selecteerDekkingsmix({ kandidaten: inv.kandidaten.map((k) => k.mix), gat: gatVan(inv.dekking), config: inv.config });
   const regelVan = (m: { sleutel: string; type: 'regeling' | 'fonds'; id: string; naam: string; bedrag: number | null; uitleg: string; onzekerheden: string[] }, reserve: boolean) => {
     const e = perSleutel.get(m.sleutel)?.engine;
 
@@ -444,7 +484,7 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
   let gevalideerd = eerste;
 
   if (eerste.voorstel) {
-    const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && r.bedrag != null).flatMap((r) => plantActies(r, inv.vandaag, { heeftBedrag: true })));
+    const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && (zonder || r.bedrag != null)).flatMap((r) => plantActies(r, inv.vandaag, { heeftBedrag: !zonder, planning: planningVan(inv.records, r) })));
 
     if (acties.length) {
       const gevalideerdeActies = valideerActiesGegroepeerd(gefilterd.raw, ctx, acties);
@@ -521,6 +561,11 @@ export interface OpslagActie {
   datum: string | null;
   prioriteit: 'high' | 'normal' | 'low';
   toelichting: string;
+  // Planning: in welke fase van de aanvraag de stap valt en waar de datum vandaan komt (zie actieplanPlanning.ts).
+  fase: string | null;
+  datumHerkomst: 'bron' | 'berekend' | 'aanname' | null;
+  datumBron: string | null;
+  datumControle: string | null;
 }
 
 export interface OpslagUitkomst {
@@ -530,6 +575,8 @@ export interface OpslagUitkomst {
   regels: OpslagRegel[];
   acties: OpslagActie[];
   waarschuwingen: Array<{ pad: string; code: string }>;
+  // Per regelsleutel: modus, voorbereidingstijd, "voorbereidingstijd kort", aannames en waarschuwingen van de planning (voor de interface).
+  planning?: Record<string, PlanSamenvatting>;
 }
 
 const euro = (n: number | null | undefined): string => (typeof n === 'number' ? `€ ${Math.round(n).toLocaleString('nl-NL')}` : '?');
@@ -556,6 +603,8 @@ export function valideerOpslag(inv: {
   bestaandeBedragen?: Record<string, number | null>;
   // Er mogen nul databaseregels zijn als het lid alleen online gevonden financiers wil bewaren.
   zonderRegelsToegestaan?: boolean;
+  // Serverinstelling: voorbereidingstijd e.d. (standaard 6 weken).
+  planningOpties?: PlanningOpties;
 }): OpslagUitkomst {
   const leeg = (algemeen: OpslagUitkomst['algemeen'], regelFouten: OpslagUitkomst['regelFouten'] = {}): OpslagUitkomst => ({ ok: false, regelFouten, algemeen, regels: [], acties: [], waarschuwingen: [] });
   const ruwe = Array.isArray(inv.regels) ? inv.regels.slice(0, OPSLAG_MAX_REGELS + 1) : [];
@@ -687,11 +736,15 @@ export function valideerOpslag(inv: {
   const nieuwe = uitkomst.voorstel.regels.filter((r) => (inv.alleenActies ? r.staatAl : r.selecteerbaar && !r.staatAl));
   // Per regel een reeks concrete vervolgstappen, ook zonder bekende deadline. De bronstatus die de SERVER vastlegde bepaalt of er een stap
   // "bron zelf controleren" bijkomt; bij opnieuw proberen telt het bedrag dat al in het dekkingsplan staat (zelfde taken als de eerste poging).
+  const planning: Record<string, PlanSamenvatting> = {};
   const gepland = beperkActies(
     nieuwe.flatMap((r) => {
       const heeftBedrag = inv.alleenActies ? (inv.bestaandeBedragen?.[r.sleutel] ?? 0) > 0 : r.bedrag != null;
+      const uitkomst = plantRegel(r, inv.vandaag, { bronOordeel: inv.bronOordelen?.[r.sleutel] ?? 'niet-gecontroleerd', heeftBedrag: inv.bedragenToegestaan ? heeftBedrag : undefined, planning: planningVan(inv.records, r), planningOpties: inv.planningOpties });
 
-      return plantActies(r, inv.vandaag, { bronOordeel: inv.bronOordelen?.[r.sleutel] ?? 'niet-gecontroleerd', heeftBedrag: inv.bedragenToegestaan ? heeftBedrag : undefined });
+      planning[r.sleutel] = uitkomst.samenvatting;
+
+      return uitkomst.acties;
     }),
   );
   const gevalideerdeActies = gepland.length ? valideerActiesGegroepeerd(gefilterd.raw, ctx, gepland) : ((uitkomst.voorstel?.acties ?? []) as Array<Record<string, unknown>>);
@@ -707,6 +760,10 @@ export function valideerOpslag(inv: {
       datum: typeof a.datum === 'string' && isEchteDatum(a.datum) ? a.datum : null,
       prioriteit: a.prioriteit === 'high' || a.prioriteit === 'low' ? a.prioriteit : 'normal',
       toelichting: tekst(a.toelichting, 600),
+      fase: typeof a.fase === 'string' ? a.fase : null,
+      datumHerkomst: a.datumHerkomst === 'bron' || a.datumHerkomst === 'berekend' || a.datumHerkomst === 'aanname' ? a.datumHerkomst : null,
+      datumBron: typeof a.datumBron === 'string' && a.datumBron ? a.datumBron : null,
+      datumControle: typeof a.datumControle === 'string' && isEchteDatum(a.datumControle) ? a.datumControle : null,
     }));
 
   // Ontbrekende informatie per regel, in gewone taal bij de EERSTE taak van die regel (de eerste stap die het lid doet): wat nog niet vaststaat.
@@ -733,7 +790,7 @@ export function valideerOpslag(inv: {
     return { ...a, toelichting: tekst(a.toelichting ? `${a.toelichting} ${info}` : info, 600) };
   });
 
-  return { ok: true, regelFouten: {}, algemeen: null, regels, acties: metOntbrekend, waarschuwingen: uitkomst.waarschuwingen };
+  return { ok: true, regelFouten: {}, algemeen: null, regels, acties: metOntbrekend, waarschuwingen: uitkomst.waarschuwingen, planning };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -809,7 +866,7 @@ export function bouwStartpunt(inv: {
   if (!eerste.voorstel) return { ...leeg, overgeslagen: gefilterd.overgeslagen.length };
 
   // Voorgestelde taken (alleen om te tonen; opslaan bepaalt ze opnieuw): terugplannen vanaf de deadline uit de DATABASE.
-  const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && !r.staatAl).flatMap((r) => plantActies(r, inv.vandaag)));
+  const acties = beperkActies(eerste.voorstel.regels.filter((r) => r.selecteerbaar && !r.staatAl).flatMap((r) => plantActies(r, inv.vandaag, { planning: planningVan(inv.records, r) })));
   const voorstel = acties.length ? ({ ...eerste.voorstel, acties: valideerActiesGegroepeerd(gefilterd.raw, ctx, acties) } as ContractVoorstel) : eerste.voorstel;
 
   // Alles viel weg (niet beschikbaar met dit abonnement of bestaat niet meer): niets om te tonen, en niet te onderscheiden van "bestaat niet".

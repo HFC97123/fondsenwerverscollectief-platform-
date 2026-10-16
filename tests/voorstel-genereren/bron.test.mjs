@@ -243,8 +243,9 @@ sectie('6. Actieplan: concrete stappen, ontbrekende informatie, herstel zonder d
   const taken = w.db.actions;
   const van = (id) => taken.filter((t) => t.funding_id === w.db.funding.find((f) => f.scheme_id === id).id);
   check('elke opgeslagen regel heeft eigen vervolgstappen, gekoppeld aan de regel', van(A1).length >= 4 && van(A3).length >= 4 && van(A1).every((t) => t.source === 'chat'));
-  check('deadlines van taken komen uit de database en liggen nooit na de deadline van de financier', van(A1).every((t) => t.due_date && t.due_date <= '2026-12-15') && van(A3).every((t) => t.due_date && t.due_date <= '2026-12-15'));
-  const eerste = (id) => van(id).find((t) => /Voorwaarden/.test(t.title));
+  const voorIndienen = (t) => !/Ontvangstbevestiging|Aanvullende vragen|Beoordelings|Verwachte beslissing|Vervolgstappen/.test(t.title);
+  check('voorbereidende taken komen uit de database en liggen nooit na de deadline van de financier', van(A1).filter(voorIndienen).every((t) => t.due_date && t.due_date <= '2026-12-15') && van(A3).filter(voorIndienen).every((t) => !t.due_date || t.due_date <= '2026-12-15'));
+  const eerste = (id) => van(id).find((t) => /Passendheid|navragen/.test(t.title));
   check('ongecontroleerde bron wordt in de eerste taak vermeld als nog niet vastgesteld', /Nog niet vastgesteld:.*bron is nog niet gecontroleerd/.test(eerste(A3).notes || ''), eerste(A3)?.notes);
   check('gecontroleerde bron met bekende deadline en grenzen: geen "nog niet vastgesteld"', !/Nog niet vastgesteld/.test(van(A1).map((t) => t.notes || '').join(' ')));
   check('actieplan klaar', uit.json.actieplan.status === 'klaar' && uit.json.actieplan.aangemaakt === taken.length);
@@ -253,7 +254,7 @@ sectie('6. Actieplan: concrete stappen, ontbrekende informatie, herstel zonder d
   const zonderDl = regeling({ naam: 'Landelijk Muziekpodium', gever: 'Landelijk Podium', min: 1000, max: 25000, regios: ['Landelijk'], id: A3, deadline: null });
   wereld({ regelingen: [zonderDl] });
   await opslaan([r('regeling', A3, 10000)]);
-  const t3 = w.db.actions.find((t) => /verifiëren/.test(t.title));
+  const t3 = w.db.actions.find((t) => /Aanvraagmoment en behandeltermijn/.test(t.title));
   check('geen geverifieerde deadline: verificatietaak, met vermelding van wat ontbreekt', Boolean(t3) && /deadline is niet geverifieerd/.test(t3.notes));
 }
 {

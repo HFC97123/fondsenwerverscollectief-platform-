@@ -16,13 +16,15 @@ function lijstTekst(items) {
   return `${items.slice(0, -1).join(', ')} en ${items[items.length - 1]}`;
 }
 
-export default function VoorstelStart({ project, beschikbaar = voorstelGeneratieBeschikbaar(), opgeslagen = true, bezig = false, onStart }) {
+// metProfielStap: de knop opent eerst het zoekprofiel (bekijken, aanvullen, bevestigen). Ontbrekende projectgegevens en een nog onbekende begroting zijn dan
+// geen reden om de knop te blokkeren: het lid vult ze in het profiel aan, of zoekt zonder bedrag.
+export default function VoorstelStart({ project, beschikbaar = voorstelGeneratieBeschikbaar(), opgeslagen = true, bezig = false, onStart, metProfielStap = false }) {
   const oordeel = useMemo(() => beoordeelProject({ project }), [project]);
   const essentieel = oordeel.ontbrekend.filter((o) => o.soort === 'essentieel').map((o) => ONTBREKEND_LABEL[o.veld]).filter(Boolean);
   const aanvullend = oordeel.ontbrekend.filter((o) => o.soort !== 'essentieel').map((o) => ONTBREKEND_LABEL[o.veld]).filter(Boolean);
   // Knop alleen aan als de flow werkt, het project is opgeslagen, de essentiële gegevens er zijn, er een begroting is (anders valt er niets te dekken) en er niet al iets bezig is.
   const projectKlaar = oordeel.kanOnderzoeken && oordeel.bedragenToegestaan;
-  const actief = beschikbaar && opgeslagen && projectKlaar && !bezig;
+  const actief = beschikbaar && opgeslagen && (projectKlaar || metProfielStap) && !bezig;
 
   return (
     <section
@@ -33,7 +35,7 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
       <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;')}>
         <div style={css('min-width: 0; flex: 1 1 280px;')}>
           <h2 style={css(`${LABEL} margin: 0 0 4px;`)}>Subsidiekompas</h2>
-          <div style={css(`${TEKST} font-weight: 700; color: #2C4A5E;`)}>Laat een dekkingsplan en actieplan voor dit project voorstellen. U bekijkt en past alles aan; er wordt niets opgeslagen zonder uw klik.</div>
+          <div style={css(`${TEKST} font-weight: 700; color: #2C4A5E;`)}>Laat een dekkingsplan en actieplan voor dit project voorstellen. U bekijkt en past alles aan; er wordt niets opgeslagen zonder uw klik.{metProfielStap ? ' Eerst controleert en bevestigt u het zoekprofiel.' : ''}</div>
         </div>
         <button
           type="button"
@@ -59,7 +61,15 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
         </div>
       )}
 
-      {beschikbaar && opgeslagen && !projectKlaar && !bezig && (
+      {beschikbaar && opgeslagen && !projectKlaar && !bezig && metProfielStap && (
+        <div role="status" data-testid="voorstel-aanvullen-in-profiel" style={css(`${TEKST} padding: 10px 14px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
+          {oordeel.kanOnderzoeken
+            ? 'De projectbegroting is nog niet ingevuld. U kunt wel passende fondsen zoeken, maar de matching op bedrag is dan beperkt en er worden geen bedragen voorgesteld.'
+            : 'Er ontbreken nog projectgegevens. U vult ze aan in het zoekprofiel hierna; u hoeft niets opnieuw te doorlopen.'}
+        </div>
+      )}
+
+      {beschikbaar && opgeslagen && !projectKlaar && !bezig && !metProfielStap && (
         <div role="status" data-testid="voorstel-eerst-aanvullen" style={css(`${TEKST} padding: 10px 14px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
           {oordeel.kanOnderzoeken
             ? 'Vul eerst de projectbegroting in; zonder begroting kan Subsidiekompas geen sluitend dekkingsplan met bedragen maken.'

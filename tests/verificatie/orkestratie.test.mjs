@@ -273,7 +273,8 @@ sectie('9. Statische eigenschappen: niets schrijft, niets lekt');
 
   const imports = [...bron.matchAll(/^import .* from '([^']+)'/gm)].map((m) => m[1]).sort();
 
-  gelijk('alleen _shared-bestanden geïmporteerd', imports, ['./fragmentZoeker.ts', './verificationResult.ts', './voorstelContract.js', './voorstelContract.js', './voorstelMetadata.ts', './voorstelMetadata.ts', './voorstelToken.ts', './voorstelToken.ts', './verificationResult.ts'].sort());
+  check('planningsimport is alleen een type-import (geen runtime-koppeling)', /^import type \{ PlanningBron \} from '\.\/actieplanPlanning\.ts';/m.test(bron));
+  gelijk('alleen _shared-bestanden geïmporteerd', imports, ['./actieplanPlanning.ts', './fragmentZoeker.ts', './verificationResult.ts', './voorstelContract.js', './voorstelContract.js', './voorstelMetadata.ts', './voorstelMetadata.ts', './voorstelToken.ts', './voorstelToken.ts', './verificationResult.ts'].sort());
 }
 
 klaar('ORKESTRATIE');

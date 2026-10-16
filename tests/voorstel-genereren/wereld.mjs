@@ -17,13 +17,15 @@ const uuid = () => {
   return `00000000-0000-4000-8000-${String(teller).padStart(12, '0')}`;
 };
 
-export function regeling({ naam, tier = 'free', gever, themas = ['Muziek', 'Cultuur'], doelgroepen = ['Jongeren'], regios = ['Rotterdam'], min = 5000, max = 40000, deadline = '2026-12-15', id, funderId, cofinanciering = null }) {
+export function regeling({ naam, tier = 'free', gever, themas = ['Muziek', 'Cultuur'], doelgroepen = ['Jongeren'], regios = ['Rotterdam'], min = 5000, max = 40000, deadline = '2026-12-15', id, funderId, cofinanciering = null, extra = {} }) {
   return {
     regeling_id: id ?? uuid(), naam, status: 'Open', deadline_datum: deadline, deadline_omschrijving: null, bedrag_min: min, bedrag_max: max, bandbreedte_bijdrage_naam: null,
     aanvraagcriteria: `Voorwaarden van ${naam}`, beoordelingscriteria: null, type_projecten: null, begrotingseisen: null, eigen_bijdrage: null, cofinanciering, behandeltermijn: null,
     aanvraagprocedure: null, aanvraaglink: `https://www.${naam.toLowerCase().replace(/[^a-z]+/g, '')}.example.nl/aanvragen`, access_tier: tier, type_gever: 'Fonds',
     funder_id: funderId ?? uuid(), funder_naam: gever ?? `Gever van ${naam}`, funder_website: `https://www.${naam.toLowerCase().replace(/[^a-z]+/g, '')}.example.nl/`, funder_missie: `Missie ${naam}`,
     funder_aanvraagcriteria: null, themas_namen: themas, doelgroepen_namen: doelgroepen, werkgebieden_namen: regios, rondes_aantal: 0, sluitingstijd: null,
+    beoordelingsdatum: null, beoordelingsperiode_ronde: null,
+    ...extra,
   };
 }
 
@@ -52,6 +54,8 @@ export function resetGenereren(extra = {}) {
     onlineStatus: 'completed',
     openaiBodies: [],
     openaiAantal: 0,
+    chatBodies: [], // aanroepen van chat/completions (zoekprofiel-extractie)
+    zoekprofielAi: null, // object = JSON-antwoord van het model | 'fout' = HTTP 500 | 'rommel' = onleesbaar antwoord
     db: { funding: [], actions: [] },
     dbActief: false,
     dbFout: null,
@@ -60,10 +64,13 @@ export function resetGenereren(extra = {}) {
     bronFout: null,
     bronSchrijfLog: [],
     gebruikFout: null, // 'tabel-weg' (kompas_gebruik_log bestaat niet: PGRST205) | 'gooit' | 'hangt'
+    migratieD: true, // planningskolommen op taken en wachtrij (datum_herkomst e.d.) + trigger planning_handmatig
     migratieC: true, // kolom voorstel_sleutel + unieke index (program_id, voorstel_sleutel) + wachtrijtabel aanwezig
     wachtrij: [],
     wachtrijFout: null, // 'schrijven' | 'tabel-weg'
     wachtrijLog: [],
+    planning: { regelingen: [], rondes: [], funders: [] }, // aanvullende planningstabellen (vergaderdata, rondes) voor verrijkPlanning
+    planningFout: null, // true: lezen van die tabellen mislukt
     leesVertraging: false, // true: elke leesactie op taken wacht een macrotaak, zodat gelijktijdige verzoeken allebei lezen vóór er iemand schrijft
     documenten: [],
     ...extra,
@@ -76,6 +83,24 @@ const from = (tabel) => {
   if (taxonomieRijen[tabel]) {
     const b = { select() { return b; }, then(res, rej) { w.tabellen.push(tabel); return Promise.resolve({ data: taxonomieRijen[tabel].map((naam) => ({ naam })), error: null }).then(res, rej); } };
 
+    return b;
+  }
+
+  if (tabel === 'subsidieregelingen' || tabel === 'subsidieregeling_rondes' || tabel === 'funders') {
+    const f = { in: {}, gte: {} };
+    const b = {
+      select() { return b; },
+      in(k, v) { f.in[k] = v; return b; },
+      gte(k, v) { f.gte[k] = v; return b; },
+      order() { return b; },
+      then(ok, nok) {
+        w.tabellen.push(tabel);
+        if (w.planningFout) return Promise.resolve({ data: null, error: { code: 'XX000', message: 'boem' } }).then(ok, nok);
+        const bron = tabel === 'subsidieregelingen' ? w.planning.regelingen : tabel === 'funders' ? w.planning.funders : w.planning.rondes;
+        const rijen = bron.filter((x) => Object.entries(f.in).every(([k, v]) => v.includes(x[k]))).filter((x) => Object.entries(f.gte).every(([k, v]) => String(x[k]) >= v));
+        return Promise.resolve({ data: rijen, error: null }).then(ok, nok);
+      },
+    };
     return b;
   }
 
@@ -168,6 +193,8 @@ function wachtrijFrom() {
       if (w.wachtrijFout === 'schrijven') return Promise.resolve({ error: { code: 'XX000' } }).then(ok, nok);
 
       if (op === 'upsert') {
+        if (!w.migratieD && lading.some((r) => 'datum_herkomst' in r)) return Promise.resolve({ error: { code: 'PGRST204', message: "Could not find the 'datum_herkomst' column" } }).then(ok, nok);
+
         for (const r of lading) {
           const i = w.wachtrij.findIndex((x) => x.program_id === r.program_id && x.sleutel === r.sleutel);
 
@@ -205,12 +232,36 @@ const rpc = async (naam, args) => {
 // w.db = { funding: [], actions: [] }; w.dbFout = { funding?: {code}, actions?: {code}, actionsLezen?: true } om fouten te simuleren;
 // w.dbSchrijfLog = elke schrijfpoging { tabel, rij(en) }.
 
+const PLANNING_KOLOMMEN = ['planning_fase', 'datum_herkomst', 'datum_bron', 'datum_controle'];
+const heeftPlanning = (r) => PLANNING_KOLOMMEN.some((k) => k in r);
+
+// Wat een LID zelf doet met een taak (zoals de browser): met migratie D zet de trigger planning_handmatig; zonder D alleen updated_at.
+// w.gebruikerWijzigt(id, { due_date: '2027-01-05' })
+export function gebruikerWijzigt(id, patch) {
+  const a = w.db.actions.find((x) => x.id === id);
+
+  if (!a) throw new Error(`taak ${id} bestaat niet`);
+
+  const stuurt = 'planning_versie' in patch;
+
+  if (w.migratieD && !stuurt && ('due_date' in patch || 'title' in patch || 'notes' in patch)) {
+    a.planning_handmatig = true;
+    if ('due_date' in patch && patch.due_date !== a.due_date) a.datum_herkomst = 'handmatig';
+  }
+
+  Object.assign(a, patch);
+  a.updated_at = new Date(Date.parse(a.proposed_at || new Date().toISOString()) + 60000).toISOString();
+}
+
 function gebruikersFrom(tabel) {
   const filters = {};
+  let kolommen = null;
+  let patch = null;
   const b = {
-    select() { return b; },
+    select(k) { kolommen = k ?? null; return b; },
     eq(k, v) { filters[k] = v; return b; },
     limit() { return b; },
+    update(p) { patch = p; return b; },
     upsert(rij, opties = {}) {
       const rijen = Array.isArray(rij) ? rij : [rij];
 
@@ -223,6 +274,7 @@ function gebruikersFrom(tabel) {
       if (fout) error = fout;
       else if (tabel !== 'subsidie_kompas_program_actions') error = { code: 'XX000' };
       else if (!w.migratieC) error = { code: 'PGRST204', message: "Could not find the 'voorstel_sleutel' column" };
+      else if (!w.migratieD && rijen.some(heeftPlanning)) error = { code: 'PGRST204', message: "Could not find the 'datum_herkomst' column" };
       else if (rijen.some((r) => !r.user_id || r.user_id !== w.user?.id)) error = { code: '42501', message: 'rls' };
       else {
         // Eén statement: ON CONFLICT (program_id, voorstel_sleutel) DO NOTHING. Sleutels die al bestaan (ook van een gelijktijdig verzoek) worden overgeslagen.
@@ -257,6 +309,7 @@ function gebruikersFrom(tabel) {
         for (const r of rijen) {
           if (!r.user_id || r.user_id !== w.user?.id) return { error: { code: '42501', message: 'rls' }, data: null };
           if (tabel === 'subsidie_kompas_program_actions' && 'voorstel_sleutel' in r && !w.migratieC) return { error: { code: 'PGRST204', message: 'kolom bestaat niet' }, data: null };
+          if (tabel === 'subsidie_kompas_program_actions' && heeftPlanning(r) && !w.migratieD) return { error: { code: 'PGRST204', message: 'kolom bestaat niet' }, data: null };
           if (tabel === 'subsidie_kompas_program_actions' && r.voorstel_sleutel && w.db.actions.some((a) => a.program_id === r.program_id && a.voorstel_sleutel === r.voorstel_sleutel)) return { error: { code: '23505', message: 'dubbel' }, data: null };
 
           if (tabel === 'subsidie_kompas_program_funding') {
@@ -277,10 +330,26 @@ function gebruikersFrom(tabel) {
       return { select() { return { single: async () => res }; }, then(ok, nok) { return Promise.resolve({ error: res.error }).then(ok, nok); } };
     },
     then(ok, nok) {
+      if (patch && tabel === 'subsidie_kompas_program_actions') {
+        w.dbSchrijfLog.push({ tabel, update: patch, filters: { ...filters } });
+
+        if (w.dbFout?.update) return Promise.resolve({ error: w.dbFout.update }).then(ok, nok);
+        if (!w.migratieD && Object.keys(patch).some((k) => PLANNING_KOLOMMEN.includes(k) || k === 'planning_versie')) return Promise.resolve({ error: { code: 'PGRST204', message: 'kolom bestaat niet' } }).then(ok, nok);
+
+        const rij = w.db.actions.find((a) => a.id === filters.id && a.program_id === filters.program_id);
+
+        if (!rij) return Promise.resolve({ error: null }).then(ok, nok);
+
+        // Server-update: planning_versie gaat omhoog, dus de trigger zet planning_handmatig niet.
+        Object.assign(rij, patch);
+
+        return Promise.resolve({ error: null }).then(ok, nok);
+      }
+
       if (tabel === 'subsidie_kompas_program_actions') {
         if (w.dbFout?.actionsLezen) return Promise.resolve({ data: null, error: { code: 'XX000' } }).then(ok, nok);
 
-        const lees = () => ({ data: w.db.actions.filter((a) => a.program_id === filters.program_id).map((a) => ({ title: a.title, funding_id: a.funding_id })), error: null });
+        const lees = () => ({ data: w.db.actions.filter((a) => a.program_id === filters.program_id).map((a) => (kolommen === '*' ? { ...a } : { title: a.title, funding_id: a.funding_id })), error: null });
 
         // Het antwoord is een momentopname: een gelijktijdig verzoek ziet de taken van de ander pas als die al zijn geschreven.
         if (w.leesVertraging) { const stand = lees(); return new Promise((r) => setTimeout(r, 5)).then(() => stand).then(ok, nok); }
@@ -319,6 +388,16 @@ globalThis.__createClient = (_url, _key, opties) => (opties?.global?.headers?.Au
 const basisFetch = globalThis.fetch;
 
 globalThis.fetch = async (url, init) => {
+  if (String(url).startsWith('https://api.openai.com/v1/chat/completions')) {
+    w.chatBodies.push(JSON.parse(init.body));
+
+    if (w.zoekprofielAi === 'fout' || w.zoekprofielAi == null) return new Response('boem', { status: 500 });
+
+    const inhoud = w.zoekprofielAi === 'rommel' ? 'dit is geen json' : JSON.stringify(w.zoekprofielAi);
+
+    return new Response(JSON.stringify({ choices: [{ message: { content: inhoud } }], usage: { prompt_tokens: 1200, completion_tokens: 200 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+
   if (String(url).startsWith('https://api.openai.com/v1/responses')) {
     w.openaiAantal += 1;
     w.openaiBodies.push(JSON.parse(init.body));

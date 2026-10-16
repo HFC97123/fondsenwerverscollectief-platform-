@@ -3,10 +3,12 @@
 // toont en past aan. Er wordt NIETS opgeslagen vóór de klik "Opslaan in dit project". De logica staat in voorstelWerk.js (zuiver, getest).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
-import { leesOpenActieplan, vraagActieplanHerstel, vraagBronControle, vraagVoorstelAanvullen, vraagVoorstelGenereren, vraagVoorstelOpslaan, vraagVoorstelStartpunt } from '../../../data/services/voorstelGenereren.js';
+import { leesOpenActieplan, vraagActieplanHerstel, vraagBronControle, vraagVoorstelAanvullen, vraagVoorstelGenereren, vraagVoorstelOpslaan, vraagVoorstelStartpunt, vraagZoekprofiel } from '../../../data/services/voorstelGenereren.js';
+import { haalClassificatiesOp } from '../../../data/services/classificaties.js';
 import BespreekLink from './BespreekLink.jsx';
 import FinancieringsRegel from './FinancieringsRegel.jsx';
 import VoorstelStart from './VoorstelStart.jsx';
+import ZoekprofielBevestigen from './ZoekprofielBevestigen.jsx';
 import { VoorstelRegelDetail } from './VoorstelPreview.jsx';
 import { formatDatum, formatEuro, leesBedragInvoer } from './dekkingsplan.js';
 import {
@@ -31,6 +33,7 @@ import {
   voerOpslagUit,
 } from './voorstelWerk.js';
 import { BRON_CONTROLEREN } from './bronStatus.js';
+import { bewaarConcept, bouwZoekprofielVerzoek, controleerProfiel, heeftWijzigingen, leesConcept, maakProfielState, voegSamen, wisConcept } from './zoekprofielModel.js';
 import { VOORSTEL_STAPPEN } from './voorstelFlow.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
@@ -48,6 +51,10 @@ const STAP_TEKST = {
 };
 
 const STANDAARD_DIENSTEN = {
+  // Het zoekprofiel (beide routes): dezelfde service en hetzelfde eindpunt als de rest van de keten. Zonder deze dienst (of met een startpunt vanuit de chat)
+  // slaat de werkruimte de profielstap over en werkt zoals voorheen.
+  zoekprofiel: vraagZoekprofiel,
+  classificaties: haalClassificatiesOp,
   genereer: vraagVoorstelGenereren,
   aanvullen: vraagVoorstelAanvullen,
   startpunt: vraagVoorstelStartpunt,
@@ -176,8 +183,52 @@ function Samenvatting({ uit, projectId, onSluiten, onActieplanOpnieuw, actieplan
   );
 }
 
-export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, beschikbaar, opgeslagen = true, diensten = STANDAARD_DIENSTEN, startpunt = null, autoStart = false }) {
-  const [fase, setFase] = useState('idle'); // idle | bezig | klaar | fout | opslaan | opgeslagen
+// Het bewaren van het concept-zoekprofiel mag falen of ontbreken (privémodus, geblokkeerde opslag): dan werkt alles gewoon zonder.
+function standaardOpslag() {
+  try {
+    return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// De lijsten waaruit het lid kiest (dezelfde tabellen als de matching). -> { lijsten, fout } of null als er geen dienst is.
+async function haalLijsten(diensten) {
+  if (!diensten || typeof diensten.classificaties !== 'function') return null;
+
+  try {
+    const r = await diensten.classificaties();
+
+    if (!r || typeof r !== 'object') return { lijsten: null, fout: true };
+
+    return { lijsten: { themas: r.themas || [], doelgroepen: r.doelgroepen || [], regios: r.regios || [] }, fout: Boolean(r.error) };
+  } catch (e) {
+    return { lijsten: null, fout: true };
+  }
+}
+
+export default function VoorstelWerkruimte({
+  project,
+  onOpgeslagen,
+  onSluit,
+  beschikbaar,
+  opgeslagen = true,
+  diensten = STANDAARD_DIENSTEN,
+  startpunt = null,
+  autoStart = false,
+  profielRoute = 'project', // 'project' (Projectfinanciering) | 'chat' (het zoekprofiel uit het gesprek)
+  profielBerichten = null, // chat: de berichten van het lid (alleen role 'user' wordt door de server gebruikt)
+  metStartknop = null, // standaard: de startknop staat er, behalve bij een startpunt vanuit de chat
+  opslag = undefined,
+}) {
+  const [fase, setFase] = useState('idle'); // idle | profiel-laden | profiel | bezig | klaar | fout | opslaan | opgeslagen
+  const [profiel, setProfiel] = useState(null); // de bewerkbare toestand van het zoekprofiel (zoekprofielModel)
+  const [profielFout, setProfielFout] = useState('');
+  const [profielMelding, setProfielMelding] = useState('');
+  const [profielHersteld, setProfielHersteld] = useState(false);
+  const [lijsten, setLijsten] = useState(null);
+  const [lijstenFout, setLijstenFout] = useState(false);
+  const [opnieuwBezig, setOpnieuwBezig] = useState(false);
   const [stap, setStap] = useState(STAP.ONDERZOEKEN);
   const [melding, setMelding] = useState('');
   const [model, setModel] = useState(null);
@@ -194,13 +245,24 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
   const [openFout, setOpenFout] = useState('');
   const [openKlaar, setOpenKlaar] = useState('');
   const dienstenRef = useRef(diensten);
+  const profielRef = useRef(null);
+  const opslagRef = useRef(opslag === undefined ? standaardOpslag() : opslag);
   const openRef = useRef(false);
   const bezigRef = useRef(false);
   const actieplanRef = useRef(false);
   const generatieRef = useRef(0);
   const projectId = project && project.id;
+  // De profielstap hoort bij de zoekroute (niet bij een startpunt met financiers uit de chat) en vraagt de zoekprofieldienst.
+  const profielStap = !startpunt && typeof diensten.zoekprofiel === 'function';
+  const toonStartknop = metStartknop === null ? !startpunt : metStartknop;
 
   dienstenRef.current = diensten;
+  profielRef.current = profiel;
+
+  // Wijzigingen van het lid blijven bewaard (per project en route) zodat een fout of verversen ze niet kost.
+  useEffect(() => {
+    if (profiel && projectId && heeftWijzigingen(profiel)) bewaarConcept(opslagRef.current, projectId, profiel);
+  }, [profiel, projectId]);
 
   // Na verversen: staan er taken van een eerder, niet afgemaakt actieplan klaar bij de server? Dan blijft "Actieplan opnieuw proberen" beschikbaar.
   // Niet tijdens een lopende flow en niet vanuit de chat; in de samenvatting na opslaan staat dezelfde knop al.
@@ -236,65 +298,201 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
     [projectId, diensten],
   );
 
-  const start = useCallback(async () => {
-    if (bezigRef.current || !projectId) return;
+  // Het voorstel maken. `zoekprofiel` = het door het lid bevestigde profiel (of null: de server leest het project zelf). Gaat er iets mis terwijl het
+  // lid een profiel bevestigd had, dan keert hij terug naar het profiel met alle wijzigingen nog erin; er gaat niets verloren.
+  const draai = useCallback(
+    async (zoekprofiel = null) => {
+      if (bezigRef.current || !projectId) return;
 
-    bezigRef.current = true;
-    generatieRef.current += 1;
+      bezigRef.current = true;
+      generatieRef.current += 1;
 
-    const generatie = generatieRef.current;
+      const generatie = generatieRef.current;
 
-    setFase('bezig');
-    setMelding('');
-    setOpslagFouten(null);
-    setControles({});
-    setStap(startpunt ? STAP.VOORBEREIDEN : STAP.ONDERZOEKEN);
+      setFase('bezig');
+      setMelding('');
+      setProfielFout('');
+      setProfielMelding('');
+      setOpslagFouten(null);
+      setControles({});
+      setStap(startpunt ? STAP.VOORBEREIDEN : STAP.ONDERZOEKEN);
 
-    try {
-      const res = await draaiVoorstelFlow({ projectId, diensten, onStap: setStap, startpunt });
+      const terugNaarProfiel = (tekstFout, tekstMelding) => {
+        setProfielFout(tekstFout || '');
+        setProfielMelding(tekstMelding || '');
+        setFase('profiel');
+      };
 
-      if (generatieRef.current !== generatie) return;
+      try {
+        const res = await draaiVoorstelFlow({ projectId, diensten, onStap: setStap, startpunt, zoekprofiel });
 
-      if (!res.ok) {
-        setMelding(res.melding);
-        setFase('fout');
+        if (generatieRef.current !== generatie) return;
 
-        return;
-      }
+        if (!res.ok) {
+          if (zoekprofiel) {
+            terugNaarProfiel(res.melding, '');
 
-      const m = maakWerkModel(res);
+            return;
+          }
 
-      if (!m || !m.regels.length) {
-        // Gedekt, of niets sterks gevonden: geen leeg voorstel tonen maar de uitleg van de server.
-        setModel(m);
-        setMelding((res.genereer && res.genereer.melding) || (res.genereer && res.genereer.uitkomst === 'geen-gat' ? 'De begroting van dit project is al volledig gedekt; er is niets voor te stellen.' : 'Er zijn geen sterke, passende financiers gevonden.'));
-        setFase(m && m.suggesties.length ? 'klaar' : 'fout');
+          setMelding(res.melding);
+          setFase('fout');
 
-        if (m && m.suggesties.length) {
-          setSelectie(beginSelectie(m));
-          setBedragen(beginBedragen(m));
+          return;
         }
 
-        return;
+        const m = maakWerkModel(res);
+
+        if (!m || !m.regels.length) {
+          // Gedekt, of niets sterks gevonden: geen leeg voorstel tonen maar de uitleg van de server.
+          const uitleg = (res.genereer && res.genereer.melding) || (res.genereer && res.genereer.uitkomst === 'geen-gat' ? 'De begroting van dit project is al volledig gedekt; er is niets voor te stellen.' : 'Er zijn geen sterke, passende financiers gevonden.');
+
+          if (zoekprofiel && !(m && m.suggesties.length)) {
+            // Met een profiel kan het lid het meteen aanpassen en opnieuw zoeken.
+            terugNaarProfiel('', uitleg);
+
+            return;
+          }
+
+          setModel(m);
+          setMelding(uitleg);
+          setFase(m && m.suggesties.length ? 'klaar' : 'fout');
+
+          if (m && m.suggesties.length) {
+            setSelectie(m.bedragOnbekend ? beginSelectieChat(m) : beginSelectie(m));
+            setBedragen(beginBedragen(m));
+          }
+
+          return;
+        }
+
+        setModel(m);
+        // Vanuit de chat, of zonder bekend bedrag, kiest het lid zelf wat meegaat: alles staat aan, zonder bedrag.
+        setSelectie(startpunt || m.bedragOnbekend ? beginSelectieChat(m) : beginSelectie(m));
+        setBedragen(beginBedragen(m));
+        setControles(beginControles(m));
+        setFase('klaar');
+        startControles(m, generatie);
+      } catch (e) {
+        if (zoekprofiel) {
+          terugNaarProfiel('Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen. Probeer het later opnieuw.', '');
+        } else {
+          setMelding('Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen. Probeer het later opnieuw.');
+          setFase('fout');
+        }
+      } finally {
+        bezigRef.current = false;
+      }
+    },
+    [projectId, diensten, startpunt, startControles],
+  );
+
+  // Het zoekprofiel laden (of opnieuw laten opstellen) via de zoekprofielservice. `opnieuw`: de wijzigingen van het lid blijven staan; wat de server nu
+  // méér voorstelt komt er apart bij en het lid kiest zelf.
+  const laadProfiel = useCallback(
+    async ({ opnieuw = false } = {}) => {
+      if (bezigRef.current || !projectId) return;
+
+      bezigRef.current = true;
+      generatieRef.current += 1;
+
+      const generatie = generatieRef.current;
+
+      if (opnieuw) setOpnieuwBezig(true);
+      else {
+        setFase('profiel-laden');
+        setMelding('');
+        setProfielMelding('');
       }
 
-      setModel(m);
-      setSelectie(startpunt ? beginSelectieChat(m) : beginSelectie(m));
-      setBedragen(beginBedragen(m));
-      setControles(beginControles(m));
-      setFase('klaar');
-      startControles(m, generatie);
-    } catch (e) {
-      setMelding('Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen. Probeer het later opnieuw.');
-      setFase('fout');
-    } finally {
-      bezigRef.current = false;
-    }
-  }, [projectId, diensten, startpunt, startControles]);
+      setProfielFout('');
+
+      try {
+        const [res, cls] = await Promise.all([diensten.zoekprofiel({ projectId, berichten: profielBerichten }), haalLijsten(diensten)]);
+
+        if (generatieRef.current !== generatie) return;
+
+        if (cls) {
+          setLijsten(cls.lijsten);
+          setLijstenFout(cls.fout);
+        }
+
+        const ruw = res && res.ok && res.antwoord && typeof res.antwoord.profiel === 'object' ? res.antwoord.profiel : null;
+
+        if (!ruw) {
+          const tekstFout = (res && res.melding) || 'Het zoekprofiel kon nu niet worden opgesteld. Er is niets opgeslagen en niets gezocht.';
+
+          if (opnieuw) setProfielFout(tekstFout);
+          else {
+            setMelding(tekstFout);
+            setFase('fout');
+          }
+
+          return;
+        }
+
+        const vers = maakProfielState(ruw, { route: profielRoute });
+
+        if (opnieuw && profielRef.current) {
+          setProfiel(voegSamen(profielRef.current, vers));
+        } else {
+          const concept = leesConcept(opslagRef.current, projectId, profielRoute);
+          const bewerkt = Boolean(concept && heeftWijzigingen(concept));
+
+          setProfiel(bewerkt ? voegSamen(concept, vers) : vers);
+          setProfielHersteld(bewerkt);
+          setFase('profiel');
+        }
+      } catch (e) {
+        if (generatieRef.current !== generatie) return;
+
+        if (opnieuw) setProfielFout('Het zoekprofiel kon nu niet opnieuw worden opgesteld. Uw wijzigingen zijn behouden.');
+        else {
+          setMelding('Het zoekprofiel kon nu niet worden opgesteld. Er is niets opgeslagen en niets gezocht.');
+          setFase('fout');
+        }
+      } finally {
+        bezigRef.current = false;
+        setOpnieuwBezig(false);
+      }
+    },
+    [projectId, diensten, profielBerichten, profielRoute],
+  );
+
+  // Eén startpunt voor de knop en voor "Opnieuw proberen": met profielstap eerst het profiel, anders direct zoeken zoals voorheen.
+  const start = useCallback(() => (profielStap ? laadProfiel() : draai(null)), [profielStap, laadProfiel, draai]);
+
+  // Terug naar het profiel om aan te passen: het huidige voorstel (nog niets opgeslagen) wordt losgelaten en late broncontroles worden genegeerd.
+  const naarProfiel = () => {
+    generatieRef.current += 1;
+    setModel(null);
+    setSelectie(null);
+    setControles({});
+    setFase('profiel');
+  };
+
+  const bevestigProfiel = () => {
+    if (!profiel || bezigRef.current) return;
+
+    if (!controleerProfiel(profiel, lijstenFout ? null : lijsten).ok) return;
+
+    draai(bouwZoekprofielVerzoek(profiel));
+  };
+
+  // Opnieuw beginnen vanuit het project: de eigen wijzigingen worden bewust weggegooid (alleen op een klik van het lid).
+  const beginProfielOpnieuw = () => {
+    wisConcept(opslagRef.current, projectId, profielRoute);
+    setProfiel(null);
+    setProfielHersteld(false);
+    laadProfiel();
+  };
 
   // Vanuit de chat start het voorbereiden meteen (het lid heeft daar al op de knop geklikt).
   useEffect(() => {
-    if (autoStart && startpunt && projectId && fase === 'idle') start();
+    if (autoStart && projectId && fase === 'idle') {
+      if (startpunt) draai(null);
+      else if (profielStap) laadProfiel();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -315,6 +513,8 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
     setOpslagFouten(null);
     setControles({});
     setMelding('');
+    setProfielFout('');
+    setProfielMelding('');
     setActieplanFout('');
 
     if (typeof onSluit === 'function') onSluit();
@@ -377,6 +577,8 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
       setUitkomst(uit);
       setVerzoek(v);
       setFase('opgeslagen');
+      // Het voorstel is opgeslagen: het concept van het zoekprofiel is niet meer nodig.
+      wisConcept(opslagRef.current, projectId, profielRoute);
 
       if (typeof onOpgeslagen === 'function') onOpgeslagen(uit);
     } finally {
@@ -442,11 +644,34 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
   const nietsGekozen = selectie ? selectie.regels.size === 0 && selectie.suggesties.size === 0 : true;
   const heeftFout = totaal ? Object.values(totaal.fouten).includes('ongeldig') : false;
   const fouten = opslagFouten || { regelFouten: {}, algemeen: null, melding: '' };
-  const metStartknop = !startpunt;
 
   return (
-    <div data-testid="voorstel-werkruimte" data-fase={fase} data-ingang={startpunt ? 'chat' : 'project'} style={css('display: flex; flex-direction: column; gap: 18px;')}>
-      {metStartknop && <VoorstelStart project={project} beschikbaar={beschikbaar} opgeslagen={opgeslagen} bezig={fase === 'bezig' || fase === 'opslaan'} onStart={start} />}
+    <div data-testid="voorstel-werkruimte" data-fase={fase} data-ingang={startpunt ? 'chat' : profielRoute} style={css('display: flex; flex-direction: column; gap: 18px;')}>
+      {toonStartknop && fase !== 'profiel' && <VoorstelStart project={project} beschikbaar={beschikbaar} opgeslagen={opgeslagen} metProfielStap={profielStap} bezig={fase === 'bezig' || fase === 'opslaan' || fase === 'profiel-laden'} onStart={start} />}
+
+      {fase === 'profiel-laden' && (
+        <section data-testid="zoekprofiel-laden" role="status" aria-live="polite" style={css(KAART)}>
+          <h2 style={css(`${LABEL} margin: 0;`)}>Zoekprofiel</h2>
+          <div style={css(TEKST)}>Subsidiekompas leest {profielRoute === 'chat' ? 'uw gesprek en uw project' : 'uw projectgegevens en de geüploade documenten'} en stelt het zoekprofiel op. Er wordt niets opgeslagen en nog niets gezocht.</div>
+        </section>
+      )}
+
+      {fase === 'profiel' && profiel && (
+        <ZoekprofielBevestigen
+          state={profiel}
+          onChange={setProfiel}
+          lijsten={lijstenFout ? null : lijsten}
+          lijstenFout={lijstenFout}
+          fout={profielFout}
+          melding={profielMelding}
+          hersteld={profielHersteld}
+          onBevestig={bevestigProfiel}
+          onAnnuleer={sluit}
+          onOpnieuwOpstellen={() => laadProfiel({ opnieuw: true })}
+          onBeginOpnieuw={beginProfielOpnieuw}
+          opnieuwBezig={opnieuwBezig}
+        />
+      )}
 
       {!startpunt && fase !== 'opgeslagen' && (openAantal > 0 || openKlaar) && (
         <section data-testid="actieplan-open" data-aantal={openAantal} style={css(`${TEKST} padding: 12px 16px; border-radius: 14px; background: ${openAantal > 0 ? '#FBF1E3' : '#F3F9F5'}; color: ${openAantal > 0 ? '#8A5A16' : '#2C4A5E'}; display: flex; flex-direction: column; gap: 8px;`)}>
@@ -480,11 +705,16 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
       {fase === 'fout' && (
         <section role="alert" data-testid="voorstel-fout" style={css(`${TEKST} padding: 14px 18px; border: 1px solid #EEDCC0; border-radius: 16px; background: #FBF1E3; color: #8A5A16;`)}>
           {melding || 'Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen.'}
-          {startpunt && (
-            <div style={css('margin-top: 8px;')}>
+          {(startpunt || profielStap) && (
+            <div style={css('margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px;')}>
               <button type="button" data-testid="voorstel-opnieuw" onClick={start} style={css(KNOP_STIL)}>
                 Opnieuw proberen
               </button>
+              {profielStap && profiel && (
+                <button type="button" data-testid="voorstel-terug-profiel" onClick={naarProfiel} style={css(KNOP_STIL)}>
+                  Terug naar het zoekprofiel
+                </button>
+              )}
             </div>
           )}
         </section>
@@ -513,6 +743,31 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
             )
           )}
 
+          {model.zoekprofiel === 'bevestigd-profiel' && profiel && (
+            <div data-testid="voorstel-zoekprofiel-gebruikt" style={css(`${TEKST} font-size: 13px; padding: 10px 14px; border-radius: 12px; background: #F3F9F5; color: #2C4A5E; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;`)}>
+              <span>
+                <strong>Gezocht op uw bevestigde zoekprofiel.</strong> Pas het aan om een ander resultaat te krijgen; wat u hieronder niet opslaat blijft onaangeroerd.
+              </span>
+              {fase === 'klaar' && (
+                <button type="button" data-testid="voorstel-profiel-aanpassen" onClick={naarProfiel} style={css(`${KNOP_STIL} min-height: 36px;`)}>
+                  Zoekprofiel aanpassen
+                </button>
+              )}
+            </div>
+          )}
+
+          {model.profielAfgevallen.length > 0 && (
+            <div data-testid="voorstel-profiel-afgevallen" role="status" style={css(`${TEKST} font-size: 13px; padding: 10px 14px; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
+              Deze termen uit uw zoekprofiel staan niet als categorie in de database en zijn daarom niet gebruikt bij het zoeken: {model.profielAfgevallen.map((x) => x.term).join(', ')}.
+            </div>
+          )}
+
+          {model.bedragOnbekend && (
+            <div data-testid="voorstel-bedrag-onbekend" role="status" style={css(`${TEKST} font-size: 13.5px; padding: 10px 14px; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
+              <strong>Het bedrag dat u zoekt is nog niet bekend.</strong> De matching op bedrag is daarom beperkt: de financiers zijn gekozen op inhoud, doelgroep en werkgebied, zonder voorgesteld bedrag. U kunt ze zonder bedrag opslaan en het bedrag later bij de regel invullen, of eerst de projectbegroting aanvullen en opnieuw zoeken.
+            </div>
+          )}
+
           {model.documenten > 0 && (
             <div data-testid="voorstel-documenten" style={css(`${TEKST} font-size: 13px; color: #6D7C77;`)}>
               Subsidiekompas gebruikte {model.documenten === 1 ? '1 geüpload projectdocument' : `${model.documenten} geüploade projectdocumenten`} als context bij het online zoeken. De fondsen uit de database zijn gekozen op uw projectgegevens.
@@ -531,13 +786,13 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
             </div>
           )}
 
-          {model.melding && (
+          {model.melding && !model.bedragOnbekend && (
             <div data-testid="voorstel-melding" style={css(`${TEKST} font-size: 13.5px; padding: 10px 14px; border-radius: 12px; background: #EEF4F8; color: #2C4A5E;`)}>
               {model.melding}
             </div>
           )}
 
-          {model.regels.length > 0 && (
+          {model.regels.length > 0 && !model.bedragOnbekend && (
             <div data-testid="voorstel-totalen" aria-live="polite" style={css(`${TEKST} display: flex; flex-direction: column; gap: 2px;`)}>
               <div>
                 Voorgesteld: <strong data-testid="voorstel-som">{formatEuro(totaal.voorgesteld)}</strong> · Nog te financieren: {formatEuro(model.gat)}
@@ -567,6 +822,7 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
                       <input type="checkbox" data-testid="voorstel-kies" checked={gekozen} disabled={!r.selecteerbaar} onChange={() => wissel('regels', r.sleutel)} style={css('width: 18px; height: 18px;')} />
                       {r.reserve ? 'Reserve (telt niet mee, nu geen bedrag)' : r.selecteerbaar ? 'Opnemen in dekkingsplan' : 'Staat al in uw dekkingsplan'}
                     </label>
+                    {!model.bedragOnbekend && (
                     <label style={css(`${TEKST} display: inline-flex; align-items: center; gap: 8px;`)}>
                       Bedrag (€)
                       <input
@@ -581,6 +837,7 @@ export default function VoorstelWerkruimte({ project, onOpgeslagen, onSluit, bes
                         style={css(INVOER)}
                       />
                     </label>
+                    )}
                   </div>
                   {fout === 'ongeldig' && (
                     <div role="alert" style={css(`${TEKST} font-size: 12.5px; color: #9E3B2C;`)}>
