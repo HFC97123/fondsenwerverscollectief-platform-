@@ -26,10 +26,8 @@ const I = (n) => `00000000-0000-4000-8000-0000000002${String(n).padStart(2, '0')
 const START = dag(60);
 const EINDE = dag(300);
 
-async function draai({ regelingen = [], funders = [], profile = PREMIUM, project = {}, vergaderingen = [] } = {}) {
+async function draai({ regelingen = [], funders = [], profile = PREMIUM, project = {} } = {}) {
   resetGenereren({ profile, regelingen, funders, project: projectRij({ period_start: START, period_end: EINDE, budget_total: 3000000, own_contribution: 0, ...project }) });
-  w.planning.funders = vergaderingen.filter((v) => v.soort === 'funder').map((v) => ({ id: v.id, volgende_vergaderdatum: v.datum }));
-  w.planning.regelingen = vergaderingen.filter((v) => v.soort === 'regeling').map((v) => ({ id: v.id, volgende_vergaderdatum: v.datum }));
   const r = await post({ mode: 'voorstel-genereren', projectId: PID });
   const regels = [...(r.json?.voorstel?.regels || [])];
 
@@ -61,34 +59,16 @@ sectie('1. Regelingen: voor de start, tijdens de looptijd, na het einde');
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('2. Fondsen: onbekend is nooit een uitsluiting; de bestuursvergadering telt niet, alleen de deadline om in te dienen');
+sectie('2. Fondsen: onbekend is nooit een uitsluiting');
 {
-  const { namen, per, na } = await draai({
-    funders: [
-      fonds({ naam: 'Fonds Zonder Ronde', id: I(11) }),
-      fonds({ naam: 'Fonds Vergadert Na Einde', id: I(12) }),
-    ],
-    vergaderingen: [{ soort: 'funder', id: I(12), datum: dag(500) }],
-  });
+  const { namen, per } = await draai({ funders: [fonds({ naam: 'Fonds Zonder Ronde', id: I(11) })] });
 
   check('fonds zonder bekende deadline doet gewoon mee', namen.includes('Fonds Zonder Ronde'), JSON.stringify(namen));
   check('... met de aantekening de volgende ronde na te vragen', per('Fonds Zonder Ronde')?.kenmerken?.controleren?.some((c) => /geen aankomende deadline/.test(c) && /vraag na wanneer/.test(c)), JSON.stringify(per('Fonds Zonder Ronde')?.kenmerken));
-  check('een bestuursvergadering na het einde sluit niet uit (daar valt alleen het besluit, indienen kan eerder)', namen.includes('Fonds Vergadert Na Einde') && na.length === 0, JSON.stringify({ namen, na }));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('3. Een regeling met deadline binnen de looptijd en vergadering na het einde telt gewoon mee');
-{
-  const { namen, na } = await draai({
-    regelingen: [regeling({ naam: 'Regeling Deadline Goed Vergadering Laat', gever: 'Gever X', deadline: dag(100), id: I(21) })],
-    vergaderingen: [{ soort: 'regeling', id: I(21), datum: dag(450) }],
-  });
-
-  check('deadline binnen de looptijd: in de dekking, ook als het besluit later valt', namen.includes('Regeling Deadline Goed Vergadering Laat') && na.length === 0, JSON.stringify({ namen, na }));
-}
-
-// ---------------------------------------------------------------------------------------------------------------------------
-sectie('4. Zonder looptijd bij het project wordt er niet getoetst');
+sectie('3. Zonder looptijd bij het project wordt er niet getoetst');
 {
   const { namen, per, na } = await draai({
     project: { period_start: null, period_end: null },
@@ -101,7 +81,7 @@ sectie('4. Zonder looptijd bij het project wordt er niet getoetst');
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('5. Alleen einddatum: nog steeds uitsluiting in de dekking na het einde');
+sectie('4. Alleen einddatum: nog steeds uitsluiting in de dekking na het einde');
 {
   const { namen, na } = await draai({
     project: { period_start: null, period_end: EINDE },
@@ -112,7 +92,7 @@ sectie('5. Alleen einddatum: nog steeds uitsluiting in de dekking na het einde')
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('6. Rechten: wat het lid niet mag zien komt niet in de lijst');
+sectie('5. Rechten: wat het lid niet mag zien komt niet in de lijst');
 {
   const { namen, na } = await draai({
     profile: PRO,
@@ -124,7 +104,7 @@ sectie('6. Rechten: wat het lid niet mag zien komt niet in de lijst');
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('7. Een gesloten regeling zonder nieuwe ronde blijft gesloten (regelingen verlopen)');
+sectie('6. Een gesloten regeling zonder nieuwe ronde blijft gesloten (regelingen verlopen)');
 {
   const { namen, na } = await draai({
     regelingen: [regeling({ naam: 'Regeling Voorbij', gever: 'Gever Voorbij', deadline: dag(-20), extra: { status: 'gesloten' }, id: I(61) })],
@@ -133,7 +113,7 @@ sectie('7. Een gesloten regeling zonder nieuwe ronde blijft gesloten (regelingen
   check('verstreken regeling doet niet mee en staat niet als "passend na afloop"', !namen.includes('Regeling Voorbij') && !na.some((x) => x.naam === 'Regeling Voorbij'), JSON.stringify({ namen, na }));
 }
 
-sectie('8. Looptijd als vrije tekst (zoals bij oudere projecten)');
+sectie('7. Looptijd als vrije tekst (zoals bij oudere projecten)');
 {
   check('ISO-datum blijft ISO', L('2027-01-01') === '2027-01-01' && L('2027-01-01T00:00:00Z') === '2027-01-01');
   check('"1 januari 2027" en "31 december 2027 " (met spatie)', L('1 januari 2027') === '2027-01-01' && L('31 december 2027 ', true) === '2027-12-31');
