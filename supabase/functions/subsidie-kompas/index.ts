@@ -3593,7 +3593,8 @@ function actualiteitStatus(bron: 'regeling' | 'funder_deadline' | 'funder', row:
 // enkele thematische score worden gecompenseerd; 'unknown' mag verder maar
 // krijgt geen positieve geografische score; 'eligible' gaat normaal verder.
 type GeoStatus = 'eligible' | 'ineligible' | 'unknown';
-type Geografie = { status: GeoStatus; reden: string | null; positief: boolean; notitie: string | null; label: string | null };
+// `lokaal`: het werkgebied van het fonds is specifiek de plaats of regio van het project (zonder Landelijk of Internationaal erbij). Zo'n fonds staat bovenaan.
+type Geografie = { status: GeoStatus; reden: string | null; positief: boolean; notitie: string | null; label: string | null; lokaal?: boolean };
 // Conflict tussen de focus van het fonds en het project. Een bredere
 // portefeuille is GEEN conflict; alleen een echte inhoudelijke afwijking telt.
 type FocusConflict = 'geen' | 'licht' | 'sterk';
@@ -4043,7 +4044,9 @@ function beoordeelGeografie(naam: string, funderNaam: string, row: any, regios: 
   const labelHit = labels.find((r) => projRegios.has(r));
 
   if (projRegios.size > 0 && (labelHit || binnenPlaats)) {
-    return uit('eligible', null, true, null, labelHit ? regios.find((r) => normaliseerTekst(r) === labelHit) || labelHit : 'plaats/regio van het project');
+    const lokaal = labelHit ? !heeftLandelijk && !heeftInternationaal : Boolean(binnenPlaats);
+
+    return { ...uit('eligible', null, true, null, labelHit ? regios.find((r) => normaliseerTekst(r) === labelHit) || labelHit : 'plaats/regio van het project'), lokaal };
   }
 
   if (!labels.length) return uit('unknown', null, false, 'het werkgebied van het fonds is niet bekend');
@@ -5652,7 +5655,8 @@ function beoordeelPool(alle: { bron: Kandidaat['bron']; row: any }[], criteriaRu
       : k,
   );
 
-  const sorteer = (a: Kandidaat, b: Kandidaat) => b.score - a.score || a.naam.localeCompare(b.naam, 'nl');
+  // Eerst de fondsen die specifiek voor de plaats of regio van het project werken (Rotterdamse fondsen bij een project in Rotterdam), daarna op score.
+  const sorteer = (a: Kandidaat, b: Kandidaat) => Number(b.geografie?.lokaal === true) - Number(a.geografie?.lokaal === true) || b.score - a.score || a.naam.localeCompare(b.naam, 'nl');
 
   return {
     criteria,

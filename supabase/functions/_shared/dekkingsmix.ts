@@ -33,6 +33,7 @@ export interface MixKandidaat {
   min: number | null;
   max: number | null;
   cofinanciering?: string | null; // tekst; wordt niet doorgerekend maar als onzekerheid meegegeven
+  lokaal?: boolean; // werkgebied is specifiek de plaats of regio van het project: komt vóór de landelijke financiers
   optioneel?: boolean; // serviceclub-vermelding: telt mee in de dekking maar staat helemaal onderaan (zie serviceclubs.ts)
   band?: string | null; // naam van de bandbreedte (bandbreedtes_bijdrage), bijvoorbeeld '€10.000–€25.000'; alleen gebruikt als er geen eigen minimum is
 }
@@ -263,6 +264,16 @@ export function volgorde(a: MixKandidaat, b: MixKandidaat): number {
   return (a.optioneel ? 1 : 0) - (b.optioneel ? 1 : 0) || b.score - a.score || a.naam.localeCompare(b.naam, 'nl') || a.sleutel.localeCompare(b.sleutel);
 }
 
+// Voorrang voor lokale financiers (specifiek voor de plaats of regio van het project): de beste lokale financiers komen vooraan in de mix, maar
+// hooguit een derde van het aantal regels van het abonnement. Anders zouden veel kleine lokale fondsen alle regels innemen en sluit het
+// dekkingsplan niet meer. Optionele serviceclubs blijven onderaan. De volgorde binnen de groepen blijft die van de score.
+export function lokaalVoorrang<T extends MixKandidaat>(lijst: T[], maxRegels: number): T[] {
+  const cap = Math.max(1, Math.floor(maxRegels / 3));
+  const voor = new Set(lijst.filter((k) => k.lokaal === true && !k.optioneel).slice(0, cap));
+
+  return voor.size ? [...lijst.filter((k) => voor.has(k)), ...lijst.filter((k) => !voor.has(k))] : lijst;
+}
+
 // Het bedrag van het project is (nog) onbekend: geen mix en geen bedragen, wel de sterkste passende financiers op volgorde van score. Zelfde
 // poorten als selecteerDekkingsmix; het aantal is begrensd door de mix-grootte van het abonnement. Nooit een bedrag verzinnen.
 export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]; config: TierConfig }): { regels: MixKandidaat[]; afgewezen: MixResultaat['afgewezen'] } {
@@ -271,6 +282,7 @@ export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]
   const { geschikt, afgewezen } = filterGeschikt(inv.kandidaten, inv.config);
 
   geschikt.sort(volgorde);
+  geschikt.splice(0, geschikt.length, ...lokaalVoorrang(geschikt, inv.config.maxRegelsInMix));
 
   for (const k of geschikt.slice(inv.config.maxRegelsInMix)) afgewezen.push({ sleutel: k.sleutel, code: 'mix-vol' });
 
@@ -314,6 +326,8 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
   } else {
     geschikt.sort(volgorde);
   }
+
+  geschikt.splice(0, geschikt.length, ...lokaalVoorrang(geschikt, config.maxRegelsInMix));
 
   const regelVan = (k: MixKandidaat, b: RealistischBedrag): MixRegel => ({
     sleutel: k.sleutel,

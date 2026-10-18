@@ -224,6 +224,8 @@ export interface EngineKandidaat {
   // Hoe zeker de aansluiting is en wat het lid nog zelf moet controleren (uit de engine; ontbreekt bij oudere aanroepers).
   passendheid?: 'aantoonbaar' | 'mogelijk' | 'niet';
   controleren?: string[];
+  // Werkgebied is specifiek de plaats of regio van het project (geen Landelijk/Internationaal erbij): komt bovenaan.
+  geografie?: { lokaal?: boolean };
 }
 
 const getal = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.round(x) : typeof x === 'string' && x.trim() !== '' && Number.isFinite(Number(x)) && Number(x) >= 0 ? Math.round(Number(x)) : null);
@@ -259,6 +261,7 @@ export function kandidaatNaarMix(k: EngineKandidaat, niveau: MixNiveau): MixKand
     cofinanciering: tekst(row.cofinanciering, 200) || null,
     // Serviceclub (lokale vermelding of internationaal clubfonds zoals de Rotary Global Grant): telt mee maar staat onderaan, als "optioneel te onderzoeken".
     ...(isServiceclub(row) ? { optioneel: true } : {}),
+    ...(k.geografie?.lokaal === true ? { lokaal: true } : {}),
   };
 }
 
@@ -273,7 +276,7 @@ export function kiesMixInvoer(
   lijst: readonly MixInvoerKandidaat[],
   bestaand: { schemeIds: ReadonlySet<string>; funderIds: ReadonlySet<string>; namen: readonly string[] },
 ): MixInvoerKandidaat[] {
-  const gesorteerd = [...lijst].sort((a, b) => b.mix.score - a.mix.score || a.mix.naam.localeCompare(b.mix.naam, 'nl'));
+  const gesorteerd = [...lijst].sort((a, b) => Number(b.mix.lokaal === true) - Number(a.mix.lokaal === true) || b.mix.score - a.mix.score || a.mix.naam.localeCompare(b.mix.naam, 'nl'));
   const gevers: string[] = [];
   const uit: MixInvoerKandidaat[] = [];
 

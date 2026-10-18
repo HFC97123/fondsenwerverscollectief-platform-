@@ -197,5 +197,21 @@ sectie('9. Werkgebied "Amsterdam + Regionaal" is de regio rond Amsterdam, niet h
   check('Amsterdam + Landelijk blijft meedoen', namen.includes('Stichting Noorderlicht'), JSON.stringify(namen));
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+sectie('10. Fondsen voor de plaats van het project staan bovenaan (Rotterdamse fondsen bij een project in Rotterdam)');
+{
+  const funders = () => [
+    fonds({ naam: 'Stichting Landelijk Muziekfonds', themas: ['Muziek', 'Cultuur'], doelgroepen: ['Jongeren'], regios: ['Landelijk'], id: id() }),
+    fonds({ naam: 'Stichting Cultuur Nederland', themas: ['Muziek', 'Cultuur'], doelgroepen: ['Jongeren'], regios: ['Landelijk'], id: id() }),
+    fonds({ naam: 'Stichting Maasoever', themas: ['Cultuur'], doelgroepen: ['Jongeren'], regios: ['Rotterdam'], id: id() }),
+    fonds({ naam: 'Stichting Noorderlicht', themas: ['Muziek', 'Cultuur'], doelgroepen: ['Jongeren'], regios: ['Rotterdam', 'Landelijk'], id: id() }),
+  ];
+  const { namen } = await draai('Jongeren', funders);
+
+  check('het Rotterdamse fonds staat bovenaan, ook met een lagere score dan de landelijke', namen[0] === 'Stichting Maasoever', JSON.stringify(namen));
+  check('Rotterdam + Landelijk telt niet als lokaal: komt na het Rotterdamse fonds', namen.indexOf('Stichting Noorderlicht') > 0, JSON.stringify(namen));
+  check('landelijke fondsen blijven meedoen', namen.includes('Stichting Landelijk Muziekfonds') && namen.includes('Stichting Cultuur Nederland'), JSON.stringify(namen));
+}
+
 console.log(`\ndoelgroepen: ${stand.ok} OK, ${stand.fout} FOUT`);
 process.exit(stand.fout ? 1 : 0);
