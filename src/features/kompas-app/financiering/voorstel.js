@@ -11,7 +11,7 @@
 //   - Geverifieerde externe fondsdeadlines, voorgestelde interne streefdatums en nog te verifiëren informatie blijven apart.
 
 export const VOORSTEL_VERSIE = 1;
-export const MAX_REGELS = 8;
+export const MAX_REGELS = 12;
 export const MAX_VRAGEN = 3;
 export const MAX_ACTIES = 30;
 

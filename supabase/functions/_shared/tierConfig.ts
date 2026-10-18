@@ -57,7 +57,12 @@ export interface TierConfig {
   // Ondergrens voor de matchscore van een kandidaat in de mix. Startwaarde; kalibreren zodra de mix aan de engine hangt.
   minScore: number;
   // Maximaal aantal regels in de mix (excl. de ene reserve). Moet < MAX_REGELS van het voorstelcontract blijven.
+  // Pro: 6 (kort en overzichtelijk). Premium: 10, zodat de begroting van een groot project sluitend gemaakt kan worden.
   maxRegelsInMix: number;
+  // Alleen Premium: de mix wordt gevuld met de financiers die het beste passen EN de hoogste bijdrage geven, zodat de begroting met zo weinig
+  // mogelijk regels sluit en de overige geschikte financiers afvallen. Volgorde: scoreband van 10 punten (aflopend), daarna hoogste
+  // bijdrage, dan naam. Pro blijft puur op score (zoals voorheen).
+  rangschikOpBijdrage: boolean;
   onlineOrientatie: OnlineOrientatieConfig | null;
   onlineAanvullen: OnlineAanvullenConfig | null;
   // Welke ontbrekende velden de verificatiemotor mag aanvullen: 'geen', 'indien-nodig' (alleen voor een betrouwbare beoordeling) of
@@ -80,6 +85,7 @@ const PRO: TierConfig = {
   maxAandeelPerFonds: 0.5,
   minScore: 50,
   maxRegelsInMix: 6,
+  rangschikOpBijdrage: false,
   onlineOrientatie: { maxKandidaten: 2, maxZoekopdrachten: 2, timeoutMs: 40_000 },
   onlineAanvullen: null,
   aanvullenVelden: 'indien-nodig',
@@ -95,7 +101,8 @@ const PREMIUM: TierConfig = {
   dekkingsdoel: 1.4,
   maxAandeelPerFonds: 0.5,
   minScore: 50,
-  maxRegelsInMix: 6,
+  maxRegelsInMix: 10,
+  rangschikOpBijdrage: true,
   onlineOrientatie: { maxKandidaten: 6, maxZoekopdrachten: 6, timeoutMs: 60_000, minTonen: 3, totaalMax: 10 },
   onlineAanvullen: { maxKandidaten: 5 },
   aanvullenVelden: 'alle-ontbrekende',
@@ -112,6 +119,7 @@ const FREE: TierConfig = {
   maxAandeelPerFonds: 0.5,
   minScore: 50,
   maxRegelsInMix: 0,
+  rangschikOpBijdrage: false,
   onlineOrientatie: null,
   onlineAanvullen: null,
   aanvullenVelden: 'geen',

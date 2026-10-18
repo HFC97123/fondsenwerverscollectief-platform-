@@ -52,8 +52,8 @@ sectie('3. Pro en Premium verschillen alleen in pool, dekkingsdoel en online rui
   const premium = tierConfigVoor('premium');
 
   check('dekkingsdoel: Pro 120%, Premium 140%', pro.dekkingsdoel === 1.2 && premium.dekkingsdoel === 1.4);
-  check('zelfde minimumscore, zelfde maximaal aandeel per fonds, zelfde mixgrootte', pro.minScore === premium.minScore && pro.maxAandeelPerFonds === premium.maxAandeelPerFonds && pro.maxRegelsInMix === premium.maxRegelsInMix);
-  check('mixgrootte past binnen het voorstelcontract (MAX_REGELS 8, plus één reserve)', pro.maxRegelsInMix + 1 <= 8);
+  check('zelfde minimumscore en zelfde maximaal aandeel per fonds; Pro 6 regels, Premium 10 en rangschikking op bijdrage alleen bij Premium', pro.minScore === premium.minScore && pro.maxAandeelPerFonds === premium.maxAandeelPerFonds && pro.maxRegelsInMix === 6 && premium.maxRegelsInMix === 10 && pro.rangschikOpBijdrage === false && premium.rangschikOpBijdrage === true && tierConfigVoor('free').rangschikOpBijdrage === false);
+  check('mixgrootte past binnen het voorstelcontract (MAX_REGELS 12, plus één reserve)', pro.maxRegelsInMix + 1 <= 12 && premium.maxRegelsInMix + 1 <= 12);
   check('observatiebudget: Pro 7, Premium 14, Free geen', pro.maandBudgetObservatieEur === 7 && premium.maandBudgetObservatieEur === 14 && tierConfigVoor('free').maandBudgetObservatieEur === null);
   check('Premium online aanvullen: cap 5 per ronde; Pro heeft dit niet', premium.onlineAanvullen?.maxKandidaten === 5 && pro.onlineAanvullen === null);
   check('Premium online: doorzoeken tot 120% gedekt is: minstens 3 tonen, oriëntatie 6, totaal maximum 10 (boven 6 als er te weinig fondsen zijn)', premium.onlineOrientatie.minTonen === 3 && premium.onlineOrientatie.maxKandidaten === 6 && premium.onlineOrientatie.totaalMax === 10);

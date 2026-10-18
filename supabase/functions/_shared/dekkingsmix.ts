@@ -227,6 +227,9 @@ export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]
   return { regels: geschikt.slice(0, inv.config.maxRegelsInMix), afgewezen };
 }
 
+// Breedte van een scoreband bij Premium (rangschikOpBijdrage): kandidaten binnen dezelfde band van 10 punten worden op bijdrage gerangschikt.
+const SCOREBAND = 10;
+
 // Selecteert de kleinste sterke mix. `kandidaten` komen uit de engine (al door de entitlementlaag). Volgorde van de invoer is niet
 // bepalend: er wordt hier deterministisch op score (aflopend) en naam gesorteerd.
 export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[]; gat: unknown; config: TierConfig }): MixResultaat {
@@ -242,7 +245,25 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
 
   if (!geschikt.length) return { ...leeg('geen-kandidaten', MELDING_TE_WEINIG_STERKE_MATCHES), afgewezen };
 
-  geschikt.sort(volgorde);
+  if (config.rangschikOpBijdrage) {
+    // Premium: de begroting moet sluiten. Eerst de financiers die het beste passen (scoreband van 10 punten) en daarbinnen de hoogste bijdrage
+    // (geschat voor het volledige doel, zodat alle kandidaten op dezelfde maat worden gemeten); de rest valt af zodra het doel gehaald is.
+    const potentieel = new Map<string, number>();
+
+    for (const k of geschikt) potentieel.set(k.sleutel, realistischBedrag({ gat, nodig: doelBedrag, min: k.min, max: k.max, maxAandeel: config.maxAandeelPerFonds }).bedrag ?? 0);
+
+    geschikt.sort(
+      (a, b) =>
+        (a.optioneel ? 1 : 0) - (b.optioneel ? 1 : 0) ||
+        Math.floor(b.score / SCOREBAND) - Math.floor(a.score / SCOREBAND) ||
+        (potentieel.get(b.sleutel) ?? 0) - (potentieel.get(a.sleutel) ?? 0) ||
+        b.score - a.score ||
+        a.naam.localeCompare(b.naam, 'nl') ||
+        a.sleutel.localeCompare(b.sleutel),
+    );
+  } else {
+    geschikt.sort(volgorde);
+  }
 
   const regelVan = (k: MixKandidaat, b: RealistischBedrag): MixRegel => ({
     sleutel: k.sleutel,

@@ -66,7 +66,7 @@ check('zonder invoer geen fout', beoordeelProject().status === 'uitvraag');
 
 console.log('== validatie van een voorstel');
 const dekking = (extra = {}) => berekenDekking({ begroting: 80000, overige: 10000, regels: [], ...extra });
-const TWAALF = Array.from({ length: 12 }, (_, i) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(i).padStart(12, '0')}`);
+const TWAALF = Array.from({ length: 13 }, (_, i) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(i).padStart(12, '0')}`);
 // Het databaserecord zoals de server dat onder het abonnement van het lid ophaalt: de ENIGE bron voor naam, grenzen en deadline.
 const bk = (o = {}) => {
   const rec = (naam, extra = {}) => ({ naam, gever: 'Fonds A', deadline: '2026-12-01', min: null, max: null, cofinanciering: '', ...extra, ...o });
@@ -114,7 +114,7 @@ check('online sleutel afgeleid van naam; hoofdletters en accenten maken geen twe
 const dubbelOnline = v(voorstel({ regels: [regelOnline(), regelOnline({ naam: 'buurtfonds zuid' })] }));
 check('dezelfde online financier twee keer: één blijft, waarschuwing', dubbelOnline.voorstel.regels.length === 1 && wcodes(dubbelOnline).includes('dubbel-in-voorstel'));
 check('dezelfde databaseregeling twee keer: één blijft', v(voorstel({ regels: [regelDb(), regelDb({ bedrag: 1000 })] })).voorstel.regels.length === 1);
-const te = v(voorstel({ regels: Array.from({ length: 12 }, (_, i) => regelDb({ id: TWAALF[i], naam: `Regeling ${i}`, bedrag: 1000 })) }));
+const te = v(voorstel({ regels: Array.from({ length: 13 }, (_, i) => regelDb({ id: TWAALF[i], naam: `Regeling ${i}`, bedrag: 1000 })) }));
 check(`maximaal ${MAX_REGELS} regels, rest weggelaten met waarschuwing`, te.voorstel.regels.length === MAX_REGELS && wcodes(te).includes('te-veel-regels'));
 
 console.log('== bedragen en grenzen');
@@ -257,7 +257,7 @@ check('een voorstel dat al past wordt niet geschaald', schaalEnControleer(voorst
 check('schaalEnControleer verandert de invoer niet', (() => { const inv = JSON.stringify(groot); schaalEnControleer(groot, ctx()); return inv === JSON.stringify(groot); })());
 
 console.log('== constanten en vorm');
-check('constanten', VOORSTEL_VERSIE === 1 && MAX_REGELS === 8 && MAX_VRAGEN === 3 && VOORSTEL_STATUS.UITVRAAG === 'uitvraag' && BRON_SOORT.ONLINE === 'online' && DEADLINE_STATUS.TE_VERIFIEREN === 'te-verifieren' && DATUM_TYPE.EXTERN === 'extern');
+check('constanten', VOORSTEL_VERSIE === 1 && MAX_REGELS === 12 && MAX_VRAGEN === 3 && VOORSTEL_STATUS.UITVRAAG === 'uitvraag' && BRON_SOORT.ONLINE === 'online' && DEADLINE_STATUS.TE_VERIFIEREN === 'te-verifieren' && DATUM_TYPE.EXTERN === 'extern');
 check('het contract kent geen status Aangevraagd of Toegekend voor een voorstel en geen schrijfstatus', !JSON.stringify(basis.voorstel).includes('submitted') && !JSON.stringify(basis.voorstel).includes('awarded'));
 check('module is zuiver: geen imports', !/^\s*import\s/m.test(await (await import('node:fs/promises')).readFile('src/features/kompas-app/financiering/voorstel.js', 'utf8')));
 

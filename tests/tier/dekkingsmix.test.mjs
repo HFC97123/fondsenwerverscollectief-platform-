@@ -73,7 +73,8 @@ sectie('2. Voorbeeld: gat € 40.000, A € 15.000 + B € 10.000 + C € 20.000
 
   check('Premium: doelbedrag is 140% = € 56.000', p.doelBedrag === 56000);
   check('Premium: haalt € 56.000 en draagt met D een groter restant dan Pro', p.uitkomst === 'doel-bereikt' && p.mix.length === 4 && p.som >= 56000 && p.som > r.som, JSON.stringify(p.mix.map((x) => [x.naam, x.bedrag])));
-  check('Premium: zelfde volgorde en zelfde kwaliteit, alleen langer doorgaan', p.mix.slice(0, 3).map((x) => x.naam).join() === r.mix.slice(0, 3).map((x) => x.naam).join());
+  check('Premium: beste scoreband eerst (A), binnen een band de hoogste bijdrage eerst (C vóór B)', p.mix.slice(0, 3).map((x) => x.naam).join() === 'Fonds A,Fonds C,Fonds B', p.mix.map((x) => x.naam).join());
+  check('Pro blijft puur op score (A, B, C): geen rangschikking op bijdrage', r.mix.slice(0, 3).map((x) => x.naam).join() === 'Fonds A,Fonds B,Fonds C');
 }
 
 sectie('3. Kwaliteit boven dekking: nooit een zwakke match toevoegen om een percentage te halen');
@@ -205,6 +206,32 @@ sectie('7. Eigenschappen over 3000 willekeurige gevallen');
   }
 
   check('geen enkele schending van de eigenschappen', fouten === 0, `${fouten} gevallen`);
+}
+
+
+sectie('Premium: de begroting sluitend maken met de beste en hoogste bijdragen (project € 700.000)');
+{
+  // 6 fondsen met een groot maximum (€ 150.000) en 10 met een klein maximum (€ 20.000), allemaal in dezelfde scoreband (80-89).
+  const groot = Array.from({ length: 6 }, (_, i) => k(`Groot ${i}`, 82 + i % 3, null, 150000));
+  const klein = Array.from({ length: 10 }, (_, i) => k(`Klein ${i}`, 88 - i % 3, null, 20000));
+  const alles = [...klein, ...groot];
+  const prem = selecteerDekkingsmix({ kandidaten: alles, gat: 700000, config: PREMIUM });
+  const pro = selecteerDekkingsmix({ kandidaten: alles, gat: 700000, config: PRO });
+
+  check('Premium: doelbedrag 140% = € 980.000', prem.doelBedrag === 980000);
+  check('Premium: de begroting sluit (doel bereikt, minstens 100% en 140%)', prem.uitkomst === 'doel-bereikt' && prem.som >= 980000 && prem.dekking >= 1.4, prem.uitkomst + ' ' + prem.som);
+  check('Premium: de fondsen met de hoogste bijdrage staan voorop (de grote eerst), de kleine vallen af zodra het doel gehaald is', prem.mix.slice(0, 6).every((x) => x.naam.startsWith('Groot')) && prem.mix.length <= 10, prem.mix.map((x) => x.naam).join());
+  check('Premium: nooit meer dan 10 regels, plus hooguit één reserve die niet meetelt', prem.mix.length <= PREMIUM.maxRegelsInMix && prem.som === som(prem));
+  check('Pro: dezelfde kandidaten, maar maximaal 6 regels (kortere lijst, kan onvoldoende zijn)', pro.mix.length <= 6 && pro.mix.length === Math.min(6, pro.mix.length));
+
+  // Scoreband gaat voor bijdrage: een veel betere match met een kleine bijdrage staat vóór een matige match met een grote bijdrage.
+  const top = k('Topmatch klein', 95, null, 10000);
+  const matig = k('Matige match groot', 62, null, 500000);
+  const band = selecteerDekkingsmix({ kandidaten: [matig, top], gat: 100000, config: PREMIUM });
+
+  check('Scoreband gaat voor bijdrage: topmatch eerst, matige match daarna', band.mix[0].naam === 'Topmatch klein' && band.mix[1].naam === 'Matige match groot');
+  check('Premium met te weinig sterke matches: eerlijk onvoldoende, niets opvullen', selecteerDekkingsmix({ kandidaten: [k('Enige', 80, null, 10000)], gat: 700000, config: PREMIUM }).uitkomst === 'onvoldoende-sterke-matches');
+  check('Rangschikking is deterministisch bij gelijke score en bijdrage (op naam)', selecteerDekkingsmix({ kandidaten: [k('B-fonds', 80, null, 10000), k('A-fonds', 80, null, 10000)], gat: 20000, config: PREMIUM }).mix[0].naam === 'A-fonds');
 }
 
 klaar('dekkingsmix');
