@@ -1,136 +1,101 @@
-// Dashboard van de Pro/Premium-werkruimte: de cockpit.
+// Dashboard van de Pro/Premium-werkruimte: een werkplek met resultaten en de volgende stap.
 //
-// Uitsluitend samenvatten en doorlinken: een compacte cockpit met Projecten,
-// Mijn komende deadlines en Recente documenten. Elke andere functie houdt zijn
-// eigen primaire plek (gesprekken in Chat, planning in Deadlines, het
-// organisatieprofiel in Organisatieprofiel) en wordt hier bewust NIET herhaald.
-// Dit scherm heeft GEEN eigen opslag en geen eigen editors; de gegevens komen
-// uit de bestaande bronnen (useKompas) en alle berekeningen zitten in het pure
-// bestand dashboardData.js. "Bespreek met Subsidie Kompas" geeft alleen een
-// eenmalige aanwijzing aan de chat (store.zetChatVerzoek); het Dashboard voert
-// zelf geen AI-logica uit.
+// Volgorde: wat nu aandacht vraagt (acties), komende deadlines, de projecten met hun dekking, fondsen in de
+// dekkingsplannen die nog een beslissing vragen en recente documenten. Geen uitleg over de werking van het systeem;
+// alleen echte gegevens uit de bestaande bronnen (useKompas, kompas_dekkingsplan, de opgeslagen taken) en de pure
+// afleidingen in dashboardData.js / actiesEnDeadlines.js. Dit scherm heeft geen eigen opslag en geen eigen editors.
 import React, { useMemo } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
+import { Blok, Chip, Leeg, Melding, PaginaKop, Rij, Rijen, WerkPagina } from '../../../shared/ui/werkplek.jsx';
 import { useApp } from '../useKompasApp.js';
 import { useKompas } from '../KompasStore.jsx';
 import { bouwDashboard, dagenTekst, formatDatum, formatEuro, formatTijd } from './dashboardData.js';
 import { useDekkingsplannen } from '../financiering/useProjectFinanciering.js';
-import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
+import { useActieplan } from '../financiering/useActieplan.js';
+import { bouwActiesEnDeadlines } from '../financiering/actiesEnDeadlines.js';
+import { StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
-import { CSS_KLIKKAART } from '../klikKaart.js';
-import BespreekProjectKnop from '../BespreekProjectKnop.jsx';
 
 const MAX_PROJECTEN = 6;
+const MAX_ACTIES = 6;
 
-const kaartStijl = css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF; min-width: 0;');
-const labelStijl = css("font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;");
-const linkStijl = css("font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #4E9A6C; text-decoration: none; cursor: pointer; background: none; border: none; padding: 0;");
-const tekstStijl = css("font-family: 'Mulish', sans-serif; font-size: 14.5px; line-height: 1.55; color: #4B5C58;");
+const CSS_DASHBOARD = `
+.fwk-db-project { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1.1fr); gap: 10px 18px; align-items: center; box-sizing: border-box; padding: 14px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; position: relative; }
+.fwk-db-project:hover { border-color: #A8D5BA; }
+.fwk-db-project h3 { margin: 0; font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere; }
+.fwk-db-project h3 a { color: inherit; text-decoration: none; }
+.fwk-db-project h3 a::after { content: ''; position: absolute; inset: 0; border-radius: 12px; }
+.fwk-db-klein { font-family: 'Mulish', sans-serif; font-size: 12.5px; line-height: 1.5; color: #7B8985; }
+.fwk-db-waarde { font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 800; color: #2C4A5E; }
+.fwk-db-boven { position: relative; z-index: 1; }
+@media (max-width: 760px) { .fwk-db-project { grid-template-columns: minmax(0, 1fr); } }
+`;
 
-function Sectie({ titel, actie, children, testid }) {
-  return (
-    <section data-testid={testid} style={kaartStijl}>
-      <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px;')}>
-        <h2 style={{ ...labelStijl, margin: 0 }}>{titel}</h2>
-        {actie}
-      </div>
-      {children}
-    </section>
-  );
+function urgentie(dagen) {
+  if (dagen == null) return 'grijs';
+  if (dagen < 0) return 'rood';
+  if (dagen <= 14) return 'oranje';
+
+  return 'blauw';
 }
 
-function Leeg({ children }) {
-  return <div style={{ ...tekstStijl, color: '#7B8985' }}>{children}</div>;
-}
-
-function Kpi({ label, waarde, kleur }) {
-  return (
-    <div style={css('min-width: 0;')}>
-      <div style={css("display: flex; align-items: center; gap: 6px; font-family: 'Mulish', sans-serif; font-size: 12px; font-weight: 700; color: #7B8985;")}>
-        {kleur && <span aria-hidden="true" style={css(`display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: ${kleur}; flex: none;`)} />}
-        <span>{label}</span>
-      </div>
-      <div style={css("margin-top: 2px; font-family: 'Newsreader', serif; font-size: 20px; font-weight: 600; color: #2C4A5E; white-space: nowrap;")}>{waarde}</div>
-    </div>
-  );
-}
-
-function ProjectKaart({ project, onBespreek }) {
+function ProjectRegel({ project, onBespreek }) {
   const d = project.dekking;
   const meta = [project.locatie, project.periode].filter(Boolean).join(' · ');
   const volgende = project.volgendeDeadline;
+  const f = project.fondsen;
 
   return (
-    <article
-      className="fwk-kk fwk-kk-klikbaar"
-      data-testid="dashboard-project"
-      data-project-id={project.id}
-      style={{ ...kaartStijl, '--kk-r': '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}
-    >
-      <div>
-        <h3 style={css("margin: 0; font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere;")}>
-          {/* De hele kaart is de link naar het project (klikKaart.js); er is geen aparte "Open project"-knop. */}
-          <a className="fwk-kk-link" data-testid="dashboard-project-link" href={`#/kompas/projecten/${project.id}`}>
+    <li className="fwk-db-project" data-testid="dashboard-project" data-project-id={project.id}>
+      <div style={css('min-width: 0;')}>
+        <h3>
+          <a data-testid="dashboard-project-link" href={`#/kompas/projecten/${project.id}`}>
             {project.naam}
           </a>
         </h3>
-        {meta && <div style={{ ...tekstStijl, fontSize: '13.5px', color: '#7B8985' }}>{meta}</div>}
+        {meta && <div className="fwk-db-klein">{meta}</div>}
+        <button type="button" className="fwk-wp-link fwk-db-boven" style={css('margin-top: 6px; font-size: 12.5px; text-align: left;')} data-testid="bespreek-project" onClick={() => onBespreek(project.id)}>
+          Bespreek met Subsidie Kompas →
+        </button>
       </div>
 
-      <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px 16px;')}>
-        <Kpi label="Begroting" waarde={d.heeftBegroting ? formatEuro(d.begroting) : '—'} />
-        <Kpi label="Toegekend" waarde={formatEuro(d.toegekend)} kleur={KLEUR.toegekend} />
-        <Kpi label="Aangevraagd" waarde={formatEuro(d.aangevraagd)} kleur={KLEUR.aangevraagd} />
-        <Kpi label="Eigen bijdrage" waarde={formatEuro(d.overige)} kleur={KLEUR.overige} />
-        <Kpi label="Nog te financieren" waarde={d.heeftBegroting ? formatEuro(d.nogNodig) : '—'} kleur="#C5D2CB" />
-      </div>
-
-      {d.heeftBegroting ? (
-        <div>
-          <Voortgangsbalk dekking={d} projectNaam={project.naam} />
-          <div data-testid="dekking-samenvatting" style={{ ...tekstStijl, marginTop: '8px', fontSize: '13.5px', fontWeight: 700, color: d.volledigGedekt ? '#2F6D47' : '#2C4A5E' }}>
-            {d.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren: ${formatEuro(d.nogNodig)}`}
-          </div>
-        </div>
-      ) : (
-        <Leeg>Vul de projectbegroting in om de financieringsvoortgang te zien.</Leeg>
-      )}
-
-      <div style={{ ...tekstStijl, fontSize: '13.5px' }}>
-        <strong style={css('color: #2C4A5E;')}>Eerstvolgende deadline: </strong>
-        {volgende ? (
-          <span data-testid="project-deadline">
-            {formatDatum(volgende.datum)} ({dagenTekst(volgende.dagen)}) · {volgende.naam}
-          </span>
+      <div style={css('min-width: 0;')}>
+        {d.heeftBegroting ? (
+          <>
+            <Voortgangsbalk dekking={d} projectNaam={project.naam} hoogte={8} />
+            <div data-testid="dekking-samenvatting" className="fwk-db-waarde" style={css(`margin-top: 6px; color: ${d.volledigGedekt ? '#2F6D47' : '#2C4A5E'};`)}>
+              {d.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren: ${formatEuro(d.nogNodig)}`}
+            </div>
+            <div className="fwk-db-klein">
+              van {formatEuro(d.begroting)} · toegekend {formatEuro(d.toegekend)} · aangevraagd {formatEuro(d.aangevraagd)} · eigen bijdrage {formatEuro(d.overige)}
+            </div>
+          </>
         ) : (
-          <span data-testid="project-deadline">geen komende deadline</span>
+          <a href={`#/kompas/projecten/${project.id}?bewerk=1`} className="fwk-wp-link fwk-db-boven" data-testid="dashboard-begroting-invullen">
+            Begroting invullen
+          </a>
         )}
       </div>
 
-      <div style={css('margin-top: auto;')}>
-        <BespreekProjectKnop naam={project.naam} onClick={() => onBespreek(project.id)} />
+      <div style={css('min-width: 0; display: flex; flex-direction: column; gap: 4px;')}>
+        <a href={projectFinancieringHref(project.id)} className="fwk-db-klein fwk-db-boven" data-testid="dashboard-project-fondsen" style={css('text-decoration: none;')}>
+          <strong style={css('color: #2C4A5E;')}>
+            {f.totaal} {f.totaal === 1 ? 'fonds' : 'fondsen'} in het plan
+          </strong>
+          {f.teBeoordelen ? ` · ${f.teBeoordelen} te beoordelen` : ''}
+        </a>
+        <span data-testid="project-deadline" className="fwk-db-klein">
+          {volgende ? (
+            <>
+              Volgende deadline <strong style={css('color: #2C4A5E;')}>{formatDatum(volgende.datum)}</strong> ({dagenTekst(volgende.dagen)}) · {volgende.naam}
+            </>
+          ) : (
+            'geen komende deadline'
+          )}
+        </span>
       </div>
-    </article>
-  );
-}
-
-function Pagina({ children }) {
-  return (
-    <div style={css('min-height: 100vh; background: #F7F9F8;')}>
-      <div style={css('max-width: 1120px; margin: 0 auto; padding: clamp(20px, 3vw, 36px) clamp(16px, 4vw, 24px) 64px;')}>{children}</div>
-    </div>
-  );
-}
-
-function Kop({ intro }) {
-  return (
-    <div style={css('display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 22px;')}>
-      <div style={css('min-width: 0; flex: 1 1 320px;')}>
-        <h1 style={css("margin: 0 0 6px; font-family: 'Newsreader', serif; font-size: clamp(26px, 3.6vw, 34px); font-weight: 600; color: #2C4A5E;")}>Dashboard</h1>
-        <p style={{ ...tekstStijl, margin: 0, maxWidth: '640px', fontSize: '15.5px', lineHeight: 1.7 }}>{intro}</p>
-      </div>
-    </div>
+    </li>
   );
 }
 
@@ -141,30 +106,45 @@ export default function DashboardPage() {
   // Zelfde regel als hasPlanTools in KompasToolPage en de navigatie in KompasApp.
   const paid = app.isAdmin || tier === 'pro' || tier === 'premium';
 
-  // Financiering: dezelfde bron (kompas_dekkingsplan) en dezelfde rekenmodule als het projectdossier.
   const projectIds = useMemo(() => (paid ? (store.projects || []).filter((p) => !p.gearchiveerd).map((p) => p.id) : []), [paid, store.projects]);
   const financiering = useDekkingsplannen(projectIds);
+  const actieplan = useActieplan(projectIds);
+  const nu = useMemo(() => new Date(), []);
 
   const data = useMemo(
-    () =>
-      bouwDashboard({
-        projects: store.projects,
-        funding: financiering.perProject,
-        conversations: store.conversations,
-        orgProfile: store.orgProfile,
-        nu: new Date(),
-      }),
-    [store.projects, financiering.perProject, store.conversations, store.orgProfile],
+    () => bouwDashboard({ projects: store.projects, funding: financiering.perProject, conversations: store.conversations, orgProfile: store.orgProfile, nu }),
+    [store.projects, financiering.perProject, store.conversations, store.orgProfile, nu],
   );
+
+  // Acties: opgeslagen taken en afgeleide acties per project, dezelfde afleiding als in het project zelf.
+  const acties = useMemo(() => {
+    if (financiering.status !== 'klaar') return [];
+
+    const uit = [];
+
+    (store.projects || [])
+      .filter((p) => p && !p.gearchiveerd)
+      .forEach((p) => {
+        bouwActiesEnDeadlines({ project: p, regels: financiering.perProject[p.id] || [], taken: actieplan.actieVoor(p.id), nu })
+          .filter((i) => i.status !== 'done')
+          .forEach((i) => uit.push({ ...i, projectNaam: p.naam || 'Naamloos project' }));
+      });
+
+    return uit.sort((a, b) => String(a.datum || '9999-12-31').localeCompare(String(b.datum || '9999-12-31')) || (a.prioriteit === 'high' ? -1 : 0) - (b.prioriteit === 'high' ? -1 : 0));
+  }, [financiering.status, financiering.perProject, actieplan, store.projects, nu]);
+
 
   if (!paid) {
     return (
-      <Pagina>
-        <Kop intro="Met Pro en Premium ziet u hier in één oogopslag uw projecten, de financiering, komende deadlines en recente documenten." />
-        <Button variant="dark" onClick={app.goAbonnementen}>
-          Bekijk de abonnementen
-        </Button>
-      </Pagina>
+      <WerkPagina testid="dashboard">
+        <PaginaKop titel="Dashboard" />
+        <Melding toon="info">Het dashboard hoort bij Pro en Premium.</Melding>
+        <div style={css('margin-top: 14px;')}>
+          <Button variant="dark" onClick={app.goAbonnementen}>
+            Bekijk de abonnementen
+          </Button>
+        </div>
+      </WerkPagina>
     );
   }
 
@@ -173,112 +153,183 @@ export default function DashboardPage() {
     app.goKompas();
   };
 
-  const getoond = data.projecten.slice(0, MAX_PROJECTEN);
+  const getoond = data.projecten.slice(0, MAX_PROJECTEN).map((p) => {
+    const regels = financiering.perProject[p.id] || [];
+
+    return { ...p, fondsen: { totaal: regels.length, teBeoordelen: regels.filter((r) => r.status === 'interesting' || r.status === 'preparing').length } };
+  });
+  const hoog = acties.filter((a) => a.dagen != null && a.dagen <= 14).length;
+  const meta = [
+    `${data.projecten.length} ${data.projecten.length === 1 ? 'actief project' : 'actieve projecten'}`,
+    financiering.status === 'klaar' ? `${acties.length} ${acties.length === 1 ? 'open actie' : 'open acties'}${hoog ? `, ${hoog} binnen 14 dagen` : ''}` : null,
+    data.deadlines[0] ? `eerstvolgende deadline ${formatDatum(data.deadlines[0].datum)}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <Pagina>
-      <style>{CSS_KLIKKAART}</style>
-      <Kop intro="Uw projecten, komende deadlines en recente documenten in één oogopslag." />
+    <WerkPagina testid="dashboard">
+      <style>{CSS_DASHBOARD}</style>
+      <PaginaKop
+        titel="Dashboard"
+        meta={meta}
+        acties={
+          <Button
+            size="s"
+            onClick={() => {
+              window.location.hash = '#/kompas/projecten?nieuw=1';
+            }}
+          >
+            + Nieuw project
+          </Button>
+        }
+        help={
+          <>
+            <p>Acties komen uit uw dekkingsplannen en opgeslagen taken: deadlines die naderen, aanvragen die u nog afrondt en bedragen die ontbreken.</p>
+            <p>Per project ziet u hoeveel fondsen en regelingen in het dekkingsplan staan en hoeveel daarvan u nog beoordeelt (Interessant of In voorbereiding).</p>
+          </>
+        }
+      />
 
       {financiering.status === 'fout' && (
-        <div role="status" data-testid="financiering-fout" style={{ ...tekstStijl, marginBottom: '12px', padding: '10px 14px', border: '1px solid #EEDCC0', borderRadius: '12px', background: '#FBF1E3', color: '#8A5A16' }}>
-          {financiering.fout === 'niet-beschikbaar'
-            ? 'Projectfinanciering is nog niet beschikbaar; de financieringsbedragen staan daarom tijdelijk op nul.'
-            : 'De projectfinanciering kon niet worden geladen; de financieringsbedragen zijn daarom nog niet volledig.'}
+        <div style={css('margin-bottom: 14px;')}>
+          <Melding toon="waarschuwing" testid="financiering-fout">
+            {financiering.fout === 'niet-beschikbaar'
+              ? 'Projectfinanciering is nog niet beschikbaar; de bedragen staan tijdelijk op nul.'
+              : 'De projectfinanciering kon niet worden geladen; de bedragen zijn nog niet volledig.'}
+          </Melding>
         </div>
       )}
 
-      <Sectie
-        testid="dashboard-projecten"
-        titel="Projecten"
-        actie={
-          data.projecten.length > MAX_PROJECTEN ? (
-            <a href="#/kompas/projecten" style={linkStijl}>
-              {`Alle ${data.projecten.length} projecten`}
-            </a>
-          ) : null
-        }
-      >
-        {getoond.length ? (
-          <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px;')}>
-            {getoond.map((p) => (
-              <ProjectKaart key={p.id} project={p} onBespreek={bespreekProject} />
-            ))}
-          </div>
-        ) : (
-          <Leeg>
-            U heeft nog geen actief project. Maak een project aan bij Projecten; daar legt u begroting en dekkingsplan vast.{' '}
-            <a href="#/kompas/projecten" style={linkStijl}>
-              Naar Projecten
-            </a>
-          </Leeg>
-        )}
-      </Sectie>
+      <div className="fwk-wp-kolommen">
+        <div className="fwk-wp-stapel">
+          <Blok testid="dashboard-acties" titel="Nu aan de slag" aantal={financiering.status === 'klaar' ? acties.length : null}>
+            {financiering.status === 'laden' ? (
+              <Leeg testid="dashboard-acties-laden">Acties worden geladen…</Leeg>
+            ) : acties.length ? (
+              <Rijen label="Acties">
+                {acties.slice(0, MAX_ACTIES).map((a) => (
+                  <Rij
+                    key={a.sleutel}
+                    testid="dashboard-actie"
+                    href={`#/kompas/projecten/${a.projectId}?tab=deadlines`}
+                    titel={a.titel}
+                    sub={[a.projectNaam, a.regelNaam].filter(Boolean).join(' · ')}
+                    kolommen={[{ label: 'Wanneer', waarde: a.datum ? formatDatum(a.datum) : 'Geen datum', sub: a.dagen != null ? dagenTekst(a.dagen) : null, urgent: a.dagen != null && a.dagen < 0 }]}
+                    eind={a.dagen != null && a.dagen <= 14 ? <Chip toon={urgentie(a.dagen)}>{a.dagen < 0 ? 'Te laat' : 'Binnenkort'}</Chip> : null}
+                  />
+                ))}
+              </Rijen>
+            ) : (
+              <Leeg>Geen openstaande acties.</Leeg>
+            )}
+            {acties.length > MAX_ACTIES && (
+              <div style={css('margin-top: 10px;')}>
+                <a href="#/kompas/deadlines" className="fwk-wp-link" data-testid="dashboard-alle-acties">
+                  Alle {acties.length} acties
+                </a>
+              </div>
+            )}
+          </Blok>
 
-      <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 16px; margin-top: 16px;')}>
-        <Sectie
-          testid="dashboard-deadlines"
-          titel="Mijn komende deadlines"
-          actie={
-            <a href="#/kompas/deadlines" style={linkStijl}>
-              Alle deadlines
-            </a>
-          }
-        >
-          {data.deadlines.length ? (
-            <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px;')}>
-              {data.deadlines.map((x) => (
-                <li key={x.sleutel} data-testid="dashboard-deadline" style={css('display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start;')}>
-                  <div style={css("flex: none; min-width: 88px; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #2C4A5E;")}>
-                    {formatDatum(x.datum)}
-                    <div style={css('font-size: 12px; font-weight: 700; color: #7B8985;')}>{dagenTekst(x.dagen)}</div>
-                  </div>
-                  <div style={css('min-width: 120px; flex: 1 1 120px;')}>
-                    <div style={{ ...tekstStijl, fontWeight: 800, color: '#2C4A5E', overflowWrap: 'break-word' }}>
-                      <a href={projectFinancieringHref(x.projectId)} data-testid="dashboard-deadline-link" style={css('color: inherit; text-decoration: none;')}>
-                        {x.naam}
-                      </a>
-                    </div>
-                    <div style={{ ...tekstStijl, fontSize: '13px', color: '#7B8985' }}>
-                      {x.funder ? `${x.funder} · ` : ''}
-                      {x.projectNaam}
-                    </div>
-                  </div>
-                  <StatusChip status={x.status} />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Leeg>Geen komende deadlines in uw dekkingsplannen. Neem een regeling op in een project om de deadline hier te volgen.</Leeg>
-          )}
-        </Sectie>
+          <Blok
+            testid="dashboard-projecten"
+            titel="Projecten"
+            aantal={data.projecten.length}
+            actie={
+              <a href="#/kompas/projecten" className="fwk-wp-link">
+                {data.projecten.length > MAX_PROJECTEN ? `Alle ${data.projecten.length} projecten` : 'Alle projecten'}
+              </a>
+            }
+          >
+            {getoond.length ? (
+              <ul className="fwk-wp-rijen">
+                {getoond.map((p) => (
+                  <ProjectRegel key={p.id} project={p} onBespreek={bespreekProject} />
+                ))}
+              </ul>
+            ) : (
+              <Leeg>
+                Nog geen actief project.{' '}
+                <a href="#/kompas/projecten?nieuw=1" className="fwk-wp-link">
+                  Project aanmaken
+                </a>
+              </Leeg>
+            )}
+          </Blok>
+        </div>
 
-        <Sectie
-          testid="dashboard-documenten"
-          titel="Recente documenten"
-          actie={
-            <a href="#/kompas/documentatie" style={linkStijl}>
-              Alle documenten
-            </a>
-          }
-        >
-          {data.documenten.length ? (
-            <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px;')}>
-              {data.documenten.map((d) => (
-                <li key={d.id || `${d.projectId}:${d.naam}`} data-testid="dashboard-document">
-                  <div style={{ ...tekstStijl, fontWeight: 800, color: '#2C4A5E', overflowWrap: 'anywhere' }}>{d.naam}</div>
-                  <div style={{ ...tekstStijl, fontSize: '13px', color: '#7B8985' }}>
-                    {d.soort} · {d.projectNaam}
-                    {d.gemaakt ? ` · ${formatTijd(d.gemaakt, new Date())}` : ''}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Leeg>Nog geen documenten bij uw projecten. Documenten die u in de chat opslaat, verschijnen hier.</Leeg>
-          )}
-        </Sectie>
+        <div className="fwk-wp-stapel">
+          <Blok
+            testid="dashboard-deadlines"
+            titel="Komende deadlines"
+            actie={
+              <a href="#/kompas/deadlines" className="fwk-wp-link">
+                Alle deadlines
+              </a>
+            }
+          >
+            {data.deadlines.length ? (
+              <Rijen label="Komende deadlines">
+                {data.deadlines.map((x) => (
+                  <li key={x.sleutel} data-testid="dashboard-deadline" className="fwk-wp-rij fwk-wp-klik" style={{ '--kol': 0, gridTemplateColumns: 'minmax(0,1fr) auto' }}>
+                    <div style={css('min-width: 0;')}>
+                      <div className="fwk-wp-rij-titel">
+                        <a href={projectFinancieringHref(x.projectId)} data-testid="dashboard-deadline-link">
+                          {x.naam}
+                        </a>
+                      </div>
+                      <div className="fwk-wp-rij-sub">
+                        <strong style={css(`color: ${x.dagen <= 14 ? '#9E3B2C' : '#2C4A5E'};`)}>{formatDatum(x.datum)}</strong> · {dagenTekst(x.dagen)} · {x.projectNaam}
+                      </div>
+                    </div>
+                    <div className="fwk-wp-rij-eind">
+                      <StatusChip status={x.status} />
+                    </div>
+                  </li>
+                ))}
+              </Rijen>
+            ) : (
+              <Leeg>
+                Geen komende deadlines.{' '}
+                <a href="#/kompas/deadlines" className="fwk-wp-link">
+                  Regelingen bekijken
+                </a>
+              </Leeg>
+            )}
+          </Blok>
+
+          <Blok
+            testid="dashboard-documenten"
+            titel="Recente documenten"
+            actie={
+              <a href="#/kompas/documentatie" className="fwk-wp-link">
+                Alle documenten
+              </a>
+            }
+          >
+            {data.documenten.length ? (
+              <Rijen label="Recente documenten">
+                {data.documenten.map((d) => (
+                  <li key={d.id || `${d.projectId}:${d.naam}`} data-testid="dashboard-document" className="fwk-wp-rij" style={{ '--kol': 0, gridTemplateColumns: 'minmax(0,1fr)' }}>
+                    <div style={css('min-width: 0;')}>
+                      <div className="fwk-wp-rij-titel">
+                        <a href={`#/kompas/documentatie?project=${encodeURIComponent(d.projectId)}&tab=bestanden`}>{d.naam}</a>
+                      </div>
+                      <div className="fwk-wp-rij-sub">
+                        {d.soort} · {d.projectNaam}
+                        {d.gemaakt ? ` · ${formatTijd(d.gemaakt, new Date())}` : ''}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </Rijen>
+            ) : (
+              <Leeg>Nog geen documenten.</Leeg>
+            )}
+          </Blok>
+        </div>
       </div>
-    </Pagina>
+    </WerkPagina>
   );
 }

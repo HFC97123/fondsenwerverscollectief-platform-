@@ -16,6 +16,8 @@ import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
+import { Button } from '../../shared/ui/index.js';
+import { CSS_WERKPLEK, PaginaKop, Tabs, Zijpaneel } from '../../shared/ui/werkplek.jsx';
 // Admin Inline Edit Mode: uitsluitend zichtbaar/actief voor app.isAdmin (zie
 // verderop). Bestaande data-laadlogica hierboven (fetchDeadlines/
 // fetchFunderDeadlines/watchDeadlines) blijft voor alle gebruikers ongewijzigd
@@ -438,6 +440,7 @@ export default function DeadlinesPage() {
   const shown = displayOrder.slice(0, limit);
   const lockedCount = sorted.filter((r) => getDeadlineAccess(r) === 'premium').length;
   const detail = rows.find((r) => String(r.id) === String(detailId)) || null;
+  const sluitDetail = useCallback(() => setDetailId(null), []);
   const upgradeRow = rows.find((r) => String(r.id) === String(upgradeId)) || null;
 
   // Eén centrale klikregel: een volledig zichtbare regeling opent de
@@ -636,68 +639,40 @@ export default function DeadlinesPage() {
     <div style={css('min-height: 100vh; background: #F7F9F8;')}>
       <KompasSubnav actief="deadlines" maxWidth="1180px" toonPlan />
 
-      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(34px, 5vw, 56px) clamp(16px, 4vw, 24px) clamp(20px, 3vw, 30px);')}>
-        <div style={css(`
-          display: inline-block;
-          padding: 7px 16px;
-          border-radius: 999px;
-          background: #EAF4EE;
-          color: #2C4A5E;
-          font-size: 14px;
-          font-weight: 700;
-          margin-bottom: 20px;
-        `)}
-        >
-          Deadlines
-        </div>
-
-        <h1 style={css(`
-          font-family: 'Newsreader', serif;
-          font-size: clamp(30px, 5vw, 46px);
-          font-weight: 600;
-          color: #2C4A5E;
-          line-height: 1.15;
-          margin: 0 0 16px;
-          max-width: 760px;
-        `)}
-        >
-          Actuele subsidieregelingen en deadlines
-        </h1>
-
-        <p style={css('font-size: 17.5px; line-height: 1.65; color: #4B5C58; max-width: 680px; margin: 0;')}>
-          Een chronologisch overzicht van regelingen die nu open zijn, binnenkort openen of doorlopend aan te vragen
-          zijn. De database bevat <FundingDatabaseCount /> fondsen en regelingen.
-        </p>
+      <style>{CSS_WERKPLEK}</style>
+      <div className="fwk-wp-pagina" style={css('min-height: 0;')}>
+      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(18px, 3vw, 32px) clamp(16px, 4vw, 28px) 0; box-sizing: border-box;')}>
+        <PaginaKop
+          titel={paid ? 'Deadlines' : 'Actuele subsidieregelingen en deadlines'}
+          meta={
+            <>
+              <FundingDatabaseCount /> fondsen en regelingen in de database
+            </>
+          }
+          help={
+            <>
+              <p>Mijn deadlines toont de deadlines uit de dekkingsplannen van uw projecten. Actieplan bundelt de acties per project.</p>
+              <p>Alle regelingen is het volledige overzicht van regelingen en fondsen die nu open zijn, binnenkort openen of doorlopend aan te vragen zijn. Klik op een regeling voor de details en om hem in een project op te nemen.</p>
+            </>
+          }
+        />
+      </div>
       </div>
 
-      <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px) clamp(48px, 7vw, 90px);')}>
+      <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 28px) clamp(48px, 7vw, 90px); box-sizing: border-box;')}>
         {paid && (
-          <div role="tablist" aria-label="Deadlines" data-testid="deadlines-segmenten" style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;')}>
-            {[['mijn', 'Mijn deadlines'], ['actieplan', 'Actieplan'], ['alle', 'Alle regelingen']].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={segment === id}
-                data-testid={`segment-${id}`}
-                onClick={() => setSegment(id)}
-                style={css(`
-                  cursor: pointer;
-                  box-sizing: border-box;
-                  min-height: 44px;
-                  padding: 10px 20px;
-                  border: 1.5px solid ${segment === id ? '#2C4A5E' : '#D5E0D9'};
-                  border-radius: 999px;
-                  background: ${segment === id ? '#2C4A5E' : '#FFFFFF'};
-                  color: ${segment === id ? '#FFFFFF' : '#2C4A5E'};
-                  font-family: 'Mulish', sans-serif;
-                  font-size: 14.5px;
-                  font-weight: 800;
-                `)}
-              >
-                {label}
-              </button>
-            ))}
+          <div data-testid="deadlines-segmenten">
+            <Tabs
+              tabs={[
+                { id: 'mijn', label: 'Mijn deadlines' },
+                { id: 'actieplan', label: 'Actieplan' },
+                { id: 'alle', label: 'Alle regelingen' },
+              ]}
+              actief={segment}
+              onKies={setSegment}
+              label="Deadlines"
+              testidPrefix="segment-"
+            />
           </div>
         )}
 
@@ -1065,232 +1040,133 @@ export default function DeadlinesPage() {
         )}
       </div>
 
-      {detail && (
-        <div style={css(`
-          position: fixed;
-          inset: 0;
-          z-index: 90;
-          background: rgba(44,74,94,0.34);
-          display: flex;
-          align-items: flex-end;
-          justify-content: flex-end;
-        `)}
-        >
-          <div style={css(`
-            width: min(520px, 100%);
-            max-height: 100vh;
-            overflow-y: auto;
-            box-sizing: border-box;
-            padding: clamp(22px, 3vw, 34px);
-            background: #FFFFFF;
-            border-radius: 24px 24px 0 0;
-          `)}
-          >
-            <div style={css('display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px;')}>
-              <span style={css("min-width: 0; font-family: 'Newsreader', serif; font-size: clamp(23px, 3vw, 28px); font-weight: 600; color: #2C4A5E; line-height: 1.25;")}>
-                {detail.naam}
-              </span>
-              <button
-                type="button"
-                aria-label="Sluiten"
-                onClick={() => setDetailId(null)}
-                style={css(`
-                  cursor: pointer;
-                  flex-shrink: 0;
-                  width: 44px;
-                  height: 44px;
-                  border: 1px solid #E1EAE4;
-                  border-radius: 14px;
-                  background: #FFFFFF;
-                  color: #2C4A5E;
-                  font-size: 18px;
-                  font-weight: 700;
-                `)}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px;')}>
+      <Zijpaneel
+        open={Boolean(detail)}
+        onSluit={sluitDetail}
+        titel={detail ? detail.naam : ''}
+        testid="deadline-detail"
+        boven={
+          detail && (
+            <div style={css('display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;')}>
               <span style={css(`
-                padding: 6px 14px;
+                padding: 3px 10px;
                 border: 1px solid ${(STATUS_STYLE[detail.status] || STATUS_STYLE.Open).border};
                 border-radius: 999px;
                 background: ${(STATUS_STYLE[detail.status] || STATUS_STYLE.Open).bg};
                 color: ${(STATUS_STYLE[detail.status] || STATUS_STYLE.Open).color};
-                font-size: 12.5px;
+                font-size: 12px;
                 font-weight: 800;
               `)}
               >
                 {detail.status}
               </span>
-              <span style={css('font-size: 14px; color: #687974;')}>{`${detail.funder} · ${detail.regio}`}</span>
-              {detail.thema && (
-                <span style={css('padding: 3px 10px; border-radius: 999px; background: #F2F6F4; color: #4B5C58; font-size: 11.5px; font-weight: 700;')}>
-                  {detail.thema}
-                </span>
-              )}
+              <span style={css('font-size: 12.5px; color: #687974;')}>{[detail.bronType === 'funder' ? 'Fonds' : 'Regeling', detail.funder, detail.regio].filter(Boolean).join(' · ')}</span>
             </div>
-
-            <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 12px; margin-bottom: 18px;')}>
+          )
+        }
+      >
+        {detail && (
+          <>
+            <div className="fwk-wp-feiten">
               {[
-                ['BEDRAG', formatAmount(detail.bedragMin, detail.bedragMax)],
-                detail.bandbreedteBijdrage ? ['BANDBREEDTE BIJDRAGE', detail.bandbreedteBijdrage] : null,
+                ['Bedrag', formatAmount(detail.bedragMin, detail.bedragMax) || 'Niet bekend'],
+                detail.bandbreedteBijdrage ? ['Bandbreedte bijdrage', detail.bandbreedteBijdrage] : null,
                 [
-                  'DEADLINE',
+                  'Deadline',
                   detail.deadline
-                    ? (daysLeft(detail) != null && daysLeft(detail) < 0
-                        ? `Afgelopen · ${formatDate(detail.deadline)}`
-                        : `${daysLeft(detail)} dagen · ${formatDate(detail.deadline)}`)
-                    : 'Doorlopend, geen vaste sluitingsdatum',
+                    ? daysLeft(detail) != null && daysLeft(detail) < 0
+                      ? `Afgelopen · ${formatDate(detail.deadline)}`
+                      : `${daysLeft(detail)} dagen · ${formatDate(detail.deadline)}`
+                    : 'Doorlopend',
                 ],
-                // Meerdere aanvraagrondes: beoordelingsdatum/-periode komen uit
-                // dezelfde eerstvolgende-ronde als de DEADLINE-tegel hierboven
-                // (subsidieregeling_volgende_ronde) — geen eigen logica.
-                detail.beoordelingsdatum || detail.beoordelingsperiode
-                  ? ['BEOORDELING', detail.beoordelingsdatum ? formatDate(detail.beoordelingsdatum) : detail.beoordelingsperiode]
-                  : null,
+                // Meerdere aanvraagrondes: beoordelingsdatum/-periode komen uit dezelfde eerstvolgende ronde als de deadline.
+                detail.beoordelingsdatum || detail.beoordelingsperiode ? ['Beoordeling', detail.beoordelingsdatum ? formatDate(detail.beoordelingsdatum) : detail.beoordelingsperiode] : null,
               ]
                 .filter(Boolean)
                 .map(([label, value]) => (
-                <div key={label} style={css('padding: 16px 18px; border: 1px solid #E1EAE4; border-radius: 14px; background: #F7F9F8;')}>
-                  <div style={css('margin-bottom: 5px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; color: #9AA6A2;')}>
-                    {label}
+                  <div key={label} className="fwk-wp-feit">
+                    <div className="fwk-wp-kol-label">{label}</div>
+                    <div style={css('margin-top: 2px; font-size: 14px; font-weight: 800; color: #2C4A5E;')}>{value}</div>
                   </div>
-                  <div style={css('font-size: 15px; font-weight: 700; color: #2C4A5E;')}>{value}</div>
-                </div>
-              ))}
+                ))}
             </div>
 
-            {detail.rondesAantal > 1 && (
-              <div style={css('margin: -8px 0 16px; font-size: 13px; color: #7B8985;')}>
-                Volgende ronde van in totaal {detail.rondesAantal} aanvraagrondes voor deze regeling.
-              </div>
-            )}
-
-            {detail.omschrijving && (
-              <div style={css('margin-bottom: 16px;')}>
-                <div style={css('margin-bottom: 7px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.05em; color: #2C4A5E;')}>
-                  {detail.bronType === 'funder' ? 'OVER DIT FONDS' : 'OVER DEZE REGELING'}
-                </div>
-                <div style={css('font-size: 15px; line-height: 1.7; color: #4B5C58; white-space: pre-wrap;')}>
-                  {detail.omschrijving}
-                </div>
-              </div>
-            )}
-
-            {detail.voorwaarden && (
-              <div style={css('margin-bottom: 16px;')}>
-                <div style={css('margin-bottom: 7px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.05em; color: #2C4A5E;')}>
-                  {detail.bronType === 'funder' ? 'TOELICHTING' : 'VOORWAARDEN'}
-                </div>
-                <div style={css('font-size: 15px; line-height: 1.7; color: #4B5C58; white-space: pre-wrap;')}>
-                  {detail.voorwaarden}
-                </div>
-              </div>
-            )}
-
-            {!detail.omschrijving && !detail.voorwaarden && (
-              <div style={css('margin-bottom: 16px; padding: 14px 16px; border: 1px dashed #D5E0D9; border-radius: 14px; font-size: 14.5px; line-height: 1.65; color: #7B8985;')}>
-                {detail.bronType === 'funder'
-                  ? 'Omschrijving en toelichting komen uit de database. Zodra dit fonds daar is aangevuld, staan ze hier.'
-                  : 'Omschrijving en voorwaarden komen uit de database. Zodra deze regeling daar is aangevuld, staan ze hier.'}
-              </div>
-            )}
+            {detail.rondesAantal > 1 && <div style={css('margin-top: 6px; font-size: 12.5px; color: #7B8985;')}>Volgende ronde van {detail.rondesAantal} aanvraagrondes.</div>}
 
             {(() => {
               const kans = kansrijkheid(detail, store.orgProfile || {}, store.projects);
 
               return (
-                <div style={css(`margin-bottom: 16px; padding: 16px 18px; border: 1px solid ${kans.border}; border-radius: 16px; background: ${kans.bg};`)}>
-                  <div style={css(`margin-bottom: 6px; font-size: 13px; font-weight: 800; color: ${kans.color};`)}>
-                    {kans.label}
-                  </div>
-                  <div style={css('font-size: 14px; line-height: 1.65; color: #4B5C58; text-wrap: pretty;')}>{kans.tekst}</div>
+                <div data-testid="detail-match" style={css(`margin-top: 14px; padding: 12px 14px; border: 1px solid ${kans.border}; border-radius: 12px; background: ${kans.bg};`)}>
+                  <div style={css(`margin-bottom: 4px; font-size: 13px; font-weight: 800; color: ${kans.color};`)}>{kans.label}</div>
+                  <div style={css('font-size: 13.5px; line-height: 1.6; color: #4B5C58;')}>{kans.tekst}</div>
                 </div>
               );
             })()}
 
-            {/* Toevoegen aan projectfinanciering (Pro/Premium) en Bespreek met Subsidie Kompas: alleen voor
-                volledig zichtbare rijen (deze detailkaart opent alleen voor die), voor een regeling én voor een
-                fonds. Toevoegen loopt volledig via financiering/toevoegen.js; hier staat geen insertlogica.
-                Free ziet voor een regeling de bestaande uitleg en voor een fonds niets, zoals voorheen. */}
+            {[
+              ['Disciplines', detail.themasNamen],
+              ['Doelgroepen', detail.doelgroepenNamen],
+              ['Werkgebied', detail.werkgebiedenNamen],
+            ].some(([, l]) => l && l.length) && (
+              <>
+                <div className="fwk-wp-label">Voor wie en waar</div>
+                <div style={css('display: flex; flex-direction: column; gap: 6px;')}>
+                  {[
+                    ['Disciplines', detail.themasNamen],
+                    ['Doelgroepen', detail.doelgroepenNamen],
+                    ['Werkgebied', detail.werkgebiedenNamen],
+                  ]
+                    .filter(([, l]) => l && l.length)
+                    .map(([label, lijst]) => (
+                      <div key={label} style={css('font-size: 13.5px; line-height: 1.5; color: #4B5C58;')}>
+                        <strong style={css('color: #2C4A5E;')}>{label}:</strong> {lijst.join(', ')}
+                      </div>
+                    ))}
+                </div>
+              </>
+            )}
+
+            <div className="fwk-wp-label">{detail.bronType === 'funder' ? 'Wat dit fonds ondersteunt' : 'Wat deze regeling ondersteunt'}</div>
+            <div style={css(`font-size: 14px; line-height: 1.65; white-space: pre-wrap; color: ${detail.omschrijving ? '#4B5C58' : '#9AA6A2'};`)}>{detail.omschrijving || 'Nog geen omschrijving bekend.'}</div>
+
+            <div className="fwk-wp-label">{detail.bronType === 'funder' ? 'Toelichting' : 'Voorwaarden om te controleren'}</div>
+            <div style={css(`font-size: 14px; line-height: 1.65; white-space: pre-wrap; color: ${detail.voorwaarden ? '#4B5C58' : '#9AA6A2'};`)}>
+              {detail.voorwaarden || 'Nog geen voorwaarden bekend; controleer ze bij de officiële bron.'}
+            </div>
+
+            {/* Toevoegen aan projectfinanciering (Pro/Premium) en Bespreek: alleen voor volledig zichtbare rijen. Toevoegen loopt
+                volledig via financiering/toevoegen.js; hier staat geen insertlogica. */}
             {paid && bronUitDeadlineRij(detail) && (
-              <div data-testid="detail-acties" style={css('margin-bottom: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4; display: flex; gap: 10px; flex-wrap: wrap;')}>
-                <button
-                  type="button"
-                  data-testid="detail-toevoegen"
-                  onClick={() => setAddBron(bronUitDeadlineRij(detail))}
-                  style={css(`
-                    cursor: pointer;
-                    box-sizing: border-box;
-                    min-height: 46px;
-                    padding: 12px 22px;
-                    border: none;
-                    border-radius: 999px;
-                    background: #4E9A6C;
-                    color: #FFFFFF;
-                    font-family: 'Mulish', sans-serif;
-                    font-size: 14.5px;
-                    font-weight: 800;
-                  `)}
-                >
-                  Toevoegen aan projectfinanciering
-                </button>
-                <button
-                  type="button"
-                  data-testid="detail-bespreek"
-                  onClick={app.goKompas}
-                  style={css(`
-                    cursor: pointer;
-                    box-sizing: border-box;
-                    min-height: 46px;
-                    padding: 12px 20px;
-                    border: 1.5px solid #A8D5BA;
-                    border-radius: 999px;
-                    background: #FFFFFF;
-                    color: #2C4A5E;
-                    font-family: 'Mulish', sans-serif;
-                    font-size: 14.5px;
-                    font-weight: 800;
-                  `)}
-                >
-                  Bespreek met Subsidie Kompas
-                </button>
+              <div data-testid="detail-acties" style={css('margin-top: 18px; padding-top: 16px; border-top: 1px solid #E1EAE4; display: flex; gap: 10px; flex-wrap: wrap;')}>
+                <Button size="s" onClick={() => setAddBron(bronUitDeadlineRij(detail))}>
+                  <span data-testid="detail-toevoegen">Opnemen in een project</span>
+                </Button>
+                <Button size="s" variant="outline" onClick={app.goKompas}>
+                  <span data-testid="detail-bespreek">Bespreek met Subsidie Kompas</span>
+                </Button>
               </div>
             )}
 
             {!paid && detail.bronType !== 'funder' && (
-              <div style={css('margin-bottom: 16px; padding-top: 16px; border-top: 1px solid #E1EAE4;')}>
-                <div style={css('margin-bottom: 6px; font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
-                  Opnemen in een project
-                </div>
-                <div style={css('font-size: 14px; line-height: 1.65; color: #4B5C58;')}>
-                  Met Pro en Premium legt u projecten vast en neemt u regelingen op in uw dekkingsplan.{' '}
-                  <button
-                    type="button"
-                    onClick={app.goAbonnementen}
-                    style={css("cursor: pointer; border: none; background: none; padding: 0; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #4E9A6C;")}
-                  >
-                    Bekijk de abonnementen
-                  </button>
-                </div>
+              <div style={css('margin-top: 18px; padding-top: 16px; border-top: 1px solid #E1EAE4; font-size: 14px; line-height: 1.6; color: #4B5C58;')}>
+                Opnemen in een project kan met Pro en Premium.{' '}
+                <button type="button" className="fwk-wp-link" onClick={app.goAbonnementen}>
+                  Bekijk de abonnementen
+                </button>
               </div>
             )}
 
             {detail.url && (
-              <a
-                href={detail.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={css('display: inline-block; font-size: 14.5px; font-weight: 800; color: #4E9A6C;')}
-              >
-                Naar de website van de verstrekker →
-              </a>
+              <div style={css('margin-top: 16px;')}>
+                <a href={detail.url} target="_blank" rel="noopener noreferrer" className="fwk-wp-link" data-testid="detail-bron">
+                  Officiële bron: website van de verstrekker →
+                </a>
+              </div>
             )}
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Zijpaneel>
 
       {addBron && paid && (
         <AddToProjectFundingDialog bron={addBron} projecten={store.projects} onClose={() => setAddBron(null)} />

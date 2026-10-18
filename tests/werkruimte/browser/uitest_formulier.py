@@ -219,12 +219,12 @@ with sync_playwright() as p:
     bx1=dg.bounding_box(); bx2=ds.bounding_box()
     ok('A2 desktop: Doelgroep en Discipline naast elkaar', abs(bx1['y']-bx2['y'])<4 and bx2['x']>bx1['x'])
     dg.click(); pg.wait_for_timeout(250)
-    opts=[o.inner_text().replace('\n','').replace('✓','').strip() for o in pg.get_by_role('option').all()]
+    opts=[o.inner_text().replace('\n','').replace('✓','').strip() for o in pg.locator('[role=option]').all() if o.evaluate('e=>e.tagName')!='OPTION']
     ok('A3 Doelgroep toont exact de databasewaarden (tabel doelgroepen), geen "Anders"', opts==['Buurtbewoners','Jongeren','Kinderen','Ouderen','Vluchtelingen'] and 'Anders' not in txt(pg), str(opts))
     pg.screenshot(path='shots/uitbreiding_3_doelgroep_open.png', full_page=True)
     pg.get_by_role('option',name='Jongeren').click(); pg.get_by_role('option',name='Ouderen').click(); pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
     ds.click(); pg.wait_for_timeout(250)
-    opts=[o.inner_text().replace('\n','').replace('✓','').strip() for o in pg.get_by_role('option').all()]
+    opts=[o.inner_text().replace('\n','').replace('✓','').strip() for o in pg.locator('[role=option]').all() if o.evaluate('e=>e.tagName')!='OPTION']
     ok('A4 Discipline toont exact de databasewaarden (tabel themas), geen "Anders"', opts==['Cultuur','Eenzaamheid','Onderwijs','Sport','Welzijn'] and 'Anders' not in txt(pg), str(opts))
     pg.screenshot(path='shots/uitbreiding_4_discipline_open.png', full_page=True)
     pg.get_by_role('option',name='Sport').click(); pg.get_by_role('option',name='Welzijn').click(); pg.keyboard.press('Escape'); pg.wait_for_timeout(200)
@@ -257,11 +257,11 @@ with sync_playwright() as p:
     ok('B2 bewerken: discipline bewaard in themes; budget onaangeroerd', prog(pg,P4).get('themes')=='Cultuur' and prog(pg,P4).get('budget_total')==420000, str(prog(pg,P4).get('themes')))
     ctx.close()
 
-    # ---- snelle financiering in het projectoverzicht
-    ctx,pg=nieuw(b,{'width':1280,'height':1300},'pro',f'/kompas/projecten/{P4}')
-    sec=pg.locator('[data-testid="cofinanciers-sectie"]')
-    ok('C1 overzicht heeft "Cofinanciers en andere financiering" met de drie bestaande financiers', sec.count()==1 and sec.locator('[data-testid="cofin-regel"]').count()==3 and 'Gemeente Amsterdam' in sec.inner_text())
-    ok('C2 per regel Bewerken en Bespreek met Subsidie Kompas', sec.locator('[data-testid="cofin-bewerk"]').count()==3 and sec.locator('[data-testid="bespreek-link"]').count()==3)
+    # ---- snelle financiering: één plek, bij Fondsen en dekkingsplan (het projectprofiel herhaalt het niet)
+    ctx,pg=nieuw(b,{'width':1280,'height':1300},'pro',f'/kompas/projecten/{P4}?tab=projectfinanciering')
+    sec=pg.locator('[data-testid="pf-regels"]')
+    ok('C1 dekkingsplan toont de drie bestaande financiers', sec.count()==1 and sec.locator('[data-testid="pf-regel"]').filter(has_text='Cofinancier of andere financiering').count()==3 and 'Gemeente Amsterdam' in sec.inner_text())
+    ok('C2 per regel Bespreek met Subsidie Kompas', sec.locator('[data-testid="bespreek-link"]').count()==sec.locator('[data-testid="pf-regel"]').count())
     pg.screenshot(path='shots/uitbreiding_8_projectdetail_cofinanciers.png', full_page=True)
     sec.locator('[data-testid="pf-financier-open"]').click(); pg.wait_for_timeout(250)
     sel=sec.locator('[data-testid="pf-financier-status"]')
@@ -289,7 +289,7 @@ with sync_playwright() as p:
         sec.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(900)
         rij=[x for x in db(pg,'subsidie_kompas_program_funding') if x.get('financier_naam')==naam]
         ok(f'C9 {stat}: eigen_deadline 2026-11-15 opgeslagen, status {stat}', len(rij)==1 and rij[0].get('eigen_deadline')=='2026-11-15' and rij[0].get('status')==stat, str(rij))
-    ok('C10 deadline zichtbaar in de lijst bij Interessant/In voorbereiding, niet bij Toegekend', sec.locator('[data-testid="cofin-deadline"]').count()==2)
+    ok('C10 eigen deadline zichtbaar bij Interessant/In voorbereiding', all(sec.locator('[data-testid="pf-regel"]').filter(has_text=n).locator('input[type=date]').input_value()=='2026-11-15' for n in ['Lokaal Fonds Z','Familiefonds W']))
     sec.locator('[data-testid="pf-financier-open"]').click(); vul(pg,'pf-financier-naam','stichting x'); vul(pg,'pf-financier-bedrag','1'); sec.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(700)
     ok('C11 dubbele invoer geweigerd (geen dubbele fundingregel)', 'staat al bij dit project' in txt(pg) and len([x for x in db(pg,'subsidie_kompas_program_funding') if (x.get('financier_naam') or '').lower()=='stichting x'])==1)
     # dezelfde regels elders
@@ -304,8 +304,8 @@ with sync_playwright() as p:
     kf=' || '.join(re.sub(r'\s+',' ',x.replace('\xa0',' ')) for x in pg.locator('[data-testid="projecten-kaart-financiering"]').all_inner_texts())
     ok('D3 Projecten: zelfde totalen', 'Toegekend € 60.000 · Aangevraagd € 175.000' in kf, kf)
     ok('D4 geen paginafouten', not pg.errs, str(pg.errs)); ctx.close()
-    ctx,pg=nieuw(b,{'width':390,'height':844},'pro',f'/kompas/projecten/{P4}')
-    pg.locator('[data-testid="cofinanciers-sectie"] [data-testid="pf-financier-open"]').click(); pg.wait_for_timeout(250)
+    ctx,pg=nieuw(b,{'width':390,'height':844},'pro',f'/kompas/projecten/{P4}?tab=projectfinanciering')
+    pg.locator('[data-testid="pf-regels"] [data-testid="pf-financier-open"]').click(); pg.wait_for_timeout(250)
     ok('E1 mobiel: snelle financierinvoer zonder horizontale scroll', geenhscroll(pg))
     pg.screenshot(path='shots/uitbreiding_15_mobiel_financier.png', full_page=True); ctx.close()
     b.close()

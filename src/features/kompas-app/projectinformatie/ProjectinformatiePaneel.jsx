@@ -115,7 +115,7 @@ function Formulier({ project, projecten, store }) {
         </span>
       </div>
       <p style={css(`${TEKST} margin: 0 0 16px; max-width: 680px;`)}>
-        De inhoud die Subsidie Kompas gebruikt om teksten en aanvragen voor dit project te schrijven. Wat u hier niet invult, verzint Subsidie Kompas niet. Naam, doelgroep, discipline, looptijd, werkgebied en bedragen past u aan in{' '}
+        Kenmerken en bedragen past u aan in{' '}
         <a href={`#/kompas/projecten/${encodeURIComponent(project.id)}`} style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>
           het projectdossier
         </a>

@@ -132,7 +132,7 @@ with sync_playwright() as p:
     ok('Alle regelingen: marktoverzicht intact (zoekveld, filters, kaarten)', pg.get_by_placeholder('Zoek in subsidieregelingen…').count()==1 and 'Nieuwe Testregeling' in txt(pg) and 'Testfonds Breed' in txt(pg))
     ok('Alle regelingen: kaarten zelf onveranderd (geen extra knoppen op de kaart)', pg.locator('[data-testid="detail-toevoegen"]').count()==0)
     open_detail(pg,'Nieuwe Testregeling')
-    ok('Alle regelingen: contextuele acties in de detailkaart', pg.get_by_test_id('detail-toevoegen').inner_text()=='Toevoegen aan projectfinanciering' and pg.get_by_test_id('detail-bespreek').inner_text()=='Bespreek met Subsidie Kompas')
+    ok('Alle regelingen: contextuele acties in de detailkaart', pg.get_by_test_id('detail-toevoegen').inner_text()=='Opnemen in een project' and pg.get_by_test_id('detail-bespreek').inner_text()=='Bespreek met Subsidie Kompas')
     pg.get_by_test_id('detail-toevoegen').click(); pg.wait_for_timeout(300)
     opties=pg.get_by_test_id('add-project').locator('option').all_inner_texts()
     ok('9: gearchiveerd project niet kiesbaar', 'Oud Gearchiveerd Project' not in opties, str(opties))
@@ -239,7 +239,7 @@ with sync_playwright() as p:
 
     # ================= 20/21: project zonder deadlines / zonder financiering
     ctx,pg=nieuw(b,vp,'pro','/kompas/deadlines',extra="seed.tables.subsidie_kompas_program_funding=[];")
-    ok('21: projecten zonder financiering: rustige lege staat met doorverwijzing', pg.get_by_test_id('md-leeg').count()==1 and 'Nog geen regelingen in uw projectfinanciering' in txt(pg) and pg.locator('[data-testid="md-rij"]').count()==0)
+    ok('21: projecten zonder financiering: rustige lege staat met doorverwijzing', pg.get_by_test_id('md-leeg').count()==1 and 'Nog geen regelingen in uw projecten' in txt(pg) and pg.locator('[data-testid="md-rij"]').count()==0)
     pg.get_by_role('button',name='Bekijk alle regelingen').click(); pg.wait_for_timeout(500)
     ok('21: lege staat leidt naar Alle regelingen', pg.get_by_placeholder('Zoek in subsidieregelingen…').count()==1)
     ok('21: geen pageerrors', not pg.errs and not pg.cons, '; '.join(pg.errs+pg.cons)[:200])

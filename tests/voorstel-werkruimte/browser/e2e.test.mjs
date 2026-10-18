@@ -159,6 +159,18 @@ const t = (page, id) => page.locator(`[data-testid="${id}"]`);
 async function bevestigProfiel(page) {
   await page.waitForSelector('[data-testid="voorstel-resultaat"], [data-testid="voorstel-fout"], [data-testid="voorstel-voortgang"]', { timeout: 25000 });
 }
+
+// Acties en deadlines staan in het projectdossier op een eigen tabblad: tel daar en ga terug naar het dekkingsplan.
+async function inActies(page, fn) {
+  await t(page, 'tab-btn-deadlines').click();
+  await page.waitForSelector('[data-testid="actieplan"]', { timeout: 15000 });
+  await sleep(300);
+  const uit = await fn();
+  await t(page, 'tab-btn-projectfinanciering').click();
+  await page.waitForSelector('[data-testid="tab-projectfinanciering"]', { timeout: 15000 });
+  await sleep(200);
+  return uit;
+}
 const tekstVan = async (page, id) => ((await t(page, id).count()) ? (await t(page, id).first().innerText()) : '');
 const namenVan = (l) => (l || []).map((x) => x.naam);
 const dubbelen = () => {
@@ -236,7 +248,7 @@ sectie('1. Pro: voorstel maken, controleren, opslaan na een fout, actieplan opni
 
   check('na verversen: bronstatus per regel uit de server (gecontroleerd / niet gecontroleerd), los van de financieringsstatus', /Interessant/.test(regelTekst) && /(Gecontroleerd|gecontroleerd)/.test(regelTekst), regelTekst.slice(0, 400));
   check('na verversen: Bespreek-link per regel in het dekkingsplan', (await t(page, 'bespreek-link').count()) >= n);
-  check('na verversen: acties en deadlines tonen de opgeslagen taken', (await t(page, 'ap-taak').count()) >= 1);
+  check('na verversen: acties en deadlines tonen de opgeslagen taken', (await inActies(page, () => t(page, 'ap-taak').count())) >= 1);
   await page.screenshot({ path: join(SHOTS, '06-na-verversen.png'), fullPage: true });
 
   // Opnieuw starten na verversen: opgeslagen regels worden niet nogmaals voorgesteld/opgeslagen.
@@ -303,7 +315,7 @@ sectie('1b. Actieplan mislukt, PAGINA VERVERST: "Actieplan opnieuw proberen" bli
   await page.reload();
   await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
   await sleep(600);
-  check('na nog een verversing: geen banner meer, taken zichtbaar in Acties & deadlines', (await t(page, 'actieplan-open').count()) === 0 && (await t(page, 'ap-taak').count()) >= 1);
+  check('na nog een verversing: geen banner meer, taken zichtbaar in Acties & deadlines', (await t(page, 'actieplan-open').count()) === 0 && (await inActies(page, () => t(page, 'ap-taak').count())) >= 1);
   check('geen pageerrors', page.fouten.length === 0, page.fouten.join(' | '));
   await context.close();
 }
@@ -347,7 +359,7 @@ sectie('2. Premium: online suggestie met beoordelingsroute (onzekere status beho
   const na = (await t(page, 'pf-regel').allInnerTexts()).join('\n');
 
   check('na verversen: de online suggestie staat in het dekkingsplan, nog steeds ongecontroleerd en zonder bedrag', new RegExp(rijSug.financier_naam.split(' - ')[0]).test(na) && /niet gecontroleerd|Bron: /i.test(na), na.slice(0, 600));
-  check('na verversen: taken van de suggestie staan in Acties & deadlines', (await t(page, 'ap-taak').filter({ hasText: /beoordelen|Voorwaarden, deadline en bijdrage|Beslissen/ }).count()) >= 3);
+  check('na verversen: taken van de suggestie staan in Acties & deadlines', (await inActies(page, () => t(page, 'ap-taak').filter({ hasText: /beoordelen|Voorwaarden, deadline en bijdrage|Beslissen/ }).count())) >= 3);
   await page.screenshot({ path: join(SHOTS, '12-suggestie-na-verversen.png'), fullPage: true });
   check('geen dubbele regels of taken, geen pageerrors', dubbelen() === 0 && page.fouten.length === 0, page.fouten.join(' | '));
   await context.close();
@@ -373,9 +385,11 @@ sectie('3. Verversen terwijl het actieplan was mislukt: wat kan het lid dan nog?
   await page.reload();
   await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
   await sleep(500);
-  const afgeleid = await t(page, 'ap-afgeleid-actie').count();
+  const regelsNa = await t(page, 'pf-regel').count();
+  const opnieuwKnop = await t(page, 'actieplan-open-opnieuw').count();
+  const [afgeleid, maakTaak] = await inActies(page, async () => [await t(page, 'ap-afgeleid-actie').count(), await t(page, 'ap-maak-taak').count()]);
 
-  check('na verversen: de regels staan er, en per regel een afgeleide actie met "Maak er een taak van" en ook de bewaarde "Actieplan opnieuw proberen" van de server', (await t(page, 'pf-regel').count()) === n && afgeleid >= n && (await t(page, 'ap-maak-taak').count()) >= n && (await t(page, 'actieplan-open-opnieuw').count()) === 1, `${afgeleid}`);
+  check('na verversen: de regels staan er, en per regel een afgeleide actie met "Maak er een taak van" en ook de bewaarde "Actieplan opnieuw proberen" van de server', regelsNa === n && afgeleid >= n && maakTaak >= n && opnieuwKnop === 1, `${afgeleid}`);
   await page.screenshot({ path: join(SHOTS, '20-na-verversen-zonder-taken.png'), fullPage: true });
   await t(page, 'voorstel-start-knop').click();
   await bevestigProfiel(page);
@@ -449,7 +463,7 @@ sectie('4. PROJECTROUTE: het project is het zoekprofiel; één klik, fout en opn
   await page.screenshot({ path: join(SHOTS, '34-project-opgeslagen.png'), fullPage: true });
   await page.reload();
   await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
-  check('na verversen: de regels staan in het dekkingsplan, taken in Acties & deadlines', (await t(page, 'pf-regel').count()) === w.db.funding.length && (await t(page, 'ap-taak').count()) >= 1);
+  check('na verversen: de regels staan in het dekkingsplan, taken in Acties & deadlines', (await t(page, 'pf-regel').count()) === w.db.funding.length && (await inActies(page, () => t(page, 'ap-taak').count())) >= 1);
   check('geen pageerrors in de hele projectroute', page.fouten.length === 0, page.fouten.join(' | '));
   await context.close();
 }

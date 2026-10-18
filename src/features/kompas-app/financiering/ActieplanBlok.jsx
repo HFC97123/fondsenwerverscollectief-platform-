@@ -6,6 +6,7 @@
 // Geen bedragen: het dekkingsplan blijft de enige bron voor geld.
 import React, { useMemo, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
+import { HelpKnop } from '../../../shared/ui/werkplek.jsx';
 import { isEchtId } from '../../../data/services/projecten.js';
 import { useDekkingsplannen } from './useProjectFinanciering.js';
 import { useActieplan } from './useActieplan.js';
@@ -327,11 +328,19 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
             Acties &amp; deadlines <span data-testid="ap-teller" style={css('color: #7B8985;')}>({telOpen(items)} open)</span>
           </h2>
         )}
-        {beschikbaar && !open && (
-          <button type="button" data-testid="ap-toevoegen-open" onClick={() => setOpen(true)} style={css(KNOP)}>
-            + Actie toevoegen
-          </button>
-        )}
+        <span style={css('display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;')}>
+          {beschikbaar && !open && (
+            <button type="button" data-testid="ap-toevoegen-open" onClick={() => setOpen(true)} style={css(KNOP)}>
+              + Actie toevoegen
+            </button>
+          )}
+          {koptekst && (
+            <HelpKnop>
+              <p>Opgeslagen taken en acties die uit uw dekkingsplan volgen staan hier samen. Afgeleide acties worden berekend en wijzigen vanzelf mee; maak er een taak van om ze bij te houden.</p>
+              <p>Een taak bij een financier volgt de deadline van het fonds, tenzij u een eigen streefdatum kiest.</p>
+            </HelpKnop>
+          )}
+        </span>
       </div>
 
       {plan.status === 'laden' && <div style={css(`${TEKST} color: #7B8985;`)}>Actieplan wordt geladen…</div>}
@@ -368,11 +377,6 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
         </div>
       )}
 
-      {items.length > 0 && (
-        <div style={css(`${TEKST} font-size: 12.5px; color: #7B8985;`)}>
-          Opgeslagen taken en acties die uit uw dekkingsplan volgen staan hier samen. Afgeleide acties worden berekend en wijzigen vanzelf mee; maak er een taak van om ze bij te houden. Een taak bij een financier volgt de deadline van het fonds, tenzij u een eigen streefdatum kiest.
-        </div>
-      )}
 
       {ACTIE_GROEPEN.map((g) =>
         groepen[g].length ? (

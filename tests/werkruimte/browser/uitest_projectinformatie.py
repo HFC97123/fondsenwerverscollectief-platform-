@@ -32,7 +32,7 @@ def hsh(pg): return pg.evaluate('location.hash')
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
     # ===== Documenten (Pro): Projectinformatie
-    ctx,pg=nieuw(b,{'width':1280,'height':1100},'pro','/kompas/documentatie')
+    ctx,pg=nieuw(b,{'width':1280,'height':1100},'pro','/kompas/documentatie?tab=inhoud')
     pi=pg.locator('[data-testid="projectinformatie"]')
     ok('1 Documenten: Projectinformatie-paneel aanwezig met projectkiezer', pi.count()==1 and pg.locator('[data-testid="pi-project"]').count()==1)
     sel=pg.locator('[data-testid="pi-project"]')
@@ -64,7 +64,7 @@ with sync_playwright() as p:
     # tweede project: wisselen verliest geen niet-opgeslagen werk van andere projecten en toont eigen data
     sel.select_option(P2); pg.wait_for_timeout(300)
     ok('16 ander project: eigen waarden (niet die van het vorige)', pg.locator('[data-testid="pi-doelstelling"]').input_value()!='60 gasten per week.')
-    ok('17 documentenlijst blijft aanwezig onder Projectdocumentatie', 'opgemaakte documenten' in txt(pg).lower())
+    ok('17 documentenlijst staat als tabblad Bestanden naast Projectinhoud', pg.locator('[data-testid="documenten-tab-bestanden"]').count()==1)
     ctx.close()
     # ===== Deep link
     ctx,pg=nieuw(b,{'width':1280,'height':1100},'pro',f'/kompas/documentatie?project={P2}')
@@ -188,7 +188,7 @@ with sync_playwright() as p:
     ok('56 klik opent het bestand in een nieuw tabblad via een tijdelijke link naar het bewaarde pad', '/__signed/' in nieuw_tab.url and pad in nieuw_tab.url, nieuw_tab.url)
     nieuw_tab.close()
     # Documenten-pagina
-    pg.evaluate(f"location.hash='#/kompas/documentatie?project={P1}'"); pg.wait_for_timeout(1200)
+    pg.evaluate(f"location.hash='#/kompas/documentatie?project={P1}&tab=bestanden'"); pg.wait_for_timeout(1200)
     ok('57 pagina Documenten: "Bestand openen" bij het geuploade document met origineel', pg.locator('[data-testid="document-open-bestand"]').count()>=1, txt(pg)[-400:])
     ctx.close()
     # verwijderen ruimt het origineel op

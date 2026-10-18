@@ -7,7 +7,8 @@
 import React, { useEffect, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
-import { DeadlineWeergave, HerinneringKnop, KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
+import { DeadlineWeergave, HerinneringKnop, KLEUR, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
+import { Blok, HelpKnop, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { ActieplanVoorProject } from '../financiering/ActieplanBlok.jsx';
 import VoorstelWerkruimte from '../financiering/VoorstelWerkruimte.jsx';
 import { bronVoorRegel, datumTekst } from '../financiering/bronStatus.js';
@@ -24,14 +25,14 @@ import {
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #7B8985;";
 const INVOER =
-  "box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #CFDDD5; border-radius: 10px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; color: #2C4A5E;";
+  "box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid #CFDDD5; border-radius: 10px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; color: #2C4A5E;";
 
 const CSS_TAB = `
 .fwk-pf-kop, .fwk-pf-rij { display: grid; gap: 12px 14px; align-items: start; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1.45fr); }
 .fwk-pf-kop { padding: 0 18px 8px; }
 .fwk-pf-label { display: none; }
-.fwk-pf-notitie { grid-column: 1 / 6; }
-.fwk-pf-acties { grid-column: 6 / 7; justify-self: end; align-self: end; }
+.fwk-pf-notitie { grid-column: 1 / 5; }
+.fwk-pf-acties { grid-column: 5 / 7; justify-self: end; align-self: center; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 14px; }
 .fwk-pf-rij input:focus-visible, .fwk-pf-rij select:focus-visible, .fwk-pf-rij textarea:focus-visible, .fwk-pf-rij button:focus-visible { outline: 2px solid #4E9A6C; outline-offset: 1px; }
 @media (max-width: 899px) {
   .fwk-pf-kop { display: none; }
@@ -114,7 +115,7 @@ function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
       data-testid="pf-regel"
       data-regel-id={regel.id}
       data-bron-status={regel.bronStatus}
-      style={css('box-sizing: border-box; padding: 16px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF;')}
+      style={css('box-sizing: border-box; padding: 12px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF;')}
     >
       <div className="fwk-pf-rij">
         <div className="fwk-pf-bron" style={css('min-width: 0;')}>
@@ -140,9 +141,6 @@ function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
               )}
             </div>
           )}
-          <div style={css('margin-top: 6px;')}>
-            <StatusChip status={regel.status} />
-          </div>
           {/* De bronstatus is los van de financieringsstatus hierboven: gecontroleerd betekent alleen dat de bron is gecontroleerd, niet dat er is toegekend. */}
           {bron && (
             <div data-testid="pf-regel-bron" data-bron-status={bron.status} title={bron.uitleg} style={css(`${TEKST} margin-top: 6px; font-size: 12.5px; font-weight: 700; color: ${{ gecontroleerd: '#2F7A4D', onzeker: '#8A5A16', mislukt: '#A3382B' }[bron.status] || '#5D6B67'};`)}>
@@ -228,7 +226,7 @@ function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
             <span className="fwk-pf-label" style={css(LABEL)}>Notitie</span>
             <textarea
               aria-label={`Notitie, ${naam}`}
-              rows={2}
+              rows={1}
               maxLength={4000}
               value={notitie}
               placeholder="Notitie (bijvoorbeeld contactpersoon of voorwaarden)"
@@ -243,7 +241,7 @@ function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
 
         <div className="fwk-pf-acties">
           {/* FASE5 */}
-          <BespreekLink projectId={regel.projectId} fundingId={regel.id} naam={naam} stijl="min-height: 40px; margin-right: 14px;" />
+          <BespreekLink projectId={regel.projectId} fundingId={regel.id} naam={naam} stijl="min-height: 36px;" />
           {bevestig ? (
             <span style={css('display: inline-flex; gap: 8px; flex-wrap: wrap;')}>
               <button
@@ -282,7 +280,7 @@ function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
   );
 }
 
-export default function ProjectfinancieringTab({ project, financiering, dekking }) {
+export default function ProjectfinancieringTab({ project, financiering, dekking, toonActieplan = true }) {
   const { status, fout, regels, wijzig, verwijder, laad } = financiering;
   const [actieVersie, setActieVersie] = useState(0);
   const [bronRijen, setBronRijen] = useState([]);
@@ -308,17 +306,13 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
     <div data-testid="tab-projectfinanciering" style={css('display: flex; flex-direction: column; gap: 18px;')}>
       <style>{CSS_TAB}</style>
 
-      {status === 'geen-database' && (
-        <div role="status" style={css(`${TEKST} padding: 12px 16px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
-          Dit project is nog niet opgeslagen in uw account. Sla het project op (Projecten) om een dekkingsplan op te bouwen.
-        </div>
-      )}
+      {status === 'geen-database' && <Melding toon="waarschuwing">Dit project is nog niet opgeslagen in uw account. Sla het project op om een dekkingsplan op te bouwen.</Melding>}
       {status === 'fout' && (
-        <div role="alert" data-testid="pf-fout" style={css(`${TEKST} padding: 12px 16px; border: 1px solid #EEDCC0; border-radius: 12px; background: #FBF1E3; color: #8A5A16;`)}>
+        <Melding toon="waarschuwing" testid="pf-fout" rol="alert">
           {fout === 'niet-beschikbaar'
             ? 'Projectfinanciering is nog niet beschikbaar in uw omgeving. Uw projectgegevens zijn niet aangetast.'
             : 'Het dekkingsplan kon niet worden geladen. Ververs de pagina of probeer het later opnieuw.'}
-        </div>
+        </Melding>
       )}
 
       <VoorstelWerkruimte
@@ -330,48 +324,31 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
         }}
       />
 
-      <section style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF;')}>
-        <h2 style={css(`${LABEL} margin: 0 0 14px;`)}>Dekking van de begroting</h2>
-        {dekking.heeftBegroting ? (
-          <>
-            <Voortgangsbalk dekking={dekking} projectNaam={project.naam || 'dit project'} hoogte={12} />
-            <div data-testid="pf-samenvatting" style={css(`${TEKST} margin-top: 8px; font-weight: 700; color: ${dekking.volledigGedekt ? '#2F6D47' : '#2C4A5E'};`)}>
-              {dekking.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren: ${formatEuro(dekking.nogNodig)}`}
-            </div>
-          </>
-        ) : (
-          <div style={css(`${TEKST} color: #7B8985;`)}>Vul de projectbegroting in (Projecten) om de dekking te zien.</div>
-        )}
-        <Legenda dekking={dekking} />
-        {dekking.heeftBegroting && (
-          <div data-testid="pf-nog-te-plannen" style={css(`${TEKST} margin-top: 10px; font-size: 13px; color: #4B5C58;`)}>
-            Waarvan nog niet gepland: <strong>{formatEuro(dekking.nogTePlannen)}</strong>
-          </div>
-        )}
-        <div style={css(`${TEKST} margin-top: 14px; font-size: 12.5px; color: #7B8985;`)}>
-          Toegekend telt het toegekende bedrag (is dat leeg, dan het aangevraagde bedrag); Aangevraagd telt regels met status Aangevraagd; Gepland telt het bedrag van regels met status Interessant of In voorbereiding (ook voorstellen van Subsidiekompas); Eigen bijdrage staat bij de projectgegevens. Cofinanciers en andere financiering staan hieronder als gewone regels.
-        </div>
-      </section>
-
-      <section>
-        <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;')}>
-          <h2 style={css(`${LABEL} margin: 0;`)}>Cofinanciers en andere financiering</h2>
-          <a href="#/kompas/deadlines" style={css("font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #4E9A6C; text-decoration: none;")}>
-            Regelingen zoeken bij Deadlines
+      <Blok
+        testid="pf-regels"
+        titel="Regelingen in het dekkingsplan"
+        aantal={status === 'klaar' ? regels.length : null}
+        actie={
+          <a href="#/kompas/deadlines" className="fwk-wp-link" data-testid="pf-zoek-regelingen">
+            Regelingen zoeken
           </a>
-        </div>
-
+        }
+        kaal
+      >
         {status === 'klaar' && project && project.id && (
           <div style={css('margin-bottom: 12px;')}>
             <FinancierFormulier projectId={project.id} onKlaar={laad} />
           </div>
         )}
 
-        {status === 'laden' && <div style={css(`${TEKST} color: #7B8985;`)}>Dekkingsplan wordt geladen…</div>}
+        {status === 'laden' && <Leeg>Dekkingsplan wordt geladen…</Leeg>}
 
         {status === 'klaar' && regels.length === 0 && (
-          <div data-testid="pf-leeg" style={css(`${TEKST} padding: 18px 20px; border: 1px dashed #CFDDD5; border-radius: 16px; color: #7B8985;`)}>
-            Dit project heeft nog geen financiering in het dekkingsplan. Voeg hierboven een cofinancier toe, of neem regelingen en fondsen op vanuit Deadlines; ze verschijnen dan hier met hun status en bedrag.
+          <div data-testid="pf-leeg" style={css(`${TEKST} padding: 16px 18px; border: 1px dashed #CFDDD5; border-radius: 12px; color: #687974;`)}>
+            Nog geen financiering in het dekkingsplan.{' '}
+            <a href="#/kompas/deadlines" className="fwk-wp-link">
+              Regelingen zoeken
+            </a>
           </div>
         )}
 
@@ -384,17 +361,50 @@ export default function ProjectfinancieringTab({ project, financiering, dekking 
                 </span>
               ))}
             </div>
-            <div style={css('display: flex; flex-direction: column; gap: 12px;')}>
+            <div style={css('display: flex; flex-direction: column; gap: 8px;')}>
               {regels.map((r) => (
                 <Regel key={r.id} regel={r} bron={bronVoorRegel(r, bronRijen)} onWijzig={wijzig} onVerwijder={verwijder} />
               ))}
             </div>
           </>
         )}
-      </section>
+      </Blok>
 
-      {status === 'klaar' && project && project.id && (
-        <section id="pf-acties" data-testid="pf-acties" style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #E1EAE4; border-radius: 20px; background: #FFFFFF;')}>
+      <Blok
+        testid="pf-dekking"
+        titel="Dekking van de begroting"
+        actie={
+          <HelpKnop label="Hoe telt dit?">
+            <p>Toegekend telt het toegekende bedrag (is dat leeg, dan het aangevraagde bedrag). Aangevraagd telt regels met status Aangevraagd.</p>
+            <p>Gepland telt het bedrag van regels met status Interessant of In voorbereiding. Eigen bijdrage staat bij de projectgegevens.</p>
+          </HelpKnop>
+        }
+      >
+        {dekking.heeftBegroting ? (
+          <>
+            <Voortgangsbalk dekking={dekking} projectNaam={project.naam || 'dit project'} hoogte={10} />
+            <div data-testid="pf-samenvatting" style={css(`${TEKST} margin-top: 8px; font-weight: 700; color: ${dekking.volledigGedekt ? '#2F6D47' : '#2C4A5E'};`)}>
+              {dekking.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren: ${formatEuro(dekking.nogNodig)}`}
+            </div>
+          </>
+        ) : (
+          <Leeg>
+            Nog geen begroting.{' '}
+            <a href={`#/kompas/projecten/${project.id}?bewerk=1`} className="fwk-wp-link">
+              Begroting invullen
+            </a>
+          </Leeg>
+        )}
+        <Legenda dekking={dekking} />
+        {dekking.heeftBegroting && (
+          <div data-testid="pf-nog-te-plannen" style={css(`${TEKST} margin-top: 10px; font-size: 13px; color: #4B5C58;`)}>
+            Waarvan nog niet gepland: <strong>{formatEuro(dekking.nogTePlannen)}</strong>
+          </div>
+        )}
+      </Blok>
+
+      {toonActieplan && status === 'klaar' && project && project.id && (
+        <section id="pf-acties" data-testid="pf-acties" style={css('box-sizing: border-box; padding: 18px 20px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF;')}>
           <ActieplanVoorProject key={actieVersie} project={project} regels={regels} />
         </section>
       )}

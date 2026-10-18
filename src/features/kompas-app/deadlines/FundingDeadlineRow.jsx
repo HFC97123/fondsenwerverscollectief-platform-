@@ -11,8 +11,8 @@ import BespreekLink from '../financiering/BespreekLink.jsx'; // FASE5
 
 export const CSS_RIJ = `
 ${CSS_KLIKKAART}
-.fwk-md-rij { display: grid; grid-template-columns: 168px minmax(0, 1fr) auto; gap: 10px 20px; align-items: center; box-sizing: border-box; padding: 16px 20px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF; }
-.fwk-md-acties { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.fwk-md-rij { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 8px 18px; align-items: center; box-sizing: border-box; padding: 10px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; }
+.fwk-md-acties { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 14px; }
 @media (max-width: 759px) { .fwk-md-rij { grid-template-columns: minmax(0, 1fr); padding: 14px 16px; } .fwk-md-acties { flex-direction: row; flex-wrap: wrap; align-items: center; } }
 .fwk-md-rij .fwk-kk-boven a:focus-visible, .fwk-md-rij button:focus-visible { outline: 2px solid #4E9A6C; outline-offset: 2px; }
 `;

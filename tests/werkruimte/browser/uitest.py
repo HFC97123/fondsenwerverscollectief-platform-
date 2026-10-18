@@ -38,7 +38,9 @@ with sync_playwright() as p:
         k1=kaarten.filter(has_text='Buurtkeuken De Brug').first
         k1t=k1.inner_text().replace('\xa0',' ')
         def bedrag(label_,waarde):
-            m=re.search(re.escape(label_)+r'\s*\n?\s*€\s*([\d\.]+)',k1t)
+            # Vernieuwd dashboard: compacte regel "Nog te financieren: € 35.000" en "van € 100.000 · toegekend € 30.000 · ..."
+            lab={'Begroting':'van'}.get(label_,label_)
+            m=re.search(r'(?i)'+re.escape(lab)+r':?\s*\n?\s*€\s*([\d\.]+)',k1t)
             return m and m.group(1).replace('.','')==waarde
         ok(f'{label}: Begroting 100000', bedrag('Begroting','100000'), k1t[:200])
         ok(f'{label}: Toegekend 30000', bedrag('Toegekend','30000'))
@@ -65,7 +67,8 @@ with sync_playwright() as p:
         ok(f'{label}: organisatieblok (naam, % compleet) staat niet meer op het Dashboard', pg.locator('[data-testid="dashboard-organisatie"]').count()==0 and pg.locator('[data-testid="org-volledigheid"]').count()==0 and '% compleet' not in txt(pg))
         main=pg.locator('main, body').first
         ok(f'{label}: geen bovenknoppen Nieuw gesprek / Naar Projecten', pg.get_by_role('button',name='Nieuw gesprek').count()==0 and pg.get_by_text('Naar Projecten',exact=True).count()==0)
-        ok(f'{label}: structuur = Projecten, Mijn komende deadlines, Recente documenten (in die volgorde)', [h.inner_text().strip().lower() for h in pg.locator('main h2, h2').all()][:3]==['projecten','mijn komende deadlines','recente documenten'], str([h.inner_text() for h in pg.locator('h2').all()]))
+        koppen=[re.sub(r'\d+$','',h.inner_text().strip()).strip().lower() for h in pg.locator('h2').all()]
+        ok(f'{label}: structuur = Nu aan de slag, Projecten, Komende deadlines, Recente documenten (acties eerst)', koppen[:4]==['nu aan de slag','projecten','komende deadlines','recente documenten'], str(koppen))
         ok(f'{label}: naamgeving Subsidie Kompas op het Dashboard', 'Subsidiekompas' not in txt(pg) and 'Bespreek met Subsidie Kompas' in txt(pg))
         ok(f'{label}: projectkaart is klikbaar via de titel (geen aparte Open project-knop)', k1.locator('[data-testid="dashboard-project-link"]').get_attribute('href')=='#/kompas/projecten/11111111-1111-4111-8111-111111111111' and k1.get_by_text('Open project').count()==0)
         ok(f'{label}: geen horizontale scroll (dashboard)', geenhscroll(pg))

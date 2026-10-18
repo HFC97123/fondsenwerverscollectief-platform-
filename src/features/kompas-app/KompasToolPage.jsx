@@ -1318,6 +1318,7 @@ export default function KompasToolPage() {
 
           {messages.length === 0 && (
             <div style={drie ? css('flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: clamp(20px, 3.4vw, 34px);') : css('padding: clamp(20px, 3.4vw, 34px);')}>
+              {!hasPlanTools && (
               <div style={css('display: flex; justify-content: flex-start; margin-bottom: 28px;')}>
                 <div
                   style={css(
@@ -1327,6 +1328,7 @@ export default function KompasToolPage() {
                   Goedendag, ik ben Subsidie Kompas. Waarmee kan ik u vandaag helpen?
                 </div>
               </div>
+              )}
               <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(max(240px, calc(50% - 7px)), 1fr)); gap: 14px;')}>
                 {STARTERS.map((s) => (
                   <div

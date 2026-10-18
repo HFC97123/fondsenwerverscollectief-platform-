@@ -186,10 +186,9 @@ const insertBlok = finSrc.slice(finSrc.indexOf('export async function voegFinanc
 check('voegFinancierToe schrijft alleen naar subsidie_kompas_program_funding (geen tweede structuur)', (insertBlok.match(/\.from\('([a-z_]+)'\)/g) || []).join() === ".from('subsidie_kompas_program_funding')");
 check('financier op naam: financier_naam, geen scheme_id/funder_id (geen fuzzy koppeling)', /financier_naam: schoon/.test(insertBlok) && !/scheme_id|funder_id/.test(insertBlok));
 check('eigen deadline alleen bij Interessant/In voorbereiding/Aangevraagd en alleen als echte datum', /\['interesting', 'preparing', 'submitted'\]\.indexOf\(status\)/.test(insertBlok) && /\\d\{4\}-\\d\{2\}-\\d\{2\}/.test(insertBlok));
-const cofSrc = lees('src/features/kompas-app/projectdossier/CofinanciersSectie.jsx');
-check('Projectoverzicht toont "Cofinanciers en andere financiering" met snelle invoer, uit dezelfde financiering als Projectfinanciering', /Cofinanciers en andere financiering/.test(cofSrc) && /FinancierFormulier/.test(cofSrc) && /<CofinanciersSectie project=\{project\} financiering=\{financiering\}/.test(detail));
-check('lijst: Bewerken (naar Projectfinanciering) en Bespreek met Subsidie Kompas per financieringsregel (focus = fundingId)', /cofin-bewerk/.test(cofSrc) && /<BespreekLink[^>]*fundingId=\{r\.id\}/.test(cofSrc));
-check('geen eigen berekening in de sectie (alleen weergave van regels)', !/berekenDekking|dekkingVanProject|teFinancieren/.test(cofSrc));
+const pfSrc = lees('src/features/kompas-app/projectdossier/ProjectfinancieringTab.jsx');
+check('Financier snel toevoegen staat bij Fondsen en dekkingsplan (één plek, dezelfde financiering); het projectprofiel herhaalt dat niet', /<FinancierFormulier projectId=\{project.id\}/.test(pfSrc) && !/CofinanciersSectie/.test(detail));
+check('per financieringsregel: Bespreek met Subsidie Kompas (focus = fundingId)', /<BespreekLink projectId=\{regel.projectId\} fundingId=\{regel.id\}/.test(pfSrc));
 const tabSrc = lees('src/features/kompas-app/projectdossier/ProjectfinancieringTab.jsx');
 check('Projectfinanciering gebruikt hetzelfde formulier (één implementatie)', /FinancierFormulier/.test(tabSrc) && !/function FinancierToevoegen/.test(tabSrc));
 

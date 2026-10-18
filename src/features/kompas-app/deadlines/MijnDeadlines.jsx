@@ -54,8 +54,7 @@ export default function MijnDeadlines({ projecten, onNaarAlleRegelingen }) {
 
       {actief.length > 0 && status === 'klaar' && groepen.totaal === 0 && (
         <div data-testid="md-leeg" style={css(`${TEKST} ${LEEG}`)}>
-          <div style={css("margin-bottom: 6px; font-family: 'Newsreader', serif; font-size: 20px; font-weight: 600; color: #2C4A5E;")}>Nog geen regelingen in uw projectfinanciering</div>
-          Open een regeling of fonds bij Alle regelingen en kies Toevoegen aan projectfinanciering; de deadline verschijnt dan hier.{' '}
+          Nog geen regelingen in uw projecten.{' '}
           <button
             type="button"
             onClick={onNaarAlleRegelingen}

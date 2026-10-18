@@ -28,7 +28,7 @@ def regel(pg,naam): return pg.locator('[data-testid="pf-regel"]').filter(has=pg.
 def kaart_waarden(pg,kaart):
     t=kaart.inner_text().replace('\xa0',' ')
     def g(l):
-        m=re.search(re.escape(l)+r'\s*\n?\s*€\s*([\d\.]+)',t); return m.group(1) if m else None
+        m=re.search(r'(?i)'+re.escape(l)+r':?\s*\n?\s*€\s*([\d\.]+)',t); return m.group(1) if m else None
     return [g('Toegekend'),g('Aangevraagd'),g('Eigen bijdrage'),g('Nog te financieren')]
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
@@ -50,12 +50,13 @@ with sync_playwright() as p:
     ok('dossier KPI: Nog te financieren € 35.000', '€ 35.000' in kpi(pg,'Nog te financieren'))
     ok('dossier KPI: eerstvolgende deadline = Oranje Fonds Burenhulp', 'Oranje Fonds Burenhulp' in kpi(pg,'Eerstvolgende deadline'), kpi(pg,'Eerstvolgende deadline'))
     tabs=[x.inner_text().strip() for x in pg.locator('[role="tab"]').all()]
-    ok('dossier: 4 tabs in juiste volgorde', tabs==['Overzicht','Projectfinanciering / Dekkingsplan','Documenten','Gesprekken'], str(tabs))
+    tabs=[re.sub(r'\d+$','',x).strip() for x in tabs]
+    ok('dossier: 5 tabs in juiste volgorde', tabs==['Projectprofiel','Fondsen en dekkingsplan','Deadlines en acties','Documenten','Gesprekken'], str(tabs))
     ok('dossier: Overzicht standaard geselecteerd', pg.locator('[data-testid="tab-btn-overzicht"]').get_attribute('aria-selected')=='true')
     ov=pg.locator('[data-testid="tab-overzicht"]').inner_text()
     ok('dossier Overzicht: basisgegevens uit subsidie_kompas_programs (omschrijving, doelgroep, discipline, locatie, looptijd)', 'Wekelijks een warme maaltijd.' in ov and 'Utrecht-Noord' in ov)
     ok('dossier Overzicht: uitgebreide inhoud (partners, doelstellingen, activiteiten...) staat niet meer hier maar bij Projectdocumentatie op Documenten', 'Wijkcentrum' not in ov and 'projectdocumentatie' in ov.lower() and pg.locator('[data-testid="overzicht-open-projectinformatie"]').count()==1)
-    ok('dossier Overzicht: geen oude lijsten Co-financiers/Eerdere toekenningen meer; verwijzing naar Projectfinanciering', 'Co-financiers' not in ov and 'Eerdere toekenningen' not in ov and 'Cofinanciers en andere financiering'.lower() in ov.lower() and 'Projectfinanciering' in ov, ov[-300:])
+    ok('dossier Projectprofiel: geen oude lijsten Co-financiers/Eerdere toekenningen; financiers staan bij Fondsen en dekkingsplan', 'Co-financiers' not in ov and 'Eerdere toekenningen' not in ov and pg.locator('[data-testid="tab-btn-projectfinanciering"]').count()==1, ov[-300:])
     ok('dossier Overzicht: gebruikt geen financieringsregels', 'Buurtbudget' not in ov and 'Oranje Fonds' not in ov and 'LEGACY' not in t)
     ok('dossier: geen GEHEIM, geen legacy', 'GEHEIM' not in t and 'LEGACY' not in t)
     ok('dossier: RPC kompas_dekkingsplan voor eigen project aangeroepen', pg.evaluate("window.__LOG.some(l=>l.tabel==='rpc:kompas_dekkingsplan' && l.filters[0].includes('%s'))"%P1))

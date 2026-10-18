@@ -35,18 +35,18 @@ def nieuw(b,vp,tier,pad,tabel=True):
     return ctx,pg
 def txt(pg): return pg.locator('body').inner_text().replace('\xa0',' ')
 def geenhscroll(pg): return pg.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
-def tab(pg): return pg.get_by_test_id('tab-projectfinanciering')
+def tab(pg): return pg.get_by_test_id('pf-acties')
 def rijen(pg,t=None): return pg.evaluate('window.__DBL.subsidie_kompas_program_actions')
 def rij(pg,i): return next((r for r in rijen(pg) if r['id']==i),None)
 def seg(pg): return pg.get_by_role('tab',name='Actieplan',exact=True)
 def taak(pg,titel): return pg.locator('[data-testid="ap-taak"]').filter(has_text=titel)
 DESK={'width':1280,'height':1100}; MOB={'width':390,'height':844}
-PAD=f'/kompas/projecten/{P1}?tab=projectfinanciering'
+PAD=f'/kompas/projecten/{P1}?tab=deadlines'
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
     ctx,pg=nieuw(b,DESK,'pro',PAD)
     ap=pg.locator('[data-testid="actieplan"]')
-    ok('A1 onder het project (tab Projectfinanciering / Dekkingsplan) staat het blok Acties & deadlines', ap.count()==1 and ap.get_attribute('data-project-id')==P1 and 'acties & deadlines' in ap.inner_text().lower())
+    ok('A1 in het project (tab Deadlines en acties) staat het blok Acties & deadlines', ap.count()==1 and ap.get_attribute('data-project-id')==P1 and 'acties & deadlines' in ap.inner_text().lower())
     ok('A2 opgeslagen taak "Begroting controleren" staat onder Te laat (deadline 3 dagen geleden), met hoge prioriteit en herkomst Subsidie Kompas', pg.locator('[data-testid="ap-groep-te-laat"]').count()==1 and taak(pg,'Begroting controleren').count()==1 and 'Hoog' in taak(pg,'Begroting controleren').inner_text() and 'voorgesteld door Subsidie Kompas' in taak(pg,'Begroting controleren').inner_text())
     def open_n(pg): return pg.locator('[data-testid="ap-taak"]:not([data-status="done"])').count()+pg.locator('[data-testid="ap-afgeleid-actie"]').count()
     ok('A3 afgeronde taak onder Afgerond; teller telt alle open items (opgeslagen taken en afgeleide acties), geen afgeronde', pg.locator('[data-testid="ap-groep-klaar"] [data-testid="ap-taak"]').count()==1 and f'({open_n(pg)} open)' in pg.get_by_test_id('ap-teller').inner_text().lower() and pg.locator('[data-testid="ap-taak"]:not([data-status="done"])').count()==1, pg.get_by_test_id('ap-teller').inner_text())
@@ -123,7 +123,7 @@ with sync_playwright() as p:
 
     # migratie nog niet toegepast
     ctx,pg=nieuw(b,DESK,'pro',PAD,tabel=False)
-    ok('H1 zonder tabel: nette melding, geen "+ Actie toevoegen", geen pageerrors, afgeleide aanbevelingen werken, rest van de tab werkt', pg.get_by_test_id('ap-niet-beschikbaar').count()==1 and pg.get_by_test_id('ap-toevoegen-open').count()==0 and pg.locator('[data-testid="ap-afgeleid-actie"]').count()>=1 and pg.get_by_test_id('ap-maak-taak').count()==0 and tab(pg).count()==1 and pg.get_by_test_id('pf-regel').count()>=1 and not pg.errs, str(pg.errs))
+    ok('H1 zonder tabel: nette melding, geen "+ Actie toevoegen", geen pageerrors, afgeleide aanbevelingen werken, rest van de tab werkt', pg.get_by_test_id('ap-niet-beschikbaar').count()==1 and pg.get_by_test_id('ap-toevoegen-open').count()==0 and pg.locator('[data-testid="ap-afgeleid-actie"]').count()>=1 and pg.get_by_test_id('ap-maak-taak').count()==0 and tab(pg).count()==1 and not pg.errs, str(pg.errs))
     ctx.close()
     ctx,pg=nieuw(b,DESK,'pro','/kompas/deadlines',tabel=False)
     seg(pg).click(); pg.wait_for_timeout(900)

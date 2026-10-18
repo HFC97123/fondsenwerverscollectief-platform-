@@ -50,7 +50,7 @@ with sync_playwright() as p:
     t=txt(pg)
     ok('1 overzicht: geen "Open project" of "Exporteren" op de kaarten', not any(x in t for x in OUDE_NAVIGATIE))
     ok('1 overzicht: geen losse knop Bewerken/Archiveren/Verwijderen op de kaart (alleen in ⋯)', all(kaarten(pg).nth(i).get_by_role('button',name=re.compile(r'^(Bewerken|Archiveren|Verwijderen)$')).count()==0 for i in range(n)))
-    ok('1 overzicht: per kaart één titel-link en één aanvullende actie (Bespreek) naast het ⋯-menu', all(kaarten(pg).nth(i).locator('[data-testid="project-kaart-link"]').count()==1 and kaarten(pg).nth(i).locator('[data-testid="project-kaart-menu-knop"]').count()==1 and kaarten(pg).nth(i).locator('[data-testid="bespreek-project"]').count()==(0 if 'gearchiveerd' in kaarten(pg).nth(i).inner_text() else 1) for i in range(n)))
+    ok('1 overzicht: per kaart één titel-link en één aanvullende actie (Bespreek) naast het ⋯-menu', all(not kaarten(pg).nth(i).is_visible() or (kaarten(pg).nth(i).locator('[data-testid="project-kaart-link"]').count()==1 and kaarten(pg).nth(i).locator('[data-testid="project-kaart-menu-knop"]').count()==1 and kaarten(pg).nth(i).locator('[data-testid="bespreek-project"]').count()==(0 if 'gearchiveerd' in kaarten(pg).nth(i).inner_text() else 1)) for i in range(n)))
     ok('1 overzicht: eigen projectenblok met komende deadlines blijft (max 3) en snelle cofinanciers-invoer is geen onderdeel van Projecten', pg.locator('[data-testid="projecten-komende-deadline"]').count()<=3)
     k1=kaart(pg,P1)
     pg.screenshot(path='shots/flow_1_projecten_overzicht.png', full_page=True)
@@ -104,7 +104,8 @@ with sync_playwright() as p:
     pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
     ok('menu: Escape sluit het menu', k.locator('[role=menu]').count()==0)
     k.locator('[data-testid="project-kaart-menu-knop"]').click(); k.locator('[data-testid="project-kaart-menu-archiveren"]').click(); pg.wait_for_timeout(600)
-    ok('menu: Archiveren markeert het project als gearchiveerd zonder bevestiging en zonder navigatie', 'gearchiveerd' in kaart(pg,P2).inner_text() and hsh(pg)==h0)
+    pg.locator('[data-testid="projecten-gearchiveerd"] summary').click(); pg.wait_for_timeout(200)
+    ok('menu: Archiveren markeert het project als gearchiveerd zonder bevestiging en zonder navigatie (het staat dan onder Gearchiveerd)', 'gearchiveerd' in kaart(pg,P2).inner_text() and pg.locator('[data-testid="projecten-gearchiveerd"]').locator(f'[data-project-id="{P2}"]').count()==1 and hsh(pg)==h0)
     ok('flow: geen pageerrors (overzicht + menu)', not pg.errs, '; '.join(pg.errs)[:300])
     ctx.close()
 
@@ -129,7 +130,8 @@ with sync_playwright() as p:
     kb=[x.inner_text().strip() or x.get_attribute('aria-label') for x in kop.locator('button').all()]
     ok('regressie: projectkop heeft geen Bewerken, Exporteren of Open project', not any(re.search(r'Bewerken|Exporteren|Open project',x) for x in kb) and kop.get_by_role('link',name=re.compile('Bewerken|Exporteren|Open project')).count()==0, str(kb))
     tabs=[x.inner_text().strip() for x in pg.locator('[role=tab]').all()]
-    ok('3 tabs: Overzicht | Projectfinanciering / Dekkingsplan | Documenten | Gesprekken', tabs==['Overzicht','Projectfinanciering / Dekkingsplan','Documenten','Gesprekken'], str(tabs))
+    tabs=[re.sub(r'\d+$','',x).strip() for x in tabs]
+    ok('3 tabs: Projectprofiel | Fondsen en dekkingsplan | Deadlines en acties | Documenten | Gesprekken', tabs==['Projectprofiel','Fondsen en dekkingsplan','Deadlines en acties','Documenten','Gesprekken'], str(tabs))
     pg.screenshot(path='shots/flow_3_projectdetail.png', full_page=True)
     # ⋯ in de kop
     kop.locator('[data-testid="project-menu-knop"]').click(); pg.wait_for_timeout(200)

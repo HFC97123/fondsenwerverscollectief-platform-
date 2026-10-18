@@ -38,10 +38,11 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useHeeftWerkruimte } from './werkruimteRechten.js';
 import { isEchtId } from '../../data/services/projecten.js';
-import { openProjectBestand } from './projectdossier/DocumentenBeheer.jsx';
+import { DocumentUploadKnop, DocumentVerwijderKnop, openProjectBestand, useDocumentenBeheer } from './projectdossier/DocumentenBeheer.jsx';
 import ProjectinformatiePaneel from './projectinformatie/ProjectinformatiePaneel.jsx';
 import { DOC_SOORTEN, useKompas } from './KompasStore.jsx';
-import { Button, EmptyState, Notice, Panel, PanelHeader } from '../../shared/ui/index.js';
+import { Button, Notice } from '../../shared/ui/index.js';
+import { Blok, Leeg, Melding, PaginaKop, Tabs, WerkPagina } from '../../shared/ui/werkplek.jsx';
 // Exporteren (Word / Excel / PDF): gedeeld menu en gedeelde exportlaag
 // (src/shared/export/); de vroegere downloadDocument/downloadExcelDocument
 // staan daar nu eenmalig, met dezelfde Word-generator en begrotings-Excel.
@@ -62,6 +63,17 @@ function leesProjectUitUrl() {
   return m ? decodeURIComponent(m[1]) : '';
 }
 
+// ?tab=inhoud of ?tab=bestanden kiest het tabblad; zonder tab opent een link met ?project=<id> (vanuit het project) de
+// projectinhoud van dat project, en de pagina zelf de bestanden.
+function leesTabUitUrl() {
+  const h = window.location.hash || '';
+  const m = /[?&]tab=(inhoud|bestanden)(&|$)/.exec(h);
+
+  if (m) return m[1];
+
+  return /[?&]project=/.test(h) ? 'inhoud' : 'bestanden';
+}
+
 function zetProjectInUrl(id) {
   try {
     const basis = (window.location.hash || '#/kompas/documentatie').split('?')[0];
@@ -80,6 +92,8 @@ export default function DocumentatiePage() {
   const [filter, setFilter] = useState('alle');
   const [melding, setMelding] = useState('');
   const [gekozen, setGekozen] = useState(leesProjectUitUrl);
+  const [tab, setTab] = useState(leesTabUitUrl);
+  const [projectFilter, setProjectFilter] = useState(() => leesProjectUitUrl() || 'alle');
 
   // Alleen echte, niet-gearchiveerde projecten: Projectinformatie hoort bij een bewaard project.
   const projecten = useMemo(() => (store.projects || []).filter((p) => isEchtId(p.id) && !p.gearchiveerd), [store.projects]);
@@ -92,24 +106,22 @@ export default function DocumentatiePage() {
 
   if (!paid) {
     return (
-      <Panel>
-        <PanelHeader title="Documenten"
-          intro="Met Pro en Premium maakt Subsidie Kompas projectplannen en aanvragen in Word, begrotingen in Excel en definitieve versies in pdf. Ze komen hier terecht, gekoppeld aan uw projecten."
-        />
-        <Button variant="dark" onClick={app.goAbonnementen}>
-          Bekijk de abonnementen
-        </Button>
-      </Panel>
+      <WerkPagina testid="documenten">
+        <PaginaKop titel="Documenten" />
+        <Melding toon="info">Documenten horen bij Pro en Premium.</Melding>
+        <div style={css('margin-top: 14px;')}>
+          <Button variant="dark" onClick={app.goAbonnementen}>
+            Bekijk de abonnementen
+          </Button>
+        </div>
+      </WerkPagina>
     );
   }
 
-  // Alleen projectdocumenten met daadwerkelijke inhoud worden getoond - nooit
-  // een lege of fictieve documentkaart (zie bewaarBijProject(): tekst is de
-  // letterlijke chattekst en hoort dus nooit leeg te zijn, maar deze check
-  // voorkomt dat een documentkaart ooit tot een leeg Word-bestand leidt).
+  // Documenten met inhoud (opgemaakt in de chat) of een bewaard bestand (upload). Nooit een lege of fictieve kaart.
   const alle = (store.projects || []).flatMap((p, pi) =>
     (p.docs || [])
-      .filter((d) => d.tekst && String(d.tekst).trim().length > 0)
+      .filter((d) => (d.tekst && String(d.tekst).trim().length > 0) || d.pad)
       .map((d, di) => ({
         ...d,
         id: d.id || `${p.id || `project-${pi}`}-doc-${di}`,
@@ -117,145 +129,197 @@ export default function DocumentatiePage() {
         projectNaam: p.naam || 'Naamloos project',
       })),
   );
-  const zichtbaar = alle.filter((d) => filter === 'alle' || d.soort === filter);
+  const inProject = alle.filter((d) => projectFilter === 'alle' || d.projectId === projectFilter);
+  const zichtbaar = inProject.filter((d) => filter === 'alle' || d.soort === filter);
+  const filterProject = projectFilter !== 'alle' ? (store.projects || []).find((p) => p.id === projectFilter) || null : null;
+  const aantalProjecten = new Set(alle.map((d) => d.projectId)).size;
 
   const openInChat = (doc) => {
     store.patch({ activeDoc: { id: doc.id, naam: doc.naam, soort: doc.soort, projectId: doc.projectId || '' } });
     window.location.hash = '#/subsidie-kompas';
   };
 
+  const kiesProjectFilter = (id) => {
+    setProjectFilter(id);
+    setMelding('');
+
+    if (id !== 'alle') zetProjectInUrl(id);
+  };
+
   return (
-    <Panel>
-      <PanelHeader title="Documenten"
-        intro="Hier vult u per project de inhoud aan waarmee Subsidie Kompas teksten en aanvragen schrijft. Daaronder staat alles wat Subsidie Kompas voor u heeft opgemaakt en bij een project bewaard: klik op een naam om er in de chat mee verder te werken, of download het als Word-bestand."
+    <WerkPagina testid="documenten">
+      <PaginaKop
+        titel="Documenten"
+        meta={`${alle.length} ${alle.length === 1 ? 'document' : 'documenten'}${aantalProjecten ? ` in ${aantalProjecten} ${aantalProjecten === 1 ? 'project' : 'projecten'}` : ''}`}
+        help={
+          <>
+            <p>Bestanden zijn de documenten bij uw projecten: wat u uploadt en wat Subsidie Kompas voor u opmaakte. Klik op een naam om er in de chat mee verder te werken.</p>
+            <p>Projectinhoud is de inhoud waarmee Subsidie Kompas teksten en aanvragen voor een project schrijft. Wat daar niet staat, verzint Subsidie Kompas niet.</p>
+          </>
+        }
       />
 
-      {projecten.length > 0 ? (
-        <ProjectinformatiePaneel projecten={projecten} projectId={projectId} onKies={kiesProject} store={store} />
-      ) : (
-        <div data-testid="pi-geen-project" style={css('margin-bottom: 24px; padding: 16px; border: 1px dashed #D5E0D9; border-radius: 16px; font-size: 14.5px; color: #7B8985;')}>
-          Maak eerst een project aan bij <a href="#/kompas/projecten" style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>Projecten</a>. Daarna vult u hier de projectdocumentatie aan.
-        </div>
-      )}
+      <Tabs
+        tabs={[
+          { id: 'bestanden', label: 'Bestanden', aantal: alle.length },
+          { id: 'inhoud', label: 'Projectinhoud' },
+        ]}
+        actief={tab}
+        onKies={setTab}
+        label="Documenten"
+        testidPrefix="documenten-tab-"
+      />
 
-      <h2 style={css("margin: 0 0 12px; font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #7B8985;")}>Opgemaakte documenten</h2>
+      {tab === 'inhoud' &&
+        (projecten.length > 0 ? (
+          <ProjectinformatiePaneel projecten={projecten} projectId={projectId} onKies={kiesProject} store={store} />
+        ) : (
+          <div data-testid="pi-geen-project">
+            <Leeg>
+              Nog geen project.{' '}
+              <a href="#/kompas/projecten?nieuw=1" className="fwk-wp-link">
+                Project aanmaken
+              </a>
+            </Leeg>
+          </div>
+        ))}
 
-      <div style={css('display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;')}>
-        {FILTERS.map(([value, label]) => {
-          const actief = filter === value;
-          const aantal = value === 'alle' ? alle.length : alle.filter((d) => d.soort === value).length;
-
-          return (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={actief}
-              onClick={() => { setFilter(value); setMelding(''); }}
-              style={css(`
-                cursor: pointer;
-                box-sizing: border-box;
-                min-height: 40px;
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 10px 16px;
-                border: 1px solid ${actief ? '#BFD4C6' : '#E1EAE4'};
-                border-radius: 999px;
-                background: ${actief ? '#EAF4EE' : '#FFFFFF'};
-                color: ${actief ? '#2F6D47' : '#3D4B48'};
-                font-family: 'Mulish', sans-serif;
-                font-size: 13.5px;
-                font-weight: 700;
-              `)}
+      {tab === 'bestanden' && (
+        <Blok kaal testid="documenten-bestanden">
+          <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 14px;')}>
+            <select
+              data-testid="documenten-projectfilter"
+              aria-label="Toon documenten van project"
+              value={projectFilter}
+              onChange={(e) => kiesProjectFilter(e.target.value)}
+              style={css("cursor: pointer; box-sizing: border-box; min-height: 38px; padding: 6px 12px; border: 1px solid #D5E0D9; border-radius: 999px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #2C4A5E;")}
             >
-              <span>{label}</span>
-              <span style={css('font-size: 12px; color: #7B8985;')}>{aantal}</span>
-            </button>
-          );
-        })}
+              <option value="alle">Alle projecten</option>
+              {(store.projects || []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.naam || 'Naamloos project'}
+                  {p.gearchiveerd ? ' (gearchiveerd)' : ''}
+                </option>
+              ))}
+            </select>
+            {FILTERS.map(([value, label]) => {
+              const actief = filter === value;
+              const aantal = value === 'alle' ? inProject.length : inProject.filter((d) => d.soort === value).length;
+
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={actief}
+                  onClick={() => {
+                    setFilter(value);
+                    setMelding('');
+                  }}
+                  style={css(`cursor: pointer; box-sizing: border-box; min-height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid ${actief ? '#BFD4C6' : '#E1EAE4'}; border-radius: 999px; background: ${actief ? '#EAF4EE' : '#FFFFFF'}; color: ${actief ? '#2F6D47' : '#3D4B48'}; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 700;`)}
+                >
+                  <span>{label}</span>
+                  <span style={css('font-size: 12px; color: #7B8985;')}>{aantal}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {filterProject && isEchtId(filterProject.id) && !filterProject.gearchiveerd && <UploadVoorProject project={filterProject} store={store} />}
+
+          {zichtbaar.length > 0 && (
+            <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;')}>
+              {zichtbaar.map((d) => (
+                <DocumentRij
+                  key={d.id}
+                  doc={d}
+                  project={(store.projects || []).find((p) => p.id === d.projectId) || null}
+                  store={store}
+                  paid={paid}
+                  onOpenInChat={openInChat}
+                  onMelding={setMelding}
+                />
+              ))}
+            </ul>
+          )}
+
+          {!alle.length && (
+            <Leeg testid="documenten-leeg">
+              Nog geen documenten. Upload ze bij een project of laat Subsidie Kompas een projectplan of begroting opmaken in de{' '}
+              <a href="#/kompas" className="fwk-wp-link">
+                chat
+              </a>
+              .
+            </Leeg>
+          )}
+
+          {alle.length > 0 && !zichtbaar.length && <Leeg>Geen documenten met deze filters.</Leeg>}
+
+          <Notice>{melding}</Notice>
+        </Blok>
+      )}
+    </WerkPagina>
+  );
+}
+
+function UploadVoorProject({ project, store }) {
+  const beheer = useDocumentenBeheer(project, store);
+
+  return (
+    <div data-testid="documenten-upload" style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;')}>
+      <DocumentUploadKnop beheer={beheer} />
+      <span role="status" style={css(`font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 700; color: ${beheer.fout ? '#9E3B2C' : '#4E9A6C'};`)}>
+        {beheer.bezig ? 'Document wordt verwerkt…' : beheer.fout || beheer.melding}
+      </span>
+    </div>
+  );
+}
+
+function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding }) {
+  const beheer = useDocumentenBeheer(project || { id: '', docs: [] }, store);
+  const kanVerwijderen = Boolean(project && isEchtId(project.id) && isEchtId(String(d.id)));
+  const heeftTekst = Boolean(d.tekst && String(d.tekst).trim());
+
+  return (
+    <li data-testid="documenten-rij" data-project-id={d.projectId} style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF;')}>
+      <span style={css(`flex-shrink: 0; padding: 5px 9px; border-radius: 8px; background: ${WORD_STIJL.bg}; color: ${WORD_STIJL.color}; font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em;`)}>
+        {d.pad && !heeftTekst ? String((d.naam || '').split('.').pop() || 'BESTAND').toUpperCase().slice(0, 4) : WORD_STIJL.label}
+      </span>
+
+      <div style={css('flex: 1 1 220px; min-width: 0;')}>
+        {heeftTekst ? (
+          <button type="button" onClick={() => onOpenInChat(d)} style={css('cursor: pointer; border: none; background: none; padding: 0; text-align: left;')}>
+            <span style={css("display: block; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;")}>{d.naam}</span>
+          </button>
+        ) : (
+          <span style={css("display: block; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;")}>{d.naam}</span>
+        )}
+        <span style={css("display: block; margin-top: 2px; font-family: 'Mulish', sans-serif; font-size: 12.5px; color: #7B8985;")}>
+          <strong data-testid="documenten-rij-project" style={css('color: #4B5C58;')}>
+            {d.projectNaam}
+          </strong>
+          {'  ·  '}
+          {[d.soort || 'Overig', d.versie ? `versie ${d.versie}` : '', d.context && d.context.fonds ? `voor ${d.context.fonds}` : '', d.vervangen ? 'vervangen door een nieuwere versie' : ''].filter(Boolean).join('  ·  ')}
+        </span>
       </div>
 
-      {zichtbaar.length > 0 && (
-        <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-          {zichtbaar.map((d) => (
-            <div key={d.id} style={css('display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 15px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #F7F9F8;')}>
-              <span style={css(`
-                  flex-shrink: 0;
-                  padding: 7px 11px;
-                  border-radius: 9px;
-                  background: ${WORD_STIJL.bg};
-                  color: ${WORD_STIJL.color};
-                  font-size: 11px;
-                  font-weight: 800;
-                  letter-spacing: 0.04em;
-                `)}
-              >
-                {WORD_STIJL.label}
-              </span>
-
-              <button
-                type="button"
-                onClick={() => openInChat(d)}
-                style={css('cursor: pointer; flex: 1 1 220px; min-width: 0; border: none; background: none; padding: 0; text-align: left;')}
-              >
-                <span style={css("display: block; font-family: 'Mulish', sans-serif; font-size: 14.5px; font-weight: 700; color: #2C4A5E; overflow-wrap: anywhere;")}>
-                  {d.naam}
-                </span>
-                <span style={css("display: block; margin-top: 3px; font-family: 'Mulish', sans-serif; font-size: 12.5px; color: #7B8985;")}>
-                  {[
-                    d.soort || 'Overig',
-                    d.versie ? `versie ${d.versie}` : '',
-                    d.context && d.context.fonds ? `voor ${d.context.fonds}` : '',
-                    d.vervangen ? 'vervangen door een nieuwere versie' : '',
-                    d.projectNaam,
-                    'openen in de chat',
-                  ]
-                    .filter(Boolean)
-                    .join('  ·  ')}
-                </span>
-              </button>
-
-              <span style={css('display: flex; align-items: center; gap: 14px; flex-shrink: 0; flex-wrap: wrap;')}>
-                {d.pad && (
-                  <button
-                    type="button"
-                    data-testid="document-open-bestand"
-                    onClick={async () => {
-                      if (!(await openProjectBestand(d.pad))) {
-                        setMelding('Het bestand kon niet worden geopend. Probeer het opnieuw.');
-                      }
-                    }}
-                    style={css("cursor: pointer; min-height: 40px; padding: 0 4px; border: none; background: none; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #4E9A6C;")}
-                  >
-                    Bestand openen
-                  </button>
-                )}
-                <ExportMenu
-                  toegestaan={paid}
-                  uitlijnen="rechts"
-                  onMelding={(tekst) => setMelding(tekst)}
-                  ariaLabel={`${d.naam} exporteren`}
-                  bouwModel={opgeslagenDocumentExport({ doc: d, store })}
-                />
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!alle.length && (
-        <EmptyState title="Nog geen documenten"
-          text="Vraag Subsidie Kompas om een projectplan, begroting of aanvraag op te maken en sla het resultaat op bij een project. Het document komt daarna hier te staan."
-        />
-      )}
-
-      {alle.length > 0 && !zichtbaar.length && (
-        <div style={css('padding: 16px; border: 1px dashed #D5E0D9; border-radius: 16px; font-size: 14.5px; color: #7B8985;')}>
-          Geen documenten van dit type.
-        </div>
-      )}
-
-      <Notice>{melding}</Notice>
-    </Panel>
+      <span style={css('display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap;')}>
+        {d.pad && (
+          <button
+            type="button"
+            data-testid="document-open-bestand"
+            onClick={async () => {
+              if (!(await openProjectBestand(d.pad))) {
+                onMelding('Het bestand kon niet worden geopend. Probeer het opnieuw.');
+              }
+            }}
+            style={css("cursor: pointer; min-height: 36px; padding: 0 4px; border: none; background: none; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 800; color: #4E9A6C;")}
+          >
+            Bestand openen
+          </button>
+        )}
+        {heeftTekst && <ExportMenu toegestaan={paid} uitlijnen="rechts" onMelding={onMelding} ariaLabel={`${d.naam} exporteren`} bouwModel={opgeslagenDocumentExport({ doc: d, store })} />}
+        {kanVerwijderen && <DocumentVerwijderKnop doc={d} beheer={beheer} />}
+      </span>
+    </li>
   );
 }

@@ -9,7 +9,8 @@ import { PROJECT_EMPTY, useKompas } from './KompasStore.jsx';
 import NieuwProjectFormulier from './NieuwProjectFormulier.jsx';
 import { valideerEnBereidOp } from './projectOpslaan.js';
 import { haalClassificatiesOp } from '../../data/services/classificaties.js';
-import { Button, EmptyState, Notice, Panel, PanelHeader, Toggle, selectStijl } from '../../shared/ui/index.js';
+import { Button, Notice, Toggle, selectStijl } from '../../shared/ui/index.js';
+import { Blok, Leeg, Melding, PaginaKop, WerkPagina } from '../../shared/ui/werkplek.jsx';
 import { isEchtId } from '../../data/services/projecten.js';
 import { CSS_KLIKKAART } from './klikKaart.js';
 import KaartMenu, { CSS_KAARTMENU } from './KaartMenu.jsx';
@@ -67,16 +68,24 @@ export default function ProjectenPage() {
     }
   }, [paid]);
 
+  // ?nieuw=1 (bijv. vanaf het Dashboard) opent meteen het formulier voor een nieuw project.
+  useEffect(() => {
+    if (paid && /[?&]nieuw=1(&|$)/.test(window.location.hash || '')) {
+      setForm({ ...PROJECT_EMPTY, id: `p${Date.now()}`, nieuw: true });
+    }
+  }, [paid]);
+
   if (!paid) {
     return (
-      <Panel>
-        <PanelHeader title="Projecten"
-          intro="Met Pro en Premium legt u per project de looptijd en begroting vast, en volgt u de financiering: toegekend, aangevraagd en cofinanciers."
-        />
-        <Button variant="dark" onClick={app.goAbonnementen}>
-          Bekijk de abonnementen
-        </Button>
-      </Panel>
+      <WerkPagina testid="projecten">
+        <PaginaKop titel="Projecten" />
+        <Melding toon="info">Projecten horen bij Pro en Premium.</Melding>
+        <div style={css('margin-top: 14px;')}>
+          <Button variant="dark" onClick={app.goAbonnementen}>
+            Bekijk de abonnementen
+          </Button>
+        </div>
+      </WerkPagina>
     );
   }
 
@@ -124,26 +133,186 @@ export default function ProjectenPage() {
     });
   };
 
+  const nieuwProject = () => {
+    setForm({ ...PROJECT_EMPTY, id: `p${Date.now()}`, nieuw: true });
+    setMelding('');
+    setFout('');
+  };
+
+  const actief = store.projects.filter((p) => !p.gearchiveerd);
+  const gearchiveerd = store.projects.filter((p) => p.gearchiveerd);
+  const formOpen = Boolean(form && form.nieuw);
+
+  const kaart = (p) => {
+    const bits = [p.programma, periodeTekst(p.periodeVan, p.periodeTot), p.regio].filter(Boolean);
+    const regelsVanProject = financiering.perProject[p.id];
+    const dek = Array.isArray(regelsVanProject) ? dekkingVanProject(p, regelsVanProject) : null;
+    // Financiering uitsluitend uit de financieringsregels (zelfde berekening als Dashboard en projectdossier).
+    const finTekst = p.gearchiveerd
+      ? ''
+      : !isEchtId(p.id)
+        ? 'Sla het project op om de financiering te volgen'
+        : financiering.status === 'laden' && !dek
+          ? 'Financiering wordt geladen…'
+          : !dek
+            ? 'De financiering kon niet worden geladen'
+            : !dek.heeftBegroting
+              ? 'Totale projectbegroting nog niet ingevuld'
+              : `Toegekend ${formatEuro(dek.toegekend)}  ·  Aangevraagd ${formatEuro(dek.aangevraagd)}  ·  Eigen bijdrage ${formatEuro(dek.overige)}  ·  ${
+                  dek.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren ${formatEuro(dek.nogNodig)}`
+                }`;
+    const docTekst = `${(p.docs || []).length} ${(p.docs || []).length === 1 ? 'document' : 'documenten'}`;
+    const echt = isEchtId(p.id);
+    const projectNaam = p.naam || 'Naamloos project';
+    const menuActies = [
+      ...(echt ? [{ id: 'bewerken', label: 'Bewerken', onSelect: () => { window.location.hash = `#/kompas/projecten/${p.id}?bewerk=1`; } }] : []),
+      { id: 'archiveren', label: p.gearchiveerd ? 'Terugzetten' : 'Archiveren', onSelect: () => store.archiveProject(p.id, !p.gearchiveerd) },
+      {
+        id: 'verwijderen',
+        label: 'Verwijderen',
+        gevaar: true,
+        bevestig: { vraag: `Project "${projectNaam}" definitief verwijderen? Ook de documenten van dit project worden verwijderd.`, knop: 'Definitief verwijderen' },
+        onSelect: () => store.deleteProject(p.id),
+      },
+    ];
+
+    // De hele rij is de link naar het project (klikKaart.js); Bespreek en het ⋯-menu blijven los klikbaar.
+    return (
+      <article
+        key={p.id}
+        className={`fwk-kk${echt ? ' fwk-kk-klikbaar' : ''}`}
+        data-testid="project-kaart"
+        data-project-id={p.id}
+        style={css('--kk-r: 12px; box-sizing: border-box; padding: 12px 6px 10px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; display: flex; flex-direction: column; gap: 2px;')}
+      >
+        <div style={css('display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;')}>
+          <div style={css('min-width: 0; flex: 1 1 auto; padding-top: 2px;')}>
+            <div style={css("margin-bottom: 3px; font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere;")}>
+              {echt ? (
+                <a className="fwk-kk-link" data-testid="project-kaart-link" href={`#/kompas/projecten/${p.id}`}>
+                  {projectNaam}
+                </a>
+              ) : (
+                projectNaam
+              )}
+              {p.gearchiveerd && <span style={css("margin-left: 8px; font-family: 'Mulish', sans-serif; font-size: 12px; font-weight: 700; color: #7B8985;")}>(gearchiveerd)</span>}
+            </div>
+            <div style={css('font-size: 13px; color: #687974;')}>{bits.length ? bits.join('  ·  ') : 'Nog geen looptijd of programma ingevuld'}</div>
+            <div data-testid="projecten-kaart-financiering" style={css('margin-top: 4px; font-size: 12.5px; color: #7B8985;')}>
+              {[finTekst, docTekst].filter(Boolean).join('  ·  ')}
+            </div>
+          </div>
+          <div className="fwk-kk-boven" style={css('flex: none;')}>
+            <KaartMenu label={`Meer acties voor ${projectNaam}`} testid="project-kaart-menu" acties={menuActies} />
+          </div>
+        </div>
+        {echt && !p.gearchiveerd && (
+          <BespreekProjectKnop
+            naam={projectNaam}
+            onClick={() => {
+              store.zetChatVerzoek({ type: 'project', projectId: p.id });
+              app.goKompas();
+            }}
+          />
+        )}
+      </article>
+    );
+  };
+
+  const meta = [`${actief.length} ${actief.length === 1 ? 'actief project' : 'actieve projecten'}`, gearchiveerd.length ? `${gearchiveerd.length} gearchiveerd` : null].filter(Boolean).join(' · ');
+
   return (
-    <Panel>
-      <PanelHeader title="Projecten"
-        intro="Werft u per project of programma? Leg hier per project de looptijd en begroting vast; de financiering (toegekend, aangevraagd, cofinanciers) volgt u in het projectdossier. Subsidie Kompas gebruikt dit naast uw organisatieprofiel bij fondsselecties en aanvragen."
+    <WerkPagina testid="projecten">
+      <style>{`${CSS_KLIKKAART}${CSS_KAARTMENU}`}</style>
+      <PaginaKop
+        titel="Projecten"
+        meta={meta}
+        acties={
+          !formOpen && (
+            <Button size="s" onClick={nieuwProject}>
+              + Nieuw project
+            </Button>
+          )
+        }
+        help={
+          <p>Per project legt u de kenmerken, de looptijd en de begroting vast. Subsidie Kompas gebruikt het project bij het zoeken naar fondsen; de financiering volgt u in het project zelf.</p>
+        }
       />
 
-      <style>{`${CSS_KLIKKAART}${CSS_KAARTMENU}`}</style>
+      <Notice>{melding}</Notice>
 
-      {komende.length > 0 && !(form && form.nieuw) && (
-        <div style={css('margin-bottom: 16px; padding: 14px 18px; border: 1px solid #D6E3E9; border-radius: 20px; background: #EAF1F6;')}>
-          <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 12px;')}>
-            <span style={css('font-size: 14.5px; font-weight: 800; color: #2C4A5E;')}>
-              Komende deadlines uit uw projecten
-            </span>
-            <span style={css('display: flex; align-items: center; gap: 14px; flex-wrap: wrap;')}>
+      <div className="fwk-wp-kolommen">
+        <div className="fwk-wp-stapel">
+          {formOpen && (
+            <NieuwProjectFormulier
+              form={form}
+              setVeld={setVeld}
+              doelgroepen={doelgroepen}
+              themas={themas}
+              regios={regios}
+              fout={fout}
+              bezig={bezig}
+              onOpslaan={opslaan}
+              onAnnuleer={() => {
+                setForm(null);
+                setFout('');
+              }}
+            />
+          )}
+
+          {!formOpen && (
+            <Blok testid="projecten-lijst" kaal>
+              {actief.length ? (
+                <div style={css('display: flex; flex-direction: column; gap: 8px;')}>{actief.map(kaart)}</div>
+              ) : (
+                <Leeg testid="projecten-leeg">
+                  Nog geen projecten.{' '}
+                  <button type="button" className="fwk-wp-link" onClick={nieuwProject}>
+                    Maak uw eerste project
+                  </button>
+                </Leeg>
+              )}
+              {gearchiveerd.length > 0 && (
+                <details data-testid="projecten-gearchiveerd" style={css('margin-top: 14px;')}>
+                  <summary style={css("cursor: pointer; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #687974;")}>Gearchiveerd ({gearchiveerd.length})</summary>
+                  <div style={css('display: flex; flex-direction: column; gap: 8px; margin-top: 10px;')}>{gearchiveerd.map(kaart)}</div>
+                </details>
+              )}
+            </Blok>
+          )}
+        </div>
+
+        <div className="fwk-wp-stapel">
+          <Blok testid="projecten-deadlines" titel="Komende deadlines">
+            {komende.length ? (
+              <div style={css('display: flex; flex-direction: column; gap: 8px;')}>
+                {komende.map((k) => (
+                  <div key={k.sleutel} data-testid="projecten-komende-deadline" style={css('display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid #E1EAE4; border-radius: 12px; background: #F7F9F8;')}>
+                    <span style={css('flex: 1 1 auto; min-width: 0;')}>
+                      <a href={projectFinancieringHref(k.projectId)} style={css('display: block; font-size: 13.5px; font-weight: 800; color: #2C4A5E; text-decoration: none; overflow-wrap: anywhere;')}>
+                        {k.naam}
+                      </a>
+                      <span style={css('display: block; margin-top: 2px; font-size: 12px; color: #7B8985;')}>
+                        {`${k.projectNaam} · ${STATUS_LABEL[k.status] || k.status} · ${k.reminder === false ? 'geen herinnering' : `herinnering ${store.reminderDays} dagen ervoor`}`}
+                      </span>
+                    </span>
+                    <span style={css('flex-shrink: 0; text-align: right;')}>
+                      <span style={css(`display: block; font-size: 13px; font-weight: 800; color: ${k.dagen <= 14 ? '#9E3B2C' : '#2C4A5E'};`)}>{k.dagen} dagen</span>
+                      <span style={css('display: block; margin-top: 2px; font-size: 12px; color: #7B8985;')}>{formatDatum(k.datum)}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Leeg>Geen komende deadlines in uw projecten.</Leeg>
+            )}
+            <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;')} data-testid="projecten-herinnering">
+              <span style={css("flex-basis: 100%; font-family: 'Mulish', sans-serif; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #9AA6A2;")}>Herinneringen</span>
               <select
                 value={String(store.reminderDays)}
                 onChange={(e) => store.patch({ reminderDays: Number(e.target.value) })}
                 aria-label="Wanneer wilt u een herinnering"
-                style={selectStijl}
+                style={{ ...selectStijl, minHeight: '38px', padding: '8px 12px', fontSize: '13.5px', width: 'auto' }}
               >
                 {[7, 14, 21, 30].map((d) => (
                   <option key={d} value={String(d)}>
@@ -157,146 +326,10 @@ export default function ProjectenPage() {
                 label={store.reminderMail ? 'E-mail aan' : 'E-mail uit'}
                 ariaLabel="Herinnering per e-mail"
               />
-            </span>
-          </div>
-
-          <div style={css('display: flex; flex-direction: column; gap: 8px;')}>
-            {komende.map((k) => (
-              <div key={k.sleutel} data-testid="projecten-komende-deadline" style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 12px 16px; border-radius: 14px; background: #FFFFFF;')}>
-                <span style={css('flex: 1 1 220px; min-width: 0;')}>
-                  <a href={projectFinancieringHref(k.projectId)} style={css('display: block; font-size: 14px; font-weight: 700; color: #2C4A5E; text-decoration: none;')}>{k.naam}</a>
-                  <span style={css('display: block; margin-top: 3px; font-size: 12.5px; color: #7B8985;')}>
-                    {`${k.projectNaam} · ${STATUS_LABEL[k.status] || k.status} · ${
-                      k.reminder === false ? 'geen herinnering' : `herinnering ${store.reminderDays} dagen ervoor`
-                    }`}
-                  </span>
-                </span>
-                <span style={css('flex-shrink: 0; text-align: right;')}>
-                  <span style={css(`display: block; font-size: 14px; font-weight: 800; color: ${k.dagen <= 14 ? '#9E3B2C' : '#2C4A5E'};`)}>
-                    {k.dagen} dagen
-                  </span>
-                  <span style={css('display: block; margin-top: 2px; font-size: 12.5px; color: #7B8985;')}>
-                    {formatDatum(k.datum)}
-                  </span>
-                </span>
-              </div>
-            ))}
-          </div>
+            </div>
+          </Blok>
         </div>
-      )}
-
-      {store.projects.length > 0 && !(form && form.nieuw) && (
-        <div style={css('margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;')}>
-          {store.projects.map((p) => {
-            const bits = [p.programma, periodeTekst(p.periodeVan, p.periodeTot), p.regio].filter(Boolean);
-            const regelsVanProject = financiering.perProject[p.id];
-            const dek = Array.isArray(regelsVanProject) ? dekkingVanProject(p, regelsVanProject) : null;
-            // Financiering uitsluitend uit de financieringsregels (zelfde berekening als Dashboard en projectdossier).
-            const finTekst = p.gearchiveerd
-              ? ''
-              : !isEchtId(p.id)
-                ? 'Sla het project op om de financiering te volgen'
-                : financiering.status === 'laden' && !dek
-                  ? 'Financiering wordt geladen…'
-                  : !dek
-                    ? 'De financiering kon niet worden geladen'
-                    : !dek.heeftBegroting
-                      ? 'Totale projectbegroting nog niet ingevuld'
-                      : `Toegekend ${formatEuro(dek.toegekend)}  ·  Aangevraagd ${formatEuro(dek.aangevraagd)}  ·  Eigen bijdrage ${formatEuro(dek.overige)}  ·  ${
-                          dek.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren ${formatEuro(dek.nogNodig)}`
-                        }`;
-            const docTekst = `${(p.docs || []).length} ${(p.docs || []).length === 1 ? 'document' : 'documenten'}`;
-
-            const echt = isEchtId(p.id);
-            const projectNaam = p.naam || 'Naamloos project';
-            const menuActies = [
-              ...(echt ? [{ id: 'bewerken', label: 'Bewerken', onSelect: () => { window.location.hash = `#/kompas/projecten/${p.id}?bewerk=1`; } }] : []),
-              { id: 'archiveren', label: p.gearchiveerd ? 'Terugzetten' : 'Archiveren', onSelect: () => store.archiveProject(p.id, !p.gearchiveerd) },
-              {
-                id: 'verwijderen',
-                label: 'Verwijderen',
-                gevaar: true,
-                bevestig: { vraag: `Project "${projectNaam}" definitief verwijderen? Ook de documenten van dit project worden verwijderd.`, knop: 'Definitief verwijderen' },
-                onSelect: () => store.deleteProject(p.id),
-              },
-            ];
-
-            // Primaire navigatie = de kaart zelf (titel is de link, zie klikKaart.js). Eén aanvullende actie zichtbaar
-            // (Bespreek met Subsidie Kompas); Bewerken, Archiveren en Verwijderen zitten in het ⋯-menu.
-            return (
-              <article
-                key={p.id}
-                className={`fwk-kk${echt ? ' fwk-kk-klikbaar' : ''}`}
-                data-testid="project-kaart"
-                data-project-id={p.id}
-                style={css('--kk-r: 16px; box-sizing: border-box; padding: 14px 8px 8px 18px; border: 1px solid #E1EAE4; border-radius: 16px; background: #F7F9F8; display: flex; flex-direction: column; gap: 2px;')}
-              >
-                <div style={css('display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;')}>
-                  <div style={css('min-width: 0; flex: 1 1 auto; padding-top: 2px;')}>
-                    <div style={css('margin-bottom: 5px; font-size: 15.5px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;')}>
-                      {echt ? (
-                        <a className="fwk-kk-link" data-testid="project-kaart-link" href={`#/kompas/projecten/${p.id}`}>
-                          {projectNaam}
-                        </a>
-                      ) : (
-                        projectNaam
-                      )}
-                      {p.gearchiveerd && <span style={css('margin-left: 8px; font-size: 12px; font-weight: 700; color: #7B8985;')}>(gearchiveerd)</span>}
-                    </div>
-                    <div style={css('font-size: 13.5px; color: #687974;')}>
-                      {bits.length ? bits.join('  ·  ') : 'Nog geen looptijd of programma ingevuld'}
-                    </div>
-                    <div data-testid="projecten-kaart-financiering" style={css('margin-top: 6px; font-size: 13px; color: #7B8985;')}>
-                      {[finTekst, docTekst].filter(Boolean).join('  ·  ')}
-                    </div>
-                  </div>
-                  <div className="fwk-kk-boven" style={css('flex: none;')}>
-                    <KaartMenu label={`Meer acties voor ${projectNaam}`} testid="project-kaart-menu" acties={menuActies} />
-                  </div>
-                </div>
-                {echt && !p.gearchiveerd && (
-                  <BespreekProjectKnop
-                    naam={projectNaam}
-                    onClick={() => {
-                      store.zetChatVerzoek({ type: 'project', projectId: p.id });
-                      app.goKompas();
-                    }}
-                  />
-                )}
-              </article>
-            );
-          })}
-        </div>
-      )}
-
-      {!store.projects.length && !form && (
-        <div style={css('margin-bottom: 16px;')}>
-          <EmptyState title="Nog geen projecten vastgelegd" text="Voeg uw eerste project toe om er per aanvraag mee te werken." />
-        </div>
-      )}
-
-      {!form && (
-        <Button onClick={() => { setForm({ ...PROJECT_EMPTY, id: `p${Date.now()}`, nieuw: true }); setMelding(''); setFout(''); }}>
-          + Nieuw project
-        </Button>
-      )}
-
-      <Notice>{melding}</Notice>
-
-      {form && form.nieuw && (
-        <NieuwProjectFormulier
-          form={form}
-          setVeld={setVeld}
-          doelgroepen={doelgroepen}
-          themas={themas}
-          regios={regios}
-          fout={fout}
-          bezig={bezig}
-          onOpslaan={opslaan}
-          onAnnuleer={() => { setForm(null); setFout(''); }}
-        />
-      )}
-
-    </Panel>
+      </div>
+    </WerkPagina>
   );
 }
