@@ -99,7 +99,7 @@ sectie('Test 1 (geografische mismatch) / Test 2 (thematische mismatch) / Test 5 
   check('Rotterdams Armoedefonds (andere regio) niet getoond', !t.includes('Rotterdams Armoedefonds'));
   check('Jeugdsportfonds (ander thema) niet getoond', !t.includes('Jeugdsportfonds'));
   check('Geen enkele EXCLUSIEVE (premium-gemarkeerde) recordnaam uitgelekt naar het model', namenIn(t, ['Landelijke Zelfredzaamheidsimpuls', 'Fonds Maatschappelijke Participatie', 'Natuurfonds']).length === 0, namenIn(t, ['Landelijke Zelfredzaamheidsimpuls', 'Fonds Maatschappelijke Participatie']).join(','));
-  check('Een niet-exclusief Pro-record is voor Free wel vindbaar, maar alleen met publieke identiteit (geen criteria/missie)', t.includes('Amsterdams Armoedefonds') && !/Voorwaarden van|Missie /.test(t));
+  check('Een niet-exclusief Pro-record is sinds 18-10-2026 voor Free vindbaar mét volledige gegevens (maximaal 3 per antwoord)', t.includes('Amsterdams Armoedefonds') && /Voorwaarden van/.test(t));
   // Oracle (op basis van de ontworpen dataset): passend = Amsterdams Armoedefonds (Pro: kernthema + doelgroep + regio)
   // en Landelijke Zelfredzaamheidsimpuls (Premium: kernthema + doelgroep) = 2.
   // Niet passend: Noord-Hollands Participatiefonds en Fonds Maatschappelijke Participatie. Beide sluiten alleen aan via het
@@ -260,6 +260,9 @@ sectie('Test 7: tier-isolatie');
   check('7a: Free-presentatie (hier zonder cap): alle 5 niet-exclusieve matches, nooit een exclusief fonds', perTier[0].getoond.length === 5 && perTier[0].getoond.every((k) => !k.row.__exclusief));
   check('7a: Pro-presentatie bevat nooit een exclusief fonds, wel een Pro-record', perTier[1].getoond.every((k) => !k.row.__exclusief) && perTier[1].getoond.some((k) => k.accessTier === 'pro'));
   check('7a: Premium-presentatie ziet alle passende (hier 6)', perTier[2].getoond.length === 6);
+  const freeStandaard = M.selecteerFreeFondsadvies(alle, crit, 'free', false, undefined, undefined, idx);
+  check('7a: Free (standaardcap) toont nooit meer dan 3, ook nu Free alle Pro-records mag zien; de rest alleen als aantal', freeStandaard.getoond.length === 3 && freeStandaard.verborgen.length === freeStandaard.aantalPassendTotaal - 3, `${freeStandaard.getoond.length}/${freeStandaard.verborgen.length}`);
+  check('7a: Free-cap 3 geldt ook voor Pro-records: geen enkel getoond record is exclusief of Premium-only', freeStandaard.getoond.every((k) => !k.row.__exclusief));
   const adminSel = M.selecteerFreeFondsadvies(alle, crit, 'free', true, 50, undefined, idx);
   check('7a: admin ziet ook alles, zelfde beoordeling als Premium', adminSel.getoond.length === 6 && ids(adminSel) === ids(perTier[2]));
 

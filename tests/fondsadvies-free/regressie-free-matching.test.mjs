@@ -80,7 +80,7 @@ for (const [label, stray] of [
 {
   const { t, blok } = await freeVraag([lit(), haags(), ...armoedeRegelingen()], A_TEKST);
   check('A: Free ziet de Free-record (Amsterdams Armoedefonds) volledig', t.includes('Amsterdams Armoedefonds'));
-  check('A: het exclusieve Premium-record niet bij naam; het niet-exclusieve Pro-record wel (publiek, zonder criteria)', !t.includes('Participatiefonds Premium') && t.includes('Landelijke Zelfredzaamheidsimpuls') && !/Voorwaarden van Landelijke/.test(t));
+  check('A: het exclusieve Premium-record niet bij naam; het Pro-record wel, sinds 18-10-2026 ook voor Free met volledige gegevens', !t.includes('Participatiefonds Premium') && t.includes('Landelijke Zelfredzaamheidsimpuls') && /Voorwaarden van Landelijke/.test(t));
   // Participatiefonds Premium sluit alleen via het brede label "Participatie & inclusie" aan (plus een
   // andere regio): zonder tweede inhoudelijk signaal geen match. Free toont de 2 echte matches; er blijft niets over.
   check('A: extra_pro_count = 0 en extra_premium_count = 0 (beide echte matches binnen de Free-top 3; breed label alleen telt niet)', getal(blok, /extra_pro_count = (\d+)/) === 0 && getal(blok, /extra_premium_count = (\d+)/) === 0, blok.match(/DATABASE-UITKOMST[^\n]*/)?.[0]);
@@ -288,13 +288,13 @@ sectie('Algemene slotzin: door de server toegevoegd, nooit afhankelijk van wat e
   ];
   const PRO = { user: { id: 'u-pro' }, profile: { subscription_tier: 'pro', subscription_active: true, trial_ends_at: null, role: 'user' } };
   const PREMIUM = { user: { id: 'u-prem' }, profile: { subscription_tier: 'premium', subscription_active: true, trial_ends_at: null, role: 'user' } };
-  const telZinnen = (a) => (a.match(/Met (?:Pro of Premium|Premium) krijgt u daarnaast toegang/g) || []).length;
+  const telZinnen = (a) => (a.match(/Met (?:Pro of Premium|Premium) krijgt u daarnaast toegang|Wilt u meer fondsen zien\?/g) || []).length;
 
   // 1. Free: één algemene zin, geen aantallen, geen namen van verborgen records
   resetWorld({ regelingen: regs(), extractor: kernArm, modelTekst: 'Mijn advies: Oranje Fonds.' });
   const r1 = await vraag(handler, { messages: msg('Welke fondsen passen bij armoede?') });
   const a1 = r1.json.answer;
-  check('Zin Free: precies één algemene zin onderaan, geen cijfers, geen namen', telZinnen(a1) === 1 && a1.startsWith('Mijn advies: Oranje Fonds.') && /uitgebreidere fondsendatabase\.$/.test(a1.trim()) && !/\d/.test(a1.slice('Mijn advies: Oranje Fonds.'.length)) && !/Kansfonds|Rabo|VSB/.test(a1), a1);
+  check('Zin Free: precies één algemene zin onderaan, geen cijfers, geen namen', telZinnen(a1) === 1 && a1.startsWith('Mijn advies: Oranje Fonds.') && /Wilt u meer fondsen zien\? Dat kan met een Pro- of Premium-abonnement\.$/.test(a1.trim()) && !/\d/.test(a1.slice('Mijn advies: Oranje Fonds.'.length)) && !/Kansfonds|Rabo|VSB/.test(a1), a1);
 
   // 2. een door het model zelf geschreven aantallenzin wordt verwijderd
   resetWorld({ regelingen: regs(), extractor: kernArm, modelTekst: 'Advies: Oranje Fonds. Daarnaast zijn er in onze database nog 99 relevante fondsen en regelingen beschikbaar binnen Premium. De volledige details zijn beschikbaar binnen Premium.' });

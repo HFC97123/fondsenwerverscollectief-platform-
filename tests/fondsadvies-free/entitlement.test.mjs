@@ -129,7 +129,7 @@ sectie('0. Identiteit en niveau: exclusiviteit is een eigen classificatie, los v
   check('0: Premium-record zonder exclusiviteitsvlag is NIET verborgen voor Free', M.bepaalNiveau(rf, 'regeling', o, idx).niveau === 'publiek');
   check('0: Premium-record zonder exclusiviteitsvlag is NIET verborgen voor Pro', M.bepaalNiveau(rp, 'regeling', o, idx).niveau === 'publiek');
   check('0: Premium en admin zien het volledig', M.bepaalNiveau(rm, 'regeling', o, idx).niveau === 'volledig' && M.bepaalNiveau(ra, 'regeling', o, idx).niveau === 'volledig');
-  check('0: een Pro-record is voor Pro volledig, voor Free publiek (data-tier blijft werken)', M.bepaalNiveau(rp, 'regeling', proEigen(), idx).niveau === 'volledig' && M.bepaalNiveau(rf, 'regeling', proEigen(), idx).niveau === 'publiek');
+  check('0: een Pro-record is voor Pro en (sinds 18-10-2026) ook voor Free volledig; een Premium-record blijft voor Free publiek', M.bepaalNiveau(rp, 'regeling', proEigen(), idx).niveau === 'volledig' && M.bepaalNiveau(rf, 'regeling', proEigen(), idx).niveau === 'volledig' && M.bepaalNiveau(rf, 'regeling', { ...proEigen(), access_tier: 'premium' }, idx).niveau === 'publiek');
   check('0: een Free-record is voor iedereen volledig', M.bepaalNiveau(rf, 'regeling', eigenFree(), idx).niveau === 'volledig');
 
   // Een expliciet exclusief fonds: verborgen voor Free/Pro, ook als het record op Free of Pro staat.

@@ -789,7 +789,9 @@ function isZichtbaarVoorTier(accessTier: unknown, tier: string, isAdmin: boolean
     case 'free':
       return true;
     case 'pro':
-      return tier === 'pro' || tier === 'premium';
+      // 18-10-2026: Free ziet ook de Pro-records van de database volledig, maar nooit meer dan 3 per antwoord (zie
+      // FREE_ADVIES_MAX_VOLLEDIG en VRIJE_TIER_MAX_VOLLEDIG). Alleen Premium-records blijven voor Free en Pro publiek of verborgen.
+      return tier === 'free' || tier === 'pro' || tier === 'premium';
     case 'premium':
       return tier === 'premium';
     default:
@@ -5218,10 +5220,10 @@ function bouwVerkoopzin(tier: string, isAdmin: boolean, taal: Taal = 'nl'): stri
   if (isAdmin || tier === 'premium') return null;
 
   if (taal === 'en') {
-    return tier === 'pro' ? 'With Premium you also get access to the exclusive funds database.' : 'With Pro or Premium you also get access to a more extensive funds database.';
+    return tier === 'pro' ? 'With Premium you also get access to the exclusive funds database.' : 'Want to see more funds? That is possible with a Pro or Premium subscription.';
   }
 
-  return tier === 'pro' ? 'Met Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.' : 'Met Pro of Premium krijgt u daarnaast toegang tot een uitgebreidere fondsendatabase.';
+  return tier === 'pro' ? 'Met Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.' : 'Wilt u meer fondsen zien? Dat kan met een Pro- of Premium-abonnement.';
 }
 
 function naamVoorVergelijking(t: unknown): string {
@@ -5242,6 +5244,9 @@ const VERKOOPZIN_PATRONEN: RegExp[] = [
   /\s*In addition, our database contains[^.\n]*\.(?:\s*Full details[^.\n]*\.)?/gi,
   /\s*Met (?:Pro of Premium|Premium|Pro en Premium) krijgt u daarnaast toegang[^.\n]*\./gi,
   /\s*With (?:Pro or Premium|Premium|Pro and Premium) you also get access[^.\n]*\./gi,
+  // 18-10-2026: de nieuwe zin voor Free ("Wilt u meer fondsen zien? ..."), zodat een door het model herhaalde variant niet dubbel komt.
+  /\s*Wilt u meer fondsen zien\?[^.\n]*\./gi,
+  /\s*Want to see more funds\?[^.\n]*\./gi,
 ];
 
 function verwerkAanvullendeZin(antwoord: string, tier: string, isAdmin: boolean, metZin: boolean, taal: Taal = 'nl'): { tekst: string; toegevoegd: string } {

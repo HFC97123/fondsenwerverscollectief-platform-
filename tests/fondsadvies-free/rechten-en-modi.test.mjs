@@ -63,7 +63,7 @@ sectie('Engine: eigenschappen over een gerandomiseerd corpus (rangschikking vó�
   // rechten zijn één predicaat
   const rPro = M.bepaalRechten('pro', false);
   check('magZien: fail closed bij onbekend toegangsniveau', M.magZien(rPro, 'onbekend') === false && M.magZien(rPro, undefined) === false && M.magZien(rPro, 'premium') === false && M.magZien(rPro, 'pro') === true && M.magZien(rPro, 'free') === true);
-  check('magZien: Free ziet alleen free; Premium ziet alles; Admin ziet alles', M.magZien(M.bepaalRechten('free', false), 'pro') === false && M.magZien(M.bepaalRechten('free', false), 'free') === true && M.magZien(M.bepaalRechten('premium', false), 'premium') === true && M.magZien(M.bepaalRechten('free', true), 'premium') === true);
+  check('magZien: Free ziet free en pro (nooit premium); Premium ziet alles; Admin ziet alles', M.magZien(M.bepaalRechten('free', false), 'pro') === true && M.magZien(M.bepaalRechten('free', false), 'premium') === false && M.magZien(M.bepaalRechten('free', false), 'onbekend') === false && M.magZien(M.bepaalRechten('free', false), 'free') === true && M.magZien(M.bepaalRechten('premium', false), 'premium') === true && M.magZien(M.bepaalRechten('free', true), 'premium') === true);
   check('beoordeelPool kent geen tier: zelfde pool voor elke rechtenset', (() => { const pool = M.beoordeelPool(alle, criteria, '2026-10-08'); return ['free', 'pro', 'premium'].every((t) => ids({ relevant: pool.relevant }) === ids(M.pasRechtenToe(pool, M.bepaalRechten(t, false)).relevant ? pool : pool)); })());
 }
 
@@ -125,7 +125,7 @@ for (const [mode, tekst, doc] of MODI) {
     } else {
       check(`${lab}: Premium ziet het Premium-fonds wel`, t.includes(PREMIUM_NAAM) && t.includes(PREMIUM_FUNDER));
     }
-    check(`${lab}: het Pro-fonds (niet exclusief) is voor iedereen vindbaar; Free krijgt alleen publieke identiteit, Pro/Premium de volledige gegevens`, t.includes(PRO_NAAM) && (tierNaam === 'Free' ? !t.includes(`Voorwaarden van ${PRO_NAAM}`) : t.includes(`Voorwaarden van ${PRO_NAAM}`)));
+    check(`${lab}: het Pro-fonds (niet exclusief) is voor iedereen vindbaar; sinds 18-10-2026 krijgt ook Free de volledige gegevens (maximaal 3 per antwoord)`, t.includes(PRO_NAAM) && t.includes(`Voorwaarden van ${PRO_NAAM}`));
     check(`${lab}: eigen Free-fonds altijd zichtbaar`, t.includes(FREE_NAAM));
     if (doc) {
       check(`${lab}: documentmodus - GEEN verkoopzin en geen aanvulling: antwoord = modeluitvoer`, r.json.answer === MODEL_TEKST, r.json.answer);
