@@ -1,4 +1,4 @@
--- Bewaarde AI-beoordelingen van fondsen (Pro/Premium, stap 3 van de werkwijze). VOORSTEL, NIET UITGEVOERD. OPTIONEEL.
+-- Bewaarde AI-beoordelingen van fondsen (Pro/Premium, stap 3 van de werkwijze). TOEGEPAST op 2026-10-18 (live versie 20261018091707). Nooit opnieuw uitvoeren.
 --
 -- Eén nieuwe tabel: per (projectprofiel, fonds) het oordeel van de AI met het letterlijke citaat uit de databasetekst. Doel: dezelfde vraag
 -- kost niets extra en een herhaald project wordt sneller beantwoord. De Edge Function werkt ook ZONDER deze tabel (dan wordt elke keer opnieuw
@@ -12,7 +12,7 @@
 --
 -- Veiligheid: RLS aan, geen enkele policy voor ingelogde leden; alleen service_role (de Edge Function) leest en schrijft.
 -- Opruimen: rijen ouder dan 30 dagen worden niet meer gelezen; verwijderen kan handmatig of later met een geplande taak.
--- Rollback: 20261016150000_fonds_beoordelingen_rollback.sql
+-- Rollback: 20261018091707_fonds_beoordelingen_rollback.sql (supabase/voorstel-niet-uitgevoerd)
 begin;
 
 create table if not exists public.subsidie_kompas_fonds_beoordelingen (

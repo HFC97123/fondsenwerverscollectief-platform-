@@ -1,3 +1,4 @@
+-- TOEGEPAST op 2026-10-18 (live versie 20261018091705). Nooit opnieuw uitvoeren. Rollback: supabase/voorstel-niet-uitgevoerd/20261018091705_project_werkgebied_rollback.sql
 -- Werkgebied-verfijning: het gekozen werkgebied als ISO-landcodes plus door het lid BEVESTIGDE verfijningen (GeoNames-ID, plaatsnaam, landcode, coördinaten).
 -- Eén nullable jsonb-kolom op subsidie_kompas_programs; bestaande projecten en rijen blijven ongewijzigd (NULL). Het veld location (het gekozen werkgebied
 -- als tekst) blijft de bron: de landen worden daaruit afgeleid en hier alleen vastgelegd.
