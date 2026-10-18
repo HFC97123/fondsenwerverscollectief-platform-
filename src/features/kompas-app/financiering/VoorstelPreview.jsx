@@ -150,6 +150,50 @@ function BronBlok({ bron, onOpnieuw, bezig }) {
   );
 }
 
+const NOG_NIET_BEKEND = 'Nog niet bekend';
+const PASSENDHEID_TEKST = { aantoonbaar: 'Aantoonbaar passend volgens onze database', mogelijk: 'Mogelijk passend: nog te controleren' };
+
+// Wat onze database van de financier weet. Een leeg veld toont "Nog niet bekend", nooit een aanname; wat nog gecontroleerd moet worden staat apart.
+function Kenmerken({ k }) {
+  const lijst = (l) => (l && l.length ? l.join(', ') : NOG_NIET_BEKEND);
+
+  return (
+    <div data-testid="voorstel-regel-kenmerken" style={css('display: flex; flex-direction: column; gap: 8px;')}>
+      {k.passendheid && (
+        <div data-testid="voorstel-regel-passendheid" data-passendheid={k.passendheid} style={css(`${TEKST} font-size: 13px; font-weight: 800; color: ${k.passendheid === 'aantoonbaar' ? '#2E6B4A' : '#8A5A16'};`)}>
+          {PASSENDHEID_TEKST[k.passendheid]}
+        </div>
+      )}
+      <dl style={css('margin: 0;')}>
+        <Rij label="Wat de financier doet">{k.beschrijving || NOG_NIET_BEKEND}</Rij>
+        <Rij label="Doelgroepen">{lijst(k.doelgroepen)}</Rij>
+        <Rij label="Disciplines">{lijst(k.disciplines)}</Rij>
+        <Rij label="Werkgebied">{lijst(k.werkgebieden)}</Rij>
+        <Rij label="Bandbreedte">{k.bandbreedte || NOG_NIET_BEKEND}</Rij>
+        <Rij label="Officiële informatie">
+          {k.website ? (
+            <a href={k.website} target="_blank" rel="noopener noreferrer" style={css('color: #2C4A5E; font-weight: 700;')}>
+              {k.website.replace(/^https:\/\//, '').replace(/\/$/, '')}
+            </a>
+          ) : (
+            NOG_NIET_BEKEND
+          )}
+        </Rij>
+      </dl>
+      {k.controleren.length > 0 && (
+        <div data-testid="voorstel-regel-controleren">
+          <div style={css(LABEL)}>Nog te controleren</div>
+          <ul style={css(`${TEKST} font-size: 13px; margin: 2px 0 0; padding-left: 18px; color: #6D7C77;`)}>
+            {k.controleren.map((c, i) => (
+              <li key={i}>{c}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // De details van één voorgestelde regel. Alleen weergave van wat de server leverde; bevat zelf geen enkele controle.
 // `bron` (optioneel): de bronstatus uit de aparte broncontrole; `toonVerificatie` (standaard aan): het blok met de verificatiedetails van de preview.
 export function VoorstelRegelDetail({ r, bron = null, toonVerificatie = true, onOpnieuw = null, bezig = false }) {
@@ -190,6 +234,8 @@ export function VoorstelRegelDetail({ r, bron = null, toonVerificatie = true, on
           <div data-testid="voorstel-regel-motivatie" style={css(`${TEKST} font-size: 13.5px;`)}>{r.motivatie}</div>
         </div>
       )}
+
+      {r.kenmerken && <Kenmerken k={r.kenmerken} />}
 
       {r.onzekerheden.length > 0 && (
         <div>

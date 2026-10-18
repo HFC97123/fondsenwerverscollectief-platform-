@@ -24,6 +24,7 @@ import { BEDRAG_INDICATIE_TEKST, BEDRAG_INDICATIE_TEKST_ZONDER_BEDRAG, realistis
 import type { MixKandidaat, MixNiveau, MixResultaat } from './dekkingsmix.ts';
 import type { TierConfig } from './tierConfig.ts';
 import { bronOordeelKort } from './bronControle.ts';
+import { koppelLocatie } from './locatie.ts';
 import { plantActies, plantRegel } from './actieplanStappen.ts';
 import type { PlanningBron, PlanningOpties, PlanSamenvatting } from './actieplanPlanning.ts';
 import type { BronOordeel } from './bronControle.ts';
@@ -68,15 +69,20 @@ const kommaLijst = (x: unknown): string[] =>
 
 // Matching scant op doelgroep, werkgebied en discipline (Aisya, 15-10-2026). Het gevraagde bedrag wordt BEWUST niet meegegeven: het
 // dekkingsplan verdeelt het gat over meerdere financiers; één fonds hoeft het gat niet alleen te dragen, dus geen plafondcontrole.
-export function criteriaRuwUitProject(p: ProjectVelden): Record<string, unknown> {
+export function criteriaRuwUitProject(p: ProjectVelden, werkgebieden: readonly string[] = []): Record<string, unknown> {
   const themas = kommaLijst(p?.themes);
   const budget = Number(p?.budget_total);
+  // Het werkgebied is vrije tekst ("Cariben", "Utrecht en Flevoland"); koppelLocatie legt de koppeling met de lijst werkgebieden in de database,
+  // voorzichtig en uitlegbaar. Wat de gebruiker letterlijk als werkgebied typte (kommagescheiden) blijft ook gelden.
+  const koppeling = koppelLocatie(p?.location, werkgebieden);
+  const regios = Array.from(new Set([...kommaLijst(p?.location), ...koppeling.regios]));
 
   return {
     themas,
     kern_themas: themas.slice(0, 3),
     doelgroepen: kommaLijst(p?.target_groups),
-    regios: kommaLijst(p?.location),
+    regios,
+    eilanden: koppeling.eilanden,
     locatie: tekst(p?.location, 80),
     gevraagd_bedrag: null,
     totaal_budget: Number.isFinite(budget) && budget > 0 ? budget : null,
@@ -100,13 +106,27 @@ export const DOCUMENT_MAX_TEKENS_TOTAAL = 2400;
 // Een uittreksel van de geüploade projectdocumenten (laatste versie van elk), begrensd, zonder besturingstekens. ALLEEN voor de context van de
 // online oriëntatie: de criteria voor de database (discipline, doelgroep, werkgebied) komen uitsluitend uit de projectvelden, en een document
 // kan nooit een abonnementsgrens, bedrag of dekkingsdoel veranderen. De tekst is informatie, geen instructie.
+// Oudere uploads bevatten soms letter voor letter gespatieerde tekst ("S t i c h t i n g  Z o n n i g e"), doordat alle stukjes van een PDF met
+// een spatie aan elkaar geplakt waren. Is het grootste deel van de "woorden" een enkel teken, dan zijn de enkele spaties letterscheidingen en
+// de dubbele spaties woordscheidingen. Anders worden alleen duidelijke reeksen (minstens 5 losse letters) samengevoegd. Gewone tekst blijft ongemoeid.
+export function herstelGespatieerdeTekst(invoer: unknown): string {
+  const t = String(invoer ?? '');
+  const tokens = t.split(/\s+/).filter(Boolean);
+
+  if (tokens.length >= 20 && tokens.filter((x) => Array.from(x).length === 1).length / tokens.length >= 0.4) {
+    return t.replace(/ {2,}/g, '\u0001').replace(/ /g, '').replace(/\u0001/g, ' ');
+  }
+
+  return t.replace(/(?<![\p{L}\p{N}])(?:[\p{L}\p{N}] ){4,}[\p{L}\p{N}](?![\p{L}\p{N}])/gu, (m) => m.replace(/ /g, ''));
+}
+
 export function documentUittreksel(documenten: ReadonlyArray<ProjectDocument> | undefined | null): { tekst: string; aantal: number } {
   const delen: string[] = [];
   let over = DOCUMENT_MAX_TEKENS_TOTAAL;
 
   for (const d of (documenten ?? []).slice(0, DOCUMENT_MAX_AANTAL)) {
     // eslint-disable-next-line no-control-regex
-    const schoon = String(d?.tekst ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const schoon = herstelGespatieerdeTekst(d?.tekst).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
 
     if (!schoon || over <= 0) continue;
 
@@ -153,6 +173,9 @@ export interface EngineKandidaat {
   score: number;
   waarom: string[];
   zwaktes: string[];
+  // Hoe zeker de aansluiting is en wat het lid nog zelf moet controleren (uit de engine; ontbreekt bij oudere aanroepers).
+  passendheid?: 'aantoonbaar' | 'mogelijk' | 'niet';
+  controleren?: string[];
 }
 
 const getal = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.round(x) : typeof x === 'string' && x.trim() !== '' && Number.isFinite(Number(x)) && Number(x) >= 0 ? Math.round(Number(x)) : null);
@@ -373,6 +396,40 @@ function motivatieVan(k: EngineKandidaat): string {
   return waarom.length ? waarom.join(' · ').slice(0, 600) : 'Past op uw doelgroep, werkgebied en discipline volgens de matching van Subsidiekompas.';
 }
 
+// De kenmerken van een financier zoals de database ze kent, voor in de voorstelregel: wat doet het fonds, voor wie, waar, welke disciplines, welke
+// bandbreedte, waar staat de officiële informatie. Alleen uit het server-bekende record (na de entitlementlaag), nooit uit een taalmodel.
+// Wat de database niet weet blijft leeg (null of lege lijst): de weergave toont dan "Nog niet bekend" of "Nog te controleren", nooit een verzinsel.
+export interface Kenmerken {
+  beschrijving: string | null;
+  doelgroepen: string[];
+  disciplines: string[];
+  werkgebieden: string[];
+  bandbreedte: string | null;
+  website: string | null;
+  passendheid: 'aantoonbaar' | 'mogelijk' | null;
+  controleren: string[];
+}
+
+export function kenmerkenVan(rec: ServerRecord | undefined, k: EngineKandidaat | undefined): Kenmerken | null {
+  if (!rec || rec.niveau !== 'volledig') return null;
+
+  const band = tekst(rec.bandbreedte, 120);
+  const bedragen = rec.min != null || rec.max != null ? [rec.min != null ? `vanaf € ${rec.min.toLocaleString('nl-NL')}` : '', rec.max != null ? `tot € ${rec.max.toLocaleString('nl-NL')}` : ''].filter(Boolean).join(' ') : '';
+  const bandbreedte = [band, bedragen].filter(Boolean).join(' · ') || null;
+  const lijstVan = (l: unknown) => (Array.isArray(l) ? l.map((x) => tekst(x, 80)).filter(Boolean).slice(0, 10) : []);
+
+  return {
+    beschrijving: tekst(rec.omschrijving, 400) || tekst(rec.aanvraagcriteria, 400) || null,
+    doelgroepen: lijstVan(rec.doelgroepen),
+    disciplines: lijstVan(rec.themas),
+    werkgebieden: lijstVan(rec.werkgebieden),
+    bandbreedte,
+    website: typeof rec.website === 'string' && /^https:\/\//i.test(rec.website) ? rec.website.slice(0, 500) : null,
+    passendheid: k?.passendheid === 'aantoonbaar' || k?.passendheid === 'mogelijk' ? k.passendheid : null,
+    controleren: (k?.controleren ?? []).map((c) => tekst(c, 220)).filter(Boolean).slice(0, 6),
+  };
+}
+
 function zwaktesVan(k: EngineKandidaat): string[] {
   return (k.zwaktes || []).map((w) => tekst(w, 280)).filter(Boolean).slice(0, 3);
 }
@@ -457,8 +514,10 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
     : selecteerDekkingsmix({ kandidaten: inv.kandidaten.map((k) => k.mix), gat: gatVan(inv.dekking), config: inv.config });
   const regelVan = (m: { sleutel: string; type: 'regeling' | 'fonds'; id: string; naam: string; bedrag: number | null; uitleg: string; onzekerheden: string[]; optioneel?: boolean }, reserve: boolean) => {
     const e = perSleutel.get(m.sleutel)?.engine;
+    const rec = inv.records.find((r) => r.type === m.type && String(r.id).toLowerCase() === m.id);
 
     return {
+      kenmerken: kenmerkenVan(rec, e),
       type: m.type,
       id: m.id,
       naam: m.naam,

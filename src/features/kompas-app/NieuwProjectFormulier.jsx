@@ -215,7 +215,11 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
         </div>
       )}
 
-      <div style={css('margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;')}>
+      <div data-testid="np-zoekprofiel-uitleg" style={css(`${HULP} margin-top: 20px; display: block;`)}>
+        Dit is uw projectprofiel en tevens het zoekprofiel: Subsidiekompas zoekt financiers op de discipline, doelgroep en het werkgebied (bij voorkeur het eiland of land) die u hier invult, en rekent met de begroting. Hoe completer, hoe scherper de uitkomst.
+      </div>
+
+      <div style={css('margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap;')}>
         <Button type="submit" disabled={bezig}>
           {bewerk ? (bezig ? 'Bezig met opslaan…' : 'Project opslaan') : bezig ? 'Project wordt aangemaakt…' : 'Project aanmaken'}
         </Button>

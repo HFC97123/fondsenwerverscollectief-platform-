@@ -9,7 +9,7 @@ export const GENEREREN_FUNCTION = 'subsidie-kompas';
 const ALGEMENE_FOUT = 'Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen. Probeer het later opnieuw.';
 const OVERZICHT = {
   'niet-beschikbaar-voor-abonnement': 'Het dekkingsplan met Subsidiekompas is een Pro- en Premium-functie.',
-  'geen-begroting': 'Vul eerst de projectbegroting in; zonder begroting kan geen sluitend dekkingsplan met bedragen worden gemaakt.',
+  'geen-begroting': 'Vul eerst de projectbegroting in, ook een richtbedrag is genoeg; zonder bedrag kan geen gericht dekkingsplan worden gemaakt.',
   'onvoldoende-projectgegevens': 'Kies bij dit project eerst een discipline en een doelgroep uit de lijst; daarop zoekt Subsidiekompas financiers.',
 };
 
@@ -26,7 +26,11 @@ async function leesFout(error) {
       const regelFouten = body.regelFouten && typeof body.regelFouten === 'object' && !Array.isArray(body.regelFouten) ? body.regelFouten : null;
       const algemeen = body.algemeen && typeof body.algemeen === 'object' ? body.algemeen : null;
 
-      return { reden, melding: OVERZICHT[reden] || (typeof body.error === 'string' && body.error.length < 300 ? body.error : ALGEMENE_FOUT), regelFouten, algemeen, status: res.status };
+      // Onvoldoende projectgegevens: noem precies welke velden bij het project nog ontbreken.
+      const ontbreekt = Array.isArray(body.ontbreekt) ? body.ontbreekt.filter((x) => ['discipline', 'doelgroep', 'werkgebied'].includes(x)) : [];
+      const ontbrekendTekst = reden === 'onvoldoende-projectgegevens' && ontbreekt.length ? `Vul bij het project nog in: ${ontbreekt.join(', ')}. Subsidiekompas zoekt financiers op de gegevens van het project zelf.` : '';
+
+      return { reden, melding: ontbrekendTekst || OVERZICHT[reden] || (typeof body.error === 'string' && body.error.length < 300 ? body.error : ALGEMENE_FOUT), regelFouten, algemeen, status: res.status };
     }
   } catch (e) {
     // geen leesbare foutinhoud

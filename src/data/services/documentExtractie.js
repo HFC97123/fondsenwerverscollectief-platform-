@@ -7,6 +7,7 @@
 // stap, als tekst, richting Supabase Storage/de Edge Function. mammoth en
 // pdfjs-dist worden dynamisch geïmporteerd zodat ze niet in elke pagina's
 // bundel terechtkomen, alleen waar een document wordt geüpload.
+import { pdfItemsNaarTekst } from './pdfTekst.js';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 const MAX_TEKENS = 20000;
@@ -61,7 +62,7 @@ async function leesPdf(file) {
       const pagina = await doc.getPage(i);
       const inhoud = await pagina.getTextContent();
 
-      tekst += `${inhoud.items.map((item) => item.str || '').join(' ')}\n\n`;
+      tekst += `${pdfItemsNaarTekst(inhoud.items)}\n\n`;
     }
 
     return tekst;

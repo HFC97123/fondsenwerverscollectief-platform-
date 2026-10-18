@@ -3144,6 +3144,31 @@ function heeftFinancieringsIntentie(berichten: any[], kompasMode: KompasMode): b
   return strikt;
 }
 
+// Eilanden van het Koninkrijk en algemene Caribische termen. Bewust een kleine kopie van ../_shared/locatie.ts (index.ts importeert _shared niet
+// statisch, zodat de chat-opstart onaangetast blijft); de tests controleren dat beide hetzelfde herkennen.
+const EILAND_NAMEN: readonly string[] = ['Aruba', 'Curaçao', 'Sint Maarten', 'Bonaire', 'Sint Eustatius', 'Saba'];
+const EILAND_RES: ReadonlyArray<readonly [string, RegExp]> = [
+  ['Aruba', /\baruba\b/],
+  ['Curaçao', /\bcuracao\b/],
+  ['Sint Maarten', /\b(?:sint|st\.?|saint)[ -]?maarten\b|\bsxm\b/],
+  ['Bonaire', /\bbonaire\b/],
+  ['Sint Eustatius', /\b(?:sint|st\.?|saint)[ -]?eustatius\b|\bstatia\b/],
+  ['Saba', /\bsaba\b/],
+];
+const CARIBISCH_NEDERLAND_TEKST_RE = /\bcaribisch(?:e)? nederland\b|\bbes[- ]eilanden\b/;
+const CARIB_REGIO_LABELS = new Set(['caribisch deel van het koninkrijk', 'caribisch gebied']);
+const CARIB_ALGEMEEN_RE = /\bcarib\w*|\bcaraib\w*|\bantillen\b|\bwest-?indi\w*\b/;
+
+function eilandenUitTekst(...teksten: unknown[]): string[] {
+  const t = teksten.filter(Boolean).join(' . ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const uit: string[] = [];
+
+  for (const [naam, re] of EILAND_RES) if (re.test(t) && !uit.includes(naam)) uit.push(naam);
+  if (CARIBISCH_NEDERLAND_TEKST_RE.test(t)) for (const e of ['Bonaire', 'Sint Eustatius', 'Saba']) if (!uit.includes(e)) uit.push(e);
+
+  return uit;
+}
+
 type FondsCriteria = {
   themas: string[];
   // Het kleine aantal thema's dat het project in de eigen woorden van de
@@ -3164,6 +3189,10 @@ type FondsCriteria = {
   // Korte trefwoorden voor doel, probleemstelling en gewenste impact van het project
   // (in de woorden van de gebruiker). Alleen gebruikt als bewijs in de fondstekst.
   doelTermen?: string[];
+  // Eilanden van het Koninkrijk waar het project plaatsvindt (leeg = onbekend). Alleen gevuld als de locatie een eiland noemt.
+  eilanden?: string[];
+  // Caribische locatie zonder eiland ("Cariben"): het lid moet nog aangeven welk eiland of land.
+  locatieVaag?: boolean;
 };
 
 type Aanvragertype = 'organisatie' | 'informeel' | 'particulier' | 'commercieel' | 'overheid' | 'onbekend';
@@ -3238,13 +3267,20 @@ function leesFondsCriteria(ruw: any, taxonomie: Taxonomie): FondsCriteria {
 
   const themasGekozen = kies(ruw?.themas, taxonomie.themas);
   const kernGekozen = kies(ruw?.kern_themas, taxonomie.themas).filter((t) => themasGekozen.includes(t));
+  const regiosGekozen = kies(ruw?.regios, taxonomie.regios);
+  const locatieTekst = String(ruw?.locatie || '').replace(/[\r\n]+/g, ' ').slice(0, 80);
+  // Eilanden: uit de eigen aanduiding van de server (ruw.eilanden, al gecontroleerd) of uit de locatietekst.
+  const eilandenGekozen = Array.from(new Set([...(Array.isArray(ruw?.eilanden) ? ruw.eilanden : []), ...eilandenUitTekst(locatieTekst)].map((x: unknown) => String(x)).filter((x) => EILAND_NAMEN.includes(x)))).slice(0, 6);
+  const caribisch = regiosGekozen.some((r) => CARIB_REGIO_LABELS.has(normaliseerTekst(r))) || CARIB_ALGEMEEN_RE.test(normaliseerTekst(locatieTekst));
 
   return {
     themas: themasGekozen,
     kernThemas: kernGekozen,
     doelgroepen: kies(ruw?.doelgroepen, taxonomie.doelgroepen),
-    regios: kies(ruw?.regios, taxonomie.regios),
-    locatieTekst: String(ruw?.locatie || '').replace(/[\r\n]+/g, ' ').slice(0, 80),
+    regios: regiosGekozen,
+    eilanden: eilandenGekozen,
+    locatieVaag: caribisch && !eilandenGekozen.length,
+    locatieTekst,
     gevraagdBedrag: Number.isFinite(bedragRuw) && bedragRuw > 0 ? bedragRuw : null,
     totaalBudget: Number.isFinite(totaalRuw) && totaalRuw > 0 ? totaalRuw : null,
     aanvragertype: (AANVRAGERTYPEN.includes(typeRuw) ? typeRuw : 'onbekend') as Aanvragertype,
@@ -3258,6 +3294,17 @@ function leesFondsCriteria(ruw: any, taxonomie: Taxonomie): FondsCriteria {
 // tonen of tellen (het model stelt dan eerst verduidelijkende vragen).
 function criteriaVoldoende(c: FondsCriteria | null): boolean {
   return Boolean(c && (c.themas.length || c.doelgroepen.length));
+}
+
+// Welke projectvelden zijn (nog) niet bruikbaar ingevuld? Het zoekprofiel IS het project: wat hier ontbreekt, moet bij het project worden ingevuld.
+function ontbrekendeProjectvelden(c: FondsCriteria | null): string[] {
+  const uit: string[] = [];
+
+  if (!c?.themas.length) uit.push('discipline');
+  if (!c?.doelgroepen.length) uit.push('doelgroep');
+  if (!c?.regios.length && !c?.eilanden?.length) uit.push('werkgebied');
+
+  return uit;
 }
 
 async function criteriaUitGesprek(
@@ -3355,9 +3402,10 @@ const NL_PLAATSEN: { naam: string; re: RegExp; provincie: string }[] = [
   { naam: 'Rotterdam', re: /\brotterdam\w*/i, provincie: 'Zuid-Holland' },
   { naam: 'Leiden', re: /\b(leiden|leidse|leids)\b/i, provincie: 'Zuid-Holland' },
   { naam: 'Utrecht', re: /\butrecht\w*/i, provincie: 'Utrecht' },
-  // Caribisch Nederland ontbreekt als regio in de taxonomie (regios); daarom
-  // alleen herkenbaar aan naam/locatietekst. Geen provincie.
-  { naam: 'Caribisch Nederland', re: /(caribisch\w*|\bcaribe\b|\bbonaire\b|sint[- ]eustatius|\bstatia\b|\bsaba\b)/i, provincie: '' },
+  // Het Caribische deel van het Koninkrijk (Aruba, Curaçao, Sint Maarten en de drie openbare lichamen Bonaire, Sint Eustatius en Saba). De
+  // regio staat ook in de taxonomie; hier herkennen we daarnaast de NAAM van een fonds en de vrije locatietekst ("Cariben", "Caribisch gebied",
+  // "Antillen", een eilandnaam). Welk eiland precies wordt apart beoordeeld (zie beoordeelGeografie). Geen provincie.
+  { naam: 'Caribisch deel van het Koninkrijk', re: /(\bcarib(?:isch\w*|ben|bean|en|e)\b|\bcaraib\w*|\bantillen\b|\bwest-?indi\w*|\baruba\b|\bcura[cç]ao\b|\bbonaire\b|\b(?:sint|st\.?|saint)[ -]?(?:maarten|eustatius)\b|\bsxm\b|\bstatia\b|\bsaba\b)/i, provincie: '' },
 ];
 
 // Plaatsen waar het project plaatsvindt: uit de taxonomie-regio's (extractie)
@@ -3367,11 +3415,14 @@ function projectPlaatsen(criteria: FondsCriteria): Set<string> {
   const uit = new Set<string>();
 
   for (const p of NL_PLAATSEN) {
-    const viaRegio = criteria.regios.some((r) => normaliseerTekst(r) === normaliseerTekst(p.naam));
+    const viaRegio = criteria.regios.some((r) => normaliseerTekst(r) === normaliseerTekst(p.naam) || (CARIB_REGIO_LABELS.has(normaliseerTekst(p.naam)) && CARIB_REGIO_LABELS.has(normaliseerTekst(r))));
     const viaTekst = Boolean(criteria.locatieTekst) && p.re.test(criteria.locatieTekst);
 
     if (viaRegio || viaTekst) uit.add(normaliseerTekst(p.naam));
   }
+
+  // Eilanden of een algemene Caribische locatie (ook als die alleen uit de server-aanduiding komt).
+  if (isCaribischProject(criteria)) uit.add(normaliseerTekst('Caribisch deel van het Koninkrijk'));
 
   return uit;
 }
@@ -3569,6 +3620,11 @@ type Kandidaat = {
   // Uitleg per kandidaat: waarom het past en wat de zwaktes/aandachtspunten zijn.
   waarom: string[];
   zwaktes: string[];
+  // Hoe zeker de aansluiting is: 'aantoonbaar' (thema, werkgebied en doelgroep staan in de database) of 'mogelijk' (er is nog iets te controleren).
+  // Een uitgesloten kandidaat is 'niet'. Onbekend is nooit een uitsluiting: het wordt 'mogelijk' met een controlepunt.
+  passendheid: 'aantoonbaar' | 'mogelijk' | 'niet';
+  // Wat het lid nog zelf moet controleren (kort, in gewoon Nederlands). Leeg bij 'aantoonbaar' zonder open punten.
+  controleren: string[];
 };
 
 // Tekst waarin expliciete voorwaarden van een regeling/fonds kunnen staan.
@@ -3861,6 +3917,65 @@ const REGIO_INTERNATIONAAL = new Set(['europa', 'wereld / internationaal']);
 const REGIO_VAAG = new Set(['provinciaal', 'regionaal']);
 const REGIO_BUITENLAND = new Set(['afrika', 'azië', 'noord-amerika', 'zuid-amerika', 'wereld / internationaal', 'belgië']);
 
+// Is dit een project in het Caribische deel van het Koninkrijk (of een Caribische locatie die nog niet nader is bepaald)?
+function isCaribischProject(c: FondsCriteria): boolean {
+  if (c.eilanden?.length || c.locatieVaag) return true;
+  if (c.regios.some((r) => CARIB_REGIO_LABELS.has(normaliseerTekst(r)))) return true;
+
+  const t = String(c.locatieTekst || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  return CARIB_ALGEMEEN_RE.test(t) || CARIBISCH_NEDERLAND_TEKST_RE.test(t);
+}
+
+// Werkgebieden die het Caribische deel van het Koninkrijk MOGELIJK omvatten: breed genoeg dat het fonds er in de praktijk wel kan werken,
+// maar de database zegt het niet. Dat is "nog te controleren", geen uitsluiting en geen bewijs.
+const REGIO_MOGELIJK_CARIBISCH = new Set(['landelijk', 'nederland', 'europa', 'wereld / internationaal', 'provinciaal', 'regionaal', 'noord-amerika', 'zuid-amerika', 'latijns-amerika']);
+
+// Beoordeling van een fonds/regeling voor een project in het Caribische deel van het Koninkrijk. Caribisch gebied, Caribisch Nederland, Aruba,
+// Curaçao en Sint Maarten zijn NIET inwisselbaar, en "Nederland" betekent niet automatisch alle eilanden. Geeft null als dit fonds hier niets
+// bijzonders over zegt (de gewone regels gelden dan).
+function beoordeelCaribischeGeografie(naam: string, funderNaam: string, regios: string[], criteria: FondsCriteria): Geografie | null {
+  const uit = (status: GeoStatus, reden: string | null, positief = false, notitie: string | null = null, label: string | null = null): Geografie => ({ status, reden, positief, notitie, label });
+  const labels = regios.map(normaliseerTekst).filter(Boolean);
+  const projectEilanden = criteria.eilanden || [];
+  const fondsEilanden = eilandenUitTekst(naam, funderNaam);
+
+  // 1. Het fonds is (volgens naam of gever) aan een of meer eilanden gebonden.
+  if (fondsEilanden.length) {
+    if (projectEilanden.length) {
+      const gemeen = fondsEilanden.filter((e) => projectEilanden.includes(e));
+
+      return gemeen.length
+        ? uit('eligible', null, true, null, gemeen.join(', '))
+        : uit('ineligible', `gericht op ${fondsEilanden.join(', ')}, het project vindt plaats op ${projectEilanden.join(', ')}`);
+    }
+
+    return uit('unknown', null, false, `het fonds is gericht op ${fondsEilanden.join(', ')}; op welk eiland het project plaatsvindt is nog niet bekend`);
+  }
+
+  // 2. Een Caribisch werkgebied in de database: positief.
+  const caribLabel = regios.find((r) => CARIB_REGIO_LABELS.has(normaliseerTekst(r)));
+
+  if (caribLabel) return uit('eligible', null, true, null, caribLabel);
+
+  if (!labels.length) return uit('unknown', null, false, 'het werkgebied van het fonds is niet bekend');
+
+  // 3. Breed werkgebied dat het Caribische gebied mogelijk omvat: controleren.
+  const mogelijk = labels.filter((r) => REGIO_MOGELIJK_CARIBISCH.has(r));
+
+  if (mogelijk.length) {
+    const landelijk = mogelijk.some((r) => r === 'landelijk' || r === 'nederland');
+    const wat = regios.filter((r) => REGIO_MOGELIJK_CARIBISCH.has(normaliseerTekst(r))).join(', ');
+
+    return uit('unknown', null, false, landelijk
+      ? `het werkgebied is "${wat}": controleer of het fonds ook aanvragen uit het Caribische deel van het Koninkrijk honoreert`
+      : `het werkgebied is "${wat}": controleer of het Caribische gebied daaronder valt`);
+  }
+
+  // 4. Alleen werkgebieden elders (een provincie of stad in Nederland, of een ander werelddeel): het fonds werkt niet in het Caribische gebied.
+  return uit('ineligible', `werkgebied (${regios.join(', ')}) ligt buiten het Caribische deel van het Koninkrijk`);
+}
+
 function beoordeelGeografie(naam: string, funderNaam: string, row: any, regios: string[], criteria: FondsCriteria): Geografie {
   const projRegios = projectRegios(criteria);
   const locatieBekend = projRegios.size > 0 || Boolean(normaliseerTekst(criteria.locatieTekst));
@@ -3871,6 +3986,17 @@ function beoordeelGeografie(naam: string, funderNaam: string, row: any, regios: 
   const heeftAlgemeen = heeftLandelijk || heeftInternationaal || heeftVaag;
   const specifiek = labels.filter((r) => !REGIO_ALGEMEEN.has(r));
   const uit = (status: GeoStatus, reden: string | null, positief = false, notitie: string | null = null, label: string | null = null): Geografie => ({ status, reden, positief, notitie, label });
+
+  // Project in het Caribische deel van het Koninkrijk: eigen, voorzichtige beoordeling (eilanden zijn niet inwisselbaar met "Nederland").
+  if (isCaribischProject(criteria)) {
+    const gebondenCarib = plaatsGebondenBuitenProject(naam, funderNaam, row, criteria);
+
+    if (gebondenCarib && !CARIB_REGIO_LABELS.has(normaliseerTekst(gebondenCarib))) return uit('ineligible', `gericht op ${gebondenCarib}, buiten het werkgebied van het project`);
+
+    const carib = beoordeelCaribischeGeografie(naam, funderNaam, regios, criteria);
+
+    if (carib) return carib;
+  }
 
   // Binnenlands versus buitenland.
   if (labels.length) {
@@ -3933,6 +4059,39 @@ function beoordeelGeografie(naam: string, funderNaam: string, row: any, regios: 
 // het fonds). Regio en aanvragertype tellen mee in de score, maar zijn geen
 // inhoudelijk bewijs (zet TWEEDE_SIGNAAL_INHOUDELIJK op false om ze mee te laten
 // tellen).
+// Verwante doelgroepen: een fonds voor "Scholen en onderwijsinstellingen" of "Gezinnen" kan een project voor "Kinderen" wel degelijk
+// ondersteunen, ook als "Kinderen" niet letterlijk bij het fonds staat. Zo'n verwantschap sluit een fonds NIET uit, maar telt ook niet als
+// positief signaal: ze komt als "nog te controleren" in de uitleg. Alleen een fonds waarvan de doelgroepen nergens bij het project passen, valt af.
+const DOELGROEP_VERWANT: string[][] = [
+  ['Kinderen', 'Jongeren', 'Gezinnen', 'Scholen en onderwijsinstellingen', 'Studenten', 'Jonge makers'],
+  ['Mensen in armoede', 'Mensen in een kwetsbare positie', 'Gezinnen', 'Dak- en thuislozen', 'Nieuwkomers/ongedocumenteerden', 'Minderheden', 'Vluchtelingen', 'Mensen met afstand tot de arbeidsmarkt', 'Werklozen', 'Slachtoffers van noodhulp'],
+  ['Chronisch zieken', 'Mensen met een chronische aandoening', 'Patiënten', 'Mantelzorgers', 'Mensen met een langdurige zorgvraag', 'Naasten van mensen met een chronische aandoening', 'Mensen met een beperking', 'Mensen met een lichamelijke beperking', 'Mensen met beperkte toegang tot gezondheidszorg', 'Zorginstellingen', 'Blinden en slechtzienden'],
+  ['Makers', 'Kunstenaars', 'Jonge makers', 'Culturele instellingen', 'Musea', 'Podiumkunstorganisaties', 'Kunstbeschouwers', 'Curatoren', 'Uitgevers'],
+  ['Erfgoedinstellingen', 'Erfgoedprofessionals', 'Musea', 'Curatoren'],
+  ['Gemeenschappen', 'Buurtbewoners', 'Vrijwilligers', 'Serviceclubs', 'Kerken en religieuze organisaties'],
+];
+
+// De doelgroepen van het fonds die verwant (maar niet gelijk) zijn aan een doelgroep van het project.
+function verwanteDoelgroepen(fonds: string[], project: string[]): string[] {
+  const proj = new Set(project.map(normaliseerTekst));
+  const uit: string[] = [];
+
+  for (const f of fonds) {
+    if (uit.includes(f)) continue;
+
+    const fn = normaliseerTekst(f);
+    const verwant = DOELGROEP_VERWANT.some((groep) => {
+      const g = groep.map(normaliseerTekst);
+
+      return g.includes(fn) && g.some((x) => x !== fn && proj.has(x));
+    });
+
+    if (verwant) uit.push(f);
+  }
+
+  return uit;
+}
+
 const TWEEDE_SIGNAAL_INHOUDELIJK = true;
 
 function beoordeelKandidaat(
@@ -3965,7 +4124,9 @@ function beoordeelKandidaat(
 
   const dgOverlap = exact(doelgroepen, criteria.doelgroepen);
 
-  if (!uitsluiting && criteria.doelgroepen.length && doelgroepen.length && !dgOverlap.length) {
+  const dgVerwant = dgOverlap.length ? [] : verwanteDoelgroepen(doelgroepen, criteria.doelgroepen);
+
+  if (!uitsluiting && criteria.doelgroepen.length && doelgroepen.length && !dgOverlap.length && !dgVerwant.length) {
     uitsluiting = 'doelgroep sluit niet aan';
   }
 
@@ -4054,6 +4215,7 @@ function beoordeelKandidaat(
   if (themaNiveau === 'secundair' || themaNiveau === 'breed') zwaktes.push('het thema sluit alleen indirect aan');
   if (geo.notitie) zwaktes.push(geo.notitie);
   if (criteria.doelgroepen.length && !doelgroepen.length) zwaktes.push('de doelgroep van het fonds is niet bekend');
+  if (dgVerwant.length) zwaktes.push(`de doelgroep van het fonds (${dgVerwant.join(', ')}) sluit alleen indirect aan op die van het project`);
   if (focus.niveau === 'licht') zwaktes.push('het fonds heeft een brede portefeuille met veel andere domeinen');
   if (focus.niveau === 'sterk') zwaktes.push(`het zwaartepunt van het fonds ligt bij andere thema's (${focus.buiten.slice(0, 3).join(', ')})`);
   if ((criteria.activiteiten || []).length && !actPos.length) zwaktes.push('de projectactiviteit wordt niet expliciet genoemd');
@@ -4063,6 +4225,18 @@ function beoordeelKandidaat(
   const cofin = `${row?.cofinanciering || ''} ${row?.eigen_bijdrage || ''}`.trim();
 
   if (cofin && !/^(geen|nee|n\.?v\.?t\.?)\b/i.test(cofin)) zwaktes.push('cofinanciering of een eigen bijdrage kan gevraagd worden');
+
+  // Wat nog gecontroleerd moet worden. Onbekend telt nooit als uitsluiting en nooit als bewijs.
+  const controleren: string[] = [];
+
+  if (geo.status === 'unknown' && geo.notitie) controleren.push(geo.notitie.charAt(0).toUpperCase() + geo.notitie.slice(1));
+  if (criteria.doelgroepen.length && !doelgroepen.length) controleren.push('De doelgroep van het fonds is nog niet bekend: controleer of kinderen/uw doelgroep worden ondersteund');
+  if (dgVerwant.length) controleren.push(`De doelgroep van het fonds (${dgVerwant.join(', ')}) sluit alleen indirect aan: controleer of uw doelgroep ook wordt ondersteund`);
+  if (themaNiveau === 'secundair' || themaNiveau === 'breed') controleren.push('Het thema sluit alleen indirect aan: controleer in de voorwaarden of uw project onder het doel van het fonds valt');
+  if (bedragMin == null && bedragMax == null) controleren.push('Het bedrag dat het fonds toekent is nog niet bekend');
+
+  const onzekerBelangrijk = geo.status === 'unknown' || themaNiveau !== 'kern' || (criteria.doelgroepen.length > 0 && !dgPos);
+  const basisPassendheid: Kandidaat['passendheid'] = onzekerBelangrijk ? 'mogelijk' : 'aantoonbaar';
 
   const match = {
     totaal,
@@ -4125,6 +4299,8 @@ function beoordeelKandidaat(
     inhoudelijkSignaal,
     waarom,
     zwaktes,
+    passendheid: uitsluiting ? 'niet' : basisPassendheid,
+    controleren,
   };
 }
 
@@ -6620,12 +6796,12 @@ async function laadGenereerBasis(admin: any, authHeader: string, profileId: stri
     overige: project.own_contribution,
   });
 
-  // Zonder begroting is een dekkingsplan met bedragen niet mogelijk. Heeft het lid een zoekprofiel bevestigd, dan mag hij wel passende fondsen
-  // zoeken: zonder bedragen, zonder dekkingsdoel en met een uitdrukkelijke melding dat de matching op bedrag beperkt is.
+  // Zonder begroting is een dekkingsplan met bedragen niet mogelijk. Alleen met een door het lid bevestigd zoekprofiel (chatroute) mag er wel gezocht worden: zonder bedragen, zonder dekkingsdoel en met een uitdrukkelijke melding dat de matching op bedrag beperkt is.
   const zonderBedrag = !dekking.heeftBegroting && Boolean(profielRuw);
 
+  // Een bedrag is nodig voor een gericht dekkingsplan en een strategie, ook als het maar een richtbedrag is: zonder begroting geen voorstel.
   if (!dekking.heeftBegroting && !zonderBedrag) {
-    return { fout: { status: 422, body: { ok: false, reden: 'geen-begroting', error: 'Vul eerst de projectbegroting in; zonder begroting kan geen sluitend dekkingsplan met bedragen worden gemaakt.' } } as GenereerFout };
+    return { fout: { status: 422, body: { ok: false, reden: 'geen-begroting', error: 'Vul eerst de projectbegroting in, ook een richtbedrag is genoeg; zonder bedrag kan geen gericht dekkingsplan worden gemaakt.' } } as GenereerFout };
   }
 
   const taxonomie = await laadTaxonomie(admin);
@@ -6634,7 +6810,7 @@ async function laadGenereerBasis(admin: any, authHeader: string, profileId: stri
 
   // Criteria komen uit het door het lid BEVESTIGDE zoekprofiel (voorstel-zoekprofiel; de server controleert het opnieuw tegen de taxonomie) of, zonder
   // profiel, UITSLUITEND uit de projectvelden (discipline, doelgroep, werkgebied): geen taalmodel, geen gesprek, geen aanvragertype.
-  const criteria = leesFondsCriteria(profielRuw ?? criteriaRuwUitProject(project), taxonomie);
+  const criteria = leesFondsCriteria(profielRuw ?? criteriaRuwUitProject(project, taxonomie.regios), taxonomie);
   // Wat van het bevestigde profiel NIET bruikbaar was (geen databasecategorie, of boven het maximum): wordt teruggemeld, nooit stilzwijgend weggelaten.
   const profielToetsing = profielRuw ? toetsProfiel(profielRuw, criteria) : null;
 
@@ -6642,14 +6818,15 @@ async function laadGenereerBasis(admin: any, authHeader: string, profileId: stri
     return {
       fout: {
         status: 422,
-        body: { ok: false, reden: 'onvoldoende-projectgegevens', error: 'Kies bij dit project eerst een discipline en een doelgroep uit de lijst; daarop zoekt Subsidiekompas financiers.' },
+        body: { ok: false, reden: 'onvoldoende-projectgegevens', error: 'Kies bij dit project eerst een discipline en een doelgroep uit de lijst; daarop zoekt Subsidiekompas financiers.', ontbreekt: ontbrekendeProjectvelden(criteria) },
       } as GenereerFout,
     };
   }
 
   const aannames: string[] = [];
 
-  if (!criteria.regios.length) aannames.push('Het werkgebied is niet (herkenbaar) ingevuld: de geografische voorwaarden van financiers zijn niet getoetst en moeten nog worden gecontroleerd.');
+  if (!criteria.regios.length && !criteria.eilanden?.length) aannames.push('Het werkgebied is niet (herkenbaar) ingevuld: de geografische voorwaarden van financiers zijn niet getoetst en moeten nog worden gecontroleerd.');
+  if (criteria.locatieVaag) aannames.push(`Als werkgebied staat "${criteria.locatieTekst}": op welk eiland of in welk land het project plaatsvindt (bijvoorbeeld Aruba, Curaçao, Sint Maarten, Bonaire, Sint Eustatius of Saba) is niet vastgelegd. Financiers die zich op één eiland richten staan daarom als "nog te controleren". Vul het eiland of land in bij het project voor een scherpere uitkomst.`);
   if (!criteria.doelgroepen.length) aannames.push('De doelgroep is niet ingevuld: financiers zijn breder gezocht en de doelgroepeisen moeten nog worden gecontroleerd.');
   if (!criteria.themas.length) aannames.push('De discipline is niet ingevuld: financiers zijn breder gezocht en de inhoudelijke eisen moeten nog worden gecontroleerd.');
 
@@ -6759,6 +6936,9 @@ type VoorstelServerRecord = {
   doelgroepen?: string[];
   werkgebieden?: string[];
   aanvraagcriteria?: string | null;
+  // Korte beschrijving van wat de financier doet (missie of type projecten) en de bandbreedte, voor de kenmerken per voorstelregel.
+  omschrijving?: string | null;
+  bandbreedte?: string | null;
   // Planningsgegevens voor het actieplan (rondes, beoordelingsdatum, behandeltermijn, vergaderdatum); alleen bij niveau 'volledig'.
   planning?: import('../_shared/actieplanPlanning.ts').PlanningBron | null;
 };
@@ -6806,6 +6986,8 @@ function voorstelRecordUitRij(soort: 'regeling' | 'fonds', rij: any, id: string,
       doelgroepen: volledig ? voorstelLabels(row.doelgroepen_namen) : [],
       werkgebieden: volledig ? voorstelLabels(row.werkgebieden_namen) : [],
       aanvraagcriteria: volledig ? String(row.aanvraagcriteria || '').slice(0, 600) || null : null,
+      omschrijving: volledig ? String(row.type_projecten || row.funder_missie || row.toelichting || '').replace(/\s+/g, ' ').trim().slice(0, 400) || null : null,
+      bandbreedte: volledig ? String(row.bandbreedte_bijdrage_naam || '').slice(0, 120) || null : null,
       planning: volledig
         ? {
             status: String(row.status || '').slice(0, 40) || null,
@@ -6840,6 +7022,8 @@ function voorstelRecordUitRij(soort: 'regeling' | 'fonds', rij: any, id: string,
     doelgroepen: volledig ? voorstelLabels(row.doelgroepen_namen) : [],
     werkgebieden: volledig ? voorstelLabels(row.werkgebieden_namen) : [],
     aanvraagcriteria: volledig ? String(row.aanvraagcriteria || '').slice(0, 600) || null : null,
+    omschrijving: volledig ? String(row.missie || row.funder_missie || '').replace(/\s+/g, ' ').trim().slice(0, 400) || null : null,
+    bandbreedte: volledig ? String(row.bandbreedte_bijdrage_naam || '').slice(0, 120) || null : null,
     planning: volledig ? { status: null, deadline: null } : null, // vergadergegevens volgen uit verrijkPlanning
   };
 }

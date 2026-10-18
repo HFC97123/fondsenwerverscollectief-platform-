@@ -542,6 +542,25 @@ function lijst(v, maxItems, maxTekst) {
   return (Array.isArray(v) ? v : []).map((x) => kort(x, maxTekst)).filter(Boolean).slice(0, maxItems);
 }
 
+// Kenmerken van een financier uit de database (alleen om te tonen; heeft geen invloed op bedragen of planning). Alles is begrensd; een onbekend
+// veld blijft leeg (null of een lege lijst), zodat de weergave "Nog niet bekend" kan tonen in plaats van iets te verzinnen.
+function leesKenmerken(k) {
+  if (!k || typeof k !== 'object') return null;
+
+  const url = veiligeUrl(k.website);
+
+  return {
+    beschrijving: kort(k.beschrijving, 400) || null,
+    doelgroepen: lijst(k.doelgroepen, 10, 80),
+    disciplines: lijst(k.disciplines, 10, 80),
+    werkgebieden: lijst(k.werkgebieden, 10, 80),
+    bandbreedte: kort(k.bandbreedte, 160) || null,
+    website: url && url.startsWith('https://') ? url.slice(0, 500) : null,
+    passendheid: k.passendheid === 'aantoonbaar' || k.passendheid === 'mogelijk' ? k.passendheid : null,
+    controleren: lijst(k.controleren, 6, 220),
+  };
+}
+
 // grondslag: { database: ISO|null } voor een databaserecord (de datum komt uit het record), of { bron } voor een online bron
 // met bevestigd fragment. Een datum die het model zelf noemt wordt nooit overgenomen zonder grondslag.
 function leesDeadline(raw, grondslag, vandaag) {
@@ -678,6 +697,7 @@ export function valideerVoorstel(raw, ctx) {
       herkomst: type === BRON_SOORT.ONLINE ? 'online' : 'database',
       bron,
       motivatie: kort(r.motivatie, MAX.motivatie),
+      kenmerken: type === BRON_SOORT.ONLINE ? null : leesKenmerken(r.kenmerken),
       onderdeel: kort(r.onderdeel, MAX.onderdeel),
       voorwaarden,
       onzekerheden,

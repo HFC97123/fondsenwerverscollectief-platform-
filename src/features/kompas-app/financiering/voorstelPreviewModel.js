@@ -83,6 +83,24 @@ export function verificatieModel(metadata) {
   };
 }
 
+// De kenmerken van de financier zoals de database ze kent. Wat niet bekend is blijft leeg; de weergave zegt dan "Nog niet bekend" (nooit een verzinsel).
+function kenmerkenModel(k) {
+  if (!isObject(k)) return null;
+
+  const lijst = (x) => (Array.isArray(x) ? x.map(String).filter(Boolean).slice(0, 10) : []);
+
+  return {
+    beschrijving: typeof k.beschrijving === 'string' && k.beschrijving ? k.beschrijving : null,
+    doelgroepen: lijst(k.doelgroepen),
+    disciplines: lijst(k.disciplines),
+    werkgebieden: lijst(k.werkgebieden),
+    bandbreedte: typeof k.bandbreedte === 'string' && k.bandbreedte ? k.bandbreedte : null,
+    website: typeof k.website === 'string' && /^https:\/\//i.test(k.website) ? k.website : null,
+    passendheid: k.passendheid === 'aantoonbaar' || k.passendheid === 'mogelijk' ? k.passendheid : null,
+    controleren: lijst(k.controleren),
+  };
+}
+
 function regelModel(r, v) {
   const metadata = v && isObject(v.metadata) ? v.metadata : null;
   const ver = verificatieModel(metadata);
@@ -110,6 +128,7 @@ function regelModel(r, v) {
     // Alleen wat onze database zegt. Nooit als "geverifieerd" gelabeld; de controle staat in `verificatie`.
     deadlineTekst: dl ? formatDatum(dl) : null,
     motivatie: String(r.motivatie || ''),
+    kenmerken: kenmerkenModel(r.kenmerken),
     onzekerheden: onzekerheden.filter((o) => o !== cofRegel),
     cofinanciering: cofRegel ? cofRegel.replace(COF_VOORVOEGSEL, '') : null,
     voorwaarden: Array.isArray(r.voorwaarden) ? r.voorwaarden.map(String).slice(0, 8) : [],

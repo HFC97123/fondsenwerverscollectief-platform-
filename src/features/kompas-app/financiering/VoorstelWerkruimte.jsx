@@ -254,8 +254,9 @@ export default function VoorstelWerkruimte({
   const actieplanRef = useRef(false);
   const generatieRef = useRef(0);
   const projectId = project && project.id;
-  // De profielstap hoort bij de zoekroute (niet bij een startpunt met financiers uit de chat) en vraagt de zoekprofieldienst.
-  const profielStap = !startpunt && typeof diensten.zoekprofiel === 'function';
+  // Bij Projectfinanciering is het project zelf het zoekprofiel (discipline, doelgroep en werkgebied die u bij het project invulde): er is geen aparte
+  // profielstap. Alleen het zoekprofiel uit een chatgesprek wordt nog eerst opgesteld.
+  const profielStap = !startpunt && profielRoute === 'chat' && typeof diensten.zoekprofiel === 'function';
   const toonStartknop = metStartknop === null ? !startpunt : metStartknop;
 
   dienstenRef.current = diensten;
@@ -674,18 +675,16 @@ export default function VoorstelWerkruimte({
       {fase === 'fout' && (
         <section role="alert" data-testid="voorstel-fout" style={css(`${TEKST} padding: 14px 18px; border: 1px solid #EEDCC0; border-radius: 16px; background: #FBF1E3; color: #8A5A16;`)}>
           {melding || 'Het voorstel kon nu niet worden gemaakt. Er is niets opgeslagen.'}
-          {(startpunt || profielStap) && (
-            <div style={css('margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px;')}>
-              <button type="button" data-testid="voorstel-opnieuw" onClick={start} style={css(KNOP_STIL)}>
-                Opnieuw proberen
-              </button>
-              {profielStap && (
-                <a href={projectprofielLink(projectId)} data-testid="voorstel-terug-profiel" style={css(`${KNOP_STIL} display: inline-flex; align-items: center; text-decoration: none;`)}>
-                  Projectprofiel aanpassen
-                </a>
-              )}
-            </div>
-          )}
+          <div style={css('margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px;')}>
+            <button type="button" data-testid="voorstel-opnieuw" onClick={start} style={css(KNOP_STIL)}>
+              Opnieuw proberen
+            </button>
+            {!startpunt && (
+              <a href={projectprofielLink(projectId)} data-testid="voorstel-terug-profiel" style={css(`${KNOP_STIL} display: inline-flex; align-items: center; text-decoration: none;`)}>
+                Projectprofiel aanpassen
+              </a>
+            )}
+          </div>
         </section>
       )}
 

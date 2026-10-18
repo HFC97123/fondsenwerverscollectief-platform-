@@ -1082,11 +1082,9 @@ sectie('15. Projectroute: het projectprofiel is het zoekprofiel; geen tweede for
   await klik(q('[data-testid="voorstel-start-knop"]'));
   await rust(120);
   check('geen apart zoekprofielformulier meer', !q('[data-testid="zoekprofiel"]') && !q('[data-testid="zp-bevestig"]'));
-  check('het profiel wordt via de zoekprofielservice uit het project opgesteld (zonder berichten)', aanroepen(s, 'zoekprofiel').length === 1 && aanroepen(s, 'zoekprofiel')[0].projectId === PID && !aanroepen(s, 'zoekprofiel')[0].berichten);
+  check('het zoekprofiel is het project: de zoekprofielservice wordt niet aangeroepen', aanroepen(s, 'zoekprofiel').length === 0);
   const g = aanroepen(s, 'genereer');
-  check('Subsidiekompas zoekt meteen: precies één genereren-aanroep met het profiel uit het project', g.length === 1 && g[0].projectId === PID && !!g[0].zoekprofiel && g[0].zoekprofiel.route === 'project');
-  const zp = g[0].zoekprofiel;
-  check('alle waarden uit het project gaan mee (niets teruggebracht tot één)', zp.disciplines.map((i) => i.naam).join() === 'Sport,Cultuur' && zp.werkvelden.map((i) => i.naam).join() === 'Welzijn' && zp.doelgroepen.map((i) => i.naam).join() === 'Jongeren,Kinderen' && zp.werkgebieden.map((i) => i.naam).join() === 'Rotterdam,Zuid-Holland' && zp.financieringsbehoefte.gat === 55000);
+  check('Subsidiekompas zoekt meteen: precies één genereren-aanroep, zonder apart profiel (de server leest het project)', g.length === 1 && g[0].projectId === PID && !g[0].zoekprofiel);
   check('daarna het voorstel-scherm; niets opgeslagen', !!q('[data-testid="voorstel-resultaat"]') && qa('[data-testid="voorstel-rij"]').length === 3 && aanroepen(s, 'opslaan').length === 0);
 }
 await schoon();
@@ -1111,19 +1109,10 @@ await schoon();
 }
 await schoon();
 {
-  const s = metProfiel(maakServer(), { profiel: profielRuw({ disciplines: [], werkvelden: [], doelgroepen: [] }) });
-  await toon(werkruimte(s));
-  await klik(q('[data-testid="voorstel-start-knop"]'));
-  await rust(120);
-  check('zonder discipline of doelgroep: niet zoeken, maar naar het projectprofiel', aanroepen(s, 'genereer').length === 0 && !!q('[data-testid="voorstel-profiel-aanvullen"]') && /\?bewerk=1$/.test(q('[data-testid="voorstel-naar-projectprofiel"]').getAttribute('href')));
-}
-await schoon();
-{
-  const s = metProfiel(maakServer({ gen: onbekendAntwoord() }), { profiel: zonderBedragProfiel() });
-  await toon(werkruimte(s));
-  await klik(q('[data-testid="voorstel-start-knop"]'));
-  await rust(140);
-  check('zonder begroting: toch zoeken, zonder bedragen', aanroepen(s, 'genereer').length === 1 && !!q('[data-testid="voorstel-bedrag-onbekend"]') && qa('[data-testid="voorstel-bedrag"]').length === 0);
+  const s = metProfiel(maakServer());
+  await toon(werkruimte(s, { project: { ...PROJECT_OK, begroting: 0 } }));
+  const knop = q('[data-testid="voorstel-start-knop"]');
+  check('zonder begroting: de knop is uit en er staat dat de begroting (ook een richtbedrag) eerst ingevuld moet worden', knop.disabled === true && /projectbegroting/.test(q('[data-testid="voorstel-eerst-aanvullen"]').textContent) && aanroepen(s, 'genereer').length === 0 && aanroepen(s, 'zoekprofiel').length === 0);
 }
 await schoon();
 

@@ -78,6 +78,7 @@ sectie('1. Poorten: flag, login, abonnement, invoer');
   const zonderCriteria = await genereer();
 
   check('zonder discipline en doelgroep: 422, geen OpenAI en geen fondsen geladen', zonderCriteria.status === 422 && zonderCriteria.json.reden === 'onvoldoende-projectgegevens' && w.openaiAantal === 0 && !w.rpcs.includes('kompas_subsidieregelingen_voor_tier'));
+  check('de melding noemt precies welke projectvelden ontbreken', JSON.stringify(zonderCriteria.json.ontbreekt?.slice().sort()) === JSON.stringify(['discipline', 'doelgroep']) || JSON.stringify(zonderCriteria.json.ontbreekt?.slice().sort()) === JSON.stringify(['discipline', 'doelgroep', 'werkgebied']), JSON.stringify(zonderCriteria.json.ontbreekt));
 
   resetGenereren({ ...pool(), profile: PRO, project: projectRij({ own_contribution: 100000 }), dekkingsplan: [] });
   const gedekt = await genereer();

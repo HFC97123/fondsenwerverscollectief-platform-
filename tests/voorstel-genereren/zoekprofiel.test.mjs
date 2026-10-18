@@ -245,7 +245,7 @@ sectie('8. Financieringsbehoefte onbekend: wel zoeken, zonder bedragen, met uitd
   wereld({ project: projectRij(zonderBegroting) });
   const zonder = await genereer();
 
-  check('zonder profiel en zonder begroting: nog steeds 422 geen-begroting (ongewijzigd)', zonder.status === 422 && zonder.json.reden === 'geen-begroting');
+  check('zonder profiel en zonder begroting: 422 geen-begroting (een bedrag, ook een richtbedrag, is altijd nodig)', zonder.status === 422 && zonder.json.reden === 'geen-begroting');
 
   wereld({ project: projectRij(zonderBegroting) });
   const met = await genereer({ zoekprofiel: profiel });

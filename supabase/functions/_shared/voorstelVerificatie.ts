@@ -56,6 +56,8 @@ export interface ServerRecord {
   doelgroepen?: string[];
   werkgebieden?: string[];
   aanvraagcriteria?: string | null; // vrije tekst; hier staat ook het aanvragertype (geen aparte kolom)
+  omschrijving?: string | null; // korte beschrijving van de financier (missie of type projecten)
+  bandbreedte?: string | null; // naam van de bandbreedte uit de database
   // Wat de database weet over het plannen van de aanvraag (rondes, beoordelingsdatum, behandeltermijn, vergaderdatum). Alleen bij niveau 'volledig'.
   planning?: PlanningBron | null;
 }
