@@ -76,12 +76,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 //   'aan'      alle ingelogde Pro- en Premium-leden (de tier-controle blijft daarnaast gelden);
 //   'testers'  uitsluitend gebruikers in de secret VOORSTEL_TESTERS (komma-gescheiden gebruikers-id's, uuid, maximaal 25);
 //   alles anders (leeg, afwezig, typefout) = UIT. Faalt dicht: een typefout opent nooit voor iedereen. Zonder geldige gebruiker altijd UIT.
+//   Hoofdletters, spaties en aanhalingstekens rond de waarde maken niet uit ("Aan", " aan ", "\"aan\"" tellen als aan); "true" of "1" blijven UIT.
 const VLAG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function voorstelVlagAan(vlag: string | undefined | null, testersRuw: string | undefined | null, gebruikerId: string | null | undefined): boolean {
   if (typeof gebruikerId !== 'string' || !VLAG_UUID_RE.test(gebruikerId)) return false;
-  if (vlag === 'aan') return true;
-  if (vlag !== 'testers' || typeof testersRuw !== 'string') return false;
+  const waarde = typeof vlag === 'string' ? vlag.trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase() : '';
+
+  if (waarde === 'aan') return true;
+  if (waarde !== 'testers' || typeof testersRuw !== 'string') return false;
 
   const testers = testersRuw.split(',').map((d) => d.trim().toLowerCase()).filter((d) => VLAG_UUID_RE.test(d)).slice(0, 25);
 
@@ -2002,6 +2005,8 @@ type ActiefProject = {
   schrijfvoorkeur: string;
   gevraagdBedrag: number | null;
   documenten: { naam: string; soort: string; versie: number; fonds: string; tekst: string }[];
+  // Het gekozen werkgebied als ISO-landcodes plus de door het lid BEVESTIGDE verfijningen (GeoNames). Onbevestigde AI-voorstellen staan hier nooit in.
+  werkgebied: { landen: string[]; verfijningen: { geonamesId: number; naam: string; landcode: string; lat: number | null; lng: number | null }[] };
 };
 
 async function eigenActiefProject(admin: any, userId: string | null, programId: unknown): Promise<ActiefProject | null> {
@@ -2060,10 +2065,16 @@ async function eigenActiefProject(admin: any, userId: string | null, programId: 
     }));
 
     const bedrag = Number(rij.requested_amount);
+    // De landen komen altijd uit het nu gekozen werkgebied (het veld location), zodat ze nooit achterlopen op wat het lid koos; de opgeslagen verfijningen
+    // tellen alleen mee als ze compleet zijn en binnen een gekozen land vallen. De kolom work_area kan ontbreken (oudere database): dan is er geen verfijning.
+    const { isoCodesUitWerkgebied } = await import('../_shared/werkgebied.ts');
+    const { normaliseerWerkgebiedOpslag } = await import('../_shared/locatieVerfijning.ts');
+    const werkgebied = normaliseerWerkgebiedOpslag(rij.work_area, isoCodesUitWerkgebied(rij.location));
 
     return {
       id: rij.id,
       naam: String(rij.name || 'Naamloos project'),
+      werkgebied,
       velden,
       schrijfvoorkeur: String(rij.writing_preferences || ''),
       gevraagdBedrag: Number.isFinite(bedrag) && bedrag > 0 ? bedrag : null,
@@ -5352,7 +5363,9 @@ function nabewerkAntwoord(
   const sel = opties.selectie;
 
   if (sel) {
-    const namen: string[] = (sel.beoordeeld || []).flatMap((k: Kandidaat) => [k.funderNaam, k.bron === 'regeling' ? k.naam : '']).filter(Boolean);
+    // De "Net niet"-fondsen (Premium) worden bewust met een negatieve reden genoemd; die regels mogen niet als "negatief voorbeeld" verdwijnen.
+    const netNietNamen = new Set<string>((sel.pro?.netNiet || []).flatMap((n: any) => [n.naam, n.funderNaam]).filter(Boolean).map((n: string) => zonderLidwoord(n)));
+    const namen: string[] = (sel.beoordeeld || []).flatMap((k: Kandidaat) => [k.funderNaam, k.bron === 'regeling' ? k.naam : '']).filter((n: string) => Boolean(n) && !netNietNamen.has(zonderLidwoord(n)));
 
     tekst = verwijderNegatieveVoorbeelden(tekst, namen, opties.gebruikersTekst);
     tekst = corrigeerMinderDanDrie(tekst);
@@ -5372,6 +5385,16 @@ function nabewerkAntwoord(
       const schoon = verwerkAanvullendeZin(tekst, sel.tier, sel.isAdmin, false, opties.taal).tekst;
 
       return { tekst: schoon, toegevoegd: '' };
+    }
+
+    // Pro: de berekende totalen komen van de server. Staan ze niet (letterlijk) in het antwoord, dan voegt de server ze zelf toe.
+    if (sel.pro && sel.pro.regels?.length && sel.pro.begroting) {
+      const p = sel.pro;
+      const eur = (n: number) => `€ ${Math.round(n).toLocaleString('nl-NL')}`;
+
+      if (!tekst.includes(eur(p.totaal)) || !tekst.includes(`${p.dekkingPercentage}%`)) {
+        tekst = `${tekst.trimEnd()}\n\nTotaal geschatte bijdragen: ${eur(p.totaal)} (${p.dekkingPercentage}% van de projectbegroting van ${eur(p.begroting)}); ${p.tekort > 0 ? `resterend tekort ${eur(p.tekort)}` : 'geen resterend tekort'}. Dit zijn schattingen en geen toezeggingen.`;
+      }
     }
 
     // De verkoopzin over Pro/Premium is een productboodschap, geen onderdeel van de
@@ -5516,6 +5539,239 @@ function bouwFreeAdviesBlok(
   return afronden(regels);
 }
 
+// PRO-SELECTIE (korte lijst met financieel maximum). Alleen voor Pro (geen Free/Premium/admin). De engine hierboven blijft bepalen wat in aanmerking komt; hier
+// wordt daarna in de APPLICATIE (niet door het taalmodel) per fonds discipline, werkgebied (op landniveau) en doelgroep samen beoordeeld, een bijdrage
+// geschat en een gerichte lijst gebouwd met een maximum van 120% van de projectbegroting. Zie _shared/proSelectie.ts en _shared/werkgebied.ts.
+const MEER_TONEN_RE = /\b(?:toon|laat|geef|noem)\b[^.?!]{0,40}\b(?:meer|alle|andere|overige|aanvullende)\b|\b(?:meer|andere|overige|aanvullende|alle)\s+(?:fondsen|opties|mogelijkheden|matches|regelingen|financiers)\b|\bnog\s+meer\b|\bwat\s+(?:zijn\s+)?(?:er\s+)?nog\s+meer\b/i;
+
+// De algemene presentatieregel "toon alle sterke matches" geldt niet voor Pro: daar bepaalt de server de korte lijst.
+function samenvoegProBlok(blok: string, proBlok: string | null): string {
+  if (!proBlok) return blok;
+
+  return `${blok.replace(/^Toon alle sterke[^\n]*\n?/m, '')}\n${proBlok}`;
+}
+
+// AI-beoordeling (Pro en Premium, achter de servervlag FONDS_BEOORDELING): zie _shared/fondsBeoordeling.ts. `config` komt uit tierConfig.ts.
+type AiBeoordelingCtx = { config: { maxKandidaten: number; dekkingsdoelLijst: number; maxFactorLijst: number; netNietLijst: boolean }; apiKey: string; tier: 'pro' | 'premium'; cache: any | null };
+const BEOORDELING_TIMEOUT_MS = 30_000;
+const OORDEEL_TABEL = 'subsidie_kompas_fonds_beoordelingen';
+
+// Bewaarde oordelen (optioneel): ontbreekt de tabel (migratie nog niet toegepast) of faalt de database, dan wordt gewoon opnieuw beoordeeld.
+function maakOordeelCache(admin: any, modelNaam: string) {
+  return {
+    async lees(profielHash: string, sleutels: string[]) {
+      const uit = new Map<string, { bronHash: string; oordeel: { oordeel: string; citaat: string; reden: string } }>();
+
+      try {
+        const sinds = new Date(Date.now() - 30 * 86_400_000).toISOString();
+        const { data, error } = await admin.from(OORDEEL_TABEL).select('fonds_sleutel, bron_hash, oordeel, citaat, reden').eq('profiel_hash', profielHash).in('fonds_sleutel', sleutels).gte('created_at', sinds);
+
+        if (error || !Array.isArray(data)) return uit;
+
+        for (const r of data) uit.set(String(r.fonds_sleutel), { bronHash: String(r.bron_hash), oordeel: { oordeel: String(r.oordeel), citaat: String(r.citaat ?? ''), reden: String(r.reden ?? '') } });
+      } catch (_e) {
+        // geen cache
+      }
+
+      return uit as any;
+    },
+    async schrijf(profielHash: string, rijen: Array<{ sleutel: string; bronHash: string; oordeel: { oordeel: string; citaat: string; reden: string } }>) {
+      try {
+        await admin.from(OORDEEL_TABEL).upsert(
+          rijen.map((r) => ({ profiel_hash: profielHash, fonds_sleutel: r.sleutel, bron_hash: r.bronHash, oordeel: r.oordeel.oordeel, citaat: r.oordeel.citaat, reden: r.oordeel.reden, model: modelNaam, created_at: new Date().toISOString() })),
+          { onConflict: 'profiel_hash,fonds_sleutel' },
+        );
+      } catch (_e) {
+        // bewaren is een gemak
+      }
+    },
+  };
+}
+
+type ProFeiten = { begroting: number | null; regio: string; doelgroep: string; landen?: string[]; verfijningen?: string[] } | null;
+
+async function bouwProSelectie(
+  admin: any,
+  selectie: ReturnType<typeof selecteerFreeFondsadvies>,
+  criteria: FondsCriteria,
+  rechten: Rechten,
+  ctx: EntitlementCtx,
+  feiten: ProFeiten,
+  uitgebreid: boolean,
+  ai: AiBeoordelingCtx | null = null,
+) {
+  const { selecteerProLijst, beoordeelGezamenlijk, proPresentatieBlok, PREMIUM_DEKKINGSDOEL, PREMIUM_MAX_FACTOR } = await import('../_shared/proSelectie.ts');
+  const { projectGebied, beoordeelFondsVoorProject, landVoorIso } = await import('../_shared/werkgebied.ts');
+  const lijst = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x || '')).filter(Boolean) : []);
+  const tekstGebied = projectGebied([criteria.locatieTekst, feiten?.regio ?? '', criteria.regios.join(', ')]);
+  // Het door het lid gekozen land (ISO-code) is leidend. Zonder gekozen buitenlands land (bijvoorbeeld alleen "Afrika" of een Nederlandse regio)
+  // blijft de herkenning uit de tekst zoals voorheen. Een bevestigde verfijning (stad) verandert het landniveau niet; alleen niet-bevestigde of
+  // niet-gekozen plaatsen worden nooit gebruikt.
+  const gekozenLanden = (feiten?.landen ?? []).map((c) => landVoorIso(c)).filter((l): l is NonNullable<typeof l> => Boolean(l));
+  const gebied = gekozenLanden.length ? { landen: gekozenLanden, werelddelen: [] as string[], bronTekst: tekstGebied.bronTekst } : tekstGebied;
+  const begroting = feiten?.begroting && feiten.begroting > 0 ? feiten.begroting : criteria.totaalBudget && criteria.totaalBudget > 0 ? criteria.totaalBudget : null;
+
+  // Verborgen records (expliciet exclusief) doen niet mee. Een publiek-niveau record (bekend fonds op een hoger toegangsniveau) blijft vindbaar en noembaar, maar
+  // zijn bedragen en voorwaarden zijn voor dit lid niet zichtbaar: daar wordt dus nooit een bedrag uit geschat of getoond (alleen identiteit en uitleg).
+  const niveauVan = new Map<Kandidaat, string>();
+  const kand = selectie.relevant.filter((k) => {
+    const n = bepaalNiveau(rechten, k.bron, k.row, ctx.exclusiviteit).niveau;
+
+    niveauVan.set(k, n);
+
+    return n === 'volledig' || n === 'publiek';
+  });
+  const volledig = (k: Kandidaat) => niveauVan.get(k) === 'volledig';
+  const norm = (t: string) => normaliseerTekst(t);
+  const sleutelVan = (k: Kandidaat) => `${k.bron}:${k.row?.regeling_id ?? k.row?.funder_id ?? k.naam}:${norm(k.naam)}`;
+  const kernSet = new Set([...(criteria.themas || []), ...(criteria.kernThemas || [])].map(norm));
+  const dgSet = new Set((criteria.doelgroepen || []).map(norm));
+  const geoTeksten = (k: Kandidaat, extra: any) => [k.naam, k.funderNaam, fondsTekst(k.row), k.row?.werkgebied, k.row?.voorwaarden, extra?.voorwaarden];
+
+  // Eerste ronde (goedkoop, zonder extra databaseaanroep): welke kandidaten zijn gezamenlijk geschikt? Alleen daarvoor worden bedragsteksten opgehaald.
+  const kaart = (k: Kandidaat, extra: any = null) => ({
+    sleutel: sleutelVan(k),
+    naam: k.naam,
+    funderNaam: k.funderNaam,
+    bron: k.bron,
+    score: k.score,
+    themaNiveau: k.themaNiveau,
+    disciplines: k.themas.filter((t) => kernSet.has(norm(t))).slice(0, 4),
+    doelgroepPositief: k.signalen.includes('doelgroep'),
+    doelgroepBekend: k.doelgroepen.length > 0,
+    doelgroepen: k.doelgroepen.filter((t) => dgSet.has(norm(t))).slice(0, 4),
+    werkgebied: beoordeelFondsVoorProject(gebied, k.regios, geoTeksten(k, extra)),
+    engineGeoStatus: k.geografie.status as 'eligible' | 'ineligible' | 'unknown',
+    engineGeoPositief: k.geografie.positief,
+    engineGeoLabel: k.geografie.label,
+    bedragenVerborgen: !volledig(k),
+    min: volledig(k) && Number(k.row?.bedrag_min ?? k.row?.bijdrage_min) > 0 ? Number(k.row?.bedrag_min ?? k.row?.bijdrage_min) : null,
+    max: volledig(k) && Number(k.row?.bedrag_max ?? k.row?.bijdrage_max) > 0 ? Number(k.row?.bedrag_max ?? k.row?.bijdrage_max) : null,
+    toelichtingen: volledig(k) ? ([extra?.bijdrage_toelichting, k.row?.bijdrage_toelichting, k.row?.toelichting, k.row?.aanvraagcriteria, k.row?.funder_aanvraagcriteria, k.row?.voorwaarden, extra?.voorwaarden, k.row?.type_projecten, k.row?.beoordelingscriteria].filter((t) => typeof t === 'string' && t.trim()) as string[]) : [],
+    eigenBijdrage: volledig(k) ? ((extra?.eigen_bijdrage ?? k.row?.eigen_bijdrage ?? null) as string | null) : null,
+    cofinanciering: volledig(k) ? ((extra?.cofinanciering ?? k.row?.cofinanciering ?? null) as string | null) : null,
+    begrotingseisen: volledig(k) ? ((extra?.begrotingseisen ?? k.row?.begrotingseisen ?? null) as string | null) : null,
+    zwaktes: k.zwaktes.filter((z) => !/cofinanciering|eigen bijdrage/i.test(z)).slice(0, 3),
+  });
+
+  const eerste = kand.filter((k) => beoordeelGezamenlijk(kaart(k)).geschikt);
+  const extra = new Map<string, any>();
+  const uuid = (x: unknown) => typeof x === 'string' && UUID_RE.test(x);
+
+  try {
+    const regelingIds = eerste.filter((k) => volledig(k) && k.bron === 'regeling' && uuid(k.row?.regeling_id)).map((k) => k.row.regeling_id as string).slice(0, 80);
+    const funderIds = eerste.filter((k) => volledig(k) && k.bron !== 'regeling' && uuid(k.row?.funder_id)).map((k) => k.row.funder_id as string).slice(0, 80);
+    const [reg, fun] = await Promise.all([
+      regelingIds.length ? admin.from('subsidieregelingen').select('id, bijdrage_toelichting, voorwaarden, eigen_bijdrage, cofinanciering, begrotingseisen').in('id', regelingIds) : Promise.resolve({ data: [] }),
+      funderIds.length ? admin.from('funders').select('id, bijdrage_toelichting').in('id', funderIds) : Promise.resolve({ data: [] }),
+    ]);
+
+    for (const r of Array.isArray(reg?.data) ? reg.data : []) extra.set(`regeling:${r.id}`, r);
+    for (const f of Array.isArray(fun?.data) ? fun.data : []) extra.set(`funder:${f.id}`, f);
+  } catch (_e) {
+    console.error('[subsidie-kompas] pro_selectie_bedragstekst_niet_beschikbaar');
+  }
+
+  const kandidaten = kand.map((k) => kaart(k, extra.get(k.bron === 'regeling' ? `regeling:${k.row?.regeling_id}` : `funder:${k.row?.funder_id}`) ?? null));
+  const perSleutel = new Map(kand.map((k) => [sleutelVan(k), k]));
+  const disciplines = (criteria.kernThemas?.length ? criteria.kernThemas : criteria.themas).slice(0, 6);
+  const eersteGebied = String(feiten?.regio || criteria.locatieTekst || '').trim();
+  // Bevestigde verfijningen (stad of gebied binnen het gekozen land) worden alleen bij het werkgebied genoemd; ze veranderen de landselectie niet.
+  const verfijningen = (feiten?.verfijningen ?? []).filter((n) => !normaliseerTekst(eersteGebied).includes(normaliseerTekst(n)));
+  const landWerkgebieden = [eersteGebied, ...gebied.landen.map((l) => l.naam).filter((n) => !normaliseerTekst(eersteGebied).includes(normaliseerTekst(n)))].filter(Boolean);
+  const werkgebieden = [...landWerkgebieden, ...(verfijningen.length ? [`specifieker: ${verfijningen.join(', ')}`] : [])];
+  const doelgroepen = feiten?.doelgroep ? [String(feiten.doelgroep).slice(0, 200)] : criteria.doelgroepen.slice(0, 6);
+
+  // AI-beoordeling met bewijs (stap 3): de server rangschikt, de AI leest de beste kandidaten, de server controleert het citaat en rekent daarna zelf.
+  // Faalt de AI volledig, dan geldt de lijst zonder AI-oordeel (nooit een leeg antwoord door een uitval).
+  let lijstKandidaten = kandidaten;
+  let oordelen: Map<string, any> | null = null;
+  let aiActief = false;
+  let aiUsage: { prompt_tokens: number; completion_tokens: number } | null = null;
+
+  if (ai) {
+    const tAi = Date.now();
+
+    try {
+      const { beoordeelFondsen, bouwBronTekst } = await import('../_shared/fondsBeoordeling.ts');
+      const geschiktK = kandidaten
+        .map((c) => ({ c, b: beoordeelGezamenlijk(c) }))
+        .filter((x) => x.b.geschikt)
+        .sort((x, y) => y.b.sterkte - x.b.sterkte || y.c.score - x.c.score || x.c.naam.localeCompare(y.c.naam, 'nl') || x.c.sleutel.localeCompare(y.c.sleutel));
+      // Alleen records waarvan dit lid de teksten mag zien gaan naar het model; publiek-niveau records (alleen naam) worden niet gelezen en blijven zonder oordeel.
+      const leesbaar = geschiktK.filter((x) => !x.c.bedragenVerborgen);
+      const top = leesbaar.slice(0, ai.config.maxKandidaten);
+      const publiek = geschiktK.filter((x) => x.c.bedragenVerborgen);
+      const tekstVan = (c: { sleutel: string }) => {
+        const k = perSleutel.get(c.sleutel) as Kandidaat;
+        const ex = extra.get(k.bron === 'regeling' ? `regeling:${k.row?.regeling_id}` : `funder:${k.row?.funder_id}`) ?? null;
+        const r = k.row || {};
+
+        return bouwBronTekst([r.aanvraagcriteria, r.funder_aanvraagcriteria, r.type_projecten, r.beoordelingscriteria, r.funder_missie, r.missie, r.toelichting, r.voorwaarden, ex?.voorwaarden, r.werkgebied]);
+      };
+      const uitkomst = await beoordeelFondsen({
+        profiel: { disciplines, doelgroepen, werkgebieden: landWerkgebieden },
+        kandidaten: top.map((x) => ({ sleutel: x.c.sleutel, naam: x.c.naam, tekst: tekstVan(x.c) })),
+        cache: ai.cache,
+        roep: async (systeem, gebruiker) => {
+          const u = await fetchOpenAiMetTimeout(
+            'https://api.openai.com/v1/chat/completions',
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${ai.apiKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: systeem }, { role: 'user', content: gebruiker }], temperature: 0, max_tokens: 1500, response_format: { type: 'json_object' } }),
+            },
+            BEOORDELING_TIMEOUT_MS,
+          );
+
+          if (!u.ok || !u.response.ok) return null;
+
+          const data = await u.response.json();
+
+          return { inhoud: String(data?.choices?.[0]?.message?.content || ''), usage: data?.usage };
+        },
+      });
+
+      aiUsage = uitkomst.usage;
+      console.log('[subsidie-kompas] fonds_beoordeling', JSON.stringify({ tier: ai.tier, ...uitkomst.stat, duurMs: Date.now() - tAi }));
+
+      if (uitkomst.stat.geldig > 0) {
+        aiActief = true;
+        oordelen = uitkomst.oordelen;
+
+        const toegestaan = new Set([...top, ...publiek].map((x) => x.c.sleutel));
+
+        lijstKandidaten = kandidaten.filter((c) => toegestaan.has(c.sleutel) || !beoordeelGezamenlijk(c).geschikt);
+      }
+    } catch (_e) {
+      console.error('[subsidie-kompas] fonds_beoordeling_fout');
+    }
+  }
+
+  const resultaat = selecteerProLijst({
+    kandidaten: lijstKandidaten,
+    begroting,
+    uitgebreid,
+    oordelen: oordelen as any,
+    aiActief,
+    dekkingsdoel: ai?.tier === 'premium' ? ai.config.dekkingsdoelLijst || PREMIUM_DEKKINGSDOEL : undefined,
+    maxFactor: ai?.tier === 'premium' ? ai.config.maxFactorLijst || PREMIUM_MAX_FACTOR : undefined,
+  });
+  const getoond = resultaat.regels.map((r) => perSleutel.get(r.sleutel)).filter((k): k is Kandidaat => Boolean(k));
+  const netNietZichtbaar = ai?.config.netNietLijst === true;
+  const resultaatVoorBlok = netNietZichtbaar ? resultaat : { ...resultaat, netNiet: [] };
+  const blok = proPresentatieBlok(resultaatVoorBlok, { begroting, disciplines, werkgebieden, doelgroepen }, { tier: ai?.tier === 'premium' ? 'premium' : 'pro' });
+
+  console.log('[subsidie-kompas] pro_selectie', JSON.stringify({ kandidaten: kand.length, geschikt: eerste.length, lijst: resultaat.regels.length, uitkomst: resultaat.uitkomst, totaal: resultaat.totaal, begroting, uitgebreid, ai: aiActief, netNiet: resultaat.netNiet.length, landen: gebied.landen.map((l) => l.naam) }));
+
+  return {
+    resultaat: resultaatVoorBlok,
+    blok,
+    aiUsage,
+    selectie: { ...selectie, getoond, afgekapt: 0, geslotenGetoond: [], pro: resultaatVoorBlok } as typeof selectie & { pro: typeof resultaat },
+  };
+}
+
 // Orkestratie voor één fondsadviesvraag (alle tiers). Faalt (extractie, taxonomie,
 // netwerk) altijd veilig: dan krijgt het model GEEN databasekandidaten en
 // GEEN database-aantallen (nooit de ongefilterde zichtbare records).
@@ -5532,6 +5788,8 @@ async function freeFondsadvies(
   matchContext: { org: string; project: string } | null = null,
   modus: KompasMode = 'fondsadvies',
   exclusiviteit: ExclusiviteitIndex = ONBEKENDE_EXCLUSIVITEIT,
+  proFeiten: ProFeiten = null,
+  beoordelingAan: boolean = false,
 ) {
   const laatsteGebruiker = [...(berichten || [])].reverse().find((m: any) => m && m.role === 'user' && m.content);
   const taal = detecteerTaal(String(laatsteGebruiker?.content || ''));
@@ -5548,6 +5806,7 @@ async function freeFondsadvies(
     verkennerUsage: null as any,
     verkennerWebAanroepen: 0,
     verkennerStatus: 'uit' as string,
+    beoordelingUsage: null as { prompt_tokens: number; completion_tokens: number } | null,
     taal,
     ctx: nieuweEntitlementCtx(DOCUMENT_MODI.includes(modus), exclusiviteit),
     bronnen: [] as { title: string; url: string }[],
@@ -5620,7 +5879,32 @@ async function freeFondsadvies(
   // exclusieve fondsen op basis van identiteit, vóór de engine.
   const gekoppeld = verwerkWebKandidaten(web.kandidaten, dbPool, exclusiviteit);
 
-  const selectie = selecteerFreeFondsadvies(gekoppeld.alle, criteria, tier, isAdmin, undefined, undefined, exclusiviteit);
+  // Pro: de aanvrager speelt geen rol in selectie en ranking en het totaal gevraagde bedrag sluit geen fonds uit (elk fonds draagt een deel bij; de
+  // bijdrage wordt per fonds geschat). Free, Premium en admin blijven ongewijzigd.
+  // Premium krijgt dezelfde korte lijst (met een ruimere buffer en een "net niet"-lijst) uitsluitend als de servervlag FONDS_BEOORDELING voor dit lid aan staat.
+  const proActief = (tier === 'pro' || (tier === 'premium' && beoordelingAan)) && !isAdmin;
+  const selectieCriteria: FondsCriteria = proActief ? { ...criteria, aanvragertype: 'onbekend', gevraagdBedrag: null } : criteria;
+  let selectie: ReturnType<typeof selecteerFreeFondsadvies> & { pro?: any } = selecteerFreeFondsadvies(gekoppeld.alle, selectieCriteria, tier, isAdmin, undefined, undefined, exclusiviteit);
+  let proBlok: string | null = null;
+  let beoordelingUsage: { prompt_tokens: number; completion_tokens: number } | null = null;
+
+  if (proActief) {
+    try {
+      const wilMeer = MEER_TONEN_RE.test(String(laatsteGebruiker?.content || ''));
+      const { tierConfigVoor } = await import('../_shared/tierConfig.ts');
+      const beoordelingCfg = beoordelingAan ? tierConfigVoor(tier, false).beoordeling : null;
+      const ai: AiBeoordelingCtx | null = beoordelingCfg && apiKey ? { config: beoordelingCfg, apiKey, tier: tier === 'premium' ? 'premium' : 'pro', cache: maakOordeelCache(admin, MODEL) } : null;
+      const pro = await bouwProSelectie(admin, selectie, selectieCriteria, rechten, ctx, proFeiten, wilMeer, ai);
+
+      selectie = pro.selectie;
+      beoordelingUsage = pro.aiUsage;
+      proBlok = DOCUMENT_MODI.includes(modus) ? null : pro.blok;
+    } catch (_e) {
+      // Faalt de korte lijst, dan blijft de bestaande Pro-lijst gelden: nooit een leeg antwoord door een rekenfout.
+      console.error('[subsidie-kompas] pro_selectie_fout');
+    }
+  }
+
   const van = (bron: Kandidaat['bron']) => selectie.getoond.filter((k) => k.bron === bron);
   const regelingen = van('regeling').filter((k) => !k.row?._extern);
   const externen = van('regeling').filter((k) => k.row?._extern);
@@ -5676,7 +5960,7 @@ async function freeFondsadvies(
   await logCriteriaVoorTest(admin, testLabel, tier, isAdmin, criteria, selectie);
 
   return {
-    blok: bouwFreeAdviesBlok(criteria, selectie, { taal, modus, ctx, webStatus: web.status }),
+    blok: samenvoegProBlok(bouwFreeAdviesBlok(selectieCriteria, selectie, { taal, modus, ctx, webStatus: web.status }), proBlok),
     subsidieTekst,
     deadlineTekst,
     algemeenTekst,
@@ -5688,6 +5972,7 @@ async function freeFondsadvies(
     verkennerUsage: web.usage,
     verkennerWebAanroepen: (web as any).webAanroepen ?? 0,
     verkennerStatus: web.status as string,
+    beoordelingUsage,
     taal,
     ctx,
     bronnen: schoneBronnen(bronnen),
@@ -5744,6 +6029,8 @@ function schoneBronnen(bronnen: { title: string; url: string }[]): { title: stri
 // 'voorstel-genereren' (veld zoekprofiel); de server controleert het daar opnieuw tegen de taxonomie.
 // ===========================================================================
 const ZOEKPROFIEL_ACTIE = 'voorstel-zoekprofiel';
+const WERKGEBIED_ACTIE = 'werkgebied-verfijning';
+const WERKGEBIED_MAX_TEKENS = 6000;
 const ZOEKPROFIEL_MAX_TEKENS = 12000;
 const MELDING_BEDRAG_ONBEKEND = 'Het bedrag dat u bij fondsen zoekt is nog niet bekend, dus de matching op bedrag is beperkt: de financiers zijn gekozen op inhoud, doelgroep en werkgebied, zonder voorgesteld bedrag. Vul de projectbegroting in om een dekkingsplan met bedragen te laten voorstellen.';
 const ZOEKPROFIEL_MAX_BERICHTEN = 12;
@@ -5771,7 +6058,12 @@ REGIOS: ${taxonomie.regios.join(' | ')}`;
     body: JSON.stringify({ model, messages: [{ role: 'system', content: systeem }, { role: 'user', content: invoerTekst }], temperature: 0, max_tokens: 900, response_format: { type: 'json_object' } }),
   }, KORTE_CALL_TIMEOUT_MS);
 
-  if (!uitkomst.ok || !uitkomst.response.ok) return { ai: null as any, usage: null as any };
+  if (!uitkomst.ok || !uitkomst.response.ok) {
+    // Alleen status en foutcode (geen projectinhoud), zodat een weigering van het model in de logs te zien is.
+    console.error('[subsidie-kompas] voorstel_zoekprofiel_ai_fout', uitkomst.ok ? uitkomst.response.status : 'geen-antwoord', model);
+
+    return { ai: null as any, usage: null as any };
+  }
 
   try {
     const data = await uitkomst.response.json();
@@ -7040,7 +7332,7 @@ Deno.serve(async (req) => {
         waarschuwingen: [],
         reserveSleutel: null,
         onlineSuggesties: [],
-        // De buffer is een vaste instelling per abonnement (Pro 110%, Premium 120%), nooit een keuze van de browser en nooit stilzwijgend.
+        // De buffer is een vaste instelling per abonnement (Pro 120%, Premium 140%), nooit een keuze van de browser en nooit stilzwijgend.
         dekkingsdoel: uit.dekkingsdoel,
         totalen: { gat: uit.totalen.gat, doelBedrag: uit.totalen.doelBedrag, som: 0, nodig: uit.totalen.doelBedrag, dekking: 0 },
         overgeslagen: uit.overgeslagen,
@@ -7320,6 +7612,87 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Plaatsen uit de projectomschrijving herkennen als VOORSTEL voor een specifieker werkgebied: schrijft niets. Het door het lid gekozen werkgebied
+  // (landcodes) is leidend; GeoNames controleert elke plaats binnen dat land. Niets wordt opgeslagen of gebruikt voor matching voordat het lid bevestigt.
+  if (body.mode === WERKGEBIED_ACTIE) {
+    if (!profileId) return json({ error: 'Log in om het werkgebied te verfijnen.' }, 401);
+
+    const tekst = typeof body.tekst === 'string' ? body.tekst.slice(0, WERKGEBIED_MAX_TEKENS) : '';
+    const { isGeldigeLandcode } = await import('../_shared/werkgebied.ts');
+    const landen: string[] = Array.from(new Set<string>((Array.isArray(body.landen) ? body.landen : []).slice(0, 6).map((c: unknown) => String(c ?? '').toUpperCase()).filter((c: string) => isGeldigeLandcode(c))));
+
+    // Geen gekozen land of te weinig tekst: niets te verfijnen, geen modelaanroep.
+    if (tekst.trim().length < 20 || !landen.length) return json({ ok: true, suggesties: [], beschikbaar: true });
+
+    const geonamesGebruiker = (Deno.env.get('GEONAMES_USERNAME') || '').trim();
+
+    if (!apiKey || !geonamesGebruiker) {
+      console.log('[subsidie-kompas] werkgebied_verfijning', JSON.stringify({ beschikbaar: false, reden: !apiKey ? 'geen-ai' : 'geen-geonames' }));
+
+      return json({ ok: true, suggesties: [], beschikbaar: false });
+    }
+
+    const tStart = Date.now();
+
+    try {
+      const { LOCATIE_AI_SYSTEEM, leesAiPlaatsen, geonamesZoekUrl, leesGeonames, beoordeelPlaats } = await import('../_shared/locatieVerfijning.ts');
+      const uitkomst = await fetchOpenAiMetTimeout('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: LOCATIE_AI_SYSTEEM }, { role: 'user', content: tekst }], temperature: 0, max_tokens: 600, response_format: { type: 'json_object' } }),
+      }, KORTE_CALL_TIMEOUT_MS);
+
+      if (!uitkomst.ok || !uitkomst.response.ok) {
+        console.error('[subsidie-kompas] werkgebied_verfijning_ai_fout', uitkomst.ok ? uitkomst.response.status : 'geen-antwoord');
+
+        return json({ ok: true, suggesties: [], beschikbaar: false });
+      }
+
+      const data = await uitkomst.response.json();
+      let ruw: unknown = {};
+
+      try {
+        ruw = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+      } catch (_e) {
+        ruw = {};
+      }
+
+      const plaatsen = leesAiPlaatsen(ruw, tekst);
+      let geonamesFouten = 0;
+      const zoek = async (naam: string, landcodes: string[] | null) => {
+        try {
+          const res = await fetch(geonamesZoekUrl(naam, landcodes, geonamesGebruiker), { signal: AbortSignal.timeout(6000) });
+
+          if (!res.ok) throw new Error(String(res.status));
+
+          return leesGeonames(await res.json(), naam);
+        } catch (_e) {
+          geonamesFouten += 1;
+
+          return [];
+        }
+      };
+      const suggesties = (
+        await Promise.all(
+          plaatsen.map(async (p) => {
+            const binnen = await zoek(p.naam, landen);
+
+            return beoordeelPlaats(p, binnen, binnen.length ? [] : await zoek(p.naam, null), landen);
+          }),
+        )
+      ).filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'fonds_scan_database', projectId: null, model: MODEL, usage: data.usage, duurMs: Date.now() - tStart, succes: true });
+      console.log('[subsidie-kompas] werkgebied_verfijning', JSON.stringify({ beschikbaar: true, herkend: plaatsen.length, voorstellen: suggesties.length, geonamesFouten }));
+
+      return json({ ok: true, suggesties, beschikbaar: geonamesFouten === 0 || suggesties.length > 0 });
+    } catch (_e) {
+      console.error('[subsidie-kompas] werkgebied_verfijning_fout');
+
+      return json({ ok: true, suggesties: [], beschikbaar: false });
+    }
+  }
+
   // Zoekprofiel samenstellen (projectroute en chatroute): schrijft niets.
   if (body.mode === ZOEKPROFIEL_ACTIE) {
     if (!profileId) return json({ error: 'Log in om een zoekprofiel op te stellen.' }, 401);
@@ -7362,11 +7735,12 @@ Deno.serve(async (req) => {
         .map((m: any) => String(m.content).slice(0, 4000));
       const route: 'project' | 'chat' = gesprek.length ? 'chat' : 'project';
       const tekst = [`PROJECT:\n${projectTekstVoorOnline(project, documenten)}`, gesprek.length ? `BERICHTEN VAN DE GEBRUIKER:\n${gesprek.join('\n---\n')}` : ''].filter(Boolean).join('\n\n');
-      const extra = await zoekprofielExtractie(apiKey, CHAT_MODEL, tekst, taxonomie);
+      // Chat Completions met temperature en max_tokens: dat vraagt het standaardmodel (MODEL), niet het redeneermodel van de hoofdchat (gpt-5.5 weigert die instellingen).
+      const extra = await zoekprofielExtractie(apiKey, MODEL, tekst, taxonomie);
       const aiStatus: 'gebruikt' | 'mislukt' = extra.ai ? 'gebruikt' : 'mislukt';
       const profiel = bouwZoekprofiel({ route, project, gat: dekking.heeftBegroting ? gatVan(dekking) : null, taxonomie, ai: extra.ai, aiStatus, documenten: documenten.filter((d) => d.tekst.trim()).length, gesprek: gesprek.length > 0 });
 
-      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'fonds_scan_database', projectId: project.id, model: CHAT_MODEL, usage: extra.usage, duurMs: Date.now() - tStartProfiel, succes: aiStatus === 'gebruikt' });
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'fonds_scan_database', projectId: project.id, model: MODEL, usage: extra.usage, duurMs: Date.now() - tStartProfiel, succes: aiStatus === 'gebruikt' });
       console.log('[subsidie-kompas] voorstel_zoekprofiel', JSON.stringify({ route, ai: aiStatus, ontbrekend: profiel.ontbrekend, onzeker: profiel.onzeker.length }));
 
       return json({ ok: true, profiel, // Hetzelfde profiel gaat bevestigd terug naar 'voorstel-genereren' (veld zoekprofiel).
@@ -7709,7 +8083,7 @@ Deno.serve(async (req) => {
           bedragenToegestaan: dekking.heeftBegroting,
           records,
           geheim: Deno.env.get('VOORSTEL_TOKEN_SECRET') || null,
-          // De buffer voor afwijzingen komt uit de tierconfiguratie van de SERVER (Pro 1,10, Premium 1,20), nooit uit het verzoek.
+          // De buffer voor afwijzingen komt uit de tierconfiguratie van de SERVER (Pro 1,20, Premium 1,40), nooit uit het verzoek.
           dekkingsdoel: (await import('../_shared/tierConfig.ts')).tierConfigVoor(tier, isAdmin).dekkingsdoel,
         },
         { resolveHost: voorstelResolveHost },
@@ -8277,7 +8651,19 @@ Deno.serve(async (req) => {
   const testLabel = typeof body.testLabel === 'string' && /^[a-z0-9_-]{3,40}$/i.test(body.testLabel) ? body.testLabel : null;
 
   if (fondsadviesEngineActief) {
-    const advies = await freeFondsadvies(admin, apiKey, berichten, subsidieKandidaten, funderDeadlineKand, funderAlgemeenKand, tier, isAdmin, testLabel, matchContext, modus, exclusiviteit);
+    const proFeiten: ProFeiten =
+      magOrganisatiegeheugen && actiefProject
+        ? {
+            begroting: Number(actiefProject.velden.begroting) > 0 ? Number(actiefProject.velden.begroting) : null,
+            regio: String(actiefProject.velden.regio || ''),
+            doelgroep: String(actiefProject.velden.doelgroep || ''),
+            landen: actiefProject.werkgebied.landen,
+            verfijningen: actiefProject.werkgebied.verfijningen.map((v) => v.naam),
+          }
+        : null;
+    // AI-beoordeling met bewijs (Pro en Premium): servervlag FONDS_BEOORDELING ('aan' of 'testers', testers uit FONDS_BEOORDELING_TESTERS of anders VOORSTEL_TESTERS). Standaard UIT.
+    const beoordelingAan = !isAdmin && (tier === 'pro' || tier === 'premium') && voorstelVlagAan(Deno.env.get('FONDS_BEOORDELING'), Deno.env.get('FONDS_BEOORDELING_TESTERS') || Deno.env.get('VOORSTEL_TESTERS'), profileId);
+    const advies = await freeFondsadvies(admin, apiKey, berichten, subsidieKandidaten, funderDeadlineKand, funderAlgemeenKand, tier, isAdmin, testLabel, matchContext, modus, exclusiviteit, proFeiten, beoordelingAan);
     fondsadviesTaal = advies.taal;
 
     subsidieContext = advies.subsidieTekst;
@@ -8299,6 +8685,10 @@ Deno.serve(async (req) => {
         tokens_uit: advies.usage?.completion_tokens ?? null,
       });
       await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'fonds_scan_database', model: MODEL, usage: advies.usage });
+    }
+
+    if (profileId && advies.beoordelingUsage && (advies.beoordelingUsage.prompt_tokens > 0 || advies.beoordelingUsage.completion_tokens > 0)) {
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'fonds_beoordeling', model: MODEL, usage: advies.beoordelingUsage });
     }
 
     // De online verkenningsaanroep wordt apart geregistreerd (Responses API-tokenvelden).

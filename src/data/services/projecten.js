@@ -19,6 +19,7 @@
 // vertalen naar de Engelse kolomnamen in de database.
 import { supabase } from '../client.js';
 import { teFinancieren } from '../../features/kompas-app/financiering/dekkingsplan.js';
+import { leesWerkgebied, werkgebiedVoorOpslag } from '../../shared/werkgebied/werkgebied.js';
 
 // Doelgroep is voorheen een los tekstveld geweest (target_groups, plain
 // text in de database). Om meervoudige selectie mogelijk te maken zonder
@@ -105,6 +106,8 @@ function naarProjectVeld(rij, docs) {
     // Discipline = de themas-taxonomie (tabel themas); opgeslagen in de bestaande kolom themes als kommagescheiden tekst.
     discipline: doelgroepUitKolom(rij.themes),
     regio: rij.location || '',
+    // Gekozen werkgebied als ISO-landcodes plus door het lid bevestigde verfijningen (GeoNames); null/ontbrekend = nog niet gebruikt.
+    werkgebied: leesWerkgebied(rij.work_area) || undefined,
     periodeVan: rij.period_start || '',
     periodeTot: rij.period_end || '',
     omschrijving: rij.description || '',
@@ -141,6 +144,15 @@ function getal(v) {
   return cijfers ? Number(cijfers) : null;
 }
 
+// Kolom work_area (jsonb): { landen: [ISO], verfijningen: [{ geonamesId, naam, landcode, lat, lng }] }. Alleen geschreven als er een gekozen land of een
+// verfijning is, of als het project al een waarde had; zo blijft een project zonder buitenlands werkgebied volledig ongemoeid. De landen komen uit het
+// gekozen werkgebied (het veld regio); een verfijning die niet meer bij een gekozen land hoort, vervalt.
+function werkgebiedKolom(project) {
+  const wg = werkgebiedVoorOpslag(project.regio, project.werkgebied && project.werkgebied.verfijningen);
+
+  return wg.landen.length || wg.verfijningen.length || project.werkgebied ? { work_area: wg } : {};
+}
+
 export function naarKolomPatch(project) {
   return {
     name: project.naam || 'Naamloos project',
@@ -148,6 +160,7 @@ export function naarKolomPatch(project) {
     target_groups: doelgroepNaarKolom(project.doelgroep),
     themes: doelgroepNaarKolom(project.discipline),
     location: project.regio || null,
+    ...werkgebiedKolom(project),
     period_start: project.periodeVan || null,
     period_end: project.periodeTot || null,
     description: project.omschrijving || null,

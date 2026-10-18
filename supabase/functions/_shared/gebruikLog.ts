@@ -15,6 +15,7 @@ export const ACTIE_TYPES = [
   'chat',
   'fonds_scan_database', // criteria afleiden en databasematching rond een fondsvraag
   'fonds_scan_web', // online oriëntatie / verkenner
+  'fonds_beoordeling', // AI-beoordeling met bewijs van de beste kandidaten (Pro en Premium)
   'proposal_preview',
   'source_verification',
   'document_generation',

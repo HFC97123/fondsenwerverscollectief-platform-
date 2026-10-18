@@ -35,6 +35,15 @@ export interface OnlineAanvullenConfig {
   maxKandidaten: number;
 }
 
+export interface BeoordelingConfig {
+  // AI-beoordeling met bewijs (fondsBeoordeling.ts): hoeveel van de best gerangschikte kandidaten de AI leest, de buffer waarop de korte lijst stopt
+  // (aandeel van de projectbegroting) en of er een "net niet"-lijst bij hoort. De bovengrens van de som (Pro 120%, Premium 140%) staat in `maxFactorLijst`.
+  maxKandidaten: number;
+  dekkingsdoelLijst: number;
+  maxFactorLijst: number; // bovengrens van de som van de geschatte bijdragen, als aandeel van de projectbegroting
+  netNietLijst: boolean;
+}
+
 export interface TierConfig {
   tier: Tier;
   // Mag deze tier de dekkingsplan-flow gebruiken (het dashboard van Pro/Premium)? Free is een chatbot.
@@ -57,6 +66,8 @@ export interface TierConfig {
   // Alleen Pro: na het voorstel melden hoeveel passende fondsen alleen in Premium zichtbaar zijn (uitsluitend een AANTAL, nooit een naam of
   // detail van zo'n fonds). Pas getoond als het aantal groter dan nul is en klopt met wat de engine voor dit project vond.
   premiumHint: boolean;
+  // Null = geen AI-beoordeling (Free).
+  beoordeling: BeoordelingConfig | null;
   // Intern observatiebudget per gebruiker per maand in euro. UITSLUITEND meten: nooit blokkeren, afremmen, melden of een paywall.
   maandBudgetObservatieEur: number | null;
 }
@@ -73,6 +84,7 @@ const PRO: TierConfig = {
   onlineAanvullen: null,
   aanvullenVelden: 'indien-nodig',
   premiumHint: true,
+  beoordeling: { maxKandidaten: 25, dekkingsdoelLijst: 1.0, maxFactorLijst: 1.2, netNietLijst: false },
   maandBudgetObservatieEur: 7,
 };
 
@@ -88,6 +100,7 @@ const PREMIUM: TierConfig = {
   onlineAanvullen: { maxKandidaten: 5 },
   aanvullenVelden: 'alle-ontbrekende',
   premiumHint: false,
+  beoordeling: { maxKandidaten: 40, dekkingsdoelLijst: 1.4, maxFactorLijst: 1.4, netNietLijst: true },
   maandBudgetObservatieEur: 14,
 };
 
@@ -103,6 +116,7 @@ const FREE: TierConfig = {
   onlineAanvullen: null,
   aanvullenVelden: 'geen',
   premiumHint: false,
+  beoordeling: null,
   maandBudgetObservatieEur: null,
 };
 

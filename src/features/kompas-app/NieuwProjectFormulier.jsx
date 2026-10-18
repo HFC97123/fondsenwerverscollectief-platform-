@@ -14,6 +14,8 @@ import { formatEuro, leesBedragInvoer, teFinancieren } from './financiering/dekk
 import { ISO_DATUM } from './projectOpslaan.js';
 import { stelTrefwoordenVoor, voegRegioToe } from './projectinformatie/trefwoorden.js';
 import TrefwoordVoorstellen from './projectinformatie/TrefwoordVoorstellen.jsx';
+import WerkgebiedVerfijning from './WerkgebiedVerfijning.jsx';
+import { LANDNAMEN } from '../../shared/werkgebied/werkgebied.js';
 
 // De velden van het aanmaakformulier, in volgorde. Gebruikt door de pagina en door de tests.
 export const NIEUW_PROJECT_VELDEN = ['naam', 'doelgroep', 'discipline', 'periodeVan', 'periodeTot', 'regio', 'omschrijving', 'begroting', 'eigenBijdrage'];
@@ -63,6 +65,11 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
   // Alleen voorstellen uit de bestaande tabellen; het lid kiest zelf (zie projectinformatie/trefwoorden.js).
   const [scanTekst, setScanTekst] = useState(`${form.naam || ''}. ${form.omschrijving || ''}`);
   const [genegeerd, setGenegeerd] = useState({});
+  // Verandert wanneer het lid de omschrijving of het werkgebied verlaat; daarna vraagt WerkgebiedVerfijning (eenmalig per tekst) om plaatsvoorstellen.
+  const [controleSleutel, setControleSleutel] = useState(0);
+  const controleer = () => setControleSleutel((n) => n + 1);
+  // Landen als suggestie naast de bestaande werkgebieden; een gekozen land wordt als ISO-code opgeslagen (zie werkgebiedVoorOpslag).
+  const regioOpties = useMemo(() => Array.from(new Set([...regios, ...LANDNAMEN])), [regios]);
 
   useEffect(() => {
     const t = setTimeout(() => setScanTekst(`${form.naam || ''}. ${form.omschrijving || ''}`), 500);
@@ -151,13 +158,14 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
         <Field span="1 / -1">
           Werkgebied / locatie
           {/* Bestaande regio's (tabel regios) als suggesties; een specifieke plaats of regio mag ook vrij. */}
-          <input data-testid="np-regio" list="np-regio-opties" value={form.regio || ''} onChange={(ev) => setVeld('regio', ev.target.value)} placeholder="Bijvoorbeeld: Amsterdam, Landelijk of Utrecht en Flevoland" style={veldStijl} autoComplete="off" />
+          <input data-testid="np-regio" list="np-regio-opties" value={form.regio || ''} onChange={(ev) => setVeld('regio', ev.target.value)} onBlur={controleer} placeholder="Bijvoorbeeld: Amsterdam, Landelijk of Utrecht en Flevoland" style={veldStijl} autoComplete="off" />
           <datalist id="np-regio-opties">
-            {regios.map((r) => (
+            {regioOpties.map((r) => (
               <option key={r} value={r} />
             ))}
           </datalist>
           <TrefwoordVoorstellen testid="np-voorstel-regio" voorstellen={voorstellen.regio} onKies={(n) => setVeld('regio', voegRegioToe(form.regio, n))} onNegeer={negeer('regio')} />
+          <WerkgebiedVerfijning regio={form.regio} omschrijving={form.omschrijving} werkgebied={form.werkgebied} setWerkgebied={(w) => setVeld('werkgebied', w)} controleSleutel={controleSleutel} />
         </Field>
 
         <Field span="1 / -1">
@@ -166,6 +174,7 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
             data-testid="np-omschrijving"
             value={form.omschrijving || ''}
             onChange={(ev) => setVeld('omschrijving', ev.target.value)}
+            onBlur={controleer}
             placeholder="Wat gaat er gebeuren en wat levert het op?"
             rows={4}
             style={{ ...veldStijl, lineHeight: 1.6, resize: 'vertical' }}

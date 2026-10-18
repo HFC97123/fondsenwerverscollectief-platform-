@@ -38,19 +38,35 @@ function maakBuilder(tabel) {
     if (tabel === 'themas') return w.taxonomie ? { data: w.taxonomie.themas.map((naam) => ({ naam })), error: null } : { data: null, error: { message: 'x' } };
     if (tabel === 'doelgroepen') return { data: (w.taxonomie?.doelgroepen || []).map((naam) => ({ naam })), error: null };
     if (tabel === 'regios') return { data: (w.taxonomie?.regios || []).map((naam) => ({ naam })), error: null };
+    if (tabel === 'subsidie_kompas_fonds_beoordelingen') {
+      if (w.oordeelTabelWeg) return { data: null, error: { code: '42P01', message: 'relation does not exist' } };
+      return { data: (w.oordeelRijen || []).filter((r) => (state.filters.profiel_hash === undefined || r.profiel_hash === state.filters.profiel_hash) && (!state.in || state.in.includes(r.fonds_sleutel))), error: null };
+    }
+    if (w.extraTabellen && w.extraTabellen[tabel]) return { data: w.extraTabellen[tabel], error: null };
     return { data: [], error: null };
   };
   const b = {
     select() { return b; },
-    in() { return b; },
-    eq() { return b; },
+    in(k, v) { state.in = v; return b; },
+    eq(k, v) { state.filters[k] = v; return b; },
+    gte() { return b; },
+    is() { return b; },
     order() { return b; },
     limit() { return b; },
     single() { return Promise.resolve(resultaat()); },
     maybeSingle() { return Promise.resolve(resultaat()); },
     insert(row) { world.inserts.push({ tabel, row }); return Promise.resolve({ data: null, error: null }); },
     update() { return b; },
-    upsert() { return b; },
+    upsert(rijen) {
+      if (tabel === 'subsidie_kompas_fonds_beoordelingen' && !world.oordeelTabelWeg) {
+        world.oordeelRijen = world.oordeelRijen || [];
+        for (const r of rijen) {
+          const i = world.oordeelRijen.findIndex((x) => x.profiel_hash === r.profiel_hash && x.fonds_sleutel === r.fonds_sleutel);
+          if (i >= 0) world.oordeelRijen[i] = r; else world.oordeelRijen.push(r);
+        }
+      }
+      return b;
+    },
     then(res, rej) { return Promise.resolve(resultaat()).then(res, rej); },
   };
   return b;
@@ -115,6 +131,18 @@ globalThis.fetch = async (url, init) => {
       if (world.extractorFout === 'http500') return new Response('boom', { status: 500 });
       throw new Error('netwerk');
     }
+    // De AI-beoordeling van fondsen (stap 3) is een aparte aanroep met een eigen systeemtekst.
+    if (String(body.messages?.[0]?.content || '').startsWith('Je beoordeelt of fondsen passen bij een project')) {
+      world.openAi.splice(world.openAi.length - 1, 1);
+      world.openAi.push({ soort: 'beoordeling', body });
+      if (world.beoordelingFout) {
+        if (world.beoordelingFout === 'http500') return new Response('boom', { status: 500 });
+        throw new Error('netwerk');
+      }
+      const invoer = JSON.parse(body.messages[1].content);
+      const uit = typeof world.beoordeling === 'function' ? world.beoordeling(invoer, body) : { oordelen: [] };
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(uit) } }], usage: { prompt_tokens: 1000, completion_tokens: 200 } }), { status: 200 });
+    }
     const gebruikers = body.messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
     const uit = world.extractor ? world.extractor(gebruikers) : {};
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(uit) } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }), { status: 200 });
@@ -149,7 +177,7 @@ export async function laadModule(bron, tag) {
   src = src.replace("import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';", 'const createClient = globalThis.__createClient;');
   const sharedUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../supabase/functions/_shared') + path.sep).href;
   // De gebouwde module staat in tmp: dynamische imports uit ../_shared/ moeten naar de echte map wijzen (Node 22 leest .ts met type-stripping).
-  src = src.replace(/import\(\s*'\.\.\/_shared\/(?=bronControle)/g, `import('${sharedUrl}`);
+  src = src.replace(/import\(\s*'\.\.\/_shared\/(?=bronControle|proSelectie|werkgebied|locatieVerfijning|fondsBeoordeling|tierConfig|gebruikLog)/g, `import('${sharedUrl}`);
   const { code } = await esbuild.transform(src, { loader: 'ts', format: 'esm', target: 'es2022' });
   const uit = path.join(os.tmpdir(), `fondsadvies-test-${process.pid}`, `${tag}.mjs`);
   fs.mkdirSync(path.dirname(uit), { recursive: true });

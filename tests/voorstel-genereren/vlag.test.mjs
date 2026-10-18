@@ -41,13 +41,14 @@ const zoek = async (env) => { wereld(env); return post({ mode: 'voorstel-zoekpro
 const open_ = (r) => r.status === 200;
 const dicht = (r) => nietBeschikbaar(r);
 check('aan + geldige gebruiker: open', open_(await zoek({ VOORSTEL_GENEREREN: 'aan' })));
+check('hoofdletters, spaties en aanhalingstekens rond "aan": open', (await Promise.all(['Aan', 'AAN', 'aan ', ' aan', '"aan"', "'Aan'"].map((v) => zoek({ VOORSTEL_GENEREREN: v })))).every(open_));
 check('testers + gebruiker in lijst: open', open_(await zoek({ VOORSTEL_GENEREREN: 'testers', VOORSTEL_TESTERS: UID })));
 check('testers + hoofdletters en spaties in lijst: open', open_(await zoek({ VOORSTEL_GENEREREN: 'testers', VOORSTEL_TESTERS: ` ${UID.toUpperCase()} , ${ANDER}` })));
 check('testers + andere gebruiker: dicht', dicht(await zoek({ VOORSTEL_GENEREREN: 'testers', VOORSTEL_TESTERS: ANDER })));
 check('testers + lege lijst: dicht', dicht(await zoek({ VOORSTEL_GENEREREN: 'testers', VOORSTEL_TESTERS: '' })));
 check('testers + lijst met onzin (iedereen, *, true): dicht', dicht(await zoek({ VOORSTEL_GENEREREN: 'testers', VOORSTEL_TESTERS: 'iedereen,*,true,all' })));
 check('testers + lijst met deel van een id: dicht', dicht(await zoek({ VOORSTEL_GENEREREN: 'testers', VOORSTEL_TESTERS: UID.slice(0, 20) })));
-check('typefouten in de vlag (Aan, true, 1, "aan "): dicht', (await Promise.all(['Aan', 'AAN', 'true', '1', 'aan ', 'tester'].map((v) => zoek({ VOORSTEL_GENEREREN: v, VOORSTEL_TESTERS: UID })))).every(dicht));
+check('typefouten in de vlag (true, 1, tester, aanzetten): dicht', (await Promise.all(['true', '1', 'tester', 'aanzetten', 'uit'].map((v) => zoek({ VOORSTEL_GENEREREN: v, VOORSTEL_TESTERS: UID })))).every(dicht));
 check('lijst zonder vlag-waarde "testers" doet niets: dicht', dicht(await zoek({ VOORSTEL_GENEREREN: undefined, VOORSTEL_TESTERS: UID })));
 check('lijst met 60 id\'s: alleen de eerste 25 tellen', dicht(await zoek({ VOORSTEL_GENEREREN: 'testers', VOORSTEL_TESTERS: [...Array.from({ length: 25 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`), UID].join(',') })));
 
