@@ -3620,6 +3620,8 @@ type Kandidaat = {
   verlopenDeadline: string | null;
   terugkerend: boolean;
   signalen: string[];
+  // De doelgroepen (of bijbehorende disciplines) van het fonds waarop de aansluiting bij het project berust.
+  doelgroepMatch: string[];
   themaNiveau: string;
   score: number;
   // Formele toelaatbaarheid (geografie, aanvragertype, doelgroepbeperking, harde
@@ -4072,35 +4074,279 @@ function beoordeelGeografie(naam: string, funderNaam: string, row: any, regios: 
 // het fonds). Regio en aanvragertype tellen mee in de score, maar zijn geen
 // inhoudelijk bewijs (zet TWEEDE_SIGNAAL_INHOUDELIJK op false om ze mee te laten
 // tellen).
-// Verwante doelgroepen: een fonds voor "Scholen en onderwijsinstellingen" of "Gezinnen" kan een project voor "Kinderen" wel degelijk
-// ondersteunen, ook als "Kinderen" niet letterlijk bij het fonds staat. Zo'n verwantschap sluit een fonds NIET uit, maar telt ook niet als
-// positief signaal: ze komt als "nog te controleren" in de uitleg. Alleen een fonds waarvan de doelgroepen nergens bij het project passen, valt af.
-const DOELGROEP_VERWANT: string[][] = [
-  ['Kinderen', 'Jongeren', 'Gezinnen', 'Scholen en onderwijsinstellingen', 'Studenten', 'Jonge makers'],
-  ['Mensen in armoede', 'Mensen in een kwetsbare positie', 'Gezinnen', 'Dak- en thuislozen', 'Nieuwkomers/ongedocumenteerden', 'Minderheden', 'Vluchtelingen', 'Mensen met afstand tot de arbeidsmarkt', 'Werklozen', 'Slachtoffers van noodhulp'],
-  ['Chronisch zieken', 'Mensen met een chronische aandoening', 'Patiënten', 'Mantelzorgers', 'Mensen met een langdurige zorgvraag', 'Naasten van mensen met een chronische aandoening', 'Mensen met een beperking', 'Mensen met een lichamelijke beperking', 'Mensen met beperkte toegang tot gezondheidszorg', 'Zorginstellingen', 'Blinden en slechtzienden'],
-  ['Makers', 'Kunstenaars', 'Jonge makers', 'Culturele instellingen', 'Musea', 'Podiumkunstorganisaties', 'Kunstbeschouwers', 'Curatoren', 'Uitgevers'],
-  ['Erfgoedinstellingen', 'Erfgoedprofessionals', 'Musea', 'Curatoren'],
-  ['Gemeenschappen', 'Buurtbewoners', 'Vrijwilligers', 'Serviceclubs', 'Kerken en religieuze organisaties'],
+// Doelgroepen in de matching (afspraak met de beheerder, 2026-10-18). De database blijft ongewijzigd: de indeling staat hier in de code.
+// Drie soorten waarden in het veld doelgroep:
+//  1. UITVOERDERS: organisaties en beroepen die het project uitvoeren of aanvragen (musea, scholen, kunstenaars...). Zo'n waarde bij een fonds sluit NOOIT iets uit.
+//     Noemt het project dezelfde waarde, dan is dat een pluspunt. Een fonds met alleen uitvoerders heeft geen doelgroepbeperking (neutraal).
+//  2. STRENGE mensengroepen, in families. Leden van één familie zijn onderling uitwisselbaar (kinderen, jongeren en studenten), families niet.
+//     Heeft het project een strenge groep, dan moet het fonds minstens één lid van die familie (of de bijbehorende discipline) noemen.
+//  3. BREDE mensengroepen (kwetsbare positie, armoede, buurtbewoners...): geen poort. De selectie loopt dan vooral via discipline en werkgebied.
+type DoelgroepFamilie = { naam: string; leden: string[]; disciplines: string[]; leeftijd?: boolean; migratie?: boolean };
+
+const DOELGROEP_FAMILIES: DoelgroepFamilie[] = [
+  { naam: 'Jeugd', leden: ['Kinderen', 'Jongeren', 'Studenten'], disciplines: ['Jeugd en kinderen', 'Kinderen/jongeren'], leeftijd: true },
+  { naam: 'Vrouwen en meisjes', leden: ['Vrouwen en meisjes'], disciplines: [] },
+  { naam: 'Ouderen', leden: ['Ouderen'], disciplines: ['Ouderen'] },
+  { naam: 'Migratie', leden: ['Nieuwkomers/ongedocumenteerden', 'Vluchtelingen'], disciplines: ['Vluchtelingen', 'Vluchtelingen en migranten'], migratie: true },
+  { naam: 'Ziekte en patiënten', leden: ['Patiënten', 'Chronisch zieken', 'Mensen met een chronische aandoening', 'Mensen met een langdurige zorgvraag'], disciplines: ['Patiëntondersteuning'] },
+  { naam: 'Beperking', leden: ['Mensen met een beperking', 'Mensen met een lichamelijke beperking', 'Blinden en slechtzienden'], disciplines: ['Gehandicaptenzorg', 'Mindervaliden'] },
+  { naam: 'Verzorgers', leden: ['Mantelzorgers', 'Naasten van mensen met een chronische aandoening'], disciplines: [] },
+  { naam: 'Dieren', leden: ['Dieren'], disciplines: ['Dieren', 'Dierenwelzijn'] },
+  { naam: 'Slachtoffers van geweld', leden: ['Slachtoffers van geweld'], disciplines: [] },
+  { naam: 'Slachtoffers van oorlog', leden: ['Slachtoffers van oorlog'], disciplines: [] },
+  { naam: 'Slachtoffers van noodhulp', leden: ['Slachtoffers van noodhulp'], disciplines: [] },
+  { naam: 'Dak- en thuislozen', leden: ['Dak- en thuislozen'], disciplines: [] },
+  { naam: 'Veteranen', leden: ['Veteranen'], disciplines: [] },
+  { naam: 'Beperkte toegang tot gezondheidszorg', leden: ['Mensen met beperkte toegang tot gezondheidszorg'], disciplines: [] },
 ];
 
-// De doelgroepen van het fonds die verwant (maar niet gelijk) zijn aan een doelgroep van het project.
-function verwanteDoelgroepen(fonds: string[], project: string[]): string[] {
-  const proj = new Set(project.map(normaliseerTekst));
-  const uit: string[] = [];
+const DOELGROEP_UITVOERDERS = [
+  'Culturele instellingen', 'Musea', 'Erfgoedinstellingen', 'Podiumkunstorganisaties', 'Scholen en onderwijsinstellingen', 'Zorginstellingen',
+  'Kerken en religieuze organisaties', 'Sportverenigingen', 'Natuurbeheerders', 'Serviceclubs', 'Ondernemers', 'Burgerinitiatieven rondom gezondheid',
+  'Kunstenaars', 'Makers', 'Jonge makers', 'Onderzoekers', 'Curatoren', 'Uitgevers', 'Kunstbeschouwers', 'Erfgoedprofessionals', 'Zorgprofessionals (als samenwerkingspartner)',
+];
 
-  for (const f of fonds) {
-    if (uit.includes(f)) continue;
+// Uitvoerders die onderling uitwisselbaar zijn: een project voor kunstenaars is een pluspunt bij een fonds voor makers.
+const UITVOERDER_FAMILIES: string[][] = [['Kunstenaars', 'Makers', 'Jonge makers']];
 
-    const fn = normaliseerTekst(f);
-    const verwant = DOELGROEP_VERWANT.some((groep) => {
-      const g = groep.map(normaliseerTekst);
+// Brede mensengroepen die inhoudelijk dicht bij elkaar liggen. Alleen een zwak signaal: komt als "nog te controleren", nooit als bewijs.
+const DOELGROEP_VERWANT_BREED: string[][] = [
+  ['Mensen in armoede', 'Mensen in een kwetsbare positie', 'Gezinnen', 'Minderheden', 'Mensen met afstand tot de arbeidsmarkt', 'Werklozen', 'Ervaringsdeskundigen'],
+  ['Gemeenschappen', 'Buurtbewoners', 'Vrijwilligers', 'Publiek toegankelijke locaties'],
+];
 
-      return g.includes(fn) && g.some((x) => x !== fn && proj.has(x));
-    });
+// Brede groepen waarlangs een project voor nieuwkomers/ongedocumenteerden ook bij sociale fondsen kan passen ("mogelijk", met een controlepunt).
+const MIGRATIE_BREDE_ROUTE = ['Mensen in een kwetsbare positie', 'Mensen in armoede', 'Minderheden'];
 
-    if (verwant) uit.push(f);
+type DoelgroepOordeel = {
+  uitsluiten: boolean;
+  // Een aantoonbare aansluiting op de doelgroep van het project (telt als inhoudelijk signaal en in de score).
+  positief: boolean;
+  // De waarden (doelgroepen of disciplines van het fonds) waarop de aansluiting berust.
+  tonen: string[];
+  // De aansluiting is er, maar niet zeker: het resultaat wordt "mogelijk".
+  mogelijk: boolean;
+  controle: string[];
+  zwak: string[];
+};
+
+let dgIndex: { uitvoerder: Set<string>; famVan: Map<string, DoelgroepFamilie>; uitvFam: Map<string, string[]>; breedVerwant: Map<string, Set<string>> } | null = null;
+
+function dgIndexen() {
+  if (dgIndex) return dgIndex;
+
+  const n = normaliseerTekst;
+  const famVan = new Map<string, DoelgroepFamilie>();
+
+  for (const f of DOELGROEP_FAMILIES) for (const l of f.leden) famVan.set(n(l), f);
+
+  const uitvFam = new Map<string, string[]>();
+
+  for (const g of UITVOERDER_FAMILIES) for (const l of g) uitvFam.set(n(l), g.map(n));
+
+  const breedVerwant = new Map<string, Set<string>>();
+
+  for (const g of DOELGROEP_VERWANT_BREED) {
+    const gn = g.map(n);
+
+    for (const l of gn) breedVerwant.set(l, new Set([...(breedVerwant.get(l) || []), ...gn.filter((x) => x !== l)]));
   }
+
+  dgIndex = { uitvoerder: new Set(DOELGROEP_UITVOERDERS.map(n)), famVan, uitvFam, breedVerwant };
+
+  return dgIndex;
+}
+
+function beoordeelDoelgroepen(fondsDg: string[], fondsThemas: string[], projectDg: string[]): DoelgroepOordeel {
+  const uit: DoelgroepOordeel = { uitsluiten: false, positief: false, tonen: [], mogelijk: false, controle: [], zwak: [] };
+
+  if (!projectDg.length) return uit;
+
+  const n = normaliseerTekst;
+  const ix = dgIndexen();
+  const unieke = (l: string[]) => [...new Set(l)];
+  const soort = (d: string): 'uitvoerder' | 'streng' | 'breed' => (ix.uitvoerder.has(n(d)) ? 'uitvoerder' : ix.famVan.has(n(d)) ? 'streng' : 'breed');
+  const lijstTekst = (l: string[]) => unieke(l).join(', ');
+
+  const pSet = new Set(projectDg.map(n));
+  const pStreng = projectDg.filter((d) => soort(d) === 'streng');
+  const pBreed = projectDg.filter((d) => soort(d) === 'breed');
+  const pFamilies = unieke(pStreng.map((d) => ix.famVan.get(n(d))!.naam)).map((naam) => DOELGROEP_FAMILIES.find((f) => f.naam === naam)!);
+
+  const fBreed = fondsDg.filter((d) => soort(d) === 'breed');
+  const fThemas = fondsThemas;
+  // Een fonds richt zich ook op een mensengroep als het de bijbehorende discipline noemt (bijvoorbeeld Ouderen of Gehandicaptenzorg).
+  const fDisciplineGroepen = fThemas.filter((t) => DOELGROEP_FAMILIES.some((f) => f.disciplines.some((x) => n(x) === n(t))));
+  const fMens = [...fondsDg.filter((d) => soort(d) !== 'uitvoerder'), ...fDisciplineGroepen];
+
+  // Aansluiting op een uitvoerder van het project (exact, of binnen dezelfde uitvoerdersfamilie).
+  const uitvoerderTreffers = fondsDg.filter((d) => {
+    if (soort(d) !== 'uitvoerder') return false;
+    if (pSet.has(n(d))) return true;
+
+    const fam = ix.uitvFam.get(n(d));
+
+    return Boolean(fam && projectDg.some((p) => fam.includes(n(p))));
+  });
+  const exacteBrede = fBreed.filter((d) => pSet.has(n(d)));
+
+  // ---- Project met minstens één strenge groep: poort -------------------------
+  if (pFamilies.length) {
+    const projectStrengTekstVoorDirect = lijstTekst(pStreng);
+    const direct: string[] = [];
+    const kruis: string[] = [];
+    const leeftijdNotities: string[] = [];
+    let viaLeden = false;
+    const viaDisc: string[] = [];
+
+    for (const fam of pFamilies) {
+      const ledenHits = fondsDg.filter((d) => fam.leden.some((l) => n(l) === n(d)));
+      const discHits = fThemas.filter((t) => fam.disciplines.some((x) => n(x) === n(t)));
+      const projectLeden = pStreng.filter((d) => fam.leden.some((l) => n(l) === n(d)));
+
+      if (!ledenHits.length && !discHits.length) continue;
+
+      if (fam.migratie) {
+        const exactLid = ledenHits.filter((d) => pSet.has(n(d)));
+        const algemeen = discHits.filter((t) => n(t) === n('Vluchtelingen en migranten') || (pSet.has(n('Vluchtelingen')) && n(t) === n('Vluchtelingen')));
+
+        if (exactLid.length) viaLeden = true;
+        viaDisc.push(...algemeen);
+
+        if (exactLid.length || algemeen.length) direct.push(...exactLid, ...algemeen);
+        else kruis.push(...ledenHits, ...discHits);
+
+        continue;
+      }
+
+      direct.push(...ledenHits, ...discHits);
+
+      if (ledenHits.length) viaLeden = true;
+
+      viaDisc.push(...discHits);
+
+      if (fam.leeftijd && ledenHits.length && !ledenHits.some((d) => pSet.has(n(d)))) {
+        leeftijdNotities.push(`Het fonds noemt ${lijstTekst(ledenHits)}, uw project richt zich op ${lijstTekst(projectLeden)}: controleer de leeftijdsgrens`);
+      }
+    }
+
+    if (direct.length) {
+      uit.positief = true;
+      uit.tonen = unieke([...direct, ...exacteBrede, ...uitvoerderTreffers]);
+      uit.controle.push(...leeftijdNotities);
+
+      // Alleen de discipline sluit aan, terwijl het fonds als doelgroep andere mensengroepen noemt: dan is de aansluiting niet zeker.
+      const eigenMensen = fondsDg.filter((d) => soort(d) !== 'uitvoerder');
+
+      if (!viaLeden && eigenMensen.length) {
+        uit.mogelijk = true;
+        uit.controle.push(`Het fonds noemt ${lijstTekst(viaDisc)} als thema, maar als doelgroep ${lijstTekst(eigenMensen)}: controleer of uw doelgroep (${projectStrengTekstVoorDirect}) wordt ondersteund`);
+      }
+
+      return uit;
+    }
+
+    if (kruis.length) {
+      uit.mogelijk = true;
+      uit.tonen = unieke(kruis);
+      uit.controle.push(`De doelgroep van het fonds (${lijstTekst(kruis)}) sluit alleen deels aan op die van uw project: controleer of het fonds ook geeft aan mensen met uw verblijfsstatus`);
+      uit.zwak.push(`de doelgroep van het fonds (${lijstTekst(kruis)}) sluit alleen indirect aan op die van het project`);
+
+      return uit;
+    }
+
+    // Geen aansluiting op de strenge groep: nog twee zachtere routes, anders valt het fonds af (alleen als het fonds zelf een mensengroep noemt).
+    const projectStrengTekst = lijstTekst(pStreng);
+
+    if (exacteBrede.length) {
+      uit.positief = true;
+      uit.mogelijk = true;
+      uit.tonen = unieke(exacteBrede);
+      uit.controle.push(`Het fonds noemt alleen de bredere doelgroep (${lijstTekst(exacteBrede)}): controleer of ook uw specifieke doelgroep (${projectStrengTekst}) wordt ondersteund`);
+
+      return uit;
+    }
+
+    const pBreedVerwant = new Set(pBreed.flatMap((d) => [...(ix.breedVerwant.get(n(d)) || [])]));
+    const verwantBreed = fBreed.filter((d) => pBreedVerwant.has(n(d)));
+
+    if (verwantBreed.length) {
+      uit.mogelijk = true;
+      uit.controle.push(`De doelgroep van het fonds (${lijstTekst(verwantBreed)}) sluit alleen indirect aan: controleer of uw doelgroep ook wordt ondersteund`);
+      uit.zwak.push(`de doelgroep van het fonds (${lijstTekst(verwantBreed)}) sluit alleen indirect aan op die van het project`);
+
+      return uit;
+    }
+
+    const migratieRoute = pFamilies.some((f) => f.migratie) ? fBreed.filter((d) => MIGRATIE_BREDE_ROUTE.some((r) => n(r) === n(d))) : [];
+
+    if (migratieRoute.length) {
+      uit.mogelijk = true;
+      uit.controle.push(`Het fonds richt zich op ${lijstTekst(migratieRoute)}: controleer of het fonds ook geeft aan mensen zonder verblijfsvergunning`);
+      uit.zwak.push(`de doelgroep van het fonds (${lijstTekst(migratieRoute)}) sluit alleen indirect aan op die van het project`);
+
+      return uit;
+    }
+
+    if (fMens.length) {
+      uit.uitsluiten = true;
+
+      return uit;
+    }
+
+    // Het fonds noemt geen mensengroep (niets, of alleen uitvoerders): geen doelgroepbeperking, dus neutraal.
+    if (fondsDg.length) {
+      uit.mogelijk = true;
+      uit.tonen = [];
+      uit.controle.push(`Het fonds noemt geen doelgroep, alleen wie kan aanvragen (${lijstTekst(fondsDg)}): controleer of uw doelgroep (${projectStrengTekst}) wordt ondersteund`);
+    }
+
+    return uit;
+  }
+
+  // ---- Project zonder strenge groep (alleen brede groepen en/of uitvoerders): geen poort --------------------------------
+  const treffers = unieke([...exacteBrede, ...uitvoerderTreffers]);
+
+  if (treffers.length) {
+    uit.positief = true;
+    uit.tonen = treffers;
+
+    return uit;
+  }
+
+  const pBreedVerwant = new Set(pBreed.flatMap((d) => [...(ix.breedVerwant.get(n(d)) || [])]));
+  const verwantBreed = fBreed.filter((d) => pBreedVerwant.has(n(d)));
+
+  if (verwantBreed.length) {
+    uit.mogelijk = true;
+    uit.controle.push(`De doelgroep van het fonds (${lijstTekst(verwantBreed)}) sluit alleen indirect aan: controleer of uw doelgroep ook wordt ondersteund`);
+    uit.zwak.push(`de doelgroep van het fonds (${lijstTekst(verwantBreed)}) sluit alleen indirect aan op die van het project`);
+
+    return uit;
+  }
+
+  if (!fMens.length) {
+    if (fondsDg.length) {
+      uit.mogelijk = true;
+      uit.controle.push(`Het fonds noemt geen doelgroep, alleen wie kan aanvragen (${lijstTekst(fondsDg)}): controleer of uw doelgroep wordt ondersteund`);
+    }
+
+    return uit;
+  }
+
+  // Het fonds noemt een mensengroep die het project niet noemt. Is dat uitsluitend een strenge groep (een specialistisch fonds) en noemt het project
+  // wel brede groepen, dan past het niet. Anders blijft het mogelijk, met een controlepunt.
+  const fondsAlleenStreng = [...fondsDg.filter((d) => soort(d) !== 'uitvoerder'), ...fDisciplineGroepen].every((d) => soort(d) === 'streng' || fDisciplineGroepen.includes(d));
+
+  if (fondsAlleenStreng && pBreed.length) {
+    uit.uitsluiten = true;
+
+    return uit;
+  }
+
+  uit.mogelijk = true;
+  uit.controle.push(`Het fonds richt zich op ${lijstTekst(fMens)}: controleer of uw doelgroep daaronder valt`);
+  uit.zwak.push(`de doelgroep van het fonds (${lijstTekst(fMens)}) sluit niet expliciet aan op die van het project`);
 
   return uit;
 }
@@ -4195,13 +4441,10 @@ function beoordeelKandidaat(
 
   if (geo.status === 'ineligible') uitsluiting = geo.reden;
 
-  const dgOverlap = exact(doelgroepen, criteria.doelgroepen);
+  const dgOordeel = beoordeelDoelgroepen(doelgroepen, themas, criteria.doelgroepen);
+  const dgOverlap = dgOordeel.tonen;
 
-  const dgVerwant = dgOverlap.length ? [] : verwanteDoelgroepen(doelgroepen, criteria.doelgroepen);
-
-  if (!uitsluiting && criteria.doelgroepen.length && doelgroepen.length && !dgOverlap.length && !dgVerwant.length) {
-    uitsluiting = 'doelgroep sluit niet aan';
-  }
+  if (!uitsluiting && criteria.doelgroepen.length && dgOordeel.uitsluiten) uitsluiting = 'doelgroep sluit niet aan';
 
   if (!uitsluiting) uitsluiting = hardeVoorwaardenUitsluiting(row, criteria);
 
@@ -4228,7 +4471,7 @@ function beoordeelKandidaat(
   const secundairHits = kernHits.length ? [] : exact(themas, nietBreed(criteria.themas));
   const themaNiveau = !criteria.themas.length ? 'geen-criterium' : kernHits.length ? 'kern' : secundairHits.length ? 'secundair' : themaOverlap.length ? 'breed' : 'geen';
   const regioPos = geo.positief;
-  const dgPos = criteria.doelgroepen.length > 0 && dgOverlap.length > 0;
+  const dgPos = criteria.doelgroepen.length > 0 && dgOordeel.positief;
   const typePos = type !== 'onbekend' && AANVRAGER_POSITIEF_RE[type] ? zinnen(tekst).some((z) => AANVRAGER_POSITIEF_RE[type].test(z) && !(GEEN_AANVRAGER_RE[type]?.test(z))) : false;
   const actPos = (criteria.activiteiten || []).filter((a) => ACTIVITEIT_POSITIEF_RE[a]?.test(tekst) && !activiteitUitgesloten(tekst, a));
   const bedragMin = Number(row?.bedrag_min ?? row?.bijdrage_min) || null;
@@ -4288,7 +4531,7 @@ function beoordeelKandidaat(
   if (themaNiveau === 'secundair' || themaNiveau === 'breed') zwaktes.push('het thema sluit alleen indirect aan');
   if (geo.notitie) zwaktes.push(geo.notitie);
   if (criteria.doelgroepen.length && !doelgroepen.length) zwaktes.push('de doelgroep van het fonds is niet bekend');
-  if (dgVerwant.length) zwaktes.push(`de doelgroep van het fonds (${dgVerwant.join(', ')}) sluit alleen indirect aan op die van het project`);
+  zwaktes.push(...dgOordeel.zwak);
   if (focus.niveau === 'licht') zwaktes.push('het fonds heeft een brede portefeuille met veel andere domeinen');
   if (focus.niveau === 'sterk') zwaktes.push(`het zwaartepunt van het fonds ligt bij andere thema's (${focus.buiten.slice(0, 3).join(', ')})`);
   if ((criteria.activiteiten || []).length && !actPos.length) zwaktes.push('de projectactiviteit wordt niet expliciet genoemd');
@@ -4304,11 +4547,11 @@ function beoordeelKandidaat(
 
   if (geo.status === 'unknown' && geo.notitie) controleren.push(geo.notitie.charAt(0).toUpperCase() + geo.notitie.slice(1));
   if (criteria.doelgroepen.length && !doelgroepen.length) controleren.push('De doelgroep van het fonds is nog niet bekend: controleer of kinderen/uw doelgroep worden ondersteund');
-  if (dgVerwant.length) controleren.push(`De doelgroep van het fonds (${dgVerwant.join(', ')}) sluit alleen indirect aan: controleer of uw doelgroep ook wordt ondersteund`);
+  controleren.push(...dgOordeel.controle);
   if (themaNiveau === 'secundair' || themaNiveau === 'breed') controleren.push('Het thema sluit alleen indirect aan: controleer in de voorwaarden of uw project onder het doel van het fonds valt');
   if (bedragMin == null && bedragMax == null) controleren.push('Het bedrag dat het fonds toekent is nog niet bekend');
 
-  const onzekerBelangrijk = geo.status === 'unknown' || themaNiveau !== 'kern' || (criteria.doelgroepen.length > 0 && !dgPos);
+  const onzekerBelangrijk = geo.status === 'unknown' || themaNiveau !== 'kern' || (criteria.doelgroepen.length > 0 && !dgPos) || dgOordeel.mogelijk;
   const basisPassendheid: Kandidaat['passendheid'] = onzekerBelangrijk ? 'mogelijk' : 'aantoonbaar';
 
   const match = {
@@ -4371,6 +4614,7 @@ function beoordeelKandidaat(
     verlopenDeadline: gesloten ? act.verlopenDeadline : null,
     terugkerend: act.terugkerend,
     signalen,
+    doelgroepMatch: dgOverlap,
     themaNiveau,
     score: totaal + themaOverlap.length * 0.01 + timing.bonus,
     eligibility,
@@ -5901,7 +6145,7 @@ async function bouwProSelectie(
     disciplines: k.themas.filter((t) => kernSet.has(norm(t))).slice(0, 4),
     doelgroepPositief: k.signalen.includes('doelgroep'),
     doelgroepBekend: k.doelgroepen.length > 0,
-    doelgroepen: k.doelgroepen.filter((t) => dgSet.has(norm(t))).slice(0, 4),
+    doelgroepen: (k.doelgroepMatch?.length ? k.doelgroepMatch : k.doelgroepen.filter((t) => dgSet.has(norm(t)))).slice(0, 4),
     werkgebied: beoordeelFondsVoorProject(gebied, k.regios, geoTeksten(k, extra)),
     engineGeoStatus: k.geografie.status as 'eligible' | 'ineligible' | 'unknown',
     engineGeoPositief: k.geografie.positief,

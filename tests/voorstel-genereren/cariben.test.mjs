@@ -36,7 +36,8 @@ const FONDSEN = () => [
   fonds({ naam: 'Afrika Onderwijsfonds', themas: T, doelgroepen: ['Kinderen'], regios: ['Afrika'], id: I(5) }),
   fonds({ naam: 'Stichting Aruba Kinderen', themas: T, doelgroepen: ['Kinderen'], regios: ['Caribisch deel van het Koninkrijk'], id: I(6) }),
   fonds({ naam: 'Schoolfonds Cariben', themas: T, doelgroepen: ['Scholen en onderwijsinstellingen'], regios: ['Caribisch gebied'], id: I(7) }),
-  fonds({ naam: 'Ouderenfonds Caribisch', themas: T, doelgroepen: ['Ouderen'], regios: ['Caribisch deel van het Koninkrijk'], id: I(8) }),
+  fonds({ naam: 'Ouderenfonds Caribisch', themas: ['Onderwijs'], doelgroepen: ['Ouderen'], regios: ['Caribisch deel van het Koninkrijk'], id: I(8) }),
+  fonds({ naam: 'Schoolfonds Eilanden', themas: ['Onderwijs'], doelgroepen: ['Scholen en onderwijsinstellingen'], regios: ['Caribisch gebied'], id: I(10) }),
   fonds({ naam: 'Stichting Bonaire Jeugd', themas: T, doelgroepen: ['Kinderen'], regios: ['Caribisch deel van het Koninkrijk'], id: I(9) }),
 ];
 // Een groot gat: elk fonds draagt maar een klein deel (de bedragen zijn niet het onderwerp van deze test), zodat alle passende fondsen in het voorstel komen.
@@ -77,7 +78,8 @@ sectie('2. Project "Cariben" (eiland onbekend): voorzichtig, niets verzinnen');
   check('fonds voor Zuid-Holland valt af', !namen.includes('Stichting Zuid-Hollandse Scholen'));
   check('fonds voor Afrika valt af', !namen.includes('Afrika Onderwijsfonds'));
   check('fonds voor Aruba: mogelijk passend; het eiland van het project moet nog worden vastgelegd', namen.includes('Stichting Aruba Kinderen') && per('Stichting Aruba Kinderen').kenmerken.passendheid === 'mogelijk' && per('Stichting Aruba Kinderen').kenmerken.controleren.some((c) => /Aruba/.test(c)), JSON.stringify(per('Stichting Aruba Kinderen')?.kenmerken));
-  check('verwante doelgroep (scholen bij kinderen) valt niet af, maar staat als te controleren', namen.includes('Schoolfonds Cariben') && per('Schoolfonds Cariben').kenmerken.controleren.some((c) => /indirect/.test(c)), JSON.stringify(per('Schoolfonds Cariben')?.kenmerken));
+  check('scholen is een uitvoerder: sluit niet uit; met de discipline Jeugd en kinderen sluit het fonds aan', namen.includes('Schoolfonds Cariben') && per('Schoolfonds Cariben').kenmerken.passendheid === 'aantoonbaar', JSON.stringify(per('Schoolfonds Cariben')?.kenmerken));
+  check('alleen scholen (geen doelgroep, geen jeugddiscipline): valt niet af, maar staat als te controleren', namen.includes('Schoolfonds Eilanden') && per('Schoolfonds Eilanden').kenmerken.passendheid === 'mogelijk' && per('Schoolfonds Eilanden').kenmerken.controleren.some((c) => /geen doelgroep, alleen wie kan aanvragen/.test(c)), JSON.stringify(per('Schoolfonds Eilanden')?.kenmerken));
   check('fonds voor ouderen valt af (doelgroep sluit nergens aan)', !namen.includes('Ouderenfonds Caribisch'));
   check('de vaagheid van de locatie staat in de aannames', (r.json.voorstel?.aannames || []).some((a) => /welk eiland|eiland of in welk land/.test(a)), JSON.stringify(r.json.voorstel?.aannames));
 }

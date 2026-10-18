@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 
 let status = 0;
 
-for (const naam of ['genereren', 'opslaan', 'bron', 'actieplan', 'atomair', 'gebruiksmeter', 'planning', 'zoekprofiel', 'vlag', 'cariben', 'documenten', 'looptijd']) {
+for (const naam of ['genereren', 'opslaan', 'bron', 'actieplan', 'atomair', 'gebruiksmeter', 'planning', 'zoekprofiel', 'vlag', 'cariben', 'documenten', 'looptijd', 'doelgroepen']) {
   const b = spawnSync(process.execPath, ['tests/voorstel-genereren/bundle.mjs', `tests/voorstel-genereren/${naam}.test.mjs`, `tests/voorstel-genereren/.build/${naam}.mjs`], { stdio: 'inherit' });
   const r = b.status === 0 ? spawnSync(process.execPath, [`tests/voorstel-genereren/.build/${naam}.mjs`], { stdio: 'inherit' }) : b;
 
