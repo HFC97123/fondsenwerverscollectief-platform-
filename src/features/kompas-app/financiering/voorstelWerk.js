@@ -11,7 +11,7 @@
 // Er wordt niets opgeslagen voordat `voerOpslagUit` wordt aangeroepen, en dat gebeurt alleen op een klik van het lid.
 import { formatEuro, leesBedragInvoer } from './dekkingsplan.js';
 import { BRON, BRON_CONTROLEREN, bronModel } from './bronStatus.js';
-import { bouwPreviewModel } from './voorstelPreviewModel.js';
+import { bouwPreviewModel, kenmerkenModel } from './voorstelPreviewModel.js';
 
 export const STAP = { ONDERZOEKEN: 'onderzoeken', AANVULLEN: 'aanvullen', VOORBEREIDEN: 'voorbereiden' };
 
@@ -190,6 +190,21 @@ export function maakWerkModel({ genereer, aanvulling }) {
     });
   }
 
+  // Passend, maar de beslissing van de financier valt na het einde van het project: telt niet mee in de dekking en is niet selecteerbaar.
+  const naAfloop = lijst(genereer.naAfloop)
+    .filter(isObject)
+    .map((x, i) => ({
+      sleutel: `na-afloop:${i}`,
+      naam: tekst(x.naam, 200),
+      gever: tekst(x.gever, 200),
+      uitleg: tekst(x.uitleg, 600),
+      moment: typeof x.moment === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.moment) ? x.moment : null,
+      momentSoort: x.momentSoort === 'vergadering' ? 'vergadering' : 'deadline',
+      projectEinde: typeof x.projectEinde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.projectEinde) ? x.projectEinde : null,
+      kenmerken: kenmerkenModel(x.kenmerken),
+    }))
+    .filter((x) => x.naam && x.uitleg)
+    .slice(0, 8);
   const t = isObject(genereer.totalen) ? genereer.totalen : {};
   const hint = isObject(genereer.premiumHint) && Number.isInteger(genereer.premiumHint.aantal) && genereer.premiumHint.aantal > 0 ? genereer.premiumHint.aantal : 0;
   const werkwijze = isObject(genereer.werkwijze) ? genereer.werkwijze : {};
@@ -202,6 +217,7 @@ export function maakWerkModel({ genereer, aanvulling }) {
     regels,
     acties,
     suggesties,
+    naAfloop,
     // Het ongewijzigde voorstel van de server: de basis voor de weergave per regel (details, grenzen, deadline volgens de database).
     ruwVoorstel: isObject(bronVoorstel) ? bronVoorstel : null,
     // Pro: aantal passende fondsen dat alleen in Premium zichtbaar is (alleen een getal, de server noemt geen namen).

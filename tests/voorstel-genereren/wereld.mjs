@@ -87,17 +87,18 @@ const from = (tabel) => {
   }
 
   if (tabel === 'subsidieregelingen' || tabel === 'subsidieregeling_rondes' || tabel === 'funders') {
-    const f = { in: {}, gte: {} };
+    const f = { in: {}, gte: {}, notnull: [] };
     const b = {
       select() { return b; },
       in(k, v) { f.in[k] = v; return b; },
       gte(k, v) { f.gte[k] = v; return b; },
+      not(k, op, v) { if (op === 'is' && v === null) f.notnull.push(k); return b; },
       order() { return b; },
       then(ok, nok) {
         w.tabellen.push(tabel);
         if (w.planningFout) return Promise.resolve({ data: null, error: { code: 'XX000', message: 'boem' } }).then(ok, nok);
         const bron = tabel === 'subsidieregelingen' ? w.planning.regelingen : tabel === 'funders' ? w.planning.funders : w.planning.rondes;
-        const rijen = bron.filter((x) => Object.entries(f.in).every(([k, v]) => v.includes(x[k]))).filter((x) => Object.entries(f.gte).every(([k, v]) => String(x[k]) >= v));
+        const rijen = bron.filter((x) => Object.entries(f.in).every(([k, v]) => v.includes(x[k]))).filter((x) => Object.entries(f.gte).every(([k, v]) => String(x[k]) >= v)).filter((x) => f.notnull.every((k) => x[k] != null));
         return Promise.resolve({ data: rijen, error: null }).then(ok, nok);
       },
     };

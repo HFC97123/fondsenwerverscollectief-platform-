@@ -1142,6 +1142,32 @@ await schoon();
 }
 await schoon();
 
+sectie('17. Looptijd: "past inhoudelijk, maar het project is dan al afgelopen" staat apart, niet selecteerbaar, niet in de dekking');
+{
+  const na = [
+    { type: 'regeling', id: 'c0000000-0000-4000-8000-000000000001', naam: 'Voorjaarsronde 2028', gever: 'Stichting Te Laat', uitleg: 'Dit fonds doet niet meer mee in de dekking, maar zou eventueel wel passend zijn geweest. Het past inhoudelijk, maar doordat het project dan al afgelopen is, komt u niet in aanmerking.', moment: '2028-03-01', momentSoort: 'deadline', projectEinde: '2027-06-30', kenmerken: { beschrijving: 'Steunt kinderprojecten.', doelgroepen: ['Kinderen'], disciplines: ['Educatie'], werkgebieden: [], bandbreedte: null, website: 'https://www.tela.example.nl/', passendheid: 'aantoonbaar', controleren: [] } },
+    { type: 'fonds', id: 'c0000000-0000-4000-8000-000000000002', naam: '', gever: '', uitleg: '', moment: null },
+  ];
+  const s = metProfiel(maakServer({ gen: genereerAntwoord({ naAfloop: na }) }));
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(120);
+  const blok = q('[data-testid="voorstel-na-afloop"]');
+  check('er is een aparte lijst voor financiers die pas na afloop beslissen (een leeg item valt weg)', !!blok && qa('[data-testid="voorstel-na-afloop-regel"]').length === 1);
+  check('met de afgesproken woorden', /Past inhoudelijk, maar het project is dan al afgelopen/.test(blok.textContent) && /doet niet meer mee in de dekking, maar zou eventueel wel passend zijn geweest/.test(blok.textContent) && /komt u niet in aanmerking/.test(blok.textContent));
+  check('met de kenmerken uit de database', /Stichting Te Laat/.test(blok.textContent) && /Kinderen/.test(blok.textContent) && !!blok.querySelector('[data-testid="voorstel-regel-kenmerken"]'));
+  check('niet selecteerbaar en niet in de dekking: geen selectievakje, het aantal regels blijft 3', !blok.querySelector('input[type="checkbox"]') && qa('[data-testid="voorstel-rij"]').length === 3);
+}
+await schoon();
+{
+  const s = metProfiel(maakServer());
+  await toon(werkruimte(s));
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(120);
+  check('zonder financiers na afloop: geen lijst', !q('[data-testid="voorstel-na-afloop"]'));
+}
+await schoon();
+
 sectie('13. Statische eigenschappen van de client');
 {
   const lees = (p) => readFileSync(join(ROOT, p), 'utf8');

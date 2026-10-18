@@ -8,7 +8,7 @@ import { haalClassificatiesOp } from '../../../data/services/classificaties.js';
 import BespreekLink from './BespreekLink.jsx';
 import FinancieringsRegel from './FinancieringsRegel.jsx';
 import VoorstelStart from './VoorstelStart.jsx';
-import { VoorstelRegelDetail } from './VoorstelPreview.jsx';
+import { Kenmerken, VoorstelRegelDetail } from './VoorstelPreview.jsx';
 import { BEDRAG_OVERLEG_TEKST } from './voorstelPreviewModel.js';
 import { formatDatum, formatEuro, leesBedragInvoer } from './dekkingsplan.js';
 import {
@@ -896,6 +896,27 @@ export default function VoorstelWerkruimte({
                     )}
                   </span>
                 </label>
+              ))}
+            </section>
+          )}
+
+          {model.naAfloop && model.naAfloop.length > 0 && (
+            <section data-testid="voorstel-na-afloop" style={css('border: 1px solid #E3DCCB; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: #FBF9F3;')}>
+              <div>
+                <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E;`)}>Past inhoudelijk, maar het project is dan al afgelopen</div>
+                <div style={css(`${TEKST} font-size: 12.5px; color: #7B8985;`)}>Deze financiers doen niet mee in de dekking hierboven en kunt u niet selecteren. Heeft u het project later nog een keer, dan kunnen ze wel interessant zijn.</div>
+              </div>
+              {model.naAfloop.map((n) => (
+                <details key={n.sleutel} data-testid="voorstel-na-afloop-regel">
+                  <summary style={css(`${TEKST} cursor: pointer; font-size: 13.5px;`)}>
+                    <strong>{n.gever || n.naam}</strong>
+                    {n.gever && n.naam && n.naam !== n.gever ? ` – ${n.naam}` : ''}
+                  </summary>
+                  <div style={css('display: flex; flex-direction: column; gap: 8px; padding-top: 6px;')}>
+                    <div style={css(`${TEKST} font-size: 13px;`)}>{n.uitleg}</div>
+                    {n.kenmerken && <Kenmerken k={n.kenmerken} />}
+                  </div>
+                </details>
               ))}
             </section>
           )}

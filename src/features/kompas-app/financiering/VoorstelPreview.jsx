@@ -154,7 +154,7 @@ const NOG_NIET_BEKEND = 'Nog niet bekend';
 const PASSENDHEID_TEKST = { aantoonbaar: 'Aantoonbaar passend volgens onze database', mogelijk: 'Mogelijk passend: nog te controleren' };
 
 // Wat onze database van de financier weet. Een leeg veld toont "Nog niet bekend", nooit een aanname; wat nog gecontroleerd moet worden staat apart.
-function Kenmerken({ k }) {
+export function Kenmerken({ k }) {
   const lijst = (l) => (l && l.length ? l.join(', ') : NOG_NIET_BEKEND);
 
   return (

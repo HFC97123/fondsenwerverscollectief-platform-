@@ -3193,6 +3193,9 @@ type FondsCriteria = {
   eilanden?: string[];
   // Caribische locatie zonder eiland ("Cariben"): het lid moet nog aangeven welk eiland of land.
   locatieVaag?: boolean;
+  // Looptijd van het project (ISO-datums). Daarmee wordt getoetst of de financiering op tijd binnen kan zijn; onbekend = niet getoetst.
+  periodeStart?: string | null;
+  periodeEinde?: string | null;
 };
 
 type Aanvragertype = 'organisatie' | 'informeel' | 'particulier' | 'commercieel' | 'overheid' | 'onbekend';
@@ -3224,6 +3227,12 @@ async function laadTaxonomie(admin: any): Promise<Taxonomie | null> {
 // Sanitiseert de extractie-uitkomst: alleen exacte taxonomienamen (hoofdletter-
 // ongevoelig teruggemapt op de canonieke naam), hard begrensd. Vrije tekst van
 // de gebruiker/het model komt hierdoor nooit ongefilterd in een systeembericht.
+function isoDatumOfNull(v: unknown): string | null {
+  const t = String(v ?? '').slice(0, 10);
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) && !Number.isNaN(Date.parse(t)) ? t : null;
+}
+
 function leesFondsCriteria(ruw: any, taxonomie: Taxonomie): FondsCriteria {
   const kies = (waarden: unknown, toegestaan: string[]) => {
     const canoniek = new Map(toegestaan.map((n) => [normaliseerTekst(n), n]));
@@ -3280,6 +3289,8 @@ function leesFondsCriteria(ruw: any, taxonomie: Taxonomie): FondsCriteria {
     regios: regiosGekozen,
     eilanden: eilandenGekozen,
     locatieVaag: caribisch && !eilandenGekozen.length,
+    periodeStart: isoDatumOfNull(ruw?.periode_start),
+    periodeEinde: isoDatumOfNull(ruw?.periode_einde),
     locatieTekst,
     gevraagdBedrag: Number.isFinite(bedragRuw) && bedragRuw > 0 ? bedragRuw : null,
     totaalBudget: Number.isFinite(totaalRuw) && totaalRuw > 0 ? totaalRuw : null,
@@ -3604,6 +3615,8 @@ type Kandidaat = {
   inhoudelijkPassend: boolean;
   // Inhoudelijk passend maar nu niet open: aparte categorie B.
   gesloten: boolean;
+  // Inhoudelijk passend, maar de beslissing van de financier valt na het einde van het project: telt niet mee in de dekking (alleen met een looptijd).
+  naAfloop: { tekst: string; moment: string; soort: 'vergadering' | 'deadline'; einde: string } | null;
   verlopenDeadline: string | null;
   terugkerend: boolean;
   signalen: string[];
@@ -4092,6 +4105,81 @@ function verwanteDoelgroepen(fonds: string[], project: string[]): string[] {
   return uit;
 }
 
+// Looptijd van het project tegenover de rondes van het fonds (afspraak met de beheerder, 2026-10-18):
+// - Het beslismoment is de eerstvolgende bestuursvergadering, of anders de eerstvolgende deadline. Alleen toekomstige datums tellen.
+// - De start van het project wordt altijd meegewogen, maar is geen harde eis: een beslissing vóór de start is het gunstigst, een beslissing na de
+//   start (tijdens de looptijd) telt gewoon mee, met de aantekening dat er ruimte moet zijn om met de financier te overleggen.
+// - Valt de deadline OF de bestuursvergadering na het EINDE van het project, dan doet de financier niet mee in de dekking: het past inhoudelijk,
+//   maar het project is dan al afgelopen. Dat wordt apart getoond, nooit stilzwijgend weggelaten.
+// - Onbekend is nooit een uitsluiting: zonder bekende ronde blijft de financier meedoen met de aantekening dat de volgende ronde nagevraagd moet worden.
+// - Zonder looptijd bij het project (of bij de chat) wordt er niet getoetst.
+const nlDatumTekst = (iso: string) => `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}`;
+
+type TimingUitkomst = {
+  controle: string | null;
+  goed: string | null;
+  // Alleen gezet als de beslissing na het einde van het project valt: de financier telt dan niet mee in de dekking.
+  naAfloop: { tekst: string; moment: string; soort: 'vergadering' | 'deadline'; einde: string } | null;
+  // Kleine voorkeur in de volgorde (nooit invloed op de drempel) als de beslissing vóór de start valt.
+  bonus: number;
+};
+
+const TIMING_BONUS_VOOR_START = 2;
+
+function beoordeelTiming(row: any, criteria: FondsCriteria, vandaag: string): TimingUitkomst {
+  const leeg: TimingUitkomst = { controle: null, goed: null, naAfloop: null, bonus: 0 };
+  const start = criteria.periodeStart || null;
+  const einde = criteria.periodeEinde || null;
+
+  if (!start && !einde) return leeg;
+
+  const datum = (v: unknown) => {
+    const t = v ? String(v).slice(0, 10) : '';
+
+    return /^\d{4}-\d{2}-\d{2}$/.test(t) && t >= vandaag ? t : null;
+  };
+  const deadline = datum(row?.deadline_datum);
+  const vergadering = datum(row?._vergaderdatum ?? row?.volgende_vergaderdatum);
+
+  if (!deadline && !vergadering) {
+    const status = normaliseerTekst(row?.status);
+
+    if (status === 'doorlopend') return leeg;
+
+    const looptijd = start && einde ? `de looptijd van het project (${nlDatumTekst(start)} tot ${nlDatumTekst(einde)})` : start ? `de start van het project (${nlDatumTekst(start)})` : `het einde van het project (${nlDatumTekst(einde as string)})`;
+
+    return { ...leeg, controle: `Er is geen aankomende ronde of bestuursvergadering bekend: vraag na wanneer de volgende ronde is en of die binnen ${looptijd} valt` };
+  }
+
+  // Het beslismoment: de bestuursvergadering als die bekend is, anders de deadline. Een datum na het einde van het project telt altijd.
+  const beslis = vergadering || (deadline as string);
+  const soort: 'vergadering' | 'deadline' = vergadering ? 'vergadering' : 'deadline';
+  const woord = soort === 'vergadering' ? 'bestuursvergadering' : 'deadline';
+  const naEinde = einde ? [vergadering ? { m: vergadering, s: 'vergadering' as const } : null, deadline ? { m: deadline, s: 'deadline' as const } : null].filter(Boolean).find((x: any) => x.m > einde) as { m: string; s: 'vergadering' | 'deadline' } | undefined : undefined;
+
+  if (einde && naEinde) {
+    const w = naEinde.s === 'vergadering' ? 'bestuursvergadering' : 'deadline';
+
+    return {
+      ...leeg,
+      naAfloop: {
+        tekst: `Dit fonds doet niet meer mee in de dekking, maar zou eventueel wel passend zijn geweest. Het past inhoudelijk, maar doordat het project dan al afgelopen is (de eerstvolgende ${w} is op ${nlDatumTekst(naEinde.m)}, het project eindigt op ${nlDatumTekst(einde)}), komt u niet in aanmerking.`,
+        moment: naEinde.m,
+        soort: naEinde.s,
+        einde,
+      },
+    };
+  }
+
+  if (start && beslis > start) {
+    return { ...leeg, controle: `De eerstvolgende ${woord} (${nlDatumTekst(beslis)}) valt na de start van het project (${nlDatumTekst(start)}): bespreek met de financier of financiering tijdens de looptijd nog mogelijk is` };
+  }
+
+  if (start) return { ...leeg, goed: `de eerstvolgende ${woord} (${nlDatumTekst(beslis)}) valt vóór de start van het project (${nlDatumTekst(start)})`, bonus: TIMING_BONUS_VOOR_START };
+
+  return { ...leeg, goed: `de eerstvolgende ${woord} (${nlDatumTekst(beslis)}) valt binnen de looptijd van het project` };
+}
+
 const TWEEDE_SIGNAAL_INHOUDELIJK = true;
 
 function beoordeelKandidaat(
@@ -4274,6 +4362,12 @@ function beoordeelKandidaat(
 
   if (gesloten) uitsluiting = act.reden;
 
+  // ---- 4. LOOPTIJD VAN HET PROJECT ------------------------------------------
+  const timing = inhoudelijkPassend && !gesloten ? beoordeelTiming(row, criteria, vandaag) : { controle: null, goed: null, naAfloop: null, bonus: 0 };
+  const naAfloop = timing.naAfloop;
+
+  if (timing.controle) controleren.push(timing.controle);
+
   return {
     bron,
     row,
@@ -4285,19 +4379,20 @@ function beoordeelKandidaat(
     doelgroepen,
     regios,
     uitsluiting,
-    relevant: inhoudelijkPassend && !gesloten,
+    relevant: inhoudelijkPassend && !gesloten && !naAfloop,
     inhoudelijkPassend,
     gesloten,
+    naAfloop,
     verlopenDeadline: gesloten ? act.verlopenDeadline : null,
     terugkerend: act.terugkerend,
     signalen,
     themaNiveau,
-    score: totaal + themaOverlap.length * 0.01,
+    score: totaal + themaOverlap.length * 0.01 + timing.bonus,
     eligibility,
     geografie: geo,
     focus: focus.niveau,
     inhoudelijkSignaal,
-    waarom,
+    waarom: timing.goed ? [...waarom, timing.goed] : waarom,
     zwaktes,
     passendheid: uitsluiting ? 'niet' : basisPassendheid,
     controleren,
@@ -5307,6 +5402,7 @@ function beoordeelPool(alle: { bron: Kandidaat['bron']; row: any }[], criteriaRu
     beoordeeld,
     relevant: beoordeeld.filter((k) => k.relevant).sort(sorteer),
     gesloten: beoordeeld.filter((k) => k.gesloten).sort(sorteer),
+    naAfloop: beoordeeld.filter((k) => k.naAfloop && k.inhoudelijkPassend).sort(sorteer),
   };
 }
 
@@ -6718,10 +6814,32 @@ async function laadDekkingsplanPool(admin: any): Promise<{ bron: Kandidaat['bron
     const deadlines: any[] = !d.error && Array.isArray(d.data) ? d.data : [];
     const reeds = new Set<string>(deadlines.map((x: any) => String(x.funder_id)));
 
+    // De eerstvolgende bestuursvergadering (als gepubliceerd) hoort bij het beslismoment van een financier; de RPC's geven die niet mee.
+    // Mislukt dit, dan blijft de beoordeling gewoon werken op de deadline.
+    const vergaderingen = { regeling: new Map<string, string>(), funder: new Map<string, string>() };
+
+    try {
+      const [vr, vf] = await Promise.all([
+        admin.from('subsidieregelingen').select('id, volgende_vergaderdatum').not('volgende_vergaderdatum', 'is', null),
+        admin.from('funders').select('id, volgende_vergaderdatum').not('volgende_vergaderdatum', 'is', null),
+      ]);
+
+      for (const x of Array.isArray(vr?.data) ? vr.data : []) vergaderingen.regeling.set(String(x.id), String(x.volgende_vergaderdatum).slice(0, 10));
+      for (const x of Array.isArray(vf?.data) ? vf.data : []) vergaderingen.funder.set(String(x.id), String(x.volgende_vergaderdatum).slice(0, 10));
+    } catch (_) {
+      /* zonder vergaderdata */
+    }
+
+    const metVergadering = (row: any) => {
+      const datum = vergaderingen.regeling.get(String(row.regeling_id ?? '')) ?? vergaderingen.funder.get(String(row.funder_id ?? ''));
+
+      return datum ? { ...row, _vergaderdatum: datum } : row;
+    };
+
     return [
-      ...r.data.map((row: any) => ({ bron: 'regeling' as const, row })),
-      ...deadlines.map((row: any) => ({ bron: 'funder_deadline' as const, row })),
-      ...f.data.filter((x: any) => !reeds.has(String(x.funder_id))).map((row: any) => ({ bron: 'funder' as const, row })),
+      ...r.data.map((row: any) => ({ bron: 'regeling' as const, row: metVergadering(row) })),
+      ...deadlines.map((row: any) => ({ bron: 'funder_deadline' as const, row: metVergadering(row) })),
+      ...f.data.filter((x: any) => !reeds.has(String(x.funder_id))).map((row: any) => ({ bron: 'funder' as const, row: metVergadering(row) })),
     ];
   } catch (_) {
     return null;
@@ -6827,6 +6945,12 @@ async function laadGenereerBasis(admin: any, authHeader: string, profileId: stri
 
   if (!criteria.regios.length && !criteria.eilanden?.length) aannames.push('Het werkgebied is niet (herkenbaar) ingevuld: de geografische voorwaarden van financiers zijn niet getoetst en moeten nog worden gecontroleerd.');
   if (criteria.locatieVaag) aannames.push(`Als werkgebied staat "${criteria.locatieTekst}": op welk eiland of in welk land het project plaatsvindt (bijvoorbeeld Aruba, Curaçao, Sint Maarten, Bonaire, Sint Eustatius of Saba) is niet vastgelegd. Financiers die zich op één eiland richten staan daarom als "nog te controleren". Vul het eiland of land in bij het project voor een scherpere uitkomst.`);
+  const rawStart = String(project.period_start ?? '').trim();
+  const rawEinde = String(project.period_end ?? '').trim();
+
+  if (!rawStart && !rawEinde) aannames.push('De looptijd van het project is niet ingevuld: er is niet getoetst of de rondes van financiers binnen de looptijd vallen.');
+  else if ((rawStart && !criteria.periodeStart) || (rawEinde && !criteria.periodeEinde)) aannames.push(`De ${rawStart && !criteria.periodeStart ? 'startdatum' : 'einddatum'} van het project ("${(rawStart && !criteria.periodeStart ? rawStart : rawEinde).slice(0, 40)}") is niet als datum te lezen: daarop is niet getoetst. Vul een datum in bij het project.`);
+
   if (!criteria.doelgroepen.length) aannames.push('De doelgroep is niet ingevuld: financiers zijn breder gezocht en de doelgroepeisen moeten nog worden gecontroleerd.');
   if (!criteria.themas.length) aannames.push('De discipline is niet ingevuld: financiers zijn breder gezocht en de inhoudelijke eisen moeten nog worden gecontroleerd.');
 
@@ -6895,7 +7019,52 @@ async function draaiEngineVoorProject(
   // Het niveau komt per kandidaat van de entitlementlaag (bron van waarheid); alles wat de engine relevant vond, niet alleen de top.
   const kandidaten = selectie.relevant.map((k: Kandidaat) => ({ k, niveau: applyEntitlementsAndSanitize(k.bron, k.row, b.rechten, ctx).entitlement.niveau as Niveau }));
 
-  return { pool, web, selectie, kandidaten };
+  // Inhoudelijk passend, maar de beslissing van de financier valt na het einde van het project: niet in de dekking, wel apart te tonen.
+  const naAfloop = (selectie.naAfloop ?? []).map((k: Kandidaat) => ({ k, niveau: applyEntitlementsAndSanitize(k.bron, k.row, b.rechten, ctx).entitlement.niveau as Niveau }));
+
+  return { pool, web, selectie, kandidaten, naAfloop };
+}
+
+const NA_AFLOOP_MAX = 8;
+
+// De lijst "past inhoudelijk, maar na afloop van het project": geen onderdeel van het voorstel en niet in de dekking. Kenmerken komen uit hetzelfde
+// server-bekende record als bij de voorstelregels, na de entitlementlaag; wat het lid niet mag zien komt er niet in.
+async function bouwNaAfloopLijst(kandidaten: Array<{ k: Kandidaat; niveau: Niveau }>, uitsluiten: unknown[], rechten: Rechten, ctx: any) {
+  const { kandidaatNaarMix, kenmerkenVan } = await import('../_shared/voorstelGenereren.ts');
+  const { zelfdeFinancier } = await import('../_shared/voorstelContract.js');
+  const gevers: string[] = [...uitsluiten].map((x) => String(x || '')).filter(Boolean);
+  const uit: Array<Record<string, unknown>> = [];
+
+  for (const { k, niveau } of kandidaten) {
+    if (uit.length >= NA_AFLOOP_MAX) break;
+    if (niveau !== 'volledig' || !k.naAfloop || k.row?._extern) continue;
+
+    const mix = kandidaatNaarMix(k as any, niveau);
+
+    if (!mix) continue;
+
+    const gever = String(k.funderNaam || k.naam);
+
+    if (gevers.some((g) => zelfdeFinancier(g, gever) || zelfdeFinancier(g, k.naam))) continue;
+
+    gevers.push(gever);
+
+    const rec = voorstelRecordUitRij(mix.type, k.row, mix.id, rechten, ctx);
+
+    uit.push({
+      type: mix.type,
+      id: mix.id,
+      naam: k.naam,
+      gever: k.funderNaam || k.naam,
+      uitleg: k.naAfloop.tekst,
+      moment: k.naAfloop.moment,
+      momentSoort: k.naAfloop.soort,
+      projectEinde: k.naAfloop.einde,
+      kenmerken: kenmerkenVan(rec as any, k as any),
+    });
+  }
+
+  return uit;
 }
 
 function bestaandeVanBasis(b: GenereerBasis) {
@@ -8150,6 +8319,9 @@ Deno.serve(async (req) => {
       // Pro: alleen een aantal van passende fondsen die alleen Premium mag zien (nooit namen of details).
       const premiumHint = tier === 'pro' && !isAdmin ? telPremiumHint(run.kandidaten, b.config) : 0;
       const mix = uitkomst.mix;
+      // Financiers die inhoudelijk passen maar pas na het einde van het project beslissen: alleen voor wat het lid mag zien (niveau 'volledig'),
+      // één per gever, niet wat al in het plan staat, hoogstens 8.
+      const naAfloopItems = await bouwNaAfloopLijst(run.naAfloop, [...bestaandeVanBasis(b).namen, ...uitkomst.gevalideerd.voorstel.regels.flatMap((r: any) => [r.naam, r.gever])], b.rechten, ctxRec);
 
       await meldGebruik(admin, { userId: profileId, tier: gebruikTier, actie: 'fonds_scan_database', projectId: b.project.id, duurMs: Date.now() - tStart, succes: true });
 
@@ -8170,6 +8342,7 @@ Deno.serve(async (req) => {
         waarschuwingen: uitkomst.gevalideerd.waarschuwingen.slice(0, 20),
         reserveSleutel: uitkomst.reserveSleutel,
         reserveSleutels: uitkomst.reserveSleutels,
+        naAfloop: naAfloopItems,
         onlineSuggesties,
         dekkingsdoel: b.config.dekkingsdoel,
         totalen: { gat: mix.gat, doelBedrag: mix.doelBedrag, som: rest.som, nodig: rest.nodig, dekking: mix.dekking },

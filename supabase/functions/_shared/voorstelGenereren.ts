@@ -69,6 +69,51 @@ const kommaLijst = (x: unknown): string[] =>
 
 // Matching scant op doelgroep, werkgebied en discipline (Aisya, 15-10-2026). Het gevraagde bedrag wordt BEWUST niet meegegeven: het
 // dekkingsplan verdeelt het gat over meerdere financiers; één fonds hoeft het gat niet alleen te dragen, dus geen plafondcontrole.
+const MAANDEN = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
+const MAAND_KORT: Record<string, number> = { jan: 1, feb: 2, mrt: 3, maa: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, okt: 10, nov: 11, dec: 12 };
+
+// De looptijd van een project is soms een echte datum (2027-01-01) en soms vrije tekst ("1 januari 2027", "augustus 2027", "2027"). Leesbaar -> ISO-datum;
+// niet leesbaar -> null (dan wordt er niet op looptijd getoetst en staat dat in de aannames). `einde`: een maand of jaar zonder dag telt als de laatste dag.
+export function leesProjectdatum(invoer: unknown, einde = false): string | null {
+  const t = String(invoer ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  if (!t) return null;
+
+  const maakIso = (j: number, m: number, d: number | null): string | null => {
+    if (!(j >= 2000 && j <= 2100 && m >= 1 && m <= 12)) return null;
+
+    const laatste = new Date(Date.UTC(j, m, 0)).getUTCDate();
+    const dag = d ?? (einde ? laatste : 1);
+
+    if (dag < 1 || dag > laatste) return null;
+
+    return `${String(j).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(dag).padStart(2, '0')}`;
+  };
+
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})(?:[t ].*)?$/);
+
+  if (m) return maakIso(Number(m[1]), Number(m[2]), Number(m[3]));
+
+  m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+
+  if (m) return maakIso(Number(m[3]), Number(m[2]), Number(m[1]));
+
+  m = t.match(/^(?:(\d{1,2})\s+)?([a-z]{3,9})\.?\s+(\d{4})$/);
+
+  if (m) {
+    const idx = MAANDEN.findIndex((n) => n === m![2]);
+    const maand = idx >= 0 ? idx + 1 : MAAND_KORT[m[2].slice(0, 3)];
+
+    if (maand && (idx >= 0 || m[2].length <= 4)) return maakIso(Number(m[3]), maand, m[1] ? Number(m[1]) : null);
+  }
+
+  m = t.match(/^(\d{4})$/);
+
+  if (m) return maakIso(Number(m[1]), einde ? 12 : 1, einde ? 31 : 1);
+
+  return null;
+}
+
 export function criteriaRuwUitProject(p: ProjectVelden, werkgebieden: readonly string[] = []): Record<string, unknown> {
   const themas = kommaLijst(p?.themes);
   const budget = Number(p?.budget_total);
@@ -86,6 +131,9 @@ export function criteriaRuwUitProject(p: ProjectVelden, werkgebieden: readonly s
     locatie: tekst(p?.location, 80),
     gevraagd_bedrag: null,
     totaal_budget: Number.isFinite(budget) && budget > 0 ? budget : null,
+    // De looptijd van het project: de matching weegt de start mee en laat financiers waarvan de beslissing na het einde valt buiten de dekking.
+    periode_start: leesProjectdatum(p?.period_start),
+    periode_einde: leesProjectdatum(p?.period_end, true),
     aanvragertype: 'onbekend',
     activiteiten: [],
     doel_termen: [],

@@ -84,7 +84,7 @@ export function verificatieModel(metadata) {
 }
 
 // De kenmerken van de financier zoals de database ze kent. Wat niet bekend is blijft leeg; de weergave zegt dan "Nog niet bekend" (nooit een verzinsel).
-function kenmerkenModel(k) {
+export function kenmerkenModel(k) {
   if (!isObject(k)) return null;
 
   const lijst = (x) => (Array.isArray(x) ? x.map(String).filter(Boolean).slice(0, 10) : []);
