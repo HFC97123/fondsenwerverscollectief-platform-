@@ -144,7 +144,7 @@ export function maakWerkModel({ genereer, aanvulling }) {
 
   const bronVoorstel = genereer.voorstel;
   const regelsRuw = lijst(bronVoorstel && bronVoorstel.regels).filter(isObject);
-  const reserveSleutel = typeof genereer.reserveSleutel === 'string' ? genereer.reserveSleutel : null;
+  const reserveSleutels = new Set([...lijst(genereer.reserveSleutels), genereer.reserveSleutel].filter((x) => typeof x === 'string'));
   const sleutels = new Set(regelsRuw.map((r) => String(r.sleutel)));
   const regels = regelsRuw.map((r) => ({
     sleutel: String(r.sleutel),
@@ -157,7 +157,7 @@ export function maakWerkModel({ genereer, aanvulling }) {
     deadline: isObject(r.deadline) && r.deadline.status === 'geverifieerd' && typeof r.deadline.datum === 'string' ? r.deadline.datum : null,
     selecteerbaar: r.selecteerbaar === true && r.staatAl !== true,
     staatAl: r.staatAl === true,
-    reserve: r.sleutel === reserveSleutel,
+    reserve: reserveSleutels.has(r.sleutel),
   }));
   const acties = lijst(bronVoorstel && bronVoorstel.acties)
     .filter(isObject)

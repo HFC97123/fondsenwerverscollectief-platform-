@@ -7337,7 +7337,7 @@ Deno.serve(async (req) => {
         waarschuwingen: [],
         reserveSleutel: null,
         onlineSuggesties: [],
-        // De buffer is een vaste instelling per abonnement (Pro 120%, Premium 140%), nooit een keuze van de browser en nooit stilzwijgend.
+        // De buffer is een vaste instelling per abonnement (Pro 120%, Premium 160%), nooit een keuze van de browser en nooit stilzwijgend.
         dekkingsdoel: uit.dekkingsdoel,
         totalen: { gat: uit.totalen.gat, doelBedrag: uit.totalen.doelBedrag, som: 0, nodig: uit.totalen.doelBedrag, dekking: 0 },
         overgeslagen: uit.overgeslagen,
@@ -7985,6 +7985,7 @@ Deno.serve(async (req) => {
         voorstel: uitkomst.gevalideerd.voorstel,
         waarschuwingen: uitkomst.gevalideerd.waarschuwingen.slice(0, 20),
         reserveSleutel: uitkomst.reserveSleutel,
+        reserveSleutels: uitkomst.reserveSleutels,
         onlineSuggesties,
         dekkingsdoel: b.config.dekkingsdoel,
         totalen: { gat: mix.gat, doelBedrag: mix.doelBedrag, som: rest.som, nodig: rest.nodig, dekking: mix.dekking },

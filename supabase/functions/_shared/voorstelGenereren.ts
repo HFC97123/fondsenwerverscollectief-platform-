@@ -184,6 +184,7 @@ export function kandidaatNaarMix(k: EngineKandidaat, niveau: MixNiveau): MixKand
     score: Number.isFinite(k.score) ? k.score : 0,
     min: getal(row.bedrag_min ?? row.bijdrage_min),
     max: getal(row.bedrag_max ?? row.bijdrage_max),
+    band: tekst(row.bandbreedte_bijdrage_naam, 60) || null,
     cofinanciering: tekst(row.cofinanciering, 200) || null,
     // Serviceclub-vermelding (lokale-clubroute): telt mee maar staat onderaan, als "optioneel te onderzoeken".
     ...(isServiceclubVermelding(row) ? { optioneel: true } : {}),
@@ -362,6 +363,8 @@ export interface GenereerUitkomst {
   ruw: Record<string, unknown>;
   gevalideerd: ContractUitkomst;
   reserveSleutel: string | null;
+  // Alle alternatieven (reserves) in de volgorde van het plan; reserveSleutel is de eerste.
+  reserveSleutels: string[];
 }
 
 function motivatieVan(k: EngineKandidaat): string {
@@ -447,6 +450,7 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
           onzekerheden: [...(k.optioneel ? [OPTIONEEL_TEKST] : []), 'Er is nog geen bedrag voorgesteld: de matching op bedrag is beperkt. Controleer de bijdragegrenzen van de financier.', ...(k.cofinanciering ? [`Cofinancieringseis (niet automatisch doorgerekend): ${String(k.cofinanciering).slice(0, 200)}`] : [])],
         })),
         reserve: null,
+        reserves: [],
         afgewezen: lijstZonder.afgewezen,
         melding: lijstZonder.regels.length ? null : MELDING_GEEN_PASSENDE_FINANCIERS,
       }
@@ -465,7 +469,7 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
       onzekerheden: [...m.onzekerheden, ...(e ? zwaktesVan(e) : [])].slice(0, 6),
     };
   };
-  const regels = [...mix.mix.map((m) => regelVan(m, false)), ...(mix.reserve ? [regelVan(mix.reserve, true)] : [])];
+  const regels = [...mix.mix.map((m) => regelVan(m, false)), ...(mix.reserves ?? []).map((m) => regelVan(m, true))];
   // De indicatietekst staat altijd vooraan: bedragen zijn een inschatting en de gebruiker overlegt zelf met de donor.
   const aannames = [zonder ? BEDRAG_INDICATIE_TEKST_ZONDER_BEDRAG : BEDRAG_INDICATIE_TEKST, ...(inv.aannames ?? [])].map((a) => tekst(a, 300)).filter(Boolean).slice(0, 8);
   const ruw = { versie: VOORSTEL_VERSIE, projectId: inv.projectId, gegenereerdOp: inv.vandaag, status: 'concept', aannames, regels, acties: [] as unknown[] };
@@ -499,7 +503,9 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
   }
 
   // Sleutel zoals het contract hem geeft (r:<type>:<id>), niet de interne mixsleutel.
-  return { mix, ruw, gevalideerd, reserveSleutel: mix.reserve ? `r:${mix.reserve.type}:${mix.reserve.id}` : null };
+  const reserveSleutels = (mix.reserves ?? []).map((m) => `r:${m.type}:${m.id}`);
+
+  return { mix, ruw, gevalideerd, reserveSleutel: reserveSleutels[0] ?? null, reserveSleutels };
 }
 
 export function gatVan(dekking: unknown): number {

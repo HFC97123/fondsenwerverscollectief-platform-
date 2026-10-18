@@ -62,7 +62,7 @@ sectie('3. Telt mee in de dekking maar staat helemaal onderaan');
   check('club telt mee in de som', r.som === r.mix.reduce((t, x) => t + x.bedrag, 0) && r.mix.some((x) => x.optioneel && x.bedrag > 0));
 
   // Doel al gehaald door gewone fondsen: club wordt niet gebruikt en nooit de reserve.
-  const gewone = [k('Groot A', 70, 1000, 100000), k('Groot B', 69, 1000, 100000), k('Groot C', 68, 1000, 100000)];
+  const gewone = [k('Groot A', 70, 1000, 100000), k('Groot B', 69, 1000, 100000), k('Groot C', 68, 1000, 100000), k('Groot D', 67, 1000, 100000), k('Groot E', 66, 1000, 100000)];
   const zonderClub = selecteerDekkingsmix({ kandidaten: gewone, gat: 10000, config: PRO });
   const r2 = selecteerDekkingsmix({ kandidaten: [hoogClub, ...gewone], gat: 10000, config: PRO });
 

@@ -34,6 +34,7 @@ export interface MixKandidaat {
   max: number | null;
   cofinanciering?: string | null; // tekst; wordt niet doorgerekend maar als onzekerheid meegegeven
   optioneel?: boolean; // serviceclub-vermelding: telt mee in de dekking maar staat helemaal onderaan (zie serviceclubs.ts)
+  band?: string | null; // naam van de bandbreedte (bandbreedtes_bijdrage), bijvoorbeeld '€10.000–€25.000'; alleen gebruikt als er geen eigen minimum is
 }
 
 export type AfwijsCode =
@@ -48,7 +49,7 @@ export type AfwijsCode =
   | 'mix-vol'
   | 'boven-doel';
 
-export type BedragGrond = 'aandeel-van-gat' | 'rest-tot-doel' | 'fonds-maximum' | 'fonds-minimum';
+export type BedragGrond = 'aandeel-van-gat' | 'rest-tot-doel' | 'fonds-maximum' | 'fonds-minimum' | 'voorzichtig-laag' | 'laagste-bandbreedte' | 'derde-van-maximum';
 
 export interface RealistischBedrag {
   bedrag: number | null;
@@ -80,7 +81,8 @@ export interface MixResultaat {
   som: number; // som van de realistische bedragen in de mix (de reserve telt niet mee)
   dekking: number; // som / gat, twee decimalen
   mix: MixRegel[];
-  reserve: MixRegel | null; // hooguit één; telt niet mee in som
+  reserve: MixRegel | null; // de eerste alternatieve financier (= reserves[0]); telt niet mee in som
+  reserves: MixRegel[]; // alternatieven voor als een aanvraag wordt afgewezen (hooguit config.alternatieven); tellen niet mee in som
   afgewezen: Array<{ sleutel: string; code: AfwijsCode }>;
   melding: string | null; // eerlijke tekst voor de gebruiker als het doel niet gehaald is
 }
@@ -94,55 +96,103 @@ function afrondStap(bedrag: number): number {
 
 const euro = (n: number) => `€ ${n.toLocaleString('nl-NL')}`;
 
-// Realistisch bedrag voor één financier.
+// Ondergrens van een bandbreedte uit bandbreedtes_bijdrage ('€10.000–€25.000' -> 10.000; '€1.000.000+' -> 1.000.000). De laagste band begint
+// bij € 0: een fonds waar je niets kunt aanvragen bestaat niet, dus daar geldt de bovengrens (€ 5.000) als laagste bedrag.
+export function bandOndergrens(naam: unknown): number | null {
+  if (typeof naam !== 'string') return null;
+
+  const getallen = Array.from(naam.matchAll(/\d{1,3}(?:\.\d{3})*/g)).map((m) => Number(m[0].replace(/\./g, ''))).filter((n) => Number.isFinite(n));
+
+  if (!getallen.length) return null;
+
+  return getallen[0] > 0 ? getallen[0] : (getallen[1] ?? null);
+}
+
+// Realistisch bedrag voor één financier: een VOORZICHTIGE rekenbasis, geen verwachting. Het bereik dat het fonds noemt (aanvragen kan van ... tot ...)
+// is informatie voor het lid; het plan rekent met minder, zodat er ruimte blijft voor andere passende financiers.
 //   gat          het totale resterende financieringsgat van het project
 //   nodig        wat er nog nodig is om het dekkingsdoel te halen (>= 0); een laatste financier hoeft niet meer te dragen dan dat
 //   min, max     bijdragegrenzen uit het databaserecord (null = onbekend)
-//   maxAandeel   hoeveel van het totale gat één financier hoogstens draagt (0.5 = de helft)
-// Volgorde: aandeel van het gat -> niet meer dan nodig -> binnen het fondsmaximum -> minstens het fondsminimum -> afronden.
-// Nooit het fondsmaximum als uitgangspunt: bij maximum €100.000 en gat €40.000 is het voorstel € 20.000, niet € 100.000.
-export function realistischBedrag(inv: { gat: number; nodig: number; min: unknown; max: unknown; maxAandeel: number }): RealistischBedrag {
+//   bandOnder    ondergrens van de bandbreedte (alleen gebruikt als er geen eigen minimum is)
+//   maxAandeel   hoeveel van het totale gat één financier hoogstens draagt (1/3: zo zijn er altijd minstens drie financiers nodig)
+// Rekenbasis: minimum + een derde van het bereik ("voorzichtig laag"); alleen een minimum of band: dat laagste bedrag; alleen een maximum: een
+// derde daarvan. Daarna: niet meer dan het aandeel van het gat, niet meer dan nodig, binnen het fondsmaximum, minstens het eigen minimum.
+export function realistischBedrag(inv: { gat: number; nodig: number; min: unknown; max: unknown; maxAandeel: number; bandOnder?: unknown }): RealistischBedrag {
   const gat = getal(inv.gat);
   const nodig = getal(inv.nodig);
   const min = getal(inv.min);
   const max = getal(inv.max);
+  const bandOnder = getal(inv.bandOnder);
   const aandeel = typeof inv.maxAandeel === 'number' && inv.maxAandeel > 0 && inv.maxAandeel <= 1 ? inv.maxAandeel : 0.5;
   const nee = (afwijsCode: NonNullable<RealistischBedrag['afwijsCode']>, uitleg: string): RealistischBedrag => ({ bedrag: null, grond: null, afwijsCode, uitleg, indicatie: true });
+  // De ondergrens: het eigen minimum van het fonds, anders de ondergrens van de bandbreedte.
+  const laag = min !== null && min > 0 ? min : bandOnder !== null && bandOnder > 0 ? bandOnder : null;
+  const uitBand = !(min !== null && min > 0) && laag !== null;
 
   if (gat === null || gat <= 0) return nee('geen-bedragen-bekend', 'Er is geen financieringsgat om te dekken.');
-  if (min === null && max === null) return nee('geen-bedragen-bekend', 'Bij deze financier zijn geen bijdragegrenzen bekend; er wordt geen bedrag geschat.');
+  if (laag === null && (max === null || max <= 0)) return nee('geen-bedragen-bekend', 'Bij deze financier zijn geen bijdragegrenzen bekend; er wordt geen bedrag geschat.');
   if (min !== null && max !== null && min > max) return nee('ongeldige-grenzen', 'De bijdragegrenzen in de database zijn tegenstrijdig; er wordt geen bedrag geschat.');
-  if (min !== null && min > gat) return nee('minimum-boven-gat', `Het minimum van deze financier (${euro(min)}) is hoger dan het hele financieringsgat.`);
+  if (laag !== null && laag > gat) return nee('minimum-boven-gat', `${uitBand ? 'De laagste waarde van de bandbreedte' : 'Het minimum'} van deze financier (${euro(laag)}) is hoger dan het hele financieringsgat.`);
 
   const aandeelBedrag = Math.floor(gat * aandeel);
   const doelRest = nodig === null ? aandeelBedrag : nodig;
-  let grond: BedragGrond = doelRest < aandeelBedrag ? 'rest-tot-doel' : 'aandeel-van-gat';
-  let bedrag = Math.min(aandeelBedrag, doelRest);
+  let basis: number;
+  let grond: BedragGrond;
 
-  if (max !== null && bedrag > max) {
+  if (laag !== null && max !== null && max > laag) {
+    basis = laag + (max - laag) / 3;
+    grond = 'voorzichtig-laag';
+  } else if (laag !== null) {
+    basis = max !== null && max > 0 && max < laag ? max : laag;
+    grond = uitBand ? 'laagste-bandbreedte' : 'fonds-minimum';
+  } else {
+    basis = (max as number) / 3;
+    grond = 'derde-van-maximum';
+  }
+
+  let bedrag = Math.floor(basis);
+
+  if (bedrag > aandeelBedrag) {
+    bedrag = aandeelBedrag;
+    grond = 'aandeel-van-gat';
+  }
+
+  if (bedrag > doelRest) {
+    bedrag = doelRest;
+    grond = 'rest-tot-doel';
+  }
+
+  if (max !== null && max > 0 && bedrag > max) {
     bedrag = max;
     grond = 'fonds-maximum';
   }
 
-  if (min !== null && bedrag < min) {
-    bedrag = min;
-    grond = 'fonds-minimum';
+  if (laag !== null && bedrag < laag) {
+    bedrag = laag;
+    grond = uitBand ? 'laagste-bandbreedte' : 'fonds-minimum';
   }
 
-  // Afronden naar beneden, maar nooit onder het minimum en nooit tot 0.
+  // Afronden naar beneden, maar nooit onder de ondergrens en nooit tot 0.
   const stap = afrondStap(bedrag);
   const afgerond = Math.floor(bedrag / stap) * stap;
 
-  bedrag = afgerond > 0 && (min === null || afgerond >= min) ? afgerond : bedrag;
+  bedrag = afgerond > 0 && (laag === null || afgerond >= laag) ? afgerond : bedrag;
 
+  const bereik = laag !== null && max !== null && max > laag ? `${euro(laag)} tot ${euro(max)}` : null;
   const uitleg =
-    grond === 'fonds-maximum'
-      ? `Het maximum van deze financier (${euro(max as number)}) ligt onder een evenredig aandeel; het voorstel is dat maximum.`
-      : grond === 'fonds-minimum'
-        ? `Het minimum van deze financier (${euro(min as number)}) bepaalt het voorstel.`
-        : grond === 'rest-tot-doel'
-          ? 'Alleen wat nog nodig is om het dekkingsdoel te halen.'
-          : `Een voorzichtig aandeel (hoogstens ${Math.round(aandeel * 100)}%) van het financieringsgat; niet het maximum van de financier.`;
+    grond === 'voorzichtig-laag'
+      ? `Een voorzichtig bedrag in het laagste deel van wat deze financier noemt (${bereik}); niet het maximum.`
+      : grond === 'laagste-bandbreedte'
+        ? `Het laagste bedrag van de bandbreedte van deze financier (${euro(laag as number)}); de bandbreedte is een indicatie.`
+        : grond === 'derde-van-maximum'
+          ? `Alleen een maximum is bekend (${euro(max as number)}); het voorstel is een derde daarvan.`
+          : grond === 'fonds-minimum'
+            ? `Het minimum van deze financier (${euro(laag as number)}) bepaalt het voorstel.`
+            : grond === 'fonds-maximum'
+              ? `Het maximum van deze financier (${euro(max as number)}) ligt onder de rekenbasis; het voorstel is dat maximum.`
+              : grond === 'rest-tot-doel'
+                ? 'Alleen wat nog nodig is om het dekkingsdoel te halen.'
+                : `Een voorzichtig aandeel (hoogstens ${Math.round(aandeel * 100)}%) van het financieringsgat; niet het maximum van de financier.`;
 
   return { bedrag, grond, afwijsCode: null, uitleg, indicatie: true };
 }
@@ -236,7 +286,7 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
   const { config } = inv;
   const gat = getal(inv.gat) ?? 0;
   const doelBedrag = Math.ceil(Math.round(gat * config.dekkingsdoel * 100) / 100); // zelfde afronding als toegestaneSom in het contract
-  const leeg = (uitkomst: MixUitkomst, melding: string | null = null): MixResultaat => ({ uitkomst, gat, doelBedrag, som: 0, dekking: 0, mix: [], reserve: null, afgewezen: [], melding });
+  const leeg = (uitkomst: MixUitkomst, melding: string | null = null): MixResultaat => ({ uitkomst, gat, doelBedrag, som: 0, dekking: 0, mix: [], reserve: null, reserves: [], afgewezen: [], melding });
 
   if (!config.dekkingsplan || config.maxRegelsInMix <= 0) return leeg('niet-beschikbaar');
   if (gat <= 0) return leeg('geen-gat');
@@ -250,7 +300,7 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
     // (geschat voor het volledige doel, zodat alle kandidaten op dezelfde maat worden gemeten); de rest valt af zodra het doel gehaald is.
     const potentieel = new Map<string, number>();
 
-    for (const k of geschikt) potentieel.set(k.sleutel, realistischBedrag({ gat, nodig: doelBedrag, min: k.min, max: k.max, maxAandeel: config.maxAandeelPerFonds }).bedrag ?? 0);
+    for (const k of geschikt) potentieel.set(k.sleutel, realistischBedrag({ gat, nodig: doelBedrag, min: k.min, max: k.max, bandOnder: bandOndergrens(k.band), maxAandeel: config.maxAandeelPerFonds }).bedrag ?? 0);
 
     geschikt.sort(
       (a, b) =>
@@ -283,35 +333,19 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
   });
 
   const mix: MixRegel[] = [];
+  const inMix = new Set<string>();
   let som = 0;
-  let reserve: MixRegel | null = null;
 
   for (const k of geschikt) {
-    // Doel gehaald: STOP met mixen. Alleen nog hooguit één reserve zoeken (telt niet mee).
-    if (som >= doelBedrag) {
-      // Een optionele serviceclub is nooit reserve: ze wordt alleen gebruikt als de andere financiers het doel niet halen.
-      if (k.optioneel) {
-        afgewezen.push({ sleutel: k.sleutel, code: 'boven-doel' });
-        continue;
-      }
-
-      const r = realistischBedrag({ gat, nodig: gat, min: k.min, max: k.max, maxAandeel: config.maxAandeelPerFonds });
-
-      if (r.bedrag !== null) {
-        reserve = regelVan(k, r);
-        break;
-      }
-
-      afgewezen.push({ sleutel: k.sleutel, code: r.afwijsCode as AfwijsCode });
-      continue;
-    }
+    // Doel gehaald: STOP met mixen. De alternatieven worden hierna apart gekozen (ze tellen niet mee).
+    if (som >= doelBedrag) break;
 
     if (mix.length >= config.maxRegelsInMix) {
       afgewezen.push({ sleutel: k.sleutel, code: 'mix-vol' });
       continue;
     }
 
-    const b = realistischBedrag({ gat, nodig: doelBedrag - som, min: k.min, max: k.max, maxAandeel: config.maxAandeelPerFonds });
+    const b = realistischBedrag({ gat, nodig: doelBedrag - som, min: k.min, max: k.max, bandOnder: bandOndergrens(k.band), maxAandeel: config.maxAandeelPerFonds });
 
     if (b.bedrag === null) {
       afgewezen.push({ sleutel: k.sleutel, code: b.afwijsCode as AfwijsCode });
@@ -325,10 +359,26 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
     }
 
     mix.push(regelVan(k, b));
+    inMix.add(k.sleutel);
     som += b.bedrag;
   }
 
   const bereikt = som >= doelBedrag;
+  // Alternatieven: de volgende passende financiers, voor als een aanvraag wordt afgewezen. Alleen als het gat gedekt is (anders valt er niets te
+  // "reserveren"); ze tellen niet mee in de som. Een optionele serviceclub is nooit een alternatief: ze wordt alleen gebruikt als de andere
+  // financiers het doel niet halen.
+  const reserves: MixRegel[] = [];
+
+  if (som >= gat) {
+    for (const k of geschikt) {
+      if (reserves.length >= config.alternatieven) break;
+      if (inMix.has(k.sleutel) || k.optioneel) continue;
+
+      const r = realistischBedrag({ gat, nodig: gat, min: k.min, max: k.max, bandOnder: bandOndergrens(k.band), maxAandeel: config.maxAandeelPerFonds });
+
+      if (r.bedrag !== null) reserves.push(regelVan(k, r));
+    }
+  }
 
   return {
     uitkomst: bereikt ? 'doel-bereikt' : 'onvoldoende-sterke-matches',
@@ -337,8 +387,8 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
     som,
     dekking: stap2(som / gat),
     mix,
-    // Is het doel niet gehaald, dan is er per definitie niets meer over om als reserve te noemen.
-    reserve: bereikt ? reserve : null,
+    reserve: reserves[0] ?? null,
+    reserves,
     afgewezen,
     melding: bereikt ? null : MELDING_TE_WEINIG_STERKE_MATCHES,
   };

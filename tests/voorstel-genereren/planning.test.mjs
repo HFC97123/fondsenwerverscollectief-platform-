@@ -10,7 +10,7 @@ const stand = { ok: 0, fout: 0 };
 const check = (naam, waar, detail = '') => { if (waar) stand.ok += 1; else { stand.fout += 1; console.log(`  FAIL: ${naam} ${detail}`); } };
 const sectie = (t) => console.log(`\n== ${t}`);
 
-const V = '2026-10-16';
+const V = new Date().toISOString().slice(0, 10); // de keten gebruikt de echte datum van vandaag
 const d = (n, van = V) => plusDagen(van, n);
 const stap = (u, fase) => u.stappen.find((s) => s.fase === fase);
 const alleDatums = (u) => u.stappen.filter((s) => s.datum).map((s) => s.datum);

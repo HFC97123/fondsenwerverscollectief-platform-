@@ -27,8 +27,8 @@ const MAX = { naam: 200, motivatie: 600, onderdeel: 200, voorwaarde: 300, onzeke
 const MAX_LIJST = 6;
 const MAX_BEDRAG = 1e12;
 // Dekkingsdoel: hoeveel boven het financieringsgat een voorstel mag uitkomen omdat een afwijzing normaal is (Pro 1.20, Premium 1.40).
-// Alleen de SERVER bepaalt dit (uit de tierconfiguratie); een waarde buiten 1 t/m 1,5 telt als 1 (geen buffer).
-export const MAX_DEKKINGSDOEL = 1.5;
+// Alleen de SERVER bepaalt dit (uit de tierconfiguratie); een waarde buiten 1 t/m 1,6 telt als 1 (geen buffer).
+export const MAX_DEKKINGSDOEL = 1.6;
 export function toegestaneSom(gat, dekkingsdoel) {
   const f = typeof dekkingsdoel === 'number' && Number.isFinite(dekkingsdoel) && dekkingsdoel >= 1 && dekkingsdoel <= MAX_DEKKINGSDOEL ? dekkingsdoel : 1;
 
@@ -585,7 +585,7 @@ function binnenGrenzen(bedrag, min, max) {
 //   bestaandeRegels    regels uit het dekkingsplan: [{ schemeId, funderId, naam, financierNaam }] (voor "staat al")
 //   bedragenToegestaan zie beoordeelProject; false = alle bedragen worden leeggemaakt
 //   vandaag            ISO-datum
-//   dekkingsdoel       optioneel, alleen van de server: factor (1 t/m 1,5) waarmee de som het financieringsgat mag overschrijden
+//   dekkingsdoel       optioneel, alleen van de server: factor (1 t/m 1,6) waarmee de som het financieringsgat mag overschrijden
 // -> { ok, voorstel, fouten: [{ pad, code }], waarschuwingen: [{ pad, code }] }
 export function valideerVoorstel(raw, ctx) {
   const c = ctx || {};

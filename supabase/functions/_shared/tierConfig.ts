@@ -22,7 +22,7 @@ export interface OnlineOrientatieConfig {
   maxKandidaten: number;
   maxZoekopdrachten: number; // alleen af te dwingen als de API een harde grens kent; anders is dit een instructie aan het model
   timeoutMs: number;
-  // Alleen Premium: de online oriëntatie loopt door tot het dekkingsdoel (140% van het financieringsgat) gedekt is. Ook als de database al
+  // Alleen Premium: de online oriëntatie loopt door tot het dekkingsdoel (160% van het financieringsgat) gedekt is. Ook als de database al
   // genoeg levert toont het voorstel minstens `minTonen` online kandidaten; zijn er te weinig fondsen, dan mag het aantal boven
   // `maxKandidaten` uitkomen, tot `totaalMax` in totaal (harde bovengrens voor de kosten). Zonder deze velden (Pro): vast kort aantal.
   minTonen?: number;
@@ -57,8 +57,11 @@ export interface TierConfig {
   // Ondergrens voor de matchscore van een kandidaat in de mix. Startwaarde; kalibreren zodra de mix aan de engine hangt.
   minScore: number;
   // Maximaal aantal regels in de mix (excl. de ene reserve). Moet < MAX_REGELS van het voorstelcontract blijven.
-  // Pro: 6 (kort en overzichtelijk). Premium: 10, zodat de begroting van een groot project sluitend gemaakt kan worden.
+  // Pro: 6 (kort en overzichtelijk). Premium: 9, zodat de begroting van een groot project sluitend gemaakt kan worden.
   maxRegelsInMix: number;
+  // Aantal alternatieve financiers (reserves) naast de mix: tellen niet mee in de dekking, voor als een aanvraag wordt afgewezen. mix + alternatieven
+  // moeten samen binnen MAX_REGELS van het voorstelcontract blijven.
+  alternatieven: number;
   // Alleen Premium: de mix wordt gevuld met de financiers die het beste passen EN de hoogste bijdrage geven, zodat de begroting met zo weinig
   // mogelijk regels sluit en de overige geschikte financiers afvallen. Volgorde: scoreband van 10 punten (aflopend), daarna hoogste
   // bijdrage, dan naam. Pro blijft puur op score (zoals voorheen).
@@ -82,9 +85,10 @@ const PRO: TierConfig = {
   dekkingsplan: true,
   toegestaneAccessTiers: ['free', 'pro'],
   dekkingsdoel: 1.2,
-  maxAandeelPerFonds: 0.5,
+  maxAandeelPerFonds: 1 / 3,
   minScore: 50,
   maxRegelsInMix: 6,
+  alternatieven: 3,
   rangschikOpBijdrage: false,
   onlineOrientatie: { maxKandidaten: 2, maxZoekopdrachten: 2, timeoutMs: 40_000 },
   onlineAanvullen: null,
@@ -98,10 +102,11 @@ const PREMIUM: TierConfig = {
   tier: 'premium',
   dekkingsplan: true,
   toegestaneAccessTiers: ['free', 'pro', 'premium'],
-  dekkingsdoel: 1.4,
-  maxAandeelPerFonds: 0.5,
+  dekkingsdoel: 1.6,
+  maxAandeelPerFonds: 1 / 3,
   minScore: 50,
-  maxRegelsInMix: 10,
+  maxRegelsInMix: 9,
+  alternatieven: 3,
   rangschikOpBijdrage: true,
   onlineOrientatie: { maxKandidaten: 6, maxZoekopdrachten: 6, timeoutMs: 60_000, minTonen: 3, totaalMax: 10 },
   onlineAanvullen: { maxKandidaten: 5 },
@@ -119,6 +124,7 @@ const FREE: TierConfig = {
   maxAandeelPerFonds: 0.5,
   minScore: 50,
   maxRegelsInMix: 0,
+  alternatieven: 0,
   rangschikOpBijdrage: false,
   onlineOrientatie: null,
   onlineAanvullen: null,

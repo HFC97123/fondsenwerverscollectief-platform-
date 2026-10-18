@@ -231,7 +231,7 @@ sectie('5. Opslaan: de server stelt de bronstatus zelf vast');
   wereld();
   check('opslaan meldt de buffer van het abonnement (Pro 1,20)', (await opslaan([r('regeling', A1, 30000)])).json.dekkingsdoel === 1.2);
   wereld({ profile: PREMIUM });
-  check('Premium: 1,40', (await opslaan([r('regeling', A1, 30000)])).json.dekkingsdoel === 1.4);
+  check('Premium: 1,60', (await opslaan([r('regeling', A1, 30000)])).json.dekkingsdoel === 1.6);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -297,7 +297,7 @@ sectie('7. Startpunt vanuit de chat: dezelfde preview, validatie en opslag');
   check('geen online zoekopdracht en geen taalmodel', w.openaiAantal === 0);
 
   wereld({ profile: PREMIUM });
-  check('Premium: dekkingsdoel 1,40', (await startpunt([{ type: 'regeling', id: B1 }])).json.dekkingsdoel === 1.4);
+  check('Premium: dekkingsdoel 1,60', (await startpunt([{ type: 'regeling', id: B1 }])).json.dekkingsdoel === 1.6);
 
   // Staat al in het dekkingsplan -> niet selecteerbaar.
   wereld();

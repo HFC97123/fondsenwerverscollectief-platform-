@@ -26,13 +26,13 @@ const FREE = { subscription_tier: 'free', subscription_active: false, trial_ends
 function pool() {
   return {
     regelingen: [
-      regeling({ naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', min: 5000, max: 60000, id: '00000000-0000-4000-8000-0000000000a1' }),
-      regeling({ naam: 'Pro Jongerenregeling', tier: 'pro', gever: 'Pro Gever', min: 2000, max: 30000, id: '00000000-0000-4000-8000-0000000000a2' }),
-      regeling({ naam: 'Landelijk Muziekpodium', gever: 'Landelijk Podium', min: 1000, max: 25000, regios: ['Landelijk'], id: '00000000-0000-4000-8000-0000000000a3' }),
+      regeling({ naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', min: 5000, max: 120000, id: '00000000-0000-4000-8000-0000000000a1' }),
+      regeling({ naam: 'Pro Jongerenregeling', tier: 'pro', gever: 'Pro Gever', min: 2000, max: 90000, id: '00000000-0000-4000-8000-0000000000a2' }),
+      regeling({ naam: 'Landelijk Muziekpodium', gever: 'Landelijk Podium', min: 1000, max: 80000, regios: ['Landelijk'], id: '00000000-0000-4000-8000-0000000000a3' }),
       regeling({ naam: 'Premium Cultuurregeling', tier: 'premium', gever: 'Premium Gever', min: 5000, max: 50000, id: '00000000-0000-4000-8000-0000000000b1' }),
       regeling({ naam: 'Geheime Regeling', tier: 'premium', gever: 'Geheim Exclusief Fonds', funderId: XF, min: 5000, max: 50000, id: '00000000-0000-4000-8000-0000000000c1' }),
     ],
-    funders: [fonds({ naam: 'Fonds Voorbeeld', min: 1000, max: 15000, id: '00000000-0000-4000-8000-0000000000f1' })],
+    funders: [fonds({ naam: 'Fonds Voorbeeld', min: 1000, max: 60000, id: '00000000-0000-4000-8000-0000000000f1' })],
     exclusief: [{ funder_id: XF, naam: 'Geheim Exclusief Fonds', website: 'https://www.geheimfonds.nl/', aliassen: [], regeling_namen: ['Geheime Regeling'], regeling_links: [] }],
   };
 }
@@ -120,14 +120,14 @@ sectie('2. Pro: database met free + pro, GEEN Premium-record, GEEN exclusief fon
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('3. Premium: volledige database, hoger dekkingsdoel, ruimere online oriëntatie');
+sectie('3. Premium: volledige database, hoger dekkingsdoel (160%), ruimere online oriëntatie');
 {
   resetGenereren({ ...pool(), profile: PREMIUM });
   const r = await genereer();
   const j = r.json;
 
   check('Premium: 200 en ok, niets opgeslagen', r.status === 200 && j.ok === true && geenSchrijven(), `${r.status} ${r.tekst.slice(0, 200)}`);
-  check('Premium: dekkingsdoel 140% (gat 70.000 -> doel 98.000)', j.dekkingsdoel === 1.4 && j.totalen.doelBedrag === 98000, JSON.stringify(j.totalen));
+  check('Premium: dekkingsdoel 160% (gat 70.000 -> doel 112.000) en de begroting sluit', j.dekkingsdoel === 1.6 && j.totalen.doelBedrag === 112000 && j.totalen.som === 112000 && j.uitkomst === 'doel-bereikt', JSON.stringify(j.totalen));
   check('Premium: ook Premium-records (en het exclusieve fonds) kunnen meedoen', regelNamen(r).includes('Premium Cultuurregeling') || regelNamen(r).includes('Geheime Regeling'), regelNamen(r).join(','));
   check('Premium: de oriëntatie vroeg om hoogstens 6 kandidaten en 6 zoekopdrachten', /Maximaal 6 kandidaten/.test(JSON.stringify(w.openaiBodies[0])) && /hoogstens 6 webzoekopdrachten/.test(JSON.stringify(w.openaiBodies[0])));
   check('Premium: ruimere uitvoer dan Pro (max_output_tokens 7800)', w.openaiBodies[0]?.max_output_tokens === 7800, String(w.openaiBodies[0]?.max_output_tokens));
@@ -135,7 +135,7 @@ sectie('3. Premium: volledige database, hoger dekkingsdoel, ruimere online orië
   check('Premium: kostenmeter markeert de tier premium', w.gebruikRijen.every((rij) => rij.tier === 'premium'));
   const som = j.voorstel.regels.filter((x) => x.selecteerbaar && x.bedrag).reduce((t, x) => t + x.bedrag, 0);
 
-  check('Premium: som nooit boven 98.000', som <= 98000 && som === j.totalen.som, `${som}`);
+  check('Premium: som nooit boven 112.000', som <= 112000 && som === j.totalen.som, `${som}`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -241,15 +241,15 @@ sectie('7. Premium-aanvullen: gericht op het resterende gat, stop zodra het doel
 
   check('Pro: aanvullen geweigerd (403), geen OpenAI', pro.status === 403 && w.openaiAantal === 0, String(pro.status));
 
-  resetGenereren({ ...klein(), profile: PREMIUM, online: [1, 2, 3, 4, 5, 6].map((n) => online({ gever: `Gericht Online Fonds ${n}`, regeling: `Gerichte Regeling ${n}` })) });
+  resetGenereren({ ...klein(), profile: PREMIUM, online: [1, 2, 3, 4, 5, 6].map((n) => online({ gever: `Gericht Online Fonds ${n}`, regeling: `Gerichte Regeling ${n}`, bedragMin: 20000, bedragMax: 40000 })) });
   const r = await aanvul(voorstelVan(35000));
   const j = r.json;
 
   check('Premium: 200 en ok, niets opgeslagen', r.status === 200 && j.ok === true && geenSchrijven(), `${r.status} ${r.tekst.slice(0, 200)}`);
-  check('het resterende gat komt van de SERVER (98.000 - 35.000 = 63.000)', j.rest.nodig === 63000 && j.rest.som === 35000, JSON.stringify(j.rest));
-  check('de zoekopdracht noemt het resterende bedrag en sluit al bekende financiers uit', /ongeveer € 63000/.test(JSON.stringify(w.openaiBodies[0])) && /Noem NIET: .*Rotterdams Muziekfonds/.test(JSON.stringify(w.openaiBodies[0])));
+  check('het resterende gat komt van de SERVER (112.000 - 35.000 = 77.000)', j.rest.nodig === 77000 && j.rest.som === 35000, JSON.stringify(j.rest));
+  check('de zoekopdracht noemt het resterende bedrag en sluit al bekende financiers uit', /ongeveer € 77000/.test(JSON.stringify(w.openaiBodies[0])) && /Noem NIET: .*Rotterdams Muziekfonds/.test(JSON.stringify(w.openaiBodies[0])));
   check('cap 5: de verkenner mag hoogstens 5 kandidaten opleveren', /Maximaal 5 kandidaten/.test(JSON.stringify(w.openaiBodies[0])));
-  check('stop zodra de indicatieve bedragen het resterende gat dekken (63.000 = 3 x 30.000), ook al zijn er meer', j.onlineSuggesties.length === 3 && j.onlineIndicatief >= 63000, `${j.onlineSuggesties.length} ${j.onlineIndicatief}`);
+  check('stop zodra de indicatieve bedragen het resterende gat dekken (77.000 = 4 x ongeveer 23.000, elk begrensd op een derde van het gat), ook al zijn er meer', j.onlineSuggesties.length === 4 && j.onlineIndicatief >= 77000, `${j.onlineSuggesties.length} ${j.onlineIndicatief}`);
   check('dat is het einde: geen nieuwe ronde nodig', j.nogAanvullen === false);
   check('de suggesties zijn niet gecontroleerd en worden niet in het voorstel gezet', j.onlineSuggesties.every((s) => s.gecontroleerd === false) && j.voorstel === undefined);
   check('de kostenmeter telt de web-zoekopdrachten', w.gebruikRijen.some((rij) => rij.action_type === 'fonds_scan_web' && rij.web_search_calls === 2 && rij.tier === 'premium'), JSON.stringify(w.gebruikRijen));
@@ -295,11 +295,11 @@ sectie('8. De preview laat de buffer van het abonnement toe (server bepaalt de f
 
   check('Pro: 85.000 (boven 120%) wordt teruggeschaald tot hoogstens 84.000', proTeVeel.status === 200 && somVan(proTeVeel) <= 84000 && proTeVeel.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${proTeVeel.status} ${proTeVeel.json && somVan(proTeVeel)}`);
   resetGenereren({ ...p, profile: PREMIUM });
-  const premVoorstel = regelsMet([60000, 38000]);
-  premVoorstel.regels[1] = { type: 'regeling', id: '00000000-0000-4000-8000-0000000000b1', naam: 'Premium Cultuurregeling', gever: 'Premium Gever', bedrag: 38000 };
+  const premVoorstel = regelsMet([62000, 50000]);
+  premVoorstel.regels[1] = { type: 'regeling', id: '00000000-0000-4000-8000-0000000000b1', naam: 'Premium Cultuurregeling', gever: 'Premium Gever', bedrag: 50000 };
   const prem = await preview(premVoorstel);
 
-  check('Premium: 98.000 (140%) wordt niet teruggeschaald', prem.status === 200 && somVan(prem) === 98000 && !prem.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${prem.status} ${prem.json && somVan(prem)}`);
+  check('Premium: 112.000 (160%) wordt niet teruggeschaald', prem.status === 200 && somVan(prem) === 112000 && !prem.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${prem.status} ${prem.json && somVan(prem)}`);
   resetGenereren({ ...p, profile: FREE });
   const free = await preview(regelsMet([60000, 17000]));
 
@@ -353,7 +353,7 @@ sectie('10. Premium zoekt online door tot 120% gedekt is (minstens 3, meer dan 6
   resetGenereren({ ...klein(), profile: PREMIUM, online: [1, 2, 3, 4, 5, 6].map((n) => online({ gever: `Groot Online Fonds ${n}`, regeling: `Grote Regeling ${n}`, bedragMin: 5000, bedragMax: 60000 })) });
   const groot = await genereer();
 
-  check('grote online bedragen: minimaal 3 (ook al is het doel dan ruimschoots gedekt)', groot.json.onlineSuggesties.length === 3, String(groot.json.onlineSuggesties.length));
+  check('grote online bedragen: zoveel als nodig om het doel (160%) te halen (elk voorzichtig begrensd op een derde van het gat), niet alle 6', groot.json.onlineSuggesties.length >= 3 && groot.json.onlineSuggesties.length < 6 && groot.json.onlineIndicatief >= groot.json.totalen.nodig, `${groot.json.onlineSuggesties.length} ${groot.json.onlineIndicatief} ${JSON.stringify(groot.json.rest || groot.json.totalen)}`);
 
   // Aanvullen: telt wat al getoond is mee, stopt bij dekking, en het totaal blijft binnen het maximum (10).
   const voorstelVan = (bedrag) => ({ versie: 1, projectId: PID, status: 'concept', aannames: [], acties: [], regels: [{ type: 'regeling', id: '00000000-0000-4000-8000-0000000000a1', naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', bedrag }] });
@@ -395,7 +395,7 @@ sectie('10. Premium zoekt online door tot 120% gedekt is (minstens 3, meer dan 6
   check('Pro: de Premium-regeling zit niet in het voorstel (de hint verandert de pool niet)', !regelNamen(proHint).includes('Premium Cultuurregeling'));
 
   // Geen Premium-only fondsen: geen hint (geen schijnbelofte).
-  resetGenereren({ regelingen: [regeling({ naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', min: 5000, max: 60000, id: '00000000-0000-4000-8000-0000000000a1' })], funders: [], profile: PRO });
+  resetGenereren({ regelingen: [regeling({ naam: 'Rotterdams Muziekfonds', gever: 'Gemeente Rotterdam', min: 5000, max: 120000, id: '00000000-0000-4000-8000-0000000000a1' })], funders: [], profile: PRO });
   const geenHint = await genereer();
 
   check('Pro zonder passende Premium-only fondsen: geen hint', geenHint.status === 200 && geenHint.json.premiumHint === null);
