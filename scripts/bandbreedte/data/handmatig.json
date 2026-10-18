@@ -1,0 +1,145 @@
+{
+  "_uitleg": "Gevonden in de handmatige proef van 17-10-2026 (niet door de tool gecontroleerd). seedUrls worden altijd mee onderzocht; 'vast' wordt alleen als voorstel gebruikt als de tool zelf niets vindt.",
+  "seedUrls": {
+    "instituut gak": [
+      "https://www.instituutgak.nl/wp-content/uploads/2025/05/IG-jaar-2024-18-enkel.pdf",
+      "https://www.instituutgak.nl/wp-content/uploads/2025/04/Vragen-en-antwoorden.pdf"
+    ],
+    "kansfonds": [
+      "https://www.kansfonds.nl/wp-content/uploads/2025/03/Kansfonds_jaarverslag-2024_projectenlijst.pdf",
+      "https://www.kansfonds.nl/aanvragen/veelgestelde-vragen/"
+    ],
+    "schipholfonds": [
+      "https://www.schiphol.nl/nl/schipholfonds/voorwaarden-voor-een-donatie",
+      "https://www.schiphol.nl/nl/schipholfonds/zo-werkt-het"
+    ],
+    "sandals foundation": [
+      "https://sandalsfoundation.org/news/sandals-foundation-2027-project-guidelines-and-selection-criteria"
+    ],
+    "cruyff foundation": [
+      "https://www.cruyff-foundation.org/wat-we-doen/gehandicapten-sport/aanvragen-2/aanvragen/"
+    ],
+    "philips foundation": [
+      "https://www.philips-foundation.com/c-dam/philips-foundation/Files/2024_Operational_Policy_Philips_Foundation.pdf"
+    ],
+    "fonds nutsohra": [
+      "https://www.fnozorgvoorkansen.nl/organisatie/"
+    ],
+    "goldschmeding": [
+      "https://goldschmeding.foundation/medialibrary/goldschmeding-foundation-beleidsplan-2026.pdf"
+    ],
+    "bernard van leer": [
+      "https://vanleerfoundation.org/publications-reports/annual-report-2024/"
+    ],
+    "dioraphte": [
+      "https://dioraphte.nl/wp-content/uploads/Jaarbericht-Dioraphte-2024.pdf",
+      "https://dioraphte.nl/wp-content/uploads/Dioraphte_jaarbericht-2025.pdf"
+    ],
+    "samenwerkende fondsen cariben": [
+      "https://www.samenwerkendefondsencariben.org/aanvragen/aanvraag",
+      "https://www.samenwerkendefondsencariben.org/aanvragen/criteria-en-richtlijnen"
+    ],
+    "vitol foundation": [
+      "https://www.vitol.com/esg-report-2025/"
+    ],
+    "katalys": [
+      "https://katalys.nl/financieel/"
+    ]
+  },
+  "vast": [
+    {
+      "match": "instituut gak",
+      "min": 15000,
+      "max": 696127,
+      "mediaan": 75000,
+      "basis": "HANDMATIG (proef)",
+      "toelichting": "Indicatie op basis van 45 toekenningen in 2024 (€ 15.000 tot € 696.127, gebruikelijk circa € 75.000). Het fonds noemt zelf geen minimum of maximum.",
+      "bron": "https://www.instituutgak.nl/wp-content/uploads/2025/05/IG-jaar-2024-18-enkel.pdf",
+      "let_op": "Uiterste waarden; het middelste kwart ligt ongeveer tussen € 40.000 en € 130.000. Overweeg dat als bandbreedte."
+    },
+    {
+      "match": "schipholfonds",
+      "min": 1380,
+      "max": 10000,
+      "mediaan": 5000,
+      "basis": "HANDMATIG (proef)",
+      "toelichting": "Het fonds noemt zelf een maximum van € 10.000; voorbeelden uit 2025 lopen van € 1.380 tot € 10.000, vaak € 5.000.",
+      "bron": "https://www.schiphol.nl/nl/schipholfonds/voorwaarden-voor-een-donatie",
+      "let_op": "Voorbeelden zijn alleen sportclubs."
+    },
+    {
+      "match": "sandals foundation",
+      "min": null,
+      "max": 73600,
+      "mediaan": null,
+      "basis": "HANDMATIG (proef)",
+      "toelichting": "Het fonds noemt zelf maximaal US$ 80.000 (strategic grants), omgerekend tegen 0,92. Klein tot US$ 20.000, middel US$ 20.000–50.000.",
+      "bron": "https://sandalsfoundation.org/news/sandals-foundation-2027-project-guidelines-and-selection-criteria",
+      "let_op": "Bedrag in dollars, omrekening is een schatting."
+    },
+    {
+      "match": "cruyff foundation",
+      "min": null,
+      "max": null,
+      "mediaan": null,
+      "basis": "HANDMATIG (proef)",
+      "toelichting": "Het fonds financiert maximaal 50% van het project. Geen bedragen gevonden.",
+      "bron": "https://www.cruyff-foundation.org/wat-we-doen/gehandicapten-sport/aanvragen-2/aanvragen/",
+      "let_op": "Alleen een percentage, geen eurobedrag."
+    }
+  ],
+  "tips": [
+    {
+      "match": "stichting doen",
+      "tekst": "Proef: DOEN werkt zonder minimum of maximum; het gemiddelde hangt af van de totale projectkosten (doen.nl, veelgestelde vragen)."
+    },
+    {
+      "match": "kansfonds",
+      "tekst": "Proef: geen min/max; wel besluitgrenzen: boven € 50.000 adviescommissie, vanaf € 100.000 bestuur (kansfonds.nl). Projectenlijst 2024 (PDF) is de beste bron."
+    },
+    {
+      "match": "kinderhulp",
+      "tekst": "Proef: hulp aan individuele kinderen via professionals, gemiddeld € 191 per financiële aanvraag (2024). Geen projectfonds."
+    },
+    {
+      "match": "porticus",
+      "tekst": "Proef: geen open aanvragen en geen bedragen per toekenning gepubliceerd."
+    },
+    {
+      "match": "goldschmeding",
+      "tekst": "Proef: kiest zelf projectpartners; budget voor projecten in 2026 € 10,8 miljoen; geen bedragen per project."
+    },
+    {
+      "match": "fonds nutsohra",
+      "tekst": "Proef: gemiddeld ca. € 12 miljoen per jaar besteed; Klein Geluk-budget € 9,2 miljoen (2022–2028), 105 projecten toegekend in 2025; bedrag per project niet gevonden."
+    },
+    {
+      "match": "philips foundation",
+      "tekst": "Proef: directeur beslist over voorstellen tot € 100.000, daarboven het bestuur (beslisdrempel, geen bijdragegrens)."
+    },
+    {
+      "match": "bernard van leer",
+      "tekst": "Proef: € 15,8 miljoen aan toekenningen en eigen projecten in 2024; werkt met eigen partners, geen standaardbandbreedte."
+    },
+    {
+      "match": "jeugdfonds sport",
+      "tekst": "Proef: hulp per kind via intermediairs; gemiddeld € 356 (sport) en € 433 (cultuur) in 2025. Geen projectsubsidie."
+    },
+    {
+      "match": "samenwerkende fondsen cariben",
+      "tekst": "Proef: micro- en macro-aanvragen; grenzen in euro's niet gevonden. Grof gemiddelde ca. € 32.000 per initiatief over 2004–2019 (oud, onzeker)."
+    },
+    {
+      "match": "dioraphte",
+      "tekst": "Proef: totaal € 14,6 miljoen voor 326 projecten in 2024 (alle thema's, gemiddeld ca. € 44.800). Niet specifiek voor deze regeling."
+    },
+    {
+      "match": "vitol foundation",
+      "tekst": "Proef: US$ 45 miljoen geïnvesteerd in 2025; geen bedrag per toekenning gevonden."
+    },
+    {
+      "match": "katalys",
+      "tekst": "Proef: advies, gunstige leningen en de bijdrage 'Kern met Pit'; geen bedragen gevonden."
+    }
+  ]
+}
