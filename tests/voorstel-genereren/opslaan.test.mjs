@@ -127,7 +127,7 @@ sectie('4. Servervalidatie: alles of niets, invoer blijft behouden');
 
   wereld();
   const teVeel = await opslaan([r('regeling', A1, 60000), r('regeling', A3, 25000), r('fonds', F1, 15000)]);
-  check('samen boven het financieringsgat plus buffer: 422 met het toegestane totaal', teVeel.status === 422 && teVeel.json.algemeen?.code === 'boven-financieringsgat' && teVeel.json.algemeen.toegestaneSom === 88000 && w.db.funding.length === 0, JSON.stringify(teVeel.json?.algemeen));
+  check('samen boven het financieringsgat plus buffer: 422 met het toegestane totaal', teVeel.status === 422 && teVeel.json.algemeen?.code === 'boven-financieringsgat' && teVeel.json.algemeen.toegestaneSom === 96000 && w.db.funding.length === 0, JSON.stringify(teVeel.json?.algemeen));
 
   wereld();
   const rommel = await opslaan([r('regeling', A1, -5)]);

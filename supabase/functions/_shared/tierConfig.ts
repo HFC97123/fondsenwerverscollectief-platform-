@@ -22,7 +22,7 @@ export interface OnlineOrientatieConfig {
   maxKandidaten: number;
   maxZoekopdrachten: number; // alleen af te dwingen als de API een harde grens kent; anders is dit een instructie aan het model
   timeoutMs: number;
-  // Alleen Premium: de online oriëntatie loopt door tot het dekkingsdoel (120% van het financieringsgat) gedekt is. Ook als de database al
+  // Alleen Premium: de online oriëntatie loopt door tot het dekkingsdoel (140% van het financieringsgat) gedekt is. Ook als de database al
   // genoeg levert toont het voorstel minstens `minTonen` online kandidaten; zijn er te weinig fondsen, dan mag het aantal boven
   // `maxKandidaten` uitkomen, tot `totaalMax` in totaal (harde bovengrens voor de kosten). Zonder deze velden (Pro): vast kort aantal.
   minTonen?: number;
@@ -76,7 +76,7 @@ const PRO: TierConfig = {
   tier: 'pro',
   dekkingsplan: true,
   toegestaneAccessTiers: ['free', 'pro'],
-  dekkingsdoel: 1.1,
+  dekkingsdoel: 1.2,
   maxAandeelPerFonds: 0.5,
   minScore: 50,
   maxRegelsInMix: 6,
@@ -92,7 +92,7 @@ const PREMIUM: TierConfig = {
   tier: 'premium',
   dekkingsplan: true,
   toegestaneAccessTiers: ['free', 'pro', 'premium'],
-  dekkingsdoel: 1.2,
+  dekkingsdoel: 1.4,
   maxAandeelPerFonds: 0.5,
   minScore: 50,
   maxRegelsInMix: 6,

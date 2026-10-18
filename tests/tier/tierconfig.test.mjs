@@ -16,7 +16,7 @@ sectie('1. Welke tier krijgt welke configuratie (fail closed)');
 
   check('admin krijgt de Premium-regels', tierConfigVoor('free', true).tier === 'premium');
   check('isAdmin moet precies true zijn', tierConfigVoor('free', 'true').tier === 'free' && tierConfigVoor('pro', 1).tier === 'pro');
-  check('configuraties zijn bevroren (geen runtime-wijziging)', (() => { try { 'use strict'; tierConfigVoor('pro').dekkingsdoel = 5; } catch { /* streng */ } return tierConfigVoor('pro').dekkingsdoel === 1.1; })());
+  check('configuraties zijn bevroren (geen runtime-wijziging)', (() => { try { 'use strict'; tierConfigVoor('pro').dekkingsdoel = 5; } catch { /* streng */ } return tierConfigVoor('pro').dekkingsdoel === 1.2; })());
 }
 
 sectie('2. Productregels: Pro ziet geen Premium-records, Premium ziet alles');
@@ -51,7 +51,7 @@ sectie('3. Pro en Premium verschillen alleen in pool, dekkingsdoel en online rui
   const pro = tierConfigVoor('pro');
   const premium = tierConfigVoor('premium');
 
-  check('dekkingsdoel: Pro 110%, Premium 120%', pro.dekkingsdoel === 1.1 && premium.dekkingsdoel === 1.2);
+  check('dekkingsdoel: Pro 120%, Premium 140%', pro.dekkingsdoel === 1.2 && premium.dekkingsdoel === 1.4);
   check('zelfde minimumscore, zelfde maximaal aandeel per fonds, zelfde mixgrootte', pro.minScore === premium.minScore && pro.maxAandeelPerFonds === premium.maxAandeelPerFonds && pro.maxRegelsInMix === premium.maxRegelsInMix);
   check('mixgrootte past binnen het voorstelcontract (MAX_REGELS 8, plus één reserve)', pro.maxRegelsInMix + 1 <= 8);
   check('observatiebudget: Pro 7, Premium 14, Free geen', pro.maandBudgetObservatieEur === 7 && premium.maandBudgetObservatieEur === 14 && tierConfigVoor('free').maandBudgetObservatieEur === null);

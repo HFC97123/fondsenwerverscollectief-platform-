@@ -229,9 +229,9 @@ sectie('5. Opslaan: de server stelt de bronstatus zelf vast');
 
   // De buffer ligt expliciet vast en komt van de server.
   wereld();
-  check('opslaan meldt de buffer van het abonnement (Pro 1,10)', (await opslaan([r('regeling', A1, 30000)])).json.dekkingsdoel === 1.1);
+  check('opslaan meldt de buffer van het abonnement (Pro 1,20)', (await opslaan([r('regeling', A1, 30000)])).json.dekkingsdoel === 1.2);
   wereld({ profile: PREMIUM });
-  check('Premium: 1,20', (await opslaan([r('regeling', A1, 30000)])).json.dekkingsdoel === 1.2);
+  check('Premium: 1,40', (await opslaan([r('regeling', A1, 30000)])).json.dekkingsdoel === 1.4);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -291,13 +291,13 @@ sectie('7. Startpunt vanuit de chat: dezelfde preview, validatie en opslag');
   const v = uit.json?.voorstel;
   check('startpunt ok; regels uit de server-bekende records; Premium/exclusief/online verdwijnen', uit.status === 200 && v.regels.length === 3 && v.regels.every((x) => x.bedrag === null) && uit.json.overgeslagen >= 2 && !/Premium Cultuurregeling|Geheim|GEHACKT/.test(uit.tekst));
   check('grenzen, deadline en naam komen van de server', v.regels.find((x) => x.id === A1).grenzen.max === 60000 && v.regels.find((x) => x.id === A1).deadline.datum === '2026-12-15' && v.regels.find((x) => x.id === A1).naam === 'Rotterdams Muziekfonds');
-  check('buffer expliciet: dekkingsdoel 1,10 voor Pro en het doelbedrag uit het gat', uit.json.dekkingsdoel === 1.1 && uit.json.totalen.gat === 80000 && uit.json.totalen.doelBedrag === 88000);
+  check('buffer expliciet: dekkingsdoel 1,20 voor Pro en het doelbedrag uit het gat', uit.json.dekkingsdoel === 1.2 && uit.json.totalen.gat === 80000 && uit.json.totalen.doelBedrag === 96000);
   check('voorgestelde taken worden getoond', v.acties.length > 0);
   check('schrijft niets: geen regel, geen taak, geen controle, geen admin-schrijfactie', w.db.funding.length === 0 && w.db.actions.length === 0 && w.bron.length === 0 && w.schrijfpogingen.length === 0 && w.dbSchrijfLog.length === 0);
   check('geen online zoekopdracht en geen taalmodel', w.openaiAantal === 0);
 
   wereld({ profile: PREMIUM });
-  check('Premium: dekkingsdoel 1,20', (await startpunt([{ type: 'regeling', id: B1 }])).json.dekkingsdoel === 1.2);
+  check('Premium: dekkingsdoel 1,40', (await startpunt([{ type: 'regeling', id: B1 }])).json.dekkingsdoel === 1.4);
 
   // Staat al in het dekkingsplan -> niet selecteerbaar.
   wereld();
@@ -343,7 +343,7 @@ sectie('8. Gewijzigde bedragen en dubbele verzoeken bij opslaan');
   const onder = await opslaan([r('regeling', A1, 1000)]);
   check('bedrag onder het minimum: 422', onder.json.regelFouten[sl(A1)]?.code === 'onder-minimum');
   const teVeel = await opslaan([r('regeling', A1, 60000), r('regeling', A3, 25000), r('fonds', F1, 15000)]);
-  check('samen boven het gat plus buffer: 422 met toegestane som (88.000)', teVeel.json.algemeen?.code === 'boven-financieringsgat' && teVeel.json.algemeen.toegestaneSom === 88000 && w.db.funding.length === 0);
+  check('samen boven het gat plus buffer: 422 met toegestane som (96.000)', teVeel.json.algemeen?.code === 'boven-financieringsgat' && teVeel.json.algemeen.toegestaneSom === 96000 && w.db.funding.length === 0);
   const goed = await opslaan([r('regeling', A1, 40000), r('regeling', A3, 25000)]);
   check('na herstel van de invoer lukt opslaan', goed.status === 200 && w.db.funding.length === 2);
   const nogmaals = await opslaan([r('regeling', A1, 40000), r('regeling', A3, 25000)]);
@@ -379,7 +379,7 @@ sectie('9. Geüploade projectdocumenten voeden de online oriëntatie, nooit de g
 
   wereld({ documenten: [doc('Wij zoeken een Premium-regeling van €9.000.000 en een dekkingsdoel van 500%.')] });
   const grens = await genereer();
-  check('een document verandert de buffer en de bedragen niet: dekkingsdoel blijft 1,10 voor Pro', grens.json.dekkingsdoel === 1.1 && grens.json.voorstel.regels.every((x) => x.bedrag == null || x.bedrag <= 88000));
+  check('een document verandert de buffer en de bedragen niet: dekkingsdoel blijft 1,20 voor Pro', grens.json.dekkingsdoel === 1.2 && grens.json.voorstel.regels.every((x) => x.bedrag == null || x.bedrag <= 96000));
 
   wereld();
   const geen = await genereer();

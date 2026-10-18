@@ -8,7 +8,7 @@
 // een hoger dekkingsdoel (via TierConfig).
 //
 // Wat dit NIET doet: geen voorstelregels opslaan, niets naar het voorstelcontract schrijven, geen online zoeken. Het contract
-// (voorstelContract.js) schaalt een voorstel nog steeds terug tot maximaal het gat; het dekkingsdoel van 110%-120% is hier een
+// (voorstelContract.js) schaalt een voorstel nog steeds terug tot maximaal het gat; het dekkingsdoel (Pro 120%, Premium 140%) is hier een
 // SELECTIEdoel. Wil het dekkingsplan zelf ook boven het gat uitkomen (omdat afwijzing normaal is), dan moet dat contract bij het
 // aansluiten van deze module bewust worden aangepast; dat is nu niet gedaan.
 //

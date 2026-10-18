@@ -26,7 +26,7 @@ export const DATUM_TYPE = { STREEF: 'streef', EXTERN: 'extern' };
 const MAX = { naam: 200, motivatie: 600, onderdeel: 200, voorwaarde: 300, onzekerheid: 300, titel: 200, toelichting: 600, sleutel: 120 };
 const MAX_LIJST = 6;
 const MAX_BEDRAG = 1e12;
-// Dekkingsdoel: hoeveel boven het financieringsgat een voorstel mag uitkomen omdat een afwijzing normaal is (Pro 1.10, Premium 1.20).
+// Dekkingsdoel: hoeveel boven het financieringsgat een voorstel mag uitkomen omdat een afwijzing normaal is (Pro 1.20, Premium 1.40).
 // Alleen de SERVER bepaalt dit (uit de tierconfiguratie); een waarde buiten 1 t/m 1,5 telt als 1 (geen buffer).
 export const MAX_DEKKINGSDOEL = 1.5;
 export function toegestaneSom(gat, dekkingsdoel) {

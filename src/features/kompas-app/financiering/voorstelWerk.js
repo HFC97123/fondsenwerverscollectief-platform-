@@ -7,7 +7,7 @@
 //    opnieuw, bepaalt zelf de bronstatus en de taken, en schrijft.
 //
 // Wat de client hier NOOIT bepaalt: welke records bij het abonnement horen, de geldigheid van een bedrag of deadline, de dekkingsfactor
-// (Pro 110%, Premium 120%), of een bron "gecontroleerd" is, en welke taken en datums er komen. Dat komt allemaal van de server; de client toont en past aan.
+// (Pro 120%, Premium 140%), of een bron "gecontroleerd" is, en welke taken en datums er komen. Dat komt allemaal van de server; de client toont en past aan.
 // Er wordt niets opgeslagen voordat `voerOpslagUit` wordt aangeroepen, en dat gebeurt alleen op een klik van het lid.
 import { formatEuro, leesBedragInvoer } from './dekkingsplan.js';
 import { BRON, BRON_CONTROLEREN, bronModel } from './bronStatus.js';
@@ -316,7 +316,7 @@ export function dekkingTekst(totaal, model) {
   return totaal.bovenGat ? `${procent}% van het financieringsgat, inclusief buffer voor afwijzingen` : `${procent}% van het financieringsgat`;
 }
 
-// De buffer voor afwijzingen ligt vast per abonnement (Pro 110%, Premium 120%) en wordt altijd zichtbaar gemaakt; er is nooit een stilzwijgende buffer.
+// De buffer voor afwijzingen ligt vast per abonnement (Pro 120%, Premium 140%) en wordt altijd zichtbaar gemaakt; er is nooit een stilzwijgende buffer.
 export function bufferUitleg(model) {
   const procent = Math.round((model.dekkingsdoel - 1) * 100);
 

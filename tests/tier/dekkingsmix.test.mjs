@@ -51,7 +51,7 @@ sectie('1. Realistisch bedrag: nooit het maximum als standaard');
   check('maxAandeel buiten bereik valt terug op 0,5', realistischBedrag({ gat: 40000, nodig: 44000, min: null, max: 100000, maxAandeel: 7 }).bedrag === 20000);
 }
 
-sectie('2. Jouw voorbeeld: gat € 40.000, A € 15.000 + B € 10.000 + C € 20.000');
+sectie('2. Voorbeeld: gat € 40.000, A € 15.000 + B € 10.000 + C € 20.000 (+ D voor het restant)');
 {
   const A = k('Fonds A', 90, null, 15000);
   const B = k('Fonds B', 85, null, 10000);
@@ -61,19 +61,19 @@ sectie('2. Jouw voorbeeld: gat € 40.000, A € 15.000 + B € 10.000 + C € 2
   const F = k('Fonds F', 65, null, 20000);
   const r = selecteerDekkingsmix({ kandidaten: [A, B, C, D, E, F], gat: 40000, config: PRO });
 
-  check('Pro: doelbedrag is 110% = € 44.000', r.doelBedrag === 44000);
-  check('Pro: doel bereikt met A, B en C', r.uitkomst === 'doel-bereikt' && r.mix.map((x) => x.naam).join() === 'Fonds A,Fonds B,Fonds C', JSON.stringify(r.mix.map((x) => [x.naam, x.bedrag])));
-  check('Pro: som haalt het doel, en stopt daar', som(r) >= 44000 && som(r) === r.som && r.dekking >= 1.1);
-  check('Pro: maximaal één reserve, en dat is de volgende (D)', r.reserve?.naam === 'Fonds D');
-  check('Pro: E en F worden niet meer meegenomen (geen mix, geen reserve, geen afwijzing)', !r.mix.some((x) => /E|F/.test(x.naam.slice(-1))) && r.reserve.naam !== 'Fonds E' && !r.afgewezen.some((x) => x.sleutel === E.sleutel || x.sleutel === F.sleutel));
+  check('Pro: doelbedrag is 120% = € 48.000', r.doelBedrag === 48000);
+  check('Pro: doel bereikt met A, B, C en een restant van D', r.uitkomst === 'doel-bereikt' && r.mix.map((x) => x.naam).join() === 'Fonds A,Fonds B,Fonds C,Fonds D', JSON.stringify(r.mix.map((x) => [x.naam, x.bedrag])));
+  check('Pro: som haalt het doel, en stopt daar', som(r) >= 48000 && som(r) === r.som && r.dekking >= 1.2);
+  check('Pro: maximaal één reserve, en dat is de volgende (E)', r.reserve?.naam === 'Fonds E');
+  check('Pro: F wordt niet meer meegenomen (geen mix, geen reserve, geen afwijzing)', !r.mix.some((x) => x.naam === 'Fonds F') && r.reserve.naam !== 'Fonds F' && !r.afgewezen.some((x) => x.sleutel === F.sleutel));
   check('de reserve telt niet mee in de som', r.som === som(r));
   check('A en B krijgen hun maximum (kleiner dan een half gat)', r.mix[0].bedrag === 15000 && r.mix[1].bedrag === 10000 && r.mix[0].grond === 'fonds-maximum');
 
   const p = selecteerDekkingsmix({ kandidaten: [A, B, C, D, E, F], gat: 40000, config: PREMIUM });
 
-  check('Premium: doelbedrag is 120% = € 48.000', p.doelBedrag === 48000);
-  check('Premium: haalt € 48.000 en voegt dus een vierde toe', p.uitkomst === 'doel-bereikt' && p.mix.length === 4 && p.som >= 48000, JSON.stringify(p.mix.map((x) => [x.naam, x.bedrag])));
-  check('Premium: zelfde volgorde en zelfde kwaliteit, alleen langer doorgaan', p.mix.slice(0, 3).map((x) => x.naam).join() === r.mix.map((x) => x.naam).join());
+  check('Premium: doelbedrag is 140% = € 56.000', p.doelBedrag === 56000);
+  check('Premium: haalt € 56.000 en draagt met D een groter restant dan Pro', p.uitkomst === 'doel-bereikt' && p.mix.length === 4 && p.som >= 56000 && p.som > r.som, JSON.stringify(p.mix.map((x) => [x.naam, x.bedrag])));
+  check('Premium: zelfde volgorde en zelfde kwaliteit, alleen langer doorgaan', p.mix.slice(0, 3).map((x) => x.naam).join() === r.mix.slice(0, 3).map((x) => x.naam).join());
 }
 
 sectie('3. Kwaliteit boven dekking: nooit een zwakke match toevoegen om een percentage te halen');

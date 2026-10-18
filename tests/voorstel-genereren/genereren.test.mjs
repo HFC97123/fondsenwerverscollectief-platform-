@@ -99,10 +99,10 @@ sectie('2. Pro: database met free + pro, GEEN Premium-record, GEEN exclusief fon
   check('Pro: niets opgeslagen, geen enkele schrijfpoging', j.opgeslagen === false && geenSchrijven(), JSON.stringify(w.schrijfpogingen).slice(0, 200));
   check('Pro: de free- en pro-records meedoen', ['Rotterdams Muziekfonds', 'Pro Jongerenregeling'].every((n) => regelNamen(r).includes(n)), regelNamen(r).join(','));
   check('Pro: Premium-record staat nergens in het antwoord (ook niet als alleen naam of id)', NAMEN_VERBORGEN_VOOR_PRO.every((n) => !r.tekst.includes(n)), NAMEN_VERBORGEN_VOOR_PRO.filter((n) => r.tekst.includes(n)).join(','));
-  check('Pro: dekkingsdoel 110% van het gat (gat 70.000 -> doel 77.000)', j.dekkingsdoel === 1.1 && j.totalen.gat === 70000 && j.totalen.doelBedrag === 77000, JSON.stringify(j.totalen));
+  check('Pro: dekkingsdoel 120% van het gat (gat 70.000 -> doel 84.000)', j.dekkingsdoel === 1.2 && j.totalen.gat === 70000 && j.totalen.doelBedrag === 84000, JSON.stringify(j.totalen));
   const som = j.voorstel.regels.filter((x) => x.selecteerbaar && x.bedrag).reduce((t, x) => t + x.bedrag, 0);
 
-  check('Pro: som van de bedragen = totalen.som, en nooit boven het doel', som === j.totalen.som && som <= 77000, `${som} ${JSON.stringify(j.totalen)}`);
+  check('Pro: som van de bedragen = totalen.som, en nooit boven het doel', som === j.totalen.som && som <= 84000, `${som} ${JSON.stringify(j.totalen)}`);
   check('Pro: alle bedragen binnen de grenzen van het record, geen fondsmaximum als standaard', j.voorstel.regels.every((x) => x.bedrag == null || ((x.grenzen.min == null || x.bedrag >= x.grenzen.min) && (x.grenzen.max == null || x.bedrag <= x.grenzen.max))) && j.voorstel.regels.some((x) => x.bedrag != null && x.grenzen.max != null && x.bedrag < x.grenzen.max));
   check('Pro: maximaal één financier draagt hoogstens de helft van het gat', j.voorstel.regels.every((x) => (x.bedrag || 0) <= 35000));
   check('Pro: doel bereikt en STOP: hooguit één reserve, zonder bedrag, telt niet mee', j.uitkomst === 'doel-bereikt' && j.melding === null && j.voorstel.regels.filter((x) => x.bedrag == null).length <= 1 && (j.reserveSleutel === null || j.voorstel.regels.some((x) => x.sleutel === j.reserveSleutel && x.bedrag == null)), `${j.uitkomst} ${j.reserveSleutel}`);
@@ -127,7 +127,7 @@ sectie('3. Premium: volledige database, hoger dekkingsdoel, ruimere online orië
   const j = r.json;
 
   check('Premium: 200 en ok, niets opgeslagen', r.status === 200 && j.ok === true && geenSchrijven(), `${r.status} ${r.tekst.slice(0, 200)}`);
-  check('Premium: dekkingsdoel 120% (gat 70.000 -> doel 84.000)', j.dekkingsdoel === 1.2 && j.totalen.doelBedrag === 84000, JSON.stringify(j.totalen));
+  check('Premium: dekkingsdoel 140% (gat 70.000 -> doel 98.000)', j.dekkingsdoel === 1.4 && j.totalen.doelBedrag === 98000, JSON.stringify(j.totalen));
   check('Premium: ook Premium-records (en het exclusieve fonds) kunnen meedoen', regelNamen(r).includes('Premium Cultuurregeling') || regelNamen(r).includes('Geheime Regeling'), regelNamen(r).join(','));
   check('Premium: de oriëntatie vroeg om hoogstens 6 kandidaten en 6 zoekopdrachten', /Maximaal 6 kandidaten/.test(JSON.stringify(w.openaiBodies[0])) && /hoogstens 6 webzoekopdrachten/.test(JSON.stringify(w.openaiBodies[0])));
   check('Premium: ruimere uitvoer dan Pro (max_output_tokens 7800)', w.openaiBodies[0]?.max_output_tokens === 7800, String(w.openaiBodies[0]?.max_output_tokens));
@@ -135,7 +135,7 @@ sectie('3. Premium: volledige database, hoger dekkingsdoel, ruimere online orië
   check('Premium: kostenmeter markeert de tier premium', w.gebruikRijen.every((rij) => rij.tier === 'premium'));
   const som = j.voorstel.regels.filter((x) => x.selecteerbaar && x.bedrag).reduce((t, x) => t + x.bedrag, 0);
 
-  check('Premium: som nooit boven 84.000', som <= 84000 && som === j.totalen.som, `${som}`);
+  check('Premium: som nooit boven 98.000', som <= 98000 && som === j.totalen.som, `${som}`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -246,10 +246,10 @@ sectie('7. Premium-aanvullen: gericht op het resterende gat, stop zodra het doel
   const j = r.json;
 
   check('Premium: 200 en ok, niets opgeslagen', r.status === 200 && j.ok === true && geenSchrijven(), `${r.status} ${r.tekst.slice(0, 200)}`);
-  check('het resterende gat komt van de SERVER (84.000 - 35.000 = 49.000)', j.rest.nodig === 49000 && j.rest.som === 35000, JSON.stringify(j.rest));
-  check('de zoekopdracht noemt het resterende bedrag en sluit al bekende financiers uit', /ongeveer € 49000/.test(JSON.stringify(w.openaiBodies[0])) && /Noem NIET: .*Rotterdams Muziekfonds/.test(JSON.stringify(w.openaiBodies[0])));
+  check('het resterende gat komt van de SERVER (98.000 - 35.000 = 63.000)', j.rest.nodig === 63000 && j.rest.som === 35000, JSON.stringify(j.rest));
+  check('de zoekopdracht noemt het resterende bedrag en sluit al bekende financiers uit', /ongeveer € 63000/.test(JSON.stringify(w.openaiBodies[0])) && /Noem NIET: .*Rotterdams Muziekfonds/.test(JSON.stringify(w.openaiBodies[0])));
   check('cap 5: de verkenner mag hoogstens 5 kandidaten opleveren', /Maximaal 5 kandidaten/.test(JSON.stringify(w.openaiBodies[0])));
-  check('stop zodra de indicatieve bedragen het resterende gat dekken (49.000 = 2 x 30.000), ook al zijn er meer', j.onlineSuggesties.length === 2 && j.onlineIndicatief >= 49000, `${j.onlineSuggesties.length} ${j.onlineIndicatief}`);
+  check('stop zodra de indicatieve bedragen het resterende gat dekken (63.000 = 3 x 30.000), ook al zijn er meer', j.onlineSuggesties.length === 3 && j.onlineIndicatief >= 63000, `${j.onlineSuggesties.length} ${j.onlineIndicatief}`);
   check('dat is het einde: geen nieuwe ronde nodig', j.nogAanvullen === false);
   check('de suggesties zijn niet gecontroleerd en worden niet in het voorstel gezet', j.onlineSuggesties.every((s) => s.gecontroleerd === false) && j.voorstel === undefined);
   check('de kostenmeter telt de web-zoekopdrachten', w.gebruikRijen.some((rij) => rij.action_type === 'fonds_scan_web' && rij.web_search_calls === 2 && rij.tier === 'premium'), JSON.stringify(w.gebruikRijen));
@@ -285,19 +285,21 @@ sectie('8. De preview laat de buffer van het abonnement toe (server bepaalt de f
   const somVan = (r) => r.json.voorstel.regels.filter((x) => x.selecteerbaar).reduce((t, x) => t + (x.bedrag || 0), 0);
   const p = pool();
 
-  // 60.000 + 17.000 = 77.000 = 110% van 70.000
+  // 60.000 + 24.000 = 84.000 = 120% van 70.000
   resetGenereren({ ...p, profile: PRO });
-  const pro = await preview(regelsMet([60000, 17000]));
+  const pro = await preview(regelsMet([60000, 24000]));
 
-  check('Pro: 77.000 (110%) wordt niet teruggeschaald', pro.status === 200 && somVan(pro) === 77000 && !pro.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${pro.status} ${pro.json && somVan(pro)}`);
+  check('Pro: 84.000 (120%) wordt niet teruggeschaald', pro.status === 200 && somVan(pro) === 84000 && !pro.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${pro.status} ${pro.json && somVan(pro)}`);
   resetGenereren({ ...p, profile: PRO });
-  const proTeVeel = await preview(regelsMet([60000, 18000]));
+  const proTeVeel = await preview(regelsMet([60000, 25000]));
 
-  check('Pro: 78.000 (boven 110%) wordt teruggeschaald tot hoogstens 77.000', proTeVeel.status === 200 && somVan(proTeVeel) <= 77000 && proTeVeel.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${proTeVeel.status} ${proTeVeel.json && somVan(proTeVeel)}`);
+  check('Pro: 85.000 (boven 120%) wordt teruggeschaald tot hoogstens 84.000', proTeVeel.status === 200 && somVan(proTeVeel) <= 84000 && proTeVeel.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${proTeVeel.status} ${proTeVeel.json && somVan(proTeVeel)}`);
   resetGenereren({ ...p, profile: PREMIUM });
-  const prem = await preview(regelsMet([60000, 24000]));
+  const premVoorstel = regelsMet([60000, 38000]);
+  premVoorstel.regels[1] = { type: 'regeling', id: '00000000-0000-4000-8000-0000000000b1', naam: 'Premium Cultuurregeling', gever: 'Premium Gever', bedrag: 38000 };
+  const prem = await preview(premVoorstel);
 
-  check('Premium: 84.000 (120%) wordt niet teruggeschaald', prem.status === 200 && somVan(prem) === 84000 && !prem.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${prem.status} ${prem.json && somVan(prem)}`);
+  check('Premium: 98.000 (140%) wordt niet teruggeschaald', prem.status === 200 && somVan(prem) === 98000 && !prem.json.waarschuwingen.some((x) => x.code === 'bedragen-geschaald'), `${prem.status} ${prem.json && somVan(prem)}`);
   resetGenereren({ ...p, profile: FREE });
   const free = await preview(regelsMet([60000, 17000]));
 
@@ -306,7 +308,7 @@ sectie('8. De preview laat de buffer van het abonnement toe (server bepaalt de f
   resetGenereren({ ...p, profile: PRO });
   const sluw = await preview({ ...regelsMet([60000, 40000]), dekkingsdoel: 1.5 });
 
-  check('Pro: een meegestuurde dekkingsdoel=1.5 wordt genegeerd (som blijft <= 77.000)', sluw.status === 200 && somVan(sluw) <= 77000, `${sluw.status} ${sluw.json && somVan(sluw)}`);
+  check('Pro: een meegestuurde dekkingsdoel=1.5 wordt genegeerd (som blijft <= 84.000)', sluw.status === 200 && somVan(sluw) <= 84000, `${sluw.status} ${sluw.json && somVan(sluw)}`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
