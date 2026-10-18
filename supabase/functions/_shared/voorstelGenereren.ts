@@ -19,7 +19,7 @@ import { VOORSTEL_VERSIE, isEchteDatum, schaalEnControleer, toegestaneSom, valid
 import type { ContractUitkomst, ContractVoorstel } from './voorstelContract.js';
 import { filterOpEntitlement } from './voorstelVerificatie.ts';
 import type { ServerRecord } from './voorstelVerificatie.ts';
-import { OPTIONEEL_ONDERDEEL, OPTIONEEL_TEKST, isServiceclubVermelding } from './serviceclubs.ts';
+import { OPTIONEEL_ONDERDEEL, OPTIONEEL_TEKST, isServiceclub } from './serviceclubs.ts';
 import { BEDRAG_INDICATIE_TEKST, BEDRAG_INDICATIE_TEKST_ZONDER_BEDRAG, realistischBedrag, selecteerDekkingsmix, selecteerZonderBedrag } from './dekkingsmix.ts';
 import type { MixKandidaat, MixNiveau, MixResultaat } from './dekkingsmix.ts';
 import type { TierConfig } from './tierConfig.ts';
@@ -257,8 +257,8 @@ export function kandidaatNaarMix(k: EngineKandidaat, niveau: MixNiveau): MixKand
     max: getal(row.bedrag_max ?? row.bijdrage_max),
     band: tekst(row.bandbreedte_bijdrage_naam, 60) || null,
     cofinanciering: tekst(row.cofinanciering, 200) || null,
-    // Serviceclub-vermelding (lokale-clubroute): telt mee maar staat onderaan, als "optioneel te onderzoeken".
-    ...(isServiceclubVermelding(row) ? { optioneel: true } : {}),
+    // Serviceclub (lokale vermelding of internationaal clubfonds zoals de Rotary Global Grant): telt mee maar staat onderaan, als "optioneel te onderzoeken".
+    ...(isServiceclub(row) ? { optioneel: true } : {}),
   };
 }
 

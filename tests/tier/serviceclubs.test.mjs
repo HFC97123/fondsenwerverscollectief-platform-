@@ -41,6 +41,9 @@ sectie('2. Poort: regionaal, onderwerp, buitenland');
   gelijk('"heel Nederland": niet aanbieden', b({ regios: [], locatieTekst: 'Heel Nederland' }).reden, 'niet-regionaal');
   gelijk('geen werkgebied bekend: niet aanbieden', b({ regios: [], locatieTekst: '' }).reden, 'werkgebied-onbekend');
   gelijk('regionaal maar niets met kinderen, vrouwen of noodhulp: niet', b({ doelgroepen: ['Ouderen'], themas: ['Cultuur'] }).reden, 'onderwerp');
+  gelijk('regionaal + armoedebestrijding (thema)', b({ doelgroepen: [], themas: ['Armoedebestrijding'] }).aanbieden, true);
+  gelijk('regionaal + zelfredzaamheid (thema)', b({ doelgroepen: [], themas: ['Armoede/zelfredzaamheid'] }).aanbieden, true);
+  gelijk('buitenlands project over armoedebestrijding: lokale clubroute niet, onderwerp wel (voor een internationaal clubfonds)', [b({ regios: ['Afrika'], doelgroepen: [], themas: ['Armoedebestrijding'] }).aanbieden, b({ regios: ['Afrika'], doelgroepen: [], themas: ['Armoedebestrijding'] }).onderwerp].join(), 'false,true');
   gelijk('buitenland via regio', b({ regios: ['Afrika'] }).reden, 'buitenland');
   gelijk('buitenland via locatietekst', b({ regios: [], locatieTekst: 'Een school in Kenia' }).reden, 'buitenland');
   gelijk('Caribisch deel: buitenland', b({ regios: ['Caribisch deel van het Koninkrijk'] }).reden, 'buitenland');
@@ -89,7 +92,7 @@ sectie('4. Het databaserecord wordt optioneel gemarkeerd, de internationale club
   const maak = (row) => kandidaatNaarMix({ bron: 'fonds', row: { funder_id: uuid, funder_naam: 'Test', ...row }, accessTier: 'premium', relevant: true, score: 80 }, 'volledig');
 
   check('Rotary-achtig record: optioneel', maak({ funder_type: 'service_club', werkgebieden_namen: ['Landelijk', 'Regionaal'] })?.optioneel === true);
-  check('internationaal clubfonds: niet optioneel', maak({ funder_type: 'service_club', werkgebieden_namen: ['Wereld / Internationaal'] })?.optioneel !== true);
+  check('internationaal clubfonds (zoals de Rotary Global Grant): ook optioneel, onderaan', maak({ funder_type: 'service_club', werkgebieden_namen: ['Wereld / Internationaal'] })?.optioneel === true);
   check('gewoon fonds: niet optioneel', maak({ funder_type: 'vermogensfonds', werkgebieden_namen: ['Landelijk'] })?.optioneel !== true);
   check('onderdeeltekst past in het contract (200)', OPTIONEEL_ONDERDEEL.length <= 200 && OPTIONEEL_TEKST.length <= 300, `${OPTIONEEL_TEKST.length}`);
 }

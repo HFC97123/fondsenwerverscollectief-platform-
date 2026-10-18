@@ -4178,6 +4178,21 @@ function beoordeelDoelgroepen(fondsDg: string[], fondsThemas: string[], projectD
   // Een fonds richt zich ook op een mensengroep als het de bijbehorende discipline noemt (bijvoorbeeld Ouderen of Gehandicaptenzorg).
   const fDisciplineGroepen = fThemas.filter((t) => DOELGROEP_FAMILIES.some((f) => f.disciplines.some((x) => n(x) === n(t))));
   const fMens = [...fondsDg.filter((d) => soort(d) !== 'uitvoerder'), ...fDisciplineGroepen];
+  // Over hoeveel strenge families spreekt het fonds (via doelgroep of discipline)? Precies één, met hooguit één brede groep erbij, is een specialist (bijvoorbeeld een
+  // kinderfonds): de brede groep ("kinderen in een kwetsbare positie") geldt dan alleen voor die ene groep. Meer families of meer brede groepen: een algemener fonds.
+  const fFamilies = new Set<string>();
+
+  for (const d of fondsDg) {
+    const f = ix.famVan.get(n(d));
+
+    if (f) fFamilies.add(f.naam);
+  }
+
+  for (const t of fThemas) {
+    for (const f of DOELGROEP_FAMILIES) if (f.disciplines.some((x) => n(x) === n(t))) fFamilies.add(f.naam);
+  }
+
+  const fondsIsSpecialist = fFamilies.size === 1 && new Set(fBreed.map(n)).size <= 1;
 
   // Aansluiting op een uitvoerder van het project (exact, of binnen dezelfde uitvoerdersfamilie).
   const uitvoerderTreffers = fondsDg.filter((d) => {
@@ -4258,6 +4273,13 @@ function beoordeelDoelgroepen(fondsDg: string[], fondsThemas: string[], projectD
     // Geen aansluiting op de strenge groep: nog twee zachtere routes, anders valt het fonds af (alleen als het fonds zelf een mensengroep noemt).
     const projectStrengTekst = lijstTekst(pStreng);
 
+    // Een specialist voor één andere strenge groep (een kinderfonds bij een project voor nieuwkomers) komt niet binnen via een gedeelde brede groep.
+    if (fondsIsSpecialist) {
+      uit.uitsluiten = true;
+
+      return uit;
+    }
+
     if (exacteBrede.length) {
       uit.positief = true;
       uit.mogelijk = true;
@@ -4305,6 +4327,13 @@ function beoordeelDoelgroepen(fondsDg: string[], fondsThemas: string[], projectD
   }
 
   // ---- Project zonder strenge groep (alleen brede groepen en/of uitvoerders): geen poort --------------------------------
+  // Een specialist voor één strenge groep (een kinderfonds) past niet bij een project dat alleen brede groepen noemt, ook niet via een gedeelde brede groep.
+  if (fondsIsSpecialist && pBreed.length && !uitvoerderTreffers.length) {
+    uit.uitsluiten = true;
+
+    return uit;
+  }
+
   const treffers = unieke([...exacteBrede, ...uitvoerderTreffers]);
 
   if (treffers.length) {
@@ -8371,7 +8400,7 @@ Deno.serve(async (req) => {
 
       const b = (geladen as { basis: GenereerBasis }).basis;
       const gebruikTier = isAdmin ? 'admin' : tier;
-      const { serviceclubBeoordeling } = await import('../_shared/serviceclubs.ts');
+      const { serviceclubBeoordeling, isServiceclubVermelding } = await import('../_shared/serviceclubs.ts');
       const { kandidaatNaarMix, kiesMixInvoer, bouwVoorstel, onlineSuggestiesUit, kiesOnlineTonen, telPremiumHint, resterendeDekking, dekkingsMelding } = await import('../_shared/voorstelGenereren.ts');
       const { filterOpEntitlement } = await import('../_shared/voorstelVerificatie.ts');
       const { schaalEnControleer } = await import('../_shared/voorstelContract.js');
@@ -8488,9 +8517,10 @@ Deno.serve(async (req) => {
           return mix ? { mix, engine: k as any } : null;
         })
         .filter(Boolean) as Array<{ mix: any; engine: any }>;
-      // Serviceclubs (optionele lokale-clubroute) alleen bij een regionaal project in Nederland over kinderen, meisjes of vrouwen, of noodhulp.
+      // Serviceclubs staan onderaan als optioneel. De lokale-clubroute alleen bij een regionaal project in Nederland over kinderen, meisjes of vrouwen, noodhulp,
+      // armoedebestrijding of zelfredzaamheid; een internationaal clubfonds (zoals de Rotary Global Grant) bij een project met dat onderwerp, ook in het buitenland.
       const clubs = serviceclubBeoordeling({ themas: b.criteria.themas, doelgroepen: b.criteria.doelgroepen, regios: b.criteria.regios, locatieTekst: b.criteria.locatieTekst, activiteiten: b.criteria.activiteiten });
-      const toegelaten = clubs.aanbieden ? invoer : invoer.filter(({ mix }) => !mix.optioneel);
+      const toegelaten = invoer.filter(({ mix, engine }) => !mix.optioneel || (isServiceclubVermelding(engine.row) ? clubs.aanbieden : clubs.onderwerp));
       const gekozen = kiesMixInvoer(toegelaten, bestaandeVanBasis(b));
       // Server-bekende records voor de contractvalidatie: dezelfde omzetting en dezelfde entitlementlaag als de preview.
       const records = gekozen.map(({ mix, engine }) => voorstelRecordUitRij(mix.type, engine.row, mix.id, b.rechten, ctxRec));

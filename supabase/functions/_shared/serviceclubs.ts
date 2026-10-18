@@ -16,9 +16,10 @@
 import { projectGebied } from './werkgebied.ts';
 
 export const OPTIONEEL_ONDERDEEL = 'Optioneel te onderzoeken';
-export const OPTIONEEL_TEKST = 'Optioneel te onderzoeken: kijk eerst of een serviceclub in uw regio aansluit bij het onderwerp van uw project. Niet elke gemeente heeft een club en elke club beslist zelf.';
+export const OPTIONEEL_TEKST = 'Optioneel te onderzoeken: een serviceclub (zoals Rotary, Lions of Kiwanis) is een wereldwijd netwerk met per land een landelijk hoofdorgaan en per regio veel zelfstandige clubs. Neem contact op met de club in uw regio die bij uw project past; elke club beslist zelf.';
 
 export type ServiceclubReden = 'ok' | 'buitenland' | 'niet-regionaal' | 'werkgebied-onbekend' | 'onderwerp';
+
 
 export interface ServiceclubProject {
   themas: readonly string[];
@@ -32,7 +33,7 @@ const norm = (t: unknown): string => String(t ?? '').normalize('NFD').replace(/[
 
 // Doelgroepen en disciplines waarbij een serviceclub zinvol is (namen uit de database-taxonomie).
 const DOELGROEPEN_CLUBS = new Set(['kinderen', 'vrouwen en meisjes', 'gezinnen'].map(norm));
-const THEMAS_CLUBS = new Set(['jeugd en kinderen', 'noodhulp'].map(norm));
+const THEMAS_CLUBS = new Set(['jeugd en kinderen', 'noodhulp', 'armoedebestrijding', 'armoede/zelfredzaamheid', 'zelfredzaamheid'].map(norm));
 
 // Regio's die NIET lokaal of regionaal zijn: landelijk, Europa, de wereld en alles buiten Nederland.
 const GEEN_REGIONAAL = new Set(
@@ -42,6 +43,17 @@ const BUITENLAND_REGIOS = new Set(
   ['europa', 'oost-europa', 'wereld / internationaal', 'afrika', 'azie', 'latijns-amerika', 'zuid-amerika', 'noord-amerika', 'midden-oosten', 'caribisch gebied', 'caribisch deel van het koninkrijk', 'belgie', 'luxemburg', 'brazilie'].map(norm),
 );
 const NEDERLAND_TERMEN = new Set(['nederland', 'heel nederland', 'landelijk', 'in heel nederland', 'door heel nederland'].map(norm));
+
+// Is dit databaserecord van het type serviceclub (lokale vermelding of internationaal clubfonds zoals de Rotary Global Grant)? Elk zo'n record staat
+// helemaal onderaan als optioneel en wordt alleen aangeboden als het onderwerp van het project past (kinderen, meisjes/vrouwen, noodhulp,
+// armoedebestrijding of zelfredzaamheid).
+export function isServiceclub(row: unknown): boolean {
+  if (!row || typeof row !== 'object') return false;
+
+  const r = row as Record<string, unknown>;
+
+  return norm(r.funder_type ?? r.type_gever) === 'service_club';
+}
 
 // Is dit databaserecord een serviceclub-vermelding met de lokale-clubroute?
 export function isServiceclubVermelding(row: unknown): boolean {
@@ -57,28 +69,28 @@ export function isServiceclubVermelding(row: unknown): boolean {
 }
 
 // Mag een serviceclub-vermelding bij dit project worden aangeboden?
-export function serviceclubBeoordeling(p: ServiceclubProject): { aanbieden: boolean; reden: ServiceclubReden } {
+export function serviceclubBeoordeling(p: ServiceclubProject): { aanbieden: boolean; reden: ServiceclubReden; onderwerp: boolean } {
   const regios = (p.regios ?? []).map(norm).filter(Boolean);
   const locatie = norm(p.locatieTekst);
-
-  // 1. Buitenland: een buitenlandse regio, of een land of werelddeel in de projectlocatie.
-  const gebied = projectGebied([p.locatieTekst, ...(p.regios ?? [])]);
-
-  if (regios.some((r) => BUITENLAND_REGIOS.has(r)) || gebied.landen.length > 0 || gebied.werelddelen.length > 0) return { aanbieden: false, reden: 'buitenland' };
-
-  // 2. Regionaal: iets anders dan alleen "landelijk" (een provincie, plaats, regio) of een vrije locatie die geen heel Nederland is.
-  const lokaleRegio = regios.some((r) => !GEEN_REGIONAAL.has(r));
-  const lokaleLocatie = locatie !== '' && !NEDERLAND_TERMEN.has(locatie);
-
-  if (!lokaleRegio && !lokaleLocatie) return { aanbieden: false, reden: regios.length || locatie ? 'niet-regionaal' : 'werkgebied-onbekend' };
-
-  // 3. Onderwerp: kinderen, meisjes of vrouwen, of noodhulp.
   const onderwerp =
     (p.doelgroepen ?? []).some((d) => DOELGROEPEN_CLUBS.has(norm(d))) ||
     (p.themas ?? []).some((t) => THEMAS_CLUBS.has(norm(t))) ||
     (p.activiteiten ?? []).some((a) => norm(a) === 'noodhulp');
 
-  if (!onderwerp) return { aanbieden: false, reden: 'onderwerp' };
+  // 1. Buitenland: een buitenlandse regio, of een land of werelddeel in de projectlocatie.
+  const gebied = projectGebied([p.locatieTekst, ...(p.regios ?? [])]);
 
-  return { aanbieden: true, reden: 'ok' };
+  if (regios.some((r) => BUITENLAND_REGIOS.has(r)) || gebied.landen.length > 0 || gebied.werelddelen.length > 0) return { aanbieden: false, reden: 'buitenland', onderwerp };
+
+  // 2. Regionaal: iets anders dan alleen "landelijk" (een provincie, plaats, regio) of een vrije locatie die geen heel Nederland is.
+  const lokaleRegio = regios.some((r) => !GEEN_REGIONAAL.has(r));
+  const lokaleLocatie = locatie !== '' && !NEDERLAND_TERMEN.has(locatie);
+
+  if (!lokaleRegio && !lokaleLocatie) return { aanbieden: false, reden: regios.length || locatie ? 'niet-regionaal' : 'werkgebied-onbekend', onderwerp };
+
+  // 3. Onderwerp: kinderen, meisjes of vrouwen, noodhulp, armoedebestrijding of zelfredzaamheid.
+
+  if (!onderwerp) return { aanbieden: false, reden: 'onderwerp', onderwerp };
+
+  return { aanbieden: true, reden: 'ok', onderwerp };
 }
