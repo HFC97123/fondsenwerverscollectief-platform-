@@ -55,43 +55,36 @@ sectie('1. Regelingen: voor de start, tijdens de looptijd, na het einde');
   check('deadline na het einde: NIET in de dekking', !namen.includes('Regeling Te Laat'), JSON.stringify(namen));
   check('deadline na het einde: wel apart getoond als passend', na.length === 1 && na[0].naam === 'Regeling Te Laat', JSON.stringify(na));
   check('de uitleg gebruikt de afgesproken woorden', /doet niet meer mee in de dekking, maar zou eventueel wel passend zijn geweest/.test(na[0]?.uitleg || '') && /past inhoudelijk, maar doordat het project dan al afgelopen is/.test(na[0]?.uitleg || '') && /komt u niet in aanmerking/.test(na[0]?.uitleg || ''), na[0]?.uitleg);
-  check('de uitleg noemt beslismoment en einde van het project', (na[0]?.uitleg || '').includes(nl(dag(400))) && (na[0]?.uitleg || '').includes(nl(EINDE)), na[0]?.uitleg);
+  check('de uitleg noemt deadline en einde van het project', (na[0]?.uitleg || '').includes(nl(dag(400))) && (na[0]?.uitleg || '').includes(nl(EINDE)), na[0]?.uitleg);
   check('na afloop heeft datums en soort', na[0]?.moment === dag(400) && na[0]?.momentSoort === 'deadline' && na[0]?.projectEinde === EINDE);
   check('na afloop heeft kenmerken uit de database (geen verzinsel)', !!na[0]?.kenmerken && Array.isArray(na[0].kenmerken.doelgroepen), JSON.stringify(na[0]?.kenmerken));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('2. Fondsen: onbekend is nooit een uitsluiting; een vergaderdatum na het einde wel');
+sectie('2. Fondsen: onbekend is nooit een uitsluiting; de bestuursvergadering telt niet, alleen de deadline om in te dienen');
 {
   const { namen, per, na } = await draai({
     funders: [
       fonds({ naam: 'Fonds Zonder Ronde', id: I(11) }),
-      fonds({ naam: 'Fonds Vergadert Tijdens', id: I(12) }),
-      fonds({ naam: 'Fonds Vergadert Te Laat', id: I(13) }),
+      fonds({ naam: 'Fonds Vergadert Na Einde', id: I(12) }),
     ],
-    vergaderingen: [
-      { soort: 'funder', id: I(12), datum: dag(150) },
-      { soort: 'funder', id: I(13), datum: dag(500) },
-    ],
+    vergaderingen: [{ soort: 'funder', id: I(12), datum: dag(500) }],
   });
 
-  check('fonds zonder bekende ronde doet gewoon mee', namen.includes('Fonds Zonder Ronde'), JSON.stringify(namen));
-  check('... met de aantekening de volgende ronde na te vragen', per('Fonds Zonder Ronde')?.kenmerken?.controleren?.some((c) => /geen aankomende ronde/.test(c) && /vraag na wanneer/.test(c)), JSON.stringify(per('Fonds Zonder Ronde')?.kenmerken));
-  check('bestuursvergadering tijdens de looptijd: telt mee', namen.includes('Fonds Vergadert Tijdens'), JSON.stringify(namen));
-  check('bestuursvergadering na het einde: niet in de dekking', !namen.includes('Fonds Vergadert Te Laat'));
-  check('... maar apart getoond, met de vergadering als beslismoment', na.some((x) => x.naam === 'Fonds Vergadert Te Laat' && x.momentSoort === 'vergadering' && x.moment === dag(500)), JSON.stringify(na));
+  check('fonds zonder bekende deadline doet gewoon mee', namen.includes('Fonds Zonder Ronde'), JSON.stringify(namen));
+  check('... met de aantekening de volgende ronde na te vragen', per('Fonds Zonder Ronde')?.kenmerken?.controleren?.some((c) => /geen aankomende deadline/.test(c) && /vraag na wanneer/.test(c)), JSON.stringify(per('Fonds Zonder Ronde')?.kenmerken));
+  check('een bestuursvergadering na het einde sluit niet uit (daar valt alleen het besluit, indienen kan eerder)', namen.includes('Fonds Vergadert Na Einde') && na.length === 0, JSON.stringify({ namen, na }));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('3. De deadline OF de bestuursvergadering na het einde is genoeg');
+sectie('3. Een regeling met deadline binnen de looptijd en vergadering na het einde telt gewoon mee');
 {
   const { namen, na } = await draai({
     regelingen: [regeling({ naam: 'Regeling Deadline Goed Vergadering Laat', gever: 'Gever X', deadline: dag(100), id: I(21) })],
     vergaderingen: [{ soort: 'regeling', id: I(21), datum: dag(450) }],
   });
 
-  check('deadline binnen de looptijd maar vergadering na het einde: niet in de dekking', !namen.includes('Regeling Deadline Goed Vergadering Laat'), JSON.stringify(namen));
-  check('... wel apart getoond met de vergadering als reden', na.length === 1 && na[0].momentSoort === 'vergadering', JSON.stringify(na));
+  check('deadline binnen de looptijd: in de dekking, ook als het besluit later valt', namen.includes('Regeling Deadline Goed Vergadering Laat') && na.length === 0, JSON.stringify({ namen, na }));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
