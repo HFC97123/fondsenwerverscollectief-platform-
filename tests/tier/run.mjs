@@ -3,7 +3,7 @@
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
 
-const bestanden = ['tierconfig', 'dekkingsmix', 'gebruik', 'prijzen'];
+const bestanden = ['tierconfig', 'dekkingsmix', 'serviceclubs', 'gebruik', 'prijzen'];
 let status = 0;
 
 for (const b of bestanden) {

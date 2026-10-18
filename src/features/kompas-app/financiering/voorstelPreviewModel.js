@@ -12,6 +12,8 @@
 import { BRON_SOORT, GEEN_BRONCONTROLE, VELD_LABEL, VERIFICATIE_LABEL, VERIFICATIE_STATUS, verificatieWeergave } from './voorstel.js';
 import { formatDatum, formatEuro } from './dekkingsplan.js';
 
+// Staat altijd boven een dekkingsplan: de bedragen zijn een inschatting, de gebruiker overlegt zelf met de donor.
+export const BEDRAG_OVERLEG_TEKST = 'De bedragen in dit plan zijn een inschatting, geen toezegging. Overleg altijd zelf met de donor of een aanvraag mogelijk is en hoe hoog die mag zijn.';
 export const PREVIEW_FOUT = 'Het voorstel kan nu niet worden gecontroleerd en getoond. Er is niets opgeslagen. Probeer het later opnieuw.';
 
 export const VELD_VOLGORDE = Object.keys(VELD_LABEL);

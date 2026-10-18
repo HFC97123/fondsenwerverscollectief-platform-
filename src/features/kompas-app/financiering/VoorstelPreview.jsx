@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import FinancieringsRegel from './FinancieringsRegel.jsx';
-import { bouwPreviewModel, PREVIEW_FOUT } from './voorstelPreviewModel.js';
+import { bouwPreviewModel, BEDRAG_OVERLEG_TEKST, PREVIEW_FOUT } from './voorstelPreviewModel.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #7B8985;";
@@ -234,6 +234,12 @@ export default function VoorstelPreview({ antwoord }) {
           </div>
         )}
       </div>
+
+      {model.regels.length > 0 && (
+        <div data-testid="voorstel-bedrag-overleg" role="note" style={css(`${TEKST} font-size: 13.5px; padding: 10px 14px; border-radius: 12px; background: #EEF4F8; color: #2C4A5E;`)}>
+          {BEDRAG_OVERLEG_TEKST}
+        </div>
+      )}
 
       {model.regels.length === 0 && <div style={css(TEKST)}>Er zijn geen regels om te tonen.</div>}
 

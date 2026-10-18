@@ -19,7 +19,8 @@ import { VOORSTEL_VERSIE, isEchteDatum, schaalEnControleer, toegestaneSom, valid
 import type { ContractUitkomst, ContractVoorstel } from './voorstelContract.js';
 import { filterOpEntitlement } from './voorstelVerificatie.ts';
 import type { ServerRecord } from './voorstelVerificatie.ts';
-import { realistischBedrag, selecteerDekkingsmix, selecteerZonderBedrag } from './dekkingsmix.ts';
+import { OPTIONEEL_ONDERDEEL, OPTIONEEL_TEKST, isServiceclubVermelding } from './serviceclubs.ts';
+import { BEDRAG_INDICATIE_TEKST, BEDRAG_INDICATIE_TEKST_ZONDER_BEDRAG, realistischBedrag, selecteerDekkingsmix, selecteerZonderBedrag } from './dekkingsmix.ts';
 import type { MixKandidaat, MixNiveau, MixResultaat } from './dekkingsmix.ts';
 import type { TierConfig } from './tierConfig.ts';
 import { bronOordeelKort } from './bronControle.ts';
@@ -184,6 +185,8 @@ export function kandidaatNaarMix(k: EngineKandidaat, niveau: MixNiveau): MixKand
     min: getal(row.bedrag_min ?? row.bijdrage_min),
     max: getal(row.bedrag_max ?? row.bijdrage_max),
     cofinanciering: tekst(row.cofinanciering, 200) || null,
+    // Serviceclub-vermelding (lokale-clubroute): telt mee maar staat onderaan, als "optioneel te onderzoeken".
+    ...(isServiceclubVermelding(row) ? { optioneel: true } : {}),
   };
 }
 
@@ -440,14 +443,15 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
           bedrag: null as unknown as number,
           grond: 'aandeel-van-gat' as const,
           uitleg: 'Het bedrag van dit project is nog onbekend: er is geen bedrag voorgesteld.',
-          onzekerheden: ['Er is nog geen bedrag voorgesteld: de matching op bedrag is beperkt. Controleer de bijdragegrenzen van de financier.', ...(k.cofinanciering ? [`Cofinancieringseis (niet automatisch doorgerekend): ${String(k.cofinanciering).slice(0, 200)}`] : [])],
+          ...(k.optioneel ? { optioneel: true } : {}),
+          onzekerheden: [...(k.optioneel ? [OPTIONEEL_TEKST] : []), 'Er is nog geen bedrag voorgesteld: de matching op bedrag is beperkt. Controleer de bijdragegrenzen van de financier.', ...(k.cofinanciering ? [`Cofinancieringseis (niet automatisch doorgerekend): ${String(k.cofinanciering).slice(0, 200)}`] : [])],
         })),
         reserve: null,
         afgewezen: lijstZonder.afgewezen,
         melding: lijstZonder.regels.length ? null : MELDING_GEEN_PASSENDE_FINANCIERS,
       }
     : selecteerDekkingsmix({ kandidaten: inv.kandidaten.map((k) => k.mix), gat: gatVan(inv.dekking), config: inv.config });
-  const regelVan = (m: { sleutel: string; type: 'regeling' | 'fonds'; id: string; naam: string; bedrag: number | null; uitleg: string; onzekerheden: string[] }, reserve: boolean) => {
+  const regelVan = (m: { sleutel: string; type: 'regeling' | 'fonds'; id: string; naam: string; bedrag: number | null; uitleg: string; onzekerheden: string[]; optioneel?: boolean }, reserve: boolean) => {
     const e = perSleutel.get(m.sleutel)?.engine;
 
     return {
@@ -457,12 +461,13 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
       gever: tekst(e?.funderNaam || m.naam, 200),
       bedrag: reserve ? null : m.bedrag,
       motivatie: e ? motivatieVan(e) : '',
-      onderdeel: reserve ? 'Reserve: telt niet mee in de dekking' : '',
+      onderdeel: reserve ? 'Reserve: telt niet mee in de dekking' : m.optioneel ? OPTIONEEL_ONDERDEEL : '',
       onzekerheden: [...m.onzekerheden, ...(e ? zwaktesVan(e) : [])].slice(0, 6),
     };
   };
   const regels = [...mix.mix.map((m) => regelVan(m, false)), ...(mix.reserve ? [regelVan(mix.reserve, true)] : [])];
-  const aannames = (inv.aannames ?? []).map((a) => tekst(a, 300)).filter(Boolean).slice(0, 8);
+  // De indicatietekst staat altijd vooraan: bedragen zijn een inschatting en de gebruiker overlegt zelf met de donor.
+  const aannames = [zonder ? BEDRAG_INDICATIE_TEKST_ZONDER_BEDRAG : BEDRAG_INDICATIE_TEKST, ...(inv.aannames ?? [])].map((a) => tekst(a, 300)).filter(Boolean).slice(0, 8);
   const ruw = { versie: VOORSTEL_VERSIE, projectId: inv.projectId, gegenereerdOp: inv.vandaag, status: 'concept', aannames, regels, acties: [] as unknown[] };
   // Dezelfde entitlement-filter als de preview: een regel zonder server-bekend record op niveau 'volledig' verdwijnt.
   const gefilterd = filterOpEntitlement(ruw, inv.records);

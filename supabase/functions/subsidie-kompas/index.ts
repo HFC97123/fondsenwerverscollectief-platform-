@@ -7806,6 +7806,7 @@ Deno.serve(async (req) => {
 
       const b = (geladen as { basis: GenereerBasis }).basis;
       const gebruikTier = isAdmin ? 'admin' : tier;
+      const { serviceclubBeoordeling } = await import('../_shared/serviceclubs.ts');
       const { kandidaatNaarMix, kiesMixInvoer, bouwVoorstel, onlineSuggestiesUit, kiesOnlineTonen, telPremiumHint, resterendeDekking, dekkingsMelding } = await import('../_shared/voorstelGenereren.ts');
       const { filterOpEntitlement } = await import('../_shared/voorstelVerificatie.ts');
       const { schaalEnControleer } = await import('../_shared/voorstelContract.js');
@@ -7922,7 +7923,10 @@ Deno.serve(async (req) => {
           return mix ? { mix, engine: k as any } : null;
         })
         .filter(Boolean) as Array<{ mix: any; engine: any }>;
-      const gekozen = kiesMixInvoer(invoer, bestaandeVanBasis(b));
+      // Serviceclubs (optionele lokale-clubroute) alleen bij een regionaal project in Nederland over kinderen, meisjes of vrouwen, of noodhulp.
+      const clubs = serviceclubBeoordeling({ themas: b.criteria.themas, doelgroepen: b.criteria.doelgroepen, regios: b.criteria.regios, locatieTekst: b.criteria.locatieTekst, activiteiten: b.criteria.activiteiten });
+      const toegelaten = clubs.aanbieden ? invoer : invoer.filter(({ mix }) => !mix.optioneel);
+      const gekozen = kiesMixInvoer(toegelaten, bestaandeVanBasis(b));
       // Server-bekende records voor de contractvalidatie: dezelfde omzetting en dezelfde entitlementlaag als de preview.
       const records = gekozen.map(({ mix, engine }) => voorstelRecordUitRij(mix.type, engine.row, mix.id, b.rechten, ctxRec));
 

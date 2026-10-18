@@ -1,5 +1,5 @@
 // "Maak dekkingsplan en actieplan met Subsidiekompas": de startknop, de voortgang, het voorstel dat het lid kan bekijken en aanpassen, en het opslaan.
-// De server maakt het voorstel (Pro: database + korte online oriëntatie, 110%; Premium: ruimere oriëntatie, gericht aanvullen, 120%); deze component
+// De server maakt het voorstel (Pro: database + korte online oriëntatie, 120%; Premium: ruimere oriëntatie, gericht aanvullen, 140%); deze component
 // toont en past aan. Er wordt NIETS opgeslagen vóór de klik "Opslaan in dit project". De logica staat in voorstelWerk.js (zuiver, getest).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
@@ -9,6 +9,7 @@ import BespreekLink from './BespreekLink.jsx';
 import FinancieringsRegel from './FinancieringsRegel.jsx';
 import VoorstelStart from './VoorstelStart.jsx';
 import { VoorstelRegelDetail } from './VoorstelPreview.jsx';
+import { BEDRAG_OVERLEG_TEKST } from './voorstelPreviewModel.js';
 import { formatDatum, formatEuro, leesBedragInvoer } from './dekkingsplan.js';
 import {
   STAP,
@@ -767,6 +768,12 @@ export default function VoorstelWerkruimte({
                   U zit boven de buffer van {Math.round(model.dekkingsdoel * 100)}% ({formatEuro(model.doelBedrag)}). Dat kan niet worden opgeslagen: verlaag een of meer bedragen.
                 </div>
               )}
+            </div>
+          )}
+
+          {model.regels.length > 0 && (
+            <div data-testid="voorstel-bedrag-overleg" role="note" style={css(`${TEKST} font-size: 13.5px; padding: 10px 14px; border-radius: 12px; background: #EEF4F8; color: #2C4A5E;`)}>
+              {BEDRAG_OVERLEG_TEKST}
             </div>
           )}
 

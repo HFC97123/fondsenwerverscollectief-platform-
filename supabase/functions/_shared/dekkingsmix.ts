@@ -17,6 +17,7 @@
 
 import { tierMagRecord } from './tierConfig.ts';
 import type { TierConfig } from './tierConfig.ts';
+import { OPTIONEEL_TEKST } from './serviceclubs.ts';
 
 export type MixNiveau = 'verborgen' | 'publiek' | 'volledig';
 
@@ -32,6 +33,7 @@ export interface MixKandidaat {
   min: number | null;
   max: number | null;
   cofinanciering?: string | null; // tekst; wordt niet doorgerekend maar als onzekerheid meegegeven
+  optioneel?: boolean; // serviceclub-vermelding: telt mee in de dekking maar staat helemaal onderaan (zie serviceclubs.ts)
 }
 
 export type AfwijsCode =
@@ -66,6 +68,7 @@ export interface MixRegel {
   grond: BedragGrond;
   uitleg: string;
   onzekerheden: string[];
+  optioneel?: boolean; // zie MixKandidaat.optioneel
 }
 
 export type MixUitkomst = 'bedrag-onbekend' | 'doel-bereikt' | 'onvoldoende-sterke-matches' | 'geen-gat' | 'geen-kandidaten' | 'niet-beschikbaar';
@@ -146,6 +149,14 @@ export function realistischBedrag(inv: { gat: number; nodig: number; min: unknow
 
 const stap2 = (n: number) => Math.round(n * 100) / 100;
 
+// Standaardtekst bij elk dekkingsplan: de bedragen zijn een inschatting en geen toezegging of verwachting van de donor.
+export const BEDRAG_INDICATIE_TEKST =
+  'De genoemde bedragen zijn een inschatting op basis van de gegevens in onze database, geen toezegging. Overleg altijd zelf met de donor of een aanvraag mogelijk is en hoe hoog die mag zijn.';
+export const BEDRAG_INDICATIE_TEKST_ZONDER_BEDRAG =
+  'Er zijn nog geen bedragen voorgesteld. Overleg altijd zelf met de donor of een aanvraag mogelijk is en hoe hoog die mag zijn.';
+// Bij elke regel met een bedrag.
+export const BEDRAG_INDICATIE_REGEL = 'Het bedrag is een inschatting (geen historische toekenningsdata): overleg met de donor of een aanvraag mogelijk is en hoe hoog die mag zijn.';
+
 export const MELDING_TE_WEINIG_STERKE_MATCHES =
   'Er zijn te weinig sterke, passende financiers gevonden om het financieringsgat realistisch volledig te dekken. Liever een kleiner plan met goede matches dan zwakke matches toevoegen om een percentage te halen.';
 
@@ -196,6 +207,12 @@ export function filterGeschikt(kandidaten: readonly MixKandidaat[], config: Tier
   return { geschikt, afgewezen };
 }
 
+// Volgorde van de mix: eerst de gewone financiers op score, helemaal onderaan de optionele (serviceclubs), ook als hun score hoger is.
+// Binnen elke groep: score aflopend, dan naam, dan sleutel (deterministisch).
+export function volgorde(a: MixKandidaat, b: MixKandidaat): number {
+  return (a.optioneel ? 1 : 0) - (b.optioneel ? 1 : 0) || b.score - a.score || a.naam.localeCompare(b.naam, 'nl') || a.sleutel.localeCompare(b.sleutel);
+}
+
 // Het bedrag van het project is (nog) onbekend: geen mix en geen bedragen, wel de sterkste passende financiers op volgorde van score. Zelfde
 // poorten als selecteerDekkingsmix; het aantal is begrensd door de mix-grootte van het abonnement. Nooit een bedrag verzinnen.
 export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]; config: TierConfig }): { regels: MixKandidaat[]; afgewezen: MixResultaat['afgewezen'] } {
@@ -203,7 +220,7 @@ export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]
 
   const { geschikt, afgewezen } = filterGeschikt(inv.kandidaten, inv.config);
 
-  geschikt.sort((a, b) => b.score - a.score || a.naam.localeCompare(b.naam, 'nl') || a.sleutel.localeCompare(b.sleutel));
+  geschikt.sort(volgorde);
 
   for (const k of geschikt.slice(inv.config.maxRegelsInMix)) afgewezen.push({ sleutel: k.sleutel, code: 'mix-vol' });
 
@@ -225,7 +242,7 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
 
   if (!geschikt.length) return { ...leeg('geen-kandidaten', MELDING_TE_WEINIG_STERKE_MATCHES), afgewezen };
 
-  geschikt.sort((a, b) => b.score - a.score || a.naam.localeCompare(b.naam, 'nl') || a.sleutel.localeCompare(b.sleutel));
+  geschikt.sort(volgorde);
 
   const regelVan = (k: MixKandidaat, b: RealistischBedrag): MixRegel => ({
     sleutel: k.sleutel,
@@ -236,8 +253,10 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
     bedrag: b.bedrag as number,
     grond: b.grond as BedragGrond,
     uitleg: b.uitleg,
+    ...(k.optioneel ? { optioneel: true } : {}),
     onzekerheden: [
-      'Het bedrag is een voorzichtige schatting; er is geen historische toekenningsdata.',
+      ...(k.optioneel ? [OPTIONEEL_TEKST] : []),
+      BEDRAG_INDICATIE_REGEL,
       ...(k.cofinanciering ? [`Cofinancieringseis (niet automatisch doorgerekend): ${String(k.cofinanciering).slice(0, 200)}`] : []),
     ],
   });
@@ -249,6 +268,12 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
   for (const k of geschikt) {
     // Doel gehaald: STOP met mixen. Alleen nog hooguit één reserve zoeken (telt niet mee).
     if (som >= doelBedrag) {
+      // Een optionele serviceclub is nooit reserve: ze wordt alleen gebruikt als de andere financiers het doel niet halen.
+      if (k.optioneel) {
+        afgewezen.push({ sleutel: k.sleutel, code: 'boven-doel' });
+        continue;
+      }
+
       const r = realistischBedrag({ gat, nodig: gat, min: k.min, max: k.max, maxAandeel: config.maxAandeelPerFonds });
 
       if (r.bedrag !== null) {
