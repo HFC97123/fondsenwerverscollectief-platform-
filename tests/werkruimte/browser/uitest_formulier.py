@@ -43,6 +43,9 @@ def vul(pg,tid,w):
     l=pg.locator(f'[data-testid="{tid}"]'); l.fill(w)
 def waar(pg,tid): return pg.locator(f'[data-testid="{tid}"]').get_attribute('data-waarde')
 VERWIJDERD=['Programma of onderdeel','Partners','Doelstellingen','Activiteiten','Beoogde impact','Resultaten','Schrijfvoorkeur','Eerdere','Co-financier','Cofinancier']
+def uitklappen(pg):
+    k=pg.locator('[data-testid="pf-alles-uitklappen"]')
+    if k.count() and 'uitklappen' in k.inner_text(): k.click(); pg.wait_for_timeout(250)
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
     # ================= 1. Aanmaakformulier desktop
@@ -98,6 +101,7 @@ with sync_playwright() as p:
     ok('detail: Eigen bijdrage € 80.000 en Nog te financieren € 150.000', '€ 80.000' in k['Eigen bijdrage'] and '€ 150.000' in k['Nog te financieren'], str(k))
     ok('detail: oude JSON-cofinancier telt niet mee en wordt niet getoond', 'LEGACY JSON NAAM' not in txt(pg))
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(800)
+    uitklappen(pg)
     t=txt(pg)
     ok('Projectfinanciering: de drie financiers als regels', all(x in t for x in ['Stichting Hulp Na Onderzoek','Stichting DOCO','Gemeente Amsterdam']))
     ok('Projectfinanciering: label "Cofinancier of andere financiering" en geen "Regeling"-label voor namen', t.count('Cofinancier of andere financiering')>=3)
@@ -138,6 +142,7 @@ with sync_playwright() as p:
     ctx.close()
     # ================= 5. Cofinancier op naam toevoegen
     ctx,pg=nieuw(b,{'width':1280,'height':1000},'pro',f'/kompas/projecten/{P4}?tab=projectfinanciering')
+    uitklappen(pg)
     pg.locator('[data-testid="pf-financier-open"]').click(); pg.wait_for_timeout(300)
     pg.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(300)
     ok('cofinancier: lege naam geeft melding', pg.locator('[data-testid="pf-financier-fout"]').count()==1)
@@ -148,6 +153,7 @@ with sync_playwright() as p:
     pg.locator('[data-testid="tab-btn-overzicht"]').click(); pg.wait_for_timeout(300)
     ok('cofinancier: Toegekend wordt € 40.000 in het dossier', '€ 40.000' in kpi(pg,'Toegekend'), kpi(pg,'Toegekend'))
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(400)
+    uitklappen(pg)
     pg.locator('[data-testid="pf-financier-open"]').click(); vul(pg,'pf-financier-naam',' nieuwe stichting '); vul(pg,'pf-financier-bedrag','1'); pg.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(700)
     ok('cofinancier: dezelfde naam twee keer wordt geweigerd met melding', 'staat al bij dit project' in txt(pg))
     ctx.close()
@@ -259,8 +265,10 @@ with sync_playwright() as p:
 
     # ---- snelle financiering: één plek, bij Fondsen en dekkingsplan (het projectprofiel herhaalt het niet)
     ctx,pg=nieuw(b,{'width':1280,'height':1300},'pro',f'/kompas/projecten/{P4}?tab=projectfinanciering')
+    uitklappen(pg)
     sec=pg.locator('[data-testid="pf-regels"]')
     ok('C1 dekkingsplan toont de drie bestaande financiers', sec.count()==1 and sec.locator('[data-testid="pf-regel"]').filter(has_text='Cofinancier of andere financiering').count()==3 and 'Gemeente Amsterdam' in sec.inner_text())
+    uitklappen(pg)
     ok('C2 per regel Bespreek met Subsidie Kompas', sec.locator('[data-testid="bespreek-link"]').count()==sec.locator('[data-testid="pf-regel"]').count())
     pg.screenshot(path='shots/uitbreiding_8_projectdetail_cofinanciers.png', full_page=True)
     sec.locator('[data-testid="pf-financier-open"]').click(); pg.wait_for_timeout(250)
@@ -289,11 +297,13 @@ with sync_playwright() as p:
         sec.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(900)
         rij=[x for x in db(pg,'subsidie_kompas_program_funding') if x.get('financier_naam')==naam]
         ok(f'C9 {stat}: eigen_deadline 2026-11-15 opgeslagen, status {stat}', len(rij)==1 and rij[0].get('eigen_deadline')=='2026-11-15' and rij[0].get('status')==stat, str(rij))
+    uitklappen(pg)
     ok('C10 eigen deadline zichtbaar bij Interessant/In voorbereiding', all(sec.locator('[data-testid="pf-regel"]').filter(has_text=n).locator('input[type=date]').input_value()=='2026-11-15' for n in ['Lokaal Fonds Z','Familiefonds W']))
     sec.locator('[data-testid="pf-financier-open"]').click(); vul(pg,'pf-financier-naam','stichting x'); vul(pg,'pf-financier-bedrag','1'); sec.locator('[data-testid="pf-financier-opslaan"]').click(); pg.wait_for_timeout(700)
     ok('C11 dubbele invoer geweigerd (geen dubbele fundingregel)', 'staat al bij dit project' in txt(pg) and len([x for x in db(pg,'subsidie_kompas_program_funding') if (x.get('financier_naam') or '').lower()=='stichting x'])==1)
     # dezelfde regels elders
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(600)
+    uitklappen(pg)
     ok('D1 Projectfinanciering toont dezelfde nieuwe regels', all(x in txt(pg) for x in ['Stichting X','Fonds Y','Lokaal Fonds Z','Familiefonds W']))
     pg.screenshot(path='shots/uitbreiding_14_projectfinanciering.png', full_page=True)
     pg.goto(f'{BASE}?tier=pro#/kompas/dashboard'); pg.wait_for_timeout(1800)
@@ -305,6 +315,7 @@ with sync_playwright() as p:
     ok('D3 Projecten: zelfde totalen', 'Toegekend € 60.000 · Aangevraagd € 175.000' in kf, kf)
     ok('D4 geen paginafouten', not pg.errs, str(pg.errs)); ctx.close()
     ctx,pg=nieuw(b,{'width':390,'height':844},'pro',f'/kompas/projecten/{P4}?tab=projectfinanciering')
+    uitklappen(pg)
     pg.locator('[data-testid="pf-regels"] [data-testid="pf-financier-open"]').click(); pg.wait_for_timeout(250)
     ok('E1 mobiel: snelle financierinvoer zonder horizontale scroll', geenhscroll(pg))
     pg.screenshot(path='shots/uitbreiding_15_mobiel_financier.png', full_page=True); ctx.close()

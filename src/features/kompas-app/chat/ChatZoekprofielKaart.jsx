@@ -1,4 +1,4 @@
-// Chat-ingang van het zoekprofiel: onder het laatste antwoord van Subsidiekompas kan het lid het zoekprofiel laten opstellen uit het gesprek en uit het
+// Chat-ingang van het zoekprofiel: onder het laatste antwoord van Subsidie Kompas kan het lid het zoekprofiel laten opstellen uit het gesprek en uit het
 // actieve project, het controleren en aanpassen, en bevestigen met "Zoek passende fondsen". Er is GEEN tweede matchingflow: de kaart opent dezelfde
 // werkruimte als Projectfinanciering (VoorstelWerkruimte) met dezelfde zoekprofielservice, dezelfde matching, preview en broncontrole, servervalidatie,
 // dekkingsplan en actieplan. Alleen de bron van het profiel verschilt (het gesprek); er wordt niets opgeslagen of gezocht voor het lid bevestigt.
@@ -26,7 +26,7 @@ export default function ChatZoekprofielKaart({ project, berichten, diensten, onG
         <>
           <div style={css(`${TEKST} color: #2C4A5E; font-weight: 800;`)}>Passende fondsen zoeken voor {project.naam || 'dit project'}?</div>
           <div style={css(TEKST)}>
-            Subsidiekompas maakt een zoekprofiel uit dit gesprek en uw project. U controleert en past het aan; er wordt pas gezocht als u op “Zoek passende fondsen” klikt.
+            Subsidie Kompas maakt een zoekprofiel uit dit gesprek en uw project. U controleert en past het aan; er wordt pas gezocht als u op “Zoek passende fondsen” klikt.
           </div>
           <div>
             <button

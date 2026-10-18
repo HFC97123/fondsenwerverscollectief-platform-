@@ -172,6 +172,34 @@ export async function fetchFunderDeadlines({ limit = 200 } = {}) {
   };
 }
 
+// Details van de regelingen en fondsen in een dekkingsplan (bandbreedte, bijdragegrenzen, omschrijving, voorwaarden, bron),
+// uit DEZELFDE views als de Deadlines-pagina en dus met dezelfde toegangsregels: wat een gebruiker niet mag zien, komt als
+// null terug uit de database zelf. Alleen lezen. Een fonds zonder actueel datamoment staat niet in funder_deadlines en
+// geeft dan simpelweg geen details.
+// -> { perRegeling: { [schemeId]: rij }, perFonds: { [funderId]: rij }, error }
+export async function haalBronDetails({ schemeIds = [], funderIds = [] } = {}) {
+  const sIds = Array.from(new Set((schemeIds || []).filter(Boolean)));
+  const fIds = Array.from(new Set((funderIds || []).filter(Boolean)));
+  const [r, f] = await Promise.all([
+    sIds.length ? query((sb) => sb.from('subsidieregelingen_deadlines').select(SELECT).in('id', sIds), []) : Promise.resolve({ data: [], error: null }),
+    fIds.length ? query((sb) => sb.from('funder_deadlines').select(FUNDER_SELECT).in('funder_id', fIds), []) : Promise.resolve({ data: [], error: null }),
+  ]);
+  const regelingen = {};
+  const fondsen = {};
+
+  (r.data || []).forEach((row) => {
+    regelingen[row.id] = normalize(row);
+  });
+  (f.data || []).forEach((row) => {
+    const n = normalizeFunderDeadline(row);
+
+    // Meerdere datamomenten per fonds: de eerstvolgende deadline wint.
+    if (!fondsen[n.funderId] || (n.deadline && (!fondsen[n.funderId].deadline || n.deadline < fondsen[n.funderId].deadline))) fondsen[n.funderId] = n;
+  });
+
+  return { perRegeling: regelingen, perFonds: fondsen, error: r.error || f.error || null };
+}
+
 // ---------------------------------------------------------------------------
 // Centrale weergave- en toegangsregels voor deadlinelijsten.
 //

@@ -39,7 +39,7 @@ with sync_playwright() as p:
     tabs=pg.get_by_role('tab').all_inner_texts()
     ok('1 tab heet "Fondsen en dekkingsplan" en de deeplink (?tab=projectfinanciering) werkt', any(t.startswith('Fondsen en dekkingsplan') for t in tabs) and pg.get_by_test_id('tab-projectfinanciering').count()==1, str(tabs))
     knop=pg.get_by_test_id('voorstel-start-knop')
-    ok('2 startknop "Maak dekkingsplan en actieplan met Subsidiekompas" is zichtbaar bij een project met financiering', knop.is_visible() and knop.inner_text()=='Maak dekkingsplan en actieplan met Subsidiekompas')
+    ok('2 startknop "Maak dekkingsplan en actieplan met Subsidie Kompas" is zichtbaar bij een project met financiering', knop.is_visible() and knop.inner_text()=='Maak dekkingsplan en actieplan met Subsidie Kompas')
     ok('3 knop is uitgeschakeld zolang de flow niet werkt, met duidelijke melding (niet stilletjes dood)', knop.is_disabled() and knop.get_attribute('aria-disabled')=='true' and 'nog niet beschikbaar' in pg.get_by_test_id('voorstel-nog-niet').inner_text().lower())
     ok('4 geen uitleg van de stappen: het systeem doet het gewoon', pg.get_by_test_id('voorstel-stappen').count()==0)
     k=pg.get_by_test_id('pf-kpi').all_inner_texts()

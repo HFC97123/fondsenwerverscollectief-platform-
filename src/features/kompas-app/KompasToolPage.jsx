@@ -10,6 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
+import DenkKompas from './DenkKompas.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { useKompas, DOC_SOORTEN } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
@@ -180,32 +181,6 @@ const actieKnopStijl = css(`
   font-size: 12.5px;
   font-weight: 700;
 `);
-
-function DenkKompas() {
-  return (
-    <div style={css('align-self: flex-start; padding: 2px 0 2px 4px;')}>
-      <svg viewBox="0 0 48 48" width="38" height="38" style={{ display: 'block' }} aria-label="Subsidie Kompas denkt na" role="img">
-        <circle cx="24" cy="24" r="21" fill="none" stroke="#DCE7E1" strokeWidth="2" />
-        <circle
-          cx="24"
-          cy="24"
-          r="21"
-          fill="none"
-          stroke="#4E9A6C"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeDasharray="34 98"
-          style={{ transformBox: 'view-box', transformOrigin: '24px 24px', animation: 'sk-spin 1.5s linear infinite' }}
-        />
-        <g style={{ transformBox: 'view-box', transformOrigin: '24px 24px', animation: 'sk-needle 2.6s cubic-bezier(0.45, 0, 0.25, 1) infinite' }}>
-          <polygon points="24,8 27.4,24 24,27 20.6,24" fill="#4E9A6C" />
-          <polygon points="24,40 27.4,24 24,21 20.6,24" fill="#A9C9DE" />
-        </g>
-        <circle cx="24" cy="24" r="2.6" fill="#2C4A5E" />
-      </svg>
-    </div>
-  );
-}
 
 export default function KompasToolPage() {
   const app = useApp();

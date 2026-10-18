@@ -13,14 +13,14 @@
 //   gesprekken            lijst uit de store: { id, titel, tijd, projectId }
 //   projecten             de eigen projecten (store); bepaalt de projectgroepen (leeg: alles is een los gesprek)
 //   actiefGesprekId       het geopende gesprek (wordt gemarkeerd)
-//   actiefProjectId       het actieve project van het geopende gesprek (altijd een groep, met "+ Nieuw")
+//   actiefProjectId       het actieve project van het geopende gesprek (altijd een groep, met menu)
 //   projectFilter         alleen gesprekken van dit project (projecttab); dan geen groepskoppen
 //   compact               kleinere rijen
 //   embedded              zonder eigen kader/kop (bijvoorbeeld binnen de projecttab)
 //   showSearch            zoekveld tonen (standaard true)
 //   showNewConversation   knop "Nieuw gesprek" tonen (standaard true)
 //   onOpen(g) / onNieuw() / onVerwijder(g)   acties
-//   onNieuwInProject(projectId)   "+ Nieuw" in een projectgroep (start een nieuw gesprek met dat project)
+//   onNieuwInProject(projectId)   "Nieuw gesprek in dit project" in het groepsmenu (start een nieuw gesprek met dat project)
 //   onHernoem(g, titel) / onVerplaats(g, projectId|null)   rijmenu: naam wijzigen, koppelen aan een project
 //                         (active_program_id) of losmaken; zonder deze drie acties geen rijmenu
 //   laadId                id van het gesprek dat nu geladen wordt ("Laden…")
@@ -45,12 +45,14 @@ const CSS_LIJST = `
 .fwk-cl-menu button:hover { background: #F2F6F4; }
 .fwk-cl-menu button[data-gevaar="true"] { color: #9E3B2C; }
 .fwk-cl-menu button[aria-checked="true"] { background: #EAF4EE; }
-.fwk-cl-kop { display: flex; align-items: center; gap: 4px; }
+.fwk-cl-kop { position: relative; display: flex; align-items: center; gap: 2px; border-radius: 10px; }
+.fwk-cl-kop:hover { background: #F2F6F4; }
+.fwk-cl-meer { flex: none; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; border-radius: 8px; background: none; color: #7B8985; font-size: 16px; font-weight: 800; line-height: 1; opacity: 0; transition: opacity .12s ease; }
+.fwk-cl-kop:hover .fwk-cl-meer, .fwk-cl-kop:focus-within .fwk-cl-meer, .fwk-cl-meer[aria-expanded="true"] { opacity: 1; }
+@media (hover: none) { .fwk-cl-meer { opacity: 0.7; } }
+.fwk-cl-meer:hover { background: #E6EEE9; color: #2C4A5E; }
 .fwk-cl-toggle { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 8px; cursor: pointer; border: none; background: none; border-radius: 10px; text-align: left; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 800; color: #2C4A5E; }
 .fwk-cl-toggle:hover { background: #F2F6F4; }
-.fwk-cl-plus { flex: none; min-height: 32px; padding: 4px 10px; cursor: pointer; border: 1px solid #D6E3E9; border-radius: 999px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 12px; font-weight: 800; color: #2F6D47; }
-.fwk-cl-plus:hover { background: #EAF4EE; }
-.fwk-cl-plus:disabled { opacity: 0.55; cursor: default; }
 .fwk-cl-titel { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 `;
 
@@ -239,6 +241,106 @@ function Rij({ g, actief, compact, laadId, vergrendeld, onOpen, onVerwijder, onH
   );
 }
 
+
+// Het groepsmenu opent via het ⋯-knopje (zichtbaar bij aanwijzen of focus), de rechtermuisknop, lang drukken (touch) of de
+// menutoets / Shift+F10. De kop zelf blijft rustig: geen vaste knop per project.
+function openGroepMenu(kop) {
+  const knop = kop && kop.querySelector('[data-testid="groep-menu-knop"]');
+
+  if (knop && knop.getAttribute('aria-expanded') !== 'true') knop.click();
+}
+
+let langDrukTimer = null;
+
+function startLangDrukken(kop) {
+  clearTimeout(langDrukTimer);
+  langDrukTimer = setTimeout(() => openGroepMenu(kop), 500);
+}
+
+function stopLangDrukken() {
+  clearTimeout(langDrukTimer);
+}
+
+function GroepMenu({ project, open, vergrendeld, onNieuwInProject, onWissel }) {
+  const [menu, setMenu] = useState(false);
+  const wortel = useRef(null);
+  const knop = useRef(null);
+
+  useEffect(() => {
+    if (!menu) return undefined;
+
+    const eerste = wortel.current && wortel.current.querySelector('[role="menuitem"]');
+
+    if (eerste) eerste.focus();
+
+    const toets = (e) => {
+      if (e.key === 'Escape') {
+        setMenu(false);
+        if (knop.current) knop.current.focus();
+      }
+    };
+    const klik = (e) => {
+      if (wortel.current && !wortel.current.contains(e.target)) setMenu(false);
+    };
+
+    document.addEventListener('keydown', toets);
+    document.addEventListener('mousedown', klik);
+    document.addEventListener('touchstart', klik);
+
+    return () => {
+      document.removeEventListener('keydown', toets);
+      document.removeEventListener('mousedown', klik);
+      document.removeEventListener('touchstart', klik);
+    };
+  }, [menu]);
+
+  const kies = (fn) => {
+    setMenu(false);
+    fn();
+  };
+
+  return (
+    <span ref={wortel} style={css('flex: none; display: inline-flex;')}>
+      <button
+        ref={knop}
+        type="button"
+        className="fwk-cl-meer"
+        data-testid="groep-menu-knop"
+        aria-haspopup="menu"
+        aria-expanded={menu ? 'true' : 'false'}
+        aria-label={`Meer acties voor ${project.naam}`}
+        onClick={() => setMenu((v) => !v)}
+      >
+        ⋯
+      </button>
+      {menu && (
+        <div className="fwk-cl-menu" role="menu" aria-label={`Acties voor ${project.naam}`} data-testid="groep-menu">
+          {onNieuwInProject && !project.gearchiveerd && (
+            <button type="button" role="menuitem" data-testid="groep-nieuw" disabled={vergrendeld} onClick={() => kies(() => onNieuwInProject(project.id))}>
+              Nieuw gesprek in dit project
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="groep-project-openen"
+            onClick={() =>
+              kies(() => {
+                window.location.hash = `#/kompas/projecten/${project.id}`;
+              })
+            }
+          >
+            Project openen
+          </button>
+          <button type="button" role="menuitem" data-testid="groep-wissel" onClick={() => kies(onWissel)}>
+            {open ? 'Inklappen' : 'Uitklappen'}
+          </button>
+        </div>
+      )}
+    </span>
+  );
+}
+
 export default function ConversationsList({
   gesprekken,
   projecten = [],
@@ -342,7 +444,23 @@ export default function ConversationsList({
 
               return (
                 <div key={gr.project.id} data-testid="project-groep" data-project-id={gr.project.id} data-open={open ? 'true' : 'false'}>
-                  <div className="fwk-cl-kop">
+                  <div
+                    className="fwk-cl-kop"
+                    data-testid="groep-kop"
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      openGroepMenu(e.currentTarget);
+                    }}
+                    onTouchStart={(e) => startLangDrukken(e.currentTarget)}
+                    onTouchEnd={stopLangDrukken}
+                    onTouchMove={stopLangDrukken}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                        e.preventDefault();
+                        openGroepMenu(e.currentTarget);
+                      }
+                    }}
+                  >
                     <button
                       type="button"
                       className="fwk-cl-toggle"
@@ -358,19 +476,13 @@ export default function ConversationsList({
                       </span>
                       <span data-testid="groep-aantal" style={css('flex: none; margin-left: auto; font-size: 11.5px; font-weight: 700; color: #7B8985;')}>{gr.gesprekken.length}</span>
                     </button>
-                    {onNieuwInProject && !gr.project.gearchiveerd && (
-                      <button
-                        type="button"
-                        className="fwk-cl-plus"
-                        data-testid="groep-nieuw"
-                        aria-label={`Nieuw gesprek in ${gr.project.naam}`}
-                        title={`Nieuw gesprek in ${gr.project.naam}`}
-                        disabled={vergrendeld}
-                        onClick={() => onNieuwInProject(gr.project.id)}
-                      >
-                        + Nieuw
-                      </button>
-                    )}
+                    <GroepMenu
+                      project={gr.project}
+                      open={open}
+                      vergrendeld={vergrendeld}
+                      onNieuwInProject={onNieuwInProject}
+                      onWissel={() => setIngeklapt((cur) => ({ ...cur, [gr.project.id]: open }))}
+                    />
                   </div>
                   {open &&
                     (gr.gesprekken.length ? (

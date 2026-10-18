@@ -268,7 +268,7 @@ export default function VoorstelPreview({ antwoord }) {
   return (
     <section data-testid="voorstel-preview" data-toestand="ok" data-opgeslagen="nee" style={css('box-sizing: border-box; padding: 20px 22px; border: 1px solid #CFE4D7; border-radius: 20px; background: #FFFFFF; display: flex; flex-direction: column; gap: 14px;')}>
       <div>
-        <h2 style={css(`${LABEL} margin: 0 0 4px;`)}>Voorstel van Subsidiekompas (voorbeeld)</h2>
+        <h2 style={css(`${LABEL} margin: 0 0 4px;`)}>Voorstel van Subsidie Kompas (voorbeeld)</h2>
         <div data-testid="voorstel-niet-opgeslagen" style={css(`${TEKST} font-weight: 700; color: #2C4A5E;`)}>
           Dit is alleen een voorbeeld. Er is niets opgeslagen en er zijn geen taken aangemaakt.
         </div>

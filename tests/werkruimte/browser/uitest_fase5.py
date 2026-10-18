@@ -59,6 +59,10 @@ INIT = """
   return new Response(stream,{status:200,headers:{'content-type':'text/event-stream'}});};
 })();
 """
+def uitklappen(pg):
+    k=pg.locator('[data-testid="pf-alles-uitklappen"]')
+    if k.count() and 'uitklappen' in k.inner_text(): k.click(); pg.wait_for_timeout(250)
+
 def nieuw(b,vp,tier,pad='/kompas',init=''):
     ctx=b.new_context(viewport=vp); pg=ctx.new_page()
     pg.add_init_script("document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='div[style*=\"z-index: 2000\"]{display:none !important}';document.head.appendChild(s)})")
@@ -180,6 +184,7 @@ try:
 
     # ============================================================ D. Bespreek vanuit Projectfinanciering/Deadlines/Dashboard + hervatten
     ctx,pg=nieuw(b,DESK,'pro',f'/kompas/projecten/{P1}?tab=projectfinanciering')
+    uitklappen(pg)
     links=pg.get_by_test_id('bespreek-link')
     ok('D1 Projectfinanciering: elke regel heeft "Bespreek met Subsidie Kompas"', links.count()>=7)
     href=links.first.get_attribute('href')
@@ -268,6 +273,7 @@ try:
     ctx,pg=nieuw(b,DESK,'pro')
     open_rij(pg,'Projectplan Buurtkeuken')
     pg.goto(f'{BASE}?tier=pro#/kompas/projecten/{P1}?tab=projectfinanciering'); pg.wait_for_timeout(1500)
+    uitklappen(pg)
     ok('G2 na downgrade naar Pro: de Premium-regel is gemaskeerd, de bronnaam lekt nergens', 'PREMIUMFONDS' not in html(pg) and 'Geheim Premium Fonds' not in html(pg))
     pg.get_by_test_id('bespreek-link').nth(0).click(); pg.wait_for_timeout(1500)
     ok('G3 ook via Bespreek/chat lekt de gemaskeerde bron niet', 'PREMIUMFONDS' not in html(pg) and 'geheim.test' not in html(pg))

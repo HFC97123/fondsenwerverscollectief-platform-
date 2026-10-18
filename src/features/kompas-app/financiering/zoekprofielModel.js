@@ -1,4 +1,4 @@
-// Het zoekprofiel dat het lid controleert en bevestigt voordat Subsidiekompas fondsen zoekt, ZUIVER (geen React, geen netwerk).
+// Het zoekprofiel dat het lid controleert en bevestigt voordat Subsidie Kompas fondsen zoekt, ZUIVER (geen React, geen netwerk).
 // Eén structuur voor beide routes (Projectfinanciering en chat): de server (voorstel-zoekprofiel) levert het profiel, het lid past aan, en het
 // bevestigde profiel gaat als `zoekprofiel` terug naar voorstel-genereren / voorstel-aanvullen. De server toetst het daar opnieuw aan de
 // databasecategorieën; deze module bepaalt dus nooit wat een fonds is of past, alleen wat het lid ziet, wijzigt en terugstuurt.
@@ -22,7 +22,7 @@ export const LIJST_VELDEN = [
 export const BRON_LABEL = {
   project: 'uit uw project',
   gesprek: 'uit het gesprek',
-  ai: 'aangevuld door Subsidiekompas',
+  ai: 'aangevuld door Subsidie Kompas',
   gebruiker: 'door u gekozen',
 };
 
@@ -224,19 +224,19 @@ export function controleerProfiel(state, lijsten = null) {
   const waarschuwingen = [];
   const inhoud = state.disciplines.length + state.werkvelden.length + state.doelgroepen.length;
 
-  if (!inhoud) fouten.algemeen = 'Kies minstens één discipline, werkveld of doelgroep; daarop zoekt Subsidiekompas financiers.';
+  if (!inhoud) fouten.algemeen = 'Kies minstens één discipline, werkveld of doelgroep; daarop zoekt Subsidie Kompas financiers.';
 
   if (lijsten) {
     for (const v of LIJST_VELDEN) {
       const geldig = new Set(lijst(lijsten[v.bron]).map(norm));
       const onbekend = state[v.sleutel].filter((i) => !geldig.has(norm(i.naam)));
 
-      if (onbekend.length) fouten[v.sleutel] = `${onbekend.map((i) => i.naam).join(', ')} ${onbekend.length === 1 ? 'staat' : 'staan'} niet in de lijst van Subsidiekompas. Kies een waarde uit de lijst of haal het weg.`;
+      if (onbekend.length) fouten[v.sleutel] = `${onbekend.map((i) => i.naam).join(', ')} ${onbekend.length === 1 ? 'staat' : 'staan'} niet in de lijst van Subsidie Kompas. Kies een waarde uit de lijst of haal het weg.`;
     }
   }
 
   for (const v of LIJST_VELDEN) {
-    if (state[v.sleutel].length > MAX_PER_LIJST) fouten[v.sleutel] = `Kies hoogstens ${MAX_PER_LIJST} waarden; Subsidiekompas gebruikt er niet meer.`;
+    if (state[v.sleutel].length > MAX_PER_LIJST) fouten[v.sleutel] = `Kies hoogstens ${MAX_PER_LIJST} waarden; Subsidie Kompas gebruikt er niet meer.`;
   }
 
   if (state.periodeStart && state.periodeEind && state.periodeEind < state.periodeStart) fouten.periode = 'De einddatum ligt vóór de startdatum.';
@@ -284,7 +284,7 @@ export function financieringTekst(state, formatEuro) {
   return 'Het bedrag dat u bij fondsen zoekt is nog niet bekend. Zoeken kan wel; de matching op bedrag is dan beperkt en er worden geen bedragen voorgesteld.';
 }
 
-// Per lijst: wat is van het project, wat van het gesprek, wat door Subsidiekompas aangevuld en wat door het lid gekozen.
+// Per lijst: wat is van het project, wat van het gesprek, wat door Subsidie Kompas aangevuld en wat door het lid gekozen.
 export function bronOverzicht(items) {
   const per = {};
 

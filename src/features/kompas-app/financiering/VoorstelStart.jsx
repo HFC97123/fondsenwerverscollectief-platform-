@@ -1,7 +1,7 @@
-// Startpunt van "Maak dekkingsplan en actieplan met Subsidiekompas", binnen het project (geen tweede chatbot, geen losse generator).
+// Startpunt van "Maak dekkingsplan en actieplan met Subsidie Kompas", binnen het project (geen tweede chatbot, geen losse generator).
 // De knop is ALTIJD zichtbaar, ook bij een leeg dekkingsplan. Hij is pas actief als de volledige flow werkt
 // (voorstelGeneratieBeschikbaar); tot die tijd staat er duidelijk dat het maken van een voorstel nog niet beschikbaar is.
-// De regel "wat heeft Subsidiekompas nog nodig" is wel al werkend: dezelfde zuivere controle (beoordeelProject) als de flow gebruikt.
+// De regel "wat heeft Subsidie Kompas nog nodig" is wel al werkend: dezelfde zuivere controle (beoordeelProject) als de flow gebruikt.
 import React, { useMemo } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { beoordeelProject } from './voorstel.js';
@@ -33,7 +33,7 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
     >
       <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;')}>
         <div style={css('min-width: 0; flex: 1 1 280px;')}>
-          <h2 style={css(`${LABEL} margin: 0;`)}>Subsidiekompas</h2>
+          <h2 style={css(`${LABEL} margin: 0;`)}>Subsidie Kompas</h2>
         </div>
         <button
           type="button"
@@ -47,7 +47,7 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
             }`,
           )}
         >
-          Maak dekkingsplan en actieplan met Subsidiekompas
+          Maak dekkingsplan en actieplan met Subsidie Kompas
         </button>
       </div>
 

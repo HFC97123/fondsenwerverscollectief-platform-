@@ -1,8 +1,9 @@
-// "Maak dekkingsplan en actieplan met Subsidiekompas": de startknop, de voortgang, het voorstel dat het lid kan bekijken en aanpassen, en het opslaan.
+// "Maak dekkingsplan en actieplan met Subsidie Kompas": de startknop, de voortgang, het voorstel dat het lid kan bekijken en aanpassen, en het opslaan.
 // De server maakt het voorstel (Pro: database + korte online oriëntatie, 120%; Premium: ruimere oriëntatie, gericht aanvullen, 140%); deze component
 // toont en past aan. Er wordt NIETS opgeslagen vóór de klik "Opslaan in dit project". De logica staat in voorstelWerk.js (zuiver, getest).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
+import DenkKompas from '../DenkKompas.jsx';
 import { leesOpenActieplan, vraagActieplanHerstel, vraagBronControle, vraagVoorstelAanvullen, vraagVoorstelGenereren, vraagVoorstelOpslaan, vraagVoorstelStartpunt, vraagZoekprofiel } from '../../../data/services/voorstelGenereren.js';
 import { haalClassificatiesOp } from '../../../data/services/classificaties.js';
 import BespreekLink from './BespreekLink.jsx';
@@ -34,7 +35,6 @@ import {
 } from './voorstelWerk.js';
 import { BRON_CONTROLEREN } from './bronStatus.js';
 import { bewaarConcept, bouwZoekprofielVerzoek, controleerProfiel, heeftWijzigingen, maakProfielState, voegSamen, wisConcept } from './zoekprofielModel.js';
-import { VOORSTEL_STAPPEN } from './voorstelFlow.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #7B8985;";
@@ -43,11 +43,10 @@ const KNOP_PRIMAIR = "min-height: 44px; padding: 0 20px; border: none; border-ra
 const KNOP_STIL = "min-height: 44px; padding: 0 18px; border: 1px solid #CFDDD5; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; cursor: pointer;";
 const INVOER = "box-sizing: border-box; width: 150px; max-width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #CFDDD5; border-radius: 10px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; color: #2C4A5E; text-align: right;";
 
-const STAPPEN_ACTIEF = { [STAP.ONDERZOEKEN]: 2, [STAP.AANVULLEN]: 2, [STAP.VOORBEREIDEN]: 3 };
-const STAP_TEKST = {
-  [STAP.ONDERZOEKEN]: 'Subsidiekompas doorzoekt de database en zoekt kort online. Dit kan een halve minuut duren.',
-  [STAP.AANVULLEN]: 'Subsidiekompas zoekt gericht verder naar wat er nog ontbreekt (Premium).',
-  [STAP.VOORBEREIDEN]: 'De gekozen financiers worden voorbereid. De bronnen worden daarna een voor een gecontroleerd.',
+const STAP_KORT = {
+  [STAP.ONDERZOEKEN]: 'Subsidie Kompas zoekt passende fondsen…',
+  [STAP.AANVULLEN]: 'Subsidie Kompas zoekt gericht verder…',
+  [STAP.VOORBEREIDEN]: 'Subsidie Kompas bereidt het dekkingsplan voor…',
 };
 
 const STANDAARD_DIENSTEN = {
@@ -67,20 +66,13 @@ const STANDAARD_DIENSTEN = {
 const projectprofielLink = (id) => `#/kompas/projecten/${encodeURIComponent(id || '')}?bewerk=1`;
 
 function Voortgang({ stap }) {
-  const actief = STAPPEN_ACTIEF[stap] ?? 2;
-
   return (
-    <section data-testid="voorstel-voortgang" data-stap={stap} aria-live="polite" style={css(KAART)}>
-      <h2 style={css(`${LABEL} margin: 0;`)}>Subsidiekompas is aan het werk</h2>
-      <ol style={css(`${TEKST} margin: 0; padding-left: 20px;`)}>
-        {VOORSTEL_STAPPEN.slice(0, 4).map((s, i) => (
-          <li key={s} data-status={i < actief ? 'klaar' : i === actief ? 'bezig' : 'wacht'} style={css(`font-weight: ${i === actief ? '800' : '500'}; color: ${i < actief ? '#2F7A4D' : i === actief ? '#2C4A5E' : '#7B8985'};`)}>
-            {i < actief ? '✓ ' : ''}
-            {s}
-          </li>
-        ))}
-      </ol>
-      <div style={css(`${TEKST} font-size: 13px;`)}>{STAP_TEKST[stap] || STAP_TEKST[STAP.ONDERZOEKEN]}</div>
+    <section data-testid="voorstel-voortgang" data-stap={stap} aria-live="polite" style={css(`${KAART} flex-direction: row; align-items: center; gap: 14px;`)}>
+      <DenkKompas grootte={44} label="Subsidie Kompas is bezig" />
+      <div style={css('min-width: 0;')}>
+        <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E;`)}>{STAP_KORT[stap] || STAP_KORT[STAP.ONDERZOEKEN]}</div>
+        <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>Even geduld, dit kan een halve minuut duren.</div>
+      </div>
     </section>
   );
 }
@@ -438,7 +430,7 @@ export default function VoorstelWerkruimte({
 
         const vers = maakProfielState(ruw, { route: profielRoute });
 
-        // Het projectprofiel IS het zoekprofiel: geen tweede formulier. Is het profiel bruikbaar, dan zoekt Subsidiekompas meteen;
+        // Het projectprofiel IS het zoekprofiel: geen tweede formulier. Is het profiel bruikbaar, dan zoekt Subsidie Kompas meteen;
         // zo niet, dan gaat het lid naar het Projectprofiel om aan te vullen.
         if (!opnieuw) {
           setProfiel(vers);
@@ -647,7 +639,7 @@ export default function VoorstelWerkruimte({
         <section data-testid="actieplan-open" data-aantal={openAantal} style={css(`${TEKST} padding: 12px 16px; border-radius: 14px; background: ${openAantal > 0 ? '#FBF1E3' : '#F3F9F5'}; color: ${openAantal > 0 ? '#8A5A16' : '#2C4A5E'}; display: flex; flex-direction: column; gap: 8px;`)}>
           {openAantal > 0 && (
             <div>
-              <strong>Het actieplan van Subsidiekompas is nog niet compleet:</strong> {openAantal} {openAantal === 1 ? 'taak is' : 'taken zijn'} nog niet aangemaakt. Uw dekkingsplan is opgeslagen en blijft zoals het is. U kunt alleen het actieplan opnieuw laten aanmaken; er komen geen dubbele taken.
+              <strong>Het actieplan van Subsidie Kompas is nog niet compleet:</strong> {openAantal} {openAantal === 1 ? 'taak is' : 'taken zijn'} nog niet aangemaakt. Uw dekkingsplan is opgeslagen en blijft zoals het is. U kunt alleen het actieplan opnieuw laten aanmaken; er komen geen dubbele taken.
             </div>
           )}
           {openKlaar && openAantal === 0 && (
@@ -693,7 +685,7 @@ export default function VoorstelWerkruimte({
       {(fase === 'klaar' || fase === 'opslaan') && model && selectie && totaal && (
         <section data-testid="voorstel-resultaat" data-controles={nogBezigMetControles ? 'bezig' : 'klaar'} style={css(KAART)}>
           <div>
-            <h2 style={css(`${LABEL} margin: 0 0 4px;`)}>{startpunt ? 'Dekkingsplan voorbereiden' : 'Voorstel van Subsidiekompas'}</h2>
+            <h2 style={css(`${LABEL} margin: 0 0 4px;`)}>{startpunt ? 'Dekkingsplan voorbereiden' : 'Voorstel van Subsidie Kompas'}</h2>
             <div data-testid="voorstel-niet-opgeslagen" style={css(`${TEKST} font-weight: 700; color: #2C4A5E;`)}>
               Er is nog niets opgeslagen. Vink af wat u niet wilt, pas bedragen aan en klik daarna op Opslaan.
             </div>
@@ -733,7 +725,7 @@ export default function VoorstelWerkruimte({
 
           {model.documenten > 0 && (
             <div data-testid="voorstel-documenten" style={css(`${TEKST} font-size: 13px; color: #6D7C77;`)}>
-              Subsidiekompas gebruikte {model.documenten === 1 ? '1 geüpload projectdocument' : `${model.documenten} geüploade projectdocumenten`} als context bij het online zoeken. De fondsen uit de database zijn gekozen op uw projectgegevens.
+              Subsidie Kompas gebruikte {model.documenten === 1 ? '1 geüpload projectdocument' : `${model.documenten} geüploade projectdocumenten`} als context bij het online zoeken. De fondsen uit de database zijn gekozen op uw projectgegevens.
             </div>
           )}
 
@@ -827,8 +819,22 @@ export default function VoorstelWerkruimte({
                     <FinancieringsRegel
                       testId="voorstel-regel"
                       titel={d.naam}
-                      bedrag={b.ok && b.waarde != null ? formatEuro(b.waarde) : null}
+                      bedrag={b.ok && b.waarde != null ? `kan ${formatEuro(b.waarde)}` : null}
                       bedragLeeg="Geen bedrag"
+                      extra={
+                        r.grenzen.min != null || r.grenzen.max != null ? (
+                          <span data-testid="voorstel-bijdrage">
+                            bijdrage{' '}
+                            {r.grenzen.min != null && r.grenzen.max != null
+                              ? `${formatEuro(r.grenzen.min)} – ${formatEuro(r.grenzen.max)}`
+                              : r.grenzen.max != null
+                                ? `tot ${formatEuro(r.grenzen.max)}`
+                                : `vanaf ${formatEuro(r.grenzen.min)}`}
+                          </span>
+                        ) : (
+                          <span data-testid="voorstel-bijdrage">bijdrage niet bekend</span>
+                        )
+                      }
                       status={d.kop.status}
                       samenvatting={d.kop.samenvatting}
                     >

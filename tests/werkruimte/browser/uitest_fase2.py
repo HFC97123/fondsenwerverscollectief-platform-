@@ -30,6 +30,9 @@ def kaart_waarden(pg,kaart):
     def g(l):
         m=re.search(r'(?i)'+re.escape(l)+r':?\s*\n?\s*€\s*([\d\.]+)',t); return m.group(1) if m else None
     return [g('Toegekend'),g('Aangevraagd'),g('Eigen bijdrage'),g('Nog te financieren')]
+def uitklappen(pg):
+    k=pg.locator('[data-testid="pf-alles-uitklappen"]')
+    if k.count() and 'uitklappen' in k.inner_text(): k.click(); pg.wait_for_timeout(250)
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
     # ============ Desktop Pro: dossier
@@ -63,6 +66,7 @@ with sync_playwright() as p:
     pg.screenshot(path='shots/f2_desktop_overzicht.png', full_page=True)
     # --- Projectfinanciering
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(500)
+    uitklappen(pg)
     ok('tab Projectfinanciering: hash bevat ?tab=projectfinanciering', 'tab=projectfinanciering' in pg.evaluate('location.hash'))
     regels=pg.locator('[data-testid="pf-regel"]')
     ok('Projectfinanciering: 8 eigen regels (andermans/ander project niet)', regels.count()==8, str(regels.count()))
@@ -148,6 +152,7 @@ with sync_playwright() as p:
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P2}')
     ok('project zonder financiering: dossier werkt, KPI\'s € 0 en Nog te financieren —', '—' in kpi(pg,'Totale begroting') and '€ 0' in kpi(pg,'Toegekend'))
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(300)
+    uitklappen(pg)
     ok('project zonder financiering: lege staat, geen fout', pg.locator('[data-testid="pf-leeg"]').count()==1 and pg.locator('[data-testid="pf-fout"]').count()==0)
     pg.get_by_role('button',name='Bespreek met Subsidie Kompas').click(); pg.wait_for_timeout(1500)
     ok('Bespreek met Subsidie Kompas -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Taalcafe Zuid' in txt(pg))
@@ -163,6 +168,7 @@ with sync_playwright() as p:
     ctx.close()
     # --- Premium: bron zichtbaar
     ctx,pg=nieuw(b,vp,'premium',f'/kompas/projecten/{P1}?tab=projectfinanciering')
+    uitklappen(pg)
     t=txt(pg)
     ok('Premium: Premium-bron toont naam en funder, geen masker-label', 'PREMIUMFONDS Geheimnaam' in t and 'Geheim Premium Fonds' in t and 'Premium-fonds, niet zichtbaar' not in t)
     ctx.close()
@@ -226,6 +232,7 @@ with sync_playwright() as p:
     ok('Deadlines: dubbel toevoegen -> vriendelijke melding, geen tweede regel', 'Staat al in projectfinanciering' in txt(pg) and pg.evaluate(f'window.__DBL.subsidie_kompas_program_funding.filter(r=>r.program_id==="{P2}").length')==1)
     ok('Deadlines: geen pageerrors', not pg.errs, '; '.join(pg.errs)[:200])
     pg.evaluate(f"location.hash='#/kompas/projecten/{P2}?tab=projectfinanciering'"); pg.wait_for_timeout(1200)
+    uitklappen(pg)
     ok('na toevoegen: dossier toont de regel met live bronnaam en brondeadline (status Interessant)', pg.locator('[data-testid="pf-regel"]').count()==1 and 'Nieuwe Testregeling' in pg.locator('[data-testid="pf-regel-naam"]').inner_text() and 'Datum van de regeling' in pg.locator('[data-testid="pf-regel-deadline"]').inner_text(), txt(pg)[:300])
     ctx.close()
     # --- Fase 1-regressie: werknav mag het contextpaneel niet afdekken; organisatiemenu blijft boven de pagina
@@ -244,6 +251,7 @@ with sync_playwright() as p:
         ok(f'mobiel {tab}: geen horizontale scroll', geenhscroll(pg), str(pg.evaluate('document.documentElement.scrollWidth')))
         ok(f'mobiel {tab}: geen pageerrors', not pg.errs, '; '.join(pg.errs)[:200])
         if tab=='projectfinanciering':
+            uitklappen(pg)
             r0=pg.locator('[data-testid="pf-regel"]').first
             ok('mobiel: regels als kaarten (kopregel verborgen, labels per veld zichtbaar)', pg.locator('.fwk-pf-kop').is_hidden() and r0.locator('.fwk-pf-label').first.is_visible())
             bb=[r.bounding_box() for r in pg.locator('[data-testid="pf-regel"]').all()]
@@ -256,6 +264,7 @@ with sync_playwright() as p:
     ctx.close()
     # bureaublad extra: geen horizontale scroll
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}?tab=projectfinanciering')
+    uitklappen(pg)
     ok('bureaublad: geen horizontale scroll', geenhscroll(pg))
     ctx.close()
     b.close()

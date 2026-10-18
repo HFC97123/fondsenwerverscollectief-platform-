@@ -185,7 +185,7 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
 
   // Test 19: Overzicht gebruikt alleen projectgegevens
   const detail = lees('src/features/kompas-app/projectdossier/ProjectDetailPage.jsx');
-  const overzicht = detail.slice(detail.indexOf('function OverzichtTab'), detail.indexOf('function DocumentenTab'));
+  const overzicht = detail.slice(detail.indexOf('function ProfielTab'), detail.indexOf('function DocumentenTab'));
   check('19: Overzicht-tab gebruikt geen financieringsdata (geen hook/RPC/rekenmodule; alleen een verwijzing naar Projectfinanciering)', !/useProjectFinanciering|useDekkingsplannen|dekkingVanProject|berekenDekking|haalDekkingsplan|rpc\(/i.test(overzicht));
   check('19: Overzicht leest uit de projectprop (subsidie_kompas_programs via de store)', /project\.omschrijving/.test(overzicht));
   check('dossier: geen hoofdmenu-item en route valt onder Projecten', !/Projectdossier/.test(lees('src/features/kompas-app/KompasWerkNav.jsx')));

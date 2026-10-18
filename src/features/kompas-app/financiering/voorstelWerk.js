@@ -1,4 +1,4 @@
-// De werking van "Maak dekkingsplan en actieplan met Subsidiekompas" aan de kant van de browser, ZUIVER (geen React, geen netwerk, geen opslag):
+// De werking van "Maak dekkingsplan en actieplan met Subsidie Kompas" aan de kant van de browser, ZUIVER (geen React, geen netwerk, geen opslag):
 //  - de volgorde van de stappen (onderzoeken -> aanvullen (Premium)), of het startpunt vanuit de chat, met de diensten als parameter;
 //  - het snel tonen van het voorstel en daarna de broncontrole per regel, als aparte aanroepen (mislukt er één, dan gaan de andere door);
 //  - het werkmodel waarmee het lid het voorstel bekijkt en aanpast (selectie, bedragen, taken, online suggesties);
@@ -25,7 +25,7 @@ const tekst = (x, max) => String(x == null ? '' : x).slice(0, max);
 // 1. De stappen (snel): een voorstel, nog zonder broncontrole
 
 // diensten: { genereer({projectId}), aanvullen({projectId, voorstel, getoond}), startpunt({projectId, regels}) } -> { ok, antwoord, melding }
-// startpunt = { regels: [{ type, id }] } -> de financiers uit een gesprek met Subsidiekompas (de chat-ingang) in plaats van zelf zoeken.
+// startpunt = { regels: [{ type, id }] } -> de financiers uit een gesprek met Subsidie Kompas (de chat-ingang) in plaats van zelf zoeken.
 // -> { ok: true, genereer, aanvulling } | { ok: false, reden, melding }
 // zoekprofiel (optioneel) = het door het lid bevestigde profiel (zoekprofielModel.bouwZoekprofielVerzoek); het gaat mee naar genereren EN aanvullen,
 // zodat beide stappen op dezelfde criteria zoeken. De server toetst het opnieuw aan de database.
@@ -390,7 +390,7 @@ function leesOpslagAntwoord(a) {
         naam: tekst(r.naam, 200),
         status: ['opgeslagen', 'bestaat-al', 'mislukt'].includes(r.status) ? r.status : 'mislukt',
         reden: typeof r.reden === 'string' ? r.reden : null,
-        // Het id van de regel in het dekkingsplan (voor "Bespreek met Subsidiekompas"); alleen een geldig uuid.
+        // Het id van de regel in het dekkingsplan (voor "Bespreek met Subsidie Kompas"); alleen een geldig uuid.
         fundingId: typeof r.fundingId === 'string' && /^[0-9a-f-]{36}$/i.test(r.fundingId) ? r.fundingId : null,
         bron: bronModel(isObject(r.bron) ? r.bron : { status: 'niet-gecontroleerd' }),
       })),

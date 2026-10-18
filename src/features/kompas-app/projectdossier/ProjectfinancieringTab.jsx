@@ -1,4 +1,4 @@
-// Tab "Projectfinanciering / Dekkingsplan": het dekkingsplan van één project, met de startknop van Subsidiekompas en,
+// Tab "Projectfinanciering / Dekkingsplan": het dekkingsplan van één project, met de startknop van Subsidie Kompas en,
 // op dezelfde pagina, de Acties & deadlines van dat project. Bovenaan de dekking van de begroting
 // (zelfde rekenmodule als Dashboard en projectdossier), daaronder de regels uit
 // subsidie_kompas_program_funding. Bronnen buiten het abonnement blijven gemaskeerd; de eigen
@@ -14,10 +14,15 @@ import VoorstelWerkruimte from '../financiering/VoorstelWerkruimte.jsx';
 import { bronVoorRegel, datumTekst } from '../financiering/bronStatus.js';
 import { leesBronControles } from '../../../data/services/voorstelGenereren.js';
 import FinancierFormulier from '../financiering/FinancierFormulier.jsx';
+import FinancieringsRegel from '../financiering/FinancieringsRegel.jsx';
+import { kansrijkheid } from '../financiering/kansrijkheid.js';
+import { haalBronDetails } from '../../../data/services/deadlines.js';
+import { useKompas } from '../KompasStore.jsx';
 import {
   STATUSSEN,
   STATUS_LABEL,
   bedragVoorInvoer,
+  formatDatum,
   formatEuro,
   leesBedragInvoer,
 } from '../financiering/dekkingsplan.js';
@@ -28,18 +33,16 @@ const INVOER =
   "box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid #CFDDD5; border-radius: 10px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; color: #2C4A5E;";
 
 const CSS_TAB = `
-.fwk-pf-kop, .fwk-pf-rij { display: grid; gap: 12px 14px; align-items: start; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1.45fr); }
-.fwk-pf-kop { padding: 0 18px 8px; }
-.fwk-pf-label { display: none; }
-.fwk-pf-notitie { grid-column: 1 / 5; }
-.fwk-pf-acties { grid-column: 5 / 7; justify-self: end; align-self: center; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 14px; }
+.fwk-pf-rij { display: grid; gap: 12px 14px; align-items: start; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 12px; padding-top: 12px; border-top: 1px solid #EEF2EF; }
+.fwk-pf-label { display: block; margin-bottom: 4px; }
+.fwk-pf-notitie { grid-column: 1 / 4; }
+.fwk-pf-acties { grid-column: 4 / 6; justify-self: end; align-self: end; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 14px; }
+.fwk-pf-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 10px 22px; }
 .fwk-pf-rij input:focus-visible, .fwk-pf-rij select:focus-visible, .fwk-pf-rij textarea:focus-visible, .fwk-pf-rij button:focus-visible { outline: 2px solid #4E9A6C; outline-offset: 1px; }
 @media (max-width: 899px) {
-  .fwk-pf-kop { display: none; }
   .fwk-pf-rij { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .fwk-pf-bron, .fwk-pf-deadline, .fwk-pf-notitie, .fwk-pf-acties { grid-column: 1 / -1; }
-  .fwk-pf-acties { justify-self: stretch; }
-  .fwk-pf-label { display: block; margin-bottom: 4px; }
+  .fwk-pf-deadline, .fwk-pf-notitie, .fwk-pf-acties { grid-column: 1 / -1; }
+  .fwk-pf-acties { justify-self: stretch; justify-content: flex-start; }
 }
 `;
 
@@ -68,7 +71,96 @@ function Legenda({ dekking }) {
   );
 }
 
-function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
+
+// De bandbreedte van de bijdrage rechts in de kopregel: de bandbreedte uit de database, anders de bijdragegrenzen.
+// Een eigen financier (cofinancier) heeft geen bandbreedte; een verborgen of onbekende bron ook niet.
+function bijdrageTekst(regel, details) {
+  if (regel.bronType === 'financier' || regel.bronStatus !== 'zichtbaar') return null;
+  if (!details) return <span data-testid="pf-regel-bijdrage">bijdrage niet bekend</span>;
+
+  const { bandbreedteBijdrage: band, bedragMin: min, bedragMax: max } = details;
+  const tekst = band
+    ? band
+    : min != null && max != null
+      ? `${formatEuro(min)} – ${formatEuro(max)}`
+      : max != null
+        ? `tot ${formatEuro(max)}`
+        : min != null
+          ? `vanaf ${formatEuro(min)}`
+          : 'niet bekend';
+
+  return <span data-testid="pf-regel-bijdrage">bijdrage {tekst}</span>;
+}
+
+function InfoVeld({ label, children, testid, leeg }) {
+  return (
+    <div data-testid={testid} style={css('min-width: 0;')}>
+      <div style={css(LABEL)}>{label}</div>
+      <div style={css(`${TEKST} margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; color: ${leeg ? '#9AA6A2' : '#4B5C58'};`)}>{children}</div>
+    </div>
+  );
+}
+
+// Meer informatie in de uitklapregel: wat het fonds ondersteunt, waarom het past, voor wie en waar, voorwaarden en de bron.
+// Uitsluitend bestaande gegevens; wat ontbreekt staat er als "nog niet bekend", niet verzonnen.
+function RegelInfo({ regel, bron, details, kans, heeftBron }) {
+  if (!heeftBron) {
+    return (
+      <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>
+        {regel.bronStatus === 'verborgen' ? 'Deze bron valt buiten uw abonnement; uw eigen gegevens hieronder blijven bewerkbaar.' : 'Deze bron bestaat niet meer; uw eigen gegevens hieronder blijven bewerkbaar.'}
+      </div>
+    );
+  }
+
+  const voorWieWaar = details
+    ? [
+        details.themasNamen && details.themasNamen.length ? `Disciplines: ${details.themasNamen.join(', ')}` : null,
+        details.doelgroepenNamen && details.doelgroepenNamen.length ? `Doelgroepen: ${details.doelgroepenNamen.join(', ')}` : null,
+        details.werkgebiedenNamen && details.werkgebiedenNamen.length ? `Werkgebied: ${details.werkgebiedenNamen.join(', ')}` : null,
+      ].filter(Boolean)
+    : [];
+  const website = regel.website || (details && details.url) || '';
+
+  return (
+    <div data-testid="pf-regel-info" className="fwk-pf-info">
+      {regel.bronType !== 'financier' && (
+        <>
+          <InfoVeld label={regel.bronType === 'fonds' ? 'Wat dit fonds ondersteunt' : 'Wat deze regeling ondersteunt'} leeg={!(details && details.omschrijving)}>
+            {(details && details.omschrijving) || 'Nog niet bekend.'}
+          </InfoVeld>
+          {kans && (
+            <InfoVeld label="Waarom het past" testid="pf-regel-match">
+              <strong style={css(`color: ${kans.color};`)}>{kans.label}.</strong> {kans.tekst}
+            </InfoVeld>
+          )}
+          {voorWieWaar.length > 0 && <InfoVeld label="Voor wie en waar">{voorWieWaar.join('\n')}</InfoVeld>}
+          <InfoVeld label={regel.bronType === 'fonds' ? 'Toelichting' : 'Voorwaarden om te controleren'} leeg={!(details && details.voorwaarden)}>
+            {(details && details.voorwaarden) || 'Nog niet bekend; controleer ze bij de officiële bron.'}
+          </InfoVeld>
+        </>
+      )}
+      <InfoVeld label="Bron">
+        {website ? (
+          <a href={website} target="_blank" rel="noopener noreferrer" style={css('color: #4E9A6C; font-weight: 800;')}>
+            Officiële website →
+          </a>
+        ) : (
+          <span style={css('color: #9AA6A2;')}>Geen website bekend</span>
+        )}
+        {/* De bronstatus is los van de financieringsstatus: gecontroleerd betekent alleen dat de bron is gecontroleerd, niet dat er is toegekend. */}
+        {bron && (
+          <div data-testid="pf-regel-bron" data-bron-status={bron.status} title={bron.uitleg} style={css(`margin-top: 4px; font-size: 12.5px; font-weight: 700; color: ${{ gecontroleerd: '#2F7A4D', onzeker: '#8A5A16', mislukt: '#A3382B' }[bron.status] || '#5D6B67'};`)}>
+            Bron: {bron.label}
+            {bron.gecontroleerdOp && bron.status === 'gecontroleerd' ? ` op ${datumTekst(bron.gecontroleerdOp)}` : ''}
+            {bron.verouderd ? ' (gegevens veranderd of controle te oud)' : ''}
+          </div>
+        )}
+      </InfoVeld>
+    </div>
+  );
+}
+
+function Regel({ regel, bron = null, details = null, kans = null, open = false, onToggle, onWijzig, onVerwijder }) {
   const [aangevraagd, setAangevraagd] = useState(bedragVoorInvoer(regel.requested));
   const [toegekend, setToegekend] = useState(bedragVoorInvoer(regel.awarded));
   const [notitie, setNotitie] = useState(regel.notitie || '');
@@ -110,47 +202,51 @@ function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
   const heeftBron = regel.bronStatus === 'zichtbaar';
   const toegekendHint = regel.status === 'awarded' && regel.awarded == null && regel.requested != null ? 'Leeg: het aangevraagde bedrag telt als toegekend.' : '';
 
+  const soort = regel.bronType === 'financier' ? 'Cofinancier of andere financiering' : regel.bronType === 'fonds' ? 'Fonds' : 'Regeling';
+  const bedragLabel = (() => {
+    if (regel.status === 'awarded') {
+      const w = regel.awarded != null ? regel.awarded : regel.requested;
+
+      return w != null ? `toegekend ${formatEuro(w)}` : null;
+    }
+
+    if (regel.requested == null) return null;
+    if (regel.status === 'submitted') return `aangevraagd ${formatEuro(regel.requested)}`;
+    if (regel.status === 'rejected' || regel.status === 'withdrawn') return `${STATUS_LABEL[regel.status].toLowerCase()}: ${formatEuro(regel.requested)}`;
+
+    return `kan ${formatEuro(regel.requested)}`;
+  })();
+  const deadlineKort = regel.deadline ? formatDatum(regel.deadline) : null;
+  const samenvatting = [
+    STATUS_LABEL[regel.status] || regel.status,
+    deadlineKort ? `deadline ${deadlineKort}` : null,
+    heeftBron ? soort : null,
+    heeftBron && regel.funder && regel.bronType !== 'fonds' && regel.bronType !== 'financier' ? regel.funder : null,
+    bron ? `Bron: ${bron.label}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
-    <article
-      data-testid="pf-regel"
+    <FinancieringsRegel
+      testId="pf-regel"
       data-regel-id={regel.id}
       data-bron-status={regel.bronStatus}
-      style={css('box-sizing: border-box; padding: 12px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF;')}
+      data-status={regel.status}
+      open={open}
+      onToggle={onToggle}
+      titel={
+        <span data-testid="pf-regel-naam" style={heeftBron ? undefined : { color: '#7B8985', fontStyle: 'italic' }}>
+          {naam}
+        </span>
+      }
+      bedrag={bedragLabel}
+      bedragLeeg="bedrag nog niet ingevuld"
+      extra={bijdrageTekst(regel, details)}
+      samenvatting={samenvatting}
     >
+      <RegelInfo regel={regel} bron={bron} details={details} kans={kans} heeftBron={heeftBron} />
       <div className="fwk-pf-rij">
-        <div className="fwk-pf-bron" style={css('min-width: 0;')}>
-          <div
-            data-testid="pf-regel-naam"
-            style={css(
-              `${TEKST} font-size: 15px; font-weight: 800; overflow-wrap: break-word; color: ${heeftBron ? '#2C4A5E' : '#7B8985'}; ${heeftBron ? '' : 'font-style: italic;'}`,
-            )}
-          >
-            {naam}
-          </div>
-          {heeftBron && (
-            <div style={css(`${TEKST} font-size: 13px; color: #7B8985; overflow-wrap: anywhere;`)}>
-              {regel.bronType === 'financier' ? 'Cofinancier of andere financiering' : regel.bronType === 'fonds' ? 'Fonds' : 'Regeling'}
-              {regel.funder && regel.bronType !== 'fonds' && regel.bronType !== 'financier' ? ` · ${regel.funder}` : ''}
-              {regel.website && (
-                <>
-                  {' · '}
-                  <a href={regel.website} target="_blank" rel="noopener noreferrer" style={css('color: #4E9A6C; font-weight: 700;')}>
-                    Website
-                  </a>
-                </>
-              )}
-            </div>
-          )}
-          {/* De bronstatus is los van de financieringsstatus hierboven: gecontroleerd betekent alleen dat de bron is gecontroleerd, niet dat er is toegekend. */}
-          {bron && (
-            <div data-testid="pf-regel-bron" data-bron-status={bron.status} title={bron.uitleg} style={css(`${TEKST} margin-top: 6px; font-size: 12.5px; font-weight: 700; color: ${{ gecontroleerd: '#2F7A4D', onzeker: '#8A5A16', mislukt: '#A3382B' }[bron.status] || '#5D6B67'};`)}>
-              Bron: {bron.label}
-              {bron.gecontroleerdOp && bron.status === 'gecontroleerd' ? ` op ${datumTekst(bron.gecontroleerdOp)}` : ''}
-              {bron.verouderd ? ' (gegevens veranderd of controle te oud)' : ''}
-            </div>
-          )}
-        </div>
-
         <div>
           <label>
             <span className="fwk-pf-label" style={css(LABEL)}>Aangevraagd</span>
@@ -276,13 +372,37 @@ function Regel({ regel, bron = null, onWijzig, onVerwijder }) {
           {fout}
         </div>
       )}
-    </article>
+    </FinancieringsRegel>
   );
 }
 
 export default function ProjectfinancieringTab({ project, financiering, dekking, toonActieplan = true }) {
   const { status, fout, regels, wijzig, verwijder, laad } = financiering;
+  const store = useKompas();
   const [actieVersie, setActieVersie] = useState(0);
+  const [openRegels, setOpenRegels] = useState({});
+  const [bronDetails, setBronDetails] = useState({ perRegeling: {}, perFonds: {} });
+  const detailSleutel = regels.map((r) => `${r.schemeId || ''}:${r.funderId || ''}`).join(',');
+
+  // Bandbreedte, omschrijving en voorwaarden van de regelingen en fondsen in dit plan (alleen lezen, zelfde views als Deadlines).
+  useEffect(() => {
+    let actief = true;
+    const schemeIds = regels.filter((r) => r.schemeId).map((r) => r.schemeId);
+    const funderIds = regels.filter((r) => r.funderId && !r.schemeId).map((r) => r.funderId);
+
+    if (!schemeIds.length && !funderIds.length) return undefined;
+
+    haalBronDetails({ schemeIds, funderIds }).then((res) => {
+      if (actief) setBronDetails({ perRegeling: res.perRegeling || {}, perFonds: res.perFonds || {} });
+    });
+
+    return () => {
+      actief = false;
+    };
+  }, [detailSleutel]);
+
+  const detailsVan = (r) => (r.schemeId ? bronDetails.perRegeling[r.schemeId] : r.funderId ? bronDetails.perFonds[r.funderId] : null) || null;
+  const allesOpen = regels.length > 0 && regels.every((r) => openRegels[r.id]);
   const [bronRijen, setBronRijen] = useState([]);
 
   // De bronstatus per regel komt uit de tabel die de SERVER bijhoudt: ze blijft dus staan na verversen en na opslaan.
@@ -354,17 +474,38 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
 
         {regels.length > 0 && (
           <>
-            <div className="fwk-pf-kop" aria-hidden="true">
-              {['Financier, fonds of regeling', 'Aangevraagd', 'Toegekend', 'Status', 'Deadline', 'Herinnering'].map((k) => (
-                <span key={k} style={css(LABEL)}>
-                  {k}
-                </span>
-              ))}
+            <div style={css('display: flex; justify-content: flex-end; margin: -4px 0 8px;')}>
+              <button
+                type="button"
+                className="fwk-wp-link"
+                data-testid="pf-alles-uitklappen"
+                onClick={() => setOpenRegels(allesOpen ? {} : Object.fromEntries(regels.map((r) => [r.id, true])))}
+              >
+                {allesOpen ? 'Alles inklappen' : 'Alles uitklappen'}
+              </button>
             </div>
             <div style={css('display: flex; flex-direction: column; gap: 8px;')}>
-              {regels.map((r) => (
-                <Regel key={r.id} regel={r} bron={bronVoorRegel(r, bronRijen)} onWijzig={wijzig} onVerwijder={verwijder} />
-              ))}
+              {regels.map((r) => {
+                const details = detailsVan(r);
+
+                return (
+                  <Regel
+                    key={r.id}
+                    regel={r}
+                    bron={bronVoorRegel(r, bronRijen)}
+                    details={details}
+                    kans={r.bronType !== 'financier' && r.bronStatus === 'zichtbaar' && details ? kansrijkheid(details, store.orgProfile || {}, store.projects) : null}
+                    open={Boolean(openRegels[r.id])}
+                    onToggle={(v) => setOpenRegels((cur) => ({ ...cur, [r.id]: v }))}
+                    onWijzig={wijzig}
+                    onVerwijder={verwijder}
+                  />
+                );
+              })}
+            </div>
+            <div data-testid="pf-totaal" style={css(`${TEKST} margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: #F3F9F5; font-weight: 700; color: #2C4A5E;`)}>
+              Samen: toegekend {formatEuro(dekking.toegekend)} · aangevraagd {formatEuro(dekking.aangevraagd)} · gepland {formatEuro(dekking.gepland)}
+              {dekking.heeftBegroting && <> · {dekking.volledigGedekt ? 'volledig gedekt' : `nog te financieren ${formatEuro(dekking.nogNodig)}`}</>}
             </div>
           </>
         )}

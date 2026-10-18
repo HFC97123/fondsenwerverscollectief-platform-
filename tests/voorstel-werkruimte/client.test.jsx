@@ -1192,6 +1192,7 @@ sectie('13. Statische eigenschappen van de client');
   check('de werkruimte gebruikt voor beide routes dezelfde zoekprofielservice en dezelfde genereren-aanroep', (bron.match(/vraagZoekprofiel/g) || []).length >= 2 && (bron.match(/draaiVoorstelFlow\(/g) || []).length === 1);
   check('de chatpagina toont de zoekprofielkaart alleen met een echt project en als de flow aan staat', /ChatZoekprofielKaart/.test(toolPagina) && /isEchtId\(gekoppeldProjectId\) && voorstelGeneratieBeschikbaar\(\)/.test(toolPagina));
   check('het model noemt geen nieuwe werkveld-taxonomie: werkvelden komen uit dezelfde tabel als disciplines', /sleutel: 'werkvelden'[^}]*bron: 'themas'/.test(model) && /sleutel: 'disciplines'[^}]*bron: 'themas'/.test(model));
+  check('de naam in de frontend is overal "Subsidie Kompas" (niet "Subsidiekompas")', ['src/features/kompas-app/financiering/VoorstelStart.jsx', 'src/features/kompas-app/financiering/VoorstelWerkruimte.jsx', 'src/features/kompas-app/financiering/VoorstelPreview.jsx', 'src/data/services/voorstelGenereren.js'].every((f) => !/Subsidiekompas/.test(lees(f))));
   check('het concept staat niet in de database (alleen browseropslag, geen migratie)', !/\.insert\(|\.upsert\(|subsidie_kompas_/.test(code(model)));
 }
 

@@ -1,4 +1,4 @@
-// Of de volledige flow "Maak dekkingsplan en actieplan met Subsidiekompas" werkt. De startknop op de projectpagina is pas
+// Of de volledige flow "Maak dekkingsplan en actieplan met Subsidie Kompas" werkt. De startknop op de projectpagina is pas
 // actief als deze functie true geeft; tot die tijd staat er een duidelijke melding. De vlag gaat pas aan als ALLE stappen
 // bestaan en getest zijn: project lezen, uitvragen, financiers onderzoeken (server), voorstel tonen, aanpassen, opslaan.
 // Een omgevingsvariabele kan hem niet te vroeg aanzetten zonder dat de server-stap (VITE_SUBSIDIEKOMPAS_VOORSTEL_SERVER) er is.

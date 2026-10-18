@@ -54,6 +54,11 @@ const staat = () => {
   return { funding: w.db.funding.map(lid), actions: w.db.actions.map(lid), bron: w.bron.map(lid), open: w.wachtrij.map(lid), bronnen };
 };
 
+async function allesUitklappen(page) {
+  const k = page.locator('[data-testid="pf-alles-uitklappen"]');
+  if ((await k.count()) && /uitklappen/.test(await k.innerText())) { await k.click(); await page.waitForTimeout(250); }
+}
+
 async function serverCall(body) {
   aanroepen.push(body.mode || 'chat');
   verzoeken.push(body);
@@ -188,7 +193,7 @@ sectie('1. Pro: voorstel maken, controleren, opslaan na een fout, actieplan opni
   const { context, page } = await nieuwePagina('pro');
   const knop = t(page, 'voorstel-start-knop');
 
-  check('startknop is actief (vlaggen aan, project compleet)', (await knop.isEnabled()) && /Maak dekkingsplan en actieplan met Subsidiekompas/.test(await knop.innerText()));
+  check('startknop is actief (vlaggen aan, project compleet)', (await knop.isEnabled()) && /Maak dekkingsplan en actieplan met Subsidie Kompas/.test(await knop.innerText()));
   await page.screenshot({ path: join(SHOTS, '01-start.png'), fullPage: true });
   await knop.click();
   await bevestigProfiel(page);
@@ -240,6 +245,7 @@ sectie('1. Pro: voorstel maken, controleren, opslaan na een fout, actieplan opni
   // Verversen: alles blijft staan, statussen komen van de server.
   await page.reload();
   await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
+  await allesUitklappen(page);
   await sleep(500);
   const regels = await t(page, 'pf-regel').count();
 
@@ -314,6 +320,7 @@ sectie('1b. Actieplan mislukt, PAGINA VERVERST: "Actieplan opnieuw proberen" bli
   // Nogmaals verversen: banner weg, taken zichtbaar.
   await page.reload();
   await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
+  await allesUitklappen(page);
   await sleep(600);
   check('na nog een verversing: geen banner meer, taken zichtbaar in Acties & deadlines', (await t(page, 'actieplan-open').count()) === 0 && (await inActies(page, () => t(page, 'ap-taak').count())) >= 1);
   check('geen pageerrors', page.fouten.length === 0, page.fouten.join(' | '));
@@ -355,6 +362,7 @@ sectie('2. Premium: online suggestie met beoordelingsroute (onzekere status beho
   await page.screenshot({ path: join(SHOTS, '11-suggestie-opgeslagen.png'), fullPage: true });
   await page.reload();
   await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
+  await allesUitklappen(page);
   await sleep(500);
   const na = (await t(page, 'pf-regel').allInnerTexts()).join('\n');
 
@@ -384,6 +392,7 @@ sectie('3. Verversen terwijl het actieplan was mislukt: wat kan het lid dan nog?
   w.dbFout = null;
   await page.reload();
   await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
+  await allesUitklappen(page);
   await sleep(500);
   const regelsNa = await t(page, 'pf-regel').count();
   const opnieuwKnop = await t(page, 'actieplan-open-opnieuw').count();
@@ -463,6 +472,7 @@ sectie('4. PROJECTROUTE: het project is het zoekprofiel; één klik, fout en opn
   await page.screenshot({ path: join(SHOTS, '34-project-opgeslagen.png'), fullPage: true });
   await page.reload();
   await page.waitForSelector('[data-testid="pf-regel"]', { timeout: 15000 });
+  await allesUitklappen(page);
   check('na verversen: de regels staan in het dekkingsplan, taken in Acties & deadlines', (await t(page, 'pf-regel').count()) === w.db.funding.length && (await inActies(page, () => t(page, 'ap-taak').count())) >= 1);
   check('geen pageerrors in de hele projectroute', page.fouten.length === 0, page.fouten.join(' | '));
   await context.close();

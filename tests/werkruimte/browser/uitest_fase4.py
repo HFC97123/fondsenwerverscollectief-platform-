@@ -368,6 +368,8 @@ try:
     g1.get_by_test_id('groep-toggle').click(); pg.wait_for_timeout(200)
     ok('I3 uitklappen: gesprekken terug, aria-expanded=true', g1.get_attribute('data-open')=='true' and g1.get_by_test_id('gesprek-rij').count()==2 and g1.get_by_test_id('groep-toggle').get_attribute('aria-expanded')=='true')
     # nieuw gesprek binnen een project
+    pg.locator(f'[data-testid="project-groep"][data-project-id="{P2}"]').get_by_test_id('groep-kop').click(button='right'); pg.wait_for_timeout(200)
+    ok('groepsmenu: rechtermuisknop opent het menu (geen vaste "+ Nieuw"-knop per project)', pg.locator('[data-testid="groep-menu"]').count()==1 and pg.locator('.fwk-cl-plus').count()==0)
     pg.locator(f'[data-testid="project-groep"][data-project-id="{P2}"]').get_by_test_id('groep-nieuw').click(); pg.wait_for_timeout(500)
     ok('I4 "+ Nieuw" in projectgroep: lege chat met dat project als startcontext (kop en projectoverzicht)', kop(pg)=='Taalcafe Zuid' and pg.get_by_test_id('chat-berichten').count()==0 and pg.get_by_test_id('project-context-panel').get_attribute('data-project-id')==P2)
     stuur(pg,'Nieuwe vraag binnen het project')

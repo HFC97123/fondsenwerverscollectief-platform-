@@ -1,4 +1,4 @@
-// FASE5 — Kaart "N kansrijke financiers" onder een Subsidiekompas-antwoord (Pro/Premium).
+// FASE5 — Kaart "N kansrijke financiers" onder een Subsidie Kompas-antwoord (Pro/Premium).
 //
 // De chat blijft een gesprek: dit is een compacte kaart onder het antwoord, geen CRM-scherm. De kaart toont wat de
 // bestaande matching al koos (naam, gever, live deadline, waarom passend) en laat de gebruiker BEWUST kiezen:

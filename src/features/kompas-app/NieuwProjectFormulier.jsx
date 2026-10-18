@@ -216,7 +216,7 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
       )}
 
       <div data-testid="np-zoekprofiel-uitleg" style={css(`${HULP} margin-top: 20px; display: block;`)}>
-        Dit is uw projectprofiel en tevens het zoekprofiel: Subsidiekompas zoekt financiers op de discipline, doelgroep en het werkgebied (bij voorkeur het eiland of land) die u hier invult, en rekent met de begroting. Hoe completer, hoe scherper de uitkomst.
+        Dit is uw projectprofiel en tevens het zoekprofiel: Subsidie Kompas zoekt financiers op de discipline, doelgroep en het werkgebied (bij voorkeur het eiland of land) die u hier invult, en rekent met de begroting. Hoe completer, hoe scherper de uitkomst.
       </div>
 
       <div style={css('margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap;')}>
