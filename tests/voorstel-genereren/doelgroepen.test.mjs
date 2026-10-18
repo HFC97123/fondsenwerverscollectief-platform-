@@ -24,7 +24,7 @@ TAXONOMIE.doelgroepen.splice(0, TAXONOMIE.doelgroepen.length,
   'Kinderen', 'Jongeren', 'Studenten', 'Ouderen', 'Gezinnen', 'Mensen in armoede', 'Mensen in een kwetsbare positie', 'Dak- en thuislozen', 'Musea', 'Culturele instellingen',
   'Podiumkunstorganisaties', 'Scholen en onderwijsinstellingen', 'Kunstenaars', 'Makers', 'Patiënten', 'Chronisch zieken', 'Mensen met een beperking', 'Blinden en slechtzienden',
   'Mantelzorgers', 'Naasten van mensen met een chronische aandoening', 'Nieuwkomers/ongedocumenteerden', 'Vluchtelingen', 'Vrouwen en meisjes', 'Serviceclubs');
-TAXONOMIE.regios.splice(0, TAXONOMIE.regios.length, 'Rotterdam', 'Landelijk');
+TAXONOMIE.regios.splice(0, TAXONOMIE.regios.length, 'Rotterdam', 'Landelijk', 'Amsterdam', 'Regionaal');
 
 const M = ['Muziek', 'Cultuur'];
 let teller = 0;
@@ -178,6 +178,23 @@ sectie('8. Serviceclubs (zoals de Rotary Global Grant): onderaan als optioneel, 
   const muziek = await draai('Mensen in armoede', funders, { regelingen: [club()], project: { themes: 'Muziek, Cultuur' } });
 
   check('project over muziek en cultuur: de Global Grant wordt niet aangeboden', !muziek.namen.includes('Global Grant'), JSON.stringify(muziek.namen));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+sectie('9. Werkgebied "Amsterdam + Regionaal" is de regio rond Amsterdam, niet heel Nederland');
+{
+  const funders = () => [
+    fonds({ naam: 'Stichting Grachtengordel', themas: M, doelgroepen: ['Ouderen'], regios: ['Amsterdam', 'Regionaal'], id: id() }),
+    fonds({ naam: 'Stichting Maasoever', themas: M, doelgroepen: ['Ouderen'], regios: ['Rotterdam', 'Regionaal'], id: id() }),
+    fonds({ naam: 'Stichting Heideveld', themas: M, doelgroepen: ['Ouderen'], regios: ['Regionaal'], id: id() }),
+    fonds({ naam: 'Stichting Noorderlicht', themas: M, doelgroepen: ['Ouderen'], regios: ['Amsterdam', 'Landelijk'], id: id() }),
+  ];
+  const { namen } = await draai('Ouderen', funders);
+
+  check('Amsterdam + Regionaal valt af voor een project in Rotterdam', !namen.includes('Stichting Grachtengordel'), JSON.stringify(namen));
+  check('Rotterdam + Regionaal past', namen.includes('Stichting Maasoever'), JSON.stringify(namen));
+  check('alleen Regionaal (niet gespecificeerd) blijft een controlepunt, geen uitsluiting', namen.includes('Stichting Heideveld'), JSON.stringify(namen));
+  check('Amsterdam + Landelijk blijft meedoen', namen.includes('Stichting Noorderlicht'), JSON.stringify(namen));
 }
 
 console.log(`\ndoelgroepen: ${stand.ok} OK, ${stand.fout} FOUT`);

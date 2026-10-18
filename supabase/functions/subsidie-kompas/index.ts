@@ -4024,8 +4024,9 @@ function beoordeelGeografie(naam: string, funderNaam: string, row: any, regios: 
     if (projNl && !projBuitenland && fondsAlleenBuitenland) return uit('ineligible', 'regio sluit niet aan: fonds richt zich alleen op het buitenland');
   }
 
-  // Het werkgebied (label) bevat alleen andere regio's dan die van het project.
-  if (projRegios.size && specifiek.length && !heeftAlgemeen && !labels.some((r) => projRegios.has(r))) {
+  // Het werkgebied (label) bevat alleen andere regio's dan die van het project. "Regionaal" of "Provinciaal" naast een genoemde plaats of regio (Amsterdam + Regionaal)
+  // betekent: de regio rond die plaats; het maakt het werkgebied dus niet landelijk.
+  if (projRegios.size && specifiek.length && !heeftLandelijk && !heeftInternationaal && !labels.some((r) => projRegios.has(r))) {
     return uit('ineligible', 'regio sluit niet aan');
   }
 
