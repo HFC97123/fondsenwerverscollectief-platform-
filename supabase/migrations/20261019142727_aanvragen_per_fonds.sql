@@ -1,4 +1,4 @@
--- Aanvragen per fonds en het algemene projectplan (aanvraag-assistent, Pro/Premium). VOORSTEL, NIET UITGEVOERD. Uitvoering pas na akkoord van Aisya.
+-- Aanvragen per fonds en het algemene projectplan (aanvraag-assistent, Pro/Premium). Toegepast op de live database op 2026-10-19 (versie 20261019142727), na akkoord van Aisya.
 --
 -- Wat er bij komt: de tabel subsidie_kompas_aanvragen. Per project één algemeen projectplan (soort 'algemeen') en per fonds één aanvraag (soort 'fonds'): de
 -- criteria van het fonds, het geschreven plan en de laatste uitkomst. De tekst van een aanvraag die een lid laat beoordelen wordt NIET bewaard.
@@ -7,7 +7,7 @@
 -- Wie mag wat: schrijven alleen de Edge Function aanvraag-assistent (service_role), na controle van abonnement, project en maandgrens; lezen het lid zelf,
 -- alleen eigen rijen (RLS). Eigenaar en project liggen vast (trigger). Maximaal 50 aanvragen per project.
 -- De plannen tellen voor de maandgrens via kompas_gebruik_log (actie aanvraag_plan), niet via deze tabel.
--- Terugdraaien: 20261019160000_aanvragen_per_fonds_rollback.sql
+-- Terugdraaien: supabase/voorstellen/20261019142727_aanvragen_per_fonds_rollback.sql
 begin;
 
 create table if not exists public.subsidie_kompas_aanvragen (
