@@ -12,7 +12,7 @@ const checkout = lees('supabase/functions/create-checkout-session/index.ts');
 
 sectie('1. Weergave');
 {
-  check('abonnementen.js: Pro €40, Premium €75 per maand, excl. btw', ABONNEMENTEN.pro.prijsTekst === '€40 per maand excl. btw' && ABONNEMENTEN.premium.prijsTekst === '€75 per maand excl. btw');
+  check('abonnementen.js: Pro €40, Premium €75 per maand', ABONNEMENTEN.pro.prijsTekst === '€40 per maand' && ABONNEMENTEN.premium.prijsTekst === '€75 per maand');
   check('proefperioden ongewijzigd (7 dagen / 24 uur)', ABONNEMENTEN.pro.proefDuur === '7 dagen' && ABONNEMENTEN.premium.proefDuur === '24 uur');
   check('plannenoverzicht: €0 vast, Pro en Premium uit de prijsconfiguratie (geen eigen bedragen in de pagina)', /prijs: '€0'/.test(hoeHet) && !/prijs: '€\d+'(?!.*€0)/.test(hoeHet.replace(/prijs: '€0'/, '')) && /prijsInfo\(plan\.tier, looptijd\)/.test(hoeHet));
   check('FAQ: prijzen uit de configuratie, vraag over de Premium-prijs en over vooruitbetalen', faq.includes('prijsInfo') && faq.includes('Pro (${MAAND_PRO} per maand)') && faq.includes('Premium (${MAAND_PREMIUM} per maand)') && faq.includes('Kan ik korting krijgen door vooruit te betalen?'));

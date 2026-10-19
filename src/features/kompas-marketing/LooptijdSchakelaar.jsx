@@ -6,7 +6,7 @@ import { css } from '../../shared/lib/css.js';
 import { LOOPTIJDEN, LOOPTIJD_INFO } from '../../data/abonnementen.js';
 
 const GROEP = css(
-  'display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 5px; border-radius: 16px; background: #EAF1EE; border: 1px solid #D6E3DD; max-width: 100%;',
+  'display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 2px; padding: 4px; border-radius: 14px; background: #EAF1EE; border: 1px solid #D6E3DD; max-width: 100%;',
 );
 
 function knopStijl(actief, uitgeschakeld) {
@@ -14,15 +14,15 @@ function knopStijl(actief, uitgeschakeld) {
     cursor: ${uitgeschakeld ? 'default' : 'pointer'};
     box-sizing: border-box;
     flex: 1 1 auto;
-    min-height: 44px;
-    padding: 10px 18px;
+    min-height: 40px;
+    padding: 8px 16px;
     border: none;
-    border-radius: 12px;
+    border-radius: 11px;
     background: ${actief ? '#FFFFFF' : 'transparent'};
     color: ${actief ? '#2C4A5E' : '#4B5C58'};
     box-shadow: ${actief ? '0 1px 4px rgba(44, 74, 94, 0.18)' : 'none'};
     font-family: 'Mulish', sans-serif;
-    font-size: 14.5px;
+    font-size: 14px;
     font-weight: ${actief ? '800' : '700'};
     white-space: nowrap;
     opacity: ${uitgeschakeld && !actief ? '0.55' : '1'};
@@ -67,6 +67,7 @@ export default function LooptijdSchakelaar({ waarde, onChange, uitgeschakeld = f
         return (
           <button
             key={code}
+            aria-label={LOOPTIJD_INFO[code].label}
             ref={(el) => {
               knoppen.current[code] = el;
             }}
@@ -80,7 +81,7 @@ export default function LooptijdSchakelaar({ waarde, onChange, uitgeschakeld = f
             onKeyDown={(e) => bijToets(e, index)}
             style={knopStijl(actief, uitgeschakeld)}
           >
-            {LOOPTIJD_INFO[code].label}
+            {LOOPTIJD_INFO[code].kort}
           </button>
         );
       })}

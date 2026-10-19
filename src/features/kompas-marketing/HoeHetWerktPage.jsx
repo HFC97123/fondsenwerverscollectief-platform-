@@ -1,128 +1,243 @@
-// Hoe het werkt: wat Subsidie Kompas doet, de vijf stappen, en waarom Premium.
-import React, { useState } from 'react';
+// Hoe het werkt: de verkooppagina van Subsidie Kompas. Kort: wat het systeem doet in vier stappen, daaronder de abonnementen.
+import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from '../kompas-app/useKompasApp.js';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
-import { abonnerenHash, bewaarIntentie, bewaarLooptijd, intentieVoorTier, leesLooptijd } from '../../data/services/koopintentie.js';
-import { LOOPTIJD_INFO, STANDAARD_LOOPTIJD, maxBesparingPercentage, prijsInfo } from '../../data/abonnementen.js';
+import { abonnerenHash, bewaarIntentie, bewaarLooptijd, intentieVoorTier } from '../../data/services/koopintentie.js';
+import { ABONNEMENTEN, LOOPTIJD_INFO, STANDAARD_LOOPTIJD, prijsInfo } from '../../data/abonnementen.js';
 import LooptijdSchakelaar from './LooptijdSchakelaar.jsx';
 import { naar } from '../../app/routes.js';
-import { useStappen } from './useMarketingContent.js';
 
-const WAT_HET_DOET = [
-  'Zoekt gericht naar passende fondsen en subsidies',
-  'Zoekt met Premium ook in de exclusieve fondsendatabase',
-  'Brengt financiering, voorwaarden en deadlines helder in beeld',
-  'Adviseert over kansrijkheid en fondsenwervende strategie',
-  'Ondersteunt bij een sterke aanvraag: positionering, projectplan en begroting',
-  'Leert van praktijkcases: toegekende en afgewezen aanvragen uit het Collectief',
+// Zelfde adres als contact.email in de websiteconfiguratie (data/collections.js).
+const CONTACT_EMAIL = 'info@fondsenwerverscollectief.nl';
+const ENTERPRISE_MAIL = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Subsidie Kompas Enterprise')}`;
+
+// De vier stappen. Elke stap heeft een klein voorbeeld (alleen weergave, geen echte gegevens).
+const STAPPEN = [
+  {
+    n: '1',
+    titel: 'Vind de fondsen die echt passen',
+    tekst: 'Vertel over uw project en zie welke fondsen en regelingen passen, met bedrag, voorwaarden en deadline.',
+    voorbeeld: 'fondsen',
+  },
+  {
+    n: '2',
+    titel: 'Dek uw hele begroting',
+    tekst: 'Een slimme combinatie van fondsen met realistische bedragen, zodat uw project niet half blijft.',
+    voorbeeld: 'dekking',
+  },
+  {
+    n: '3',
+    titel: 'Houd elke deadline in beeld',
+    tekst: 'Een actieplan met herinneringen, zodat u uw tijd aan schrijven besteedt en niet aan bijhouden.',
+    voorbeeld: 'deadlines',
+  },
+  {
+    n: '4',
+    titel: 'Dien sterker in',
+    tekst: 'Een projectplan op maat van het fonds en een controle aan de hand van de criteria van het fonds, vóórdat u indient.',
+    voorbeeld: 'criteria',
+  },
 ];
 
-// Abonnementen: prijzen, teksten en INBEGREPEN-lijsten letterlijk uit de
-// beschermde, goedgekeurde index.html (sectie "ABONNEMENTEN"). Geen nieuwe
-// inhoud of businessregels; Free/Pro/Premium blijven zoals elders in de app.
+// Abonnementen. De prijzen van Pro en Premium komen uit data/abonnementen.js (één bron); hier staan alleen teksten.
 const PLANNEN = [
   {
     tier: 'free',
     naam: 'Free',
     prijs: '€0',
-    proefperiode: 'Gratis, zonder proefperiode',
-    omschrijving: 'Ontdek welke subsidiemogelijkheden er zijn.',
-    features: [
-      'AI-chat met Subsidie Kompas',
-      'Actuele websearch naar fondsen en subsidieregelingen',
-      'Fondsenscans',
-      'Matchchecks',
-      'Projectplanadvies',
-      'Subsidiebeoordelingen',
-      'SMART-doelen opstellen',
-      'Begrotingen beoordelen',
-      'Feedback op subsidieaanvragen',
-      'Fondsenwervende strategieën in tekst',
-    ],
+    proefperiode: 'Gratis, zonder account',
+    omschrijving: 'Ontdek welke fondsen bij uw project passen.',
+    features: ['Chat met Subsidie Kompas en krijg advies', 'Vind passende fondsen voor uw project', 'Mis geen deadlines meer met het actuele deadlineoverzicht'],
   },
   {
     tier: 'pro',
     naam: 'Pro',
     proefperiode: '7 dagen gratis proberen',
-    omschrijving: 'Professionele documenten in uw eigen huisstijl.',
+    omschrijving: 'Van fondsen vinden tot indienen, in één werkplek.',
     ctaTekst: 'Start 7 dagen gratis',
-    features: [
-      'Alles uit Free',
-      'Gesprekken opslaan en hervatten',
-      'Word-documenten genereren',
-      'PDF-documenten genereren',
-      'Excel-export',
-      'Professionele subsidieadviezen',
-      'Projectplannen en fondsenscans',
-      'Bestanden uploaden',
-      'Eigen logo en organisatienaam',
-      'Eigen Word-, Excel- en PowerPoint-templates',
-      'Eigen kleuren en huisstijl',
-      'Persoonlijke schrijfvoorkeuren en eigen tone of voice',
-      'Eigen kennisbank',
-      'Organisatieprofiel en organisatiegeheugen',
-      'AI gebruikt eerdere aanvragen en documenten als context',
-      'Geavanceerde analyses en meerjarige fondsenstrategieën',
-    ],
+    features: ABONNEMENTEN.pro.kenmerken,
   },
   {
     tier: 'premium',
     naam: 'Premium',
     proefperiode: '24 uur gratis proberen',
-    omschrijving: 'Alles uit Pro, plus de exclusieve fondsendatabase.',
+    omschrijving: 'Alles uit Pro, plus fondsen die elders moeilijk te vinden zijn.',
     ctaTekst: 'Probeer Premium 24 uur',
     uitgelicht: true,
-    features: [
-      'Alles uit Pro',
-      'fondsendatabase',
-      'Adviezen op basis van internet én de exclusieve fondsendatabase',
-      'Geavanceerde fondsselecties en analyses uit de fondsendatabase',
-    ],
+    features: ABONNEMENTEN.premium.kenmerken,
+  },
+  {
+    tier: 'enterprise',
+    naam: 'Enterprise',
+    prijsTekst: 'Op aanvraag',
+    omschrijving: 'Impact maken met uw hele team.',
+    ctaTekst: 'Neem contact op',
+    features: ['Meerdere teamleden en accounts', 'Ruimer gebruik voor projecten, plannen en beoordelingen', 'Op maat ingericht voor uw organisatie'],
   },
 ];
 
-export const STAPPEN_STANDAARD = [
-  {
-    n: '01',
-    titel: 'Vertellen',
-    tekst:
-      'Beschrijf in gewone taal uw organisatie, uw project en uw financieringsbehoefte. Subsidie Kompas stelt vervolgens de vragen die een ervaren fondsenwerver ook zou stellen: doelgroep, beoogd resultaat, looptijd, samenwerking en de dekking die u al heeft.',
-  },
-  {
-    n: '02',
-    titel: 'Onderzoeken',
-    tag: 'PREMIUM',
-    tekst:
-      'Subsidie Kompas zoekt in actuele online bronnen en met Premium ook in de exclusieve fondsendatabase. Daarin zitten ook private fondsen en regelingen die online moeilijk vindbaar zijn of hun voorwaarden nergens volledig publiceren.',
-  },
-  {
-    n: '03',
-    titel: 'Adviseren',
-    tekst:
-      'U krijgt zicht op de kansrijkheid van uw project: welke fondsen passen bij uw thema, regio en omvang, welk bedrag realistisch is om te vragen en waar uw verhaal nog onderbouwing mist.',
-  },
-  {
-    n: '04',
-    titel: 'Plannen',
-    tekst:
-      'Een concreet actieplan: welke fondsen in welke volgorde, met voorwaarden, aan te vragen bedragen en deadlines. Doorlopende regelingen en aankomende openingsrondes staan er direct bij, zodat uw dekkingsplan sluit.',
-  },
-  {
-    n: '05',
-    titel: 'Aanvragen',
-    tekst:
-      'Begeleiding bij een sterke aanvraag: positionering, projectplan, begroting en dekkingsplan, per fonds toegespitst op de criteria en geschreven in de toon van uw organisatie. Wat u indient en wat wordt toegekend blijft bewaard voor de volgende aanvraag.',
-  },
-];
+const VIDEO_BRON = '/uploads/subsidie-kompas-video.mp4';
+const VIDEO_POSTER = '/uploads/subsidie-kompas-video-poster.jpg';
+
+// Korte film van de werkplek: stil, in een lus, met een eigen pauzeknop. Bij "minder beweging" in het systeem start hij niet vanzelf.
+function WerkplekFilm() {
+  const ref = useRef(null);
+  const [speelt, setSpeelt] = useState(false);
+
+  useEffect(() => {
+    const v = ref.current;
+    const minderBeweging = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!v || minderBeweging) {
+      return undefined;
+    }
+
+    const p = v.play();
+
+    if (p && p.catch) {
+      p.catch(() => setSpeelt(false));
+    }
+
+    return undefined;
+  }, []);
+
+  const wissel = () => {
+    const v = ref.current;
+
+    if (!v) {
+      return;
+    }
+
+    if (v.paused) {
+      const p = v.play();
+
+      if (p && p.catch) {
+        p.catch(() => {});
+      }
+    } else {
+      v.pause();
+    }
+  };
+
+  return (
+    <div style={css('position: relative; border-radius: 18px; overflow: hidden; background: #F7F9F8; border: 1px solid #E4EBE7; box-shadow: 0 18px 44px rgba(44, 74, 94, 0.16); aspect-ratio: 16 / 9;')}>
+      <video
+        ref={ref}
+        src={VIDEO_BRON}
+        poster={VIDEO_POSTER}
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        aria-label="Korte film van de werkplek van Subsidie Kompas: fondsen vinden, dekkingsplan, deadlines en aanvraag toetsen"
+        onPlay={() => setSpeelt(true)}
+        onPause={() => setSpeelt(false)}
+        style={css('display: block; width: 100%; height: 100%; object-fit: cover;')}
+      />
+      <button
+        type="button"
+        onClick={wissel}
+        aria-label={speelt ? 'Film pauzeren' : 'Film afspelen'}
+        style={css(
+          "cursor: pointer; position: absolute; right: 12px; bottom: 12px; min-width: 44px; min-height: 44px; padding: 0 16px; border: none; border-radius: 999px; background: rgba(44, 74, 94, 0.88); color: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 700;",
+        )}
+      >
+        {speelt ? 'Pauze' : 'Afspelen'}
+      </button>
+    </div>
+  );
+}
+
+function Voorbeeld({ soort }) {
+  const kader = 'background: #F7F9F8; border: 1px solid #E4EBE7; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; font-size: 13px; color: #3D4B48;';
+
+  if (soort === 'fondsen') {
+    return (
+      <div style={css(kader)} aria-hidden="true">
+        {[
+          ['Landelijk cultuurfonds: Fotografie', 'tot € 25.000', 'Open'],
+          ['Gemeentelijk cultuurfonds', 'tot € 10.000', 'Doorlopend'],
+          ['Particulier cultuurfonds', 'tot € 5.000', 'Open'],
+        ].map(([naam, bedrag, status]) => (
+          <div key={naam} style={css('display: flex; align-items: center; justify-content: space-between; gap: 10px;')}>
+            <span style={css('font-weight: 700; color: #2C4A5E; min-width: 0;')}>{naam}</span>
+            <span style={css('display: flex; align-items: center; gap: 8px; flex-shrink: 0;')}>
+              <span style={css('color: #687974;')}>{bedrag}</span>
+              <span style={css('padding: 2px 9px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 11px; font-weight: 800;')}>{status}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (soort === 'dekking') {
+    return (
+      <div style={css(kader)} aria-hidden="true">
+        <div style={css('display: flex; justify-content: space-between; font-weight: 700; color: #2C4A5E;')}>
+          <span>Dekking van de begroting</span>
+          <span>€ 40.000</span>
+        </div>
+        <div style={css('display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: #E4EBE7;')}>
+          <div style={css('width: 35%; background: #4E9A6C;')} />
+          <div style={css('width: 50%; background: #A9C9DE;')} />
+        </div>
+        <div style={css('display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: #4B5C58;')}>
+          <span>€ 14.000 toegekend</span>
+          <span>€ 20.000 in aanvraag</span>
+          <span>€ 6.000 nog te dekken</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (soort === 'deadlines') {
+    return (
+      <div style={css(kader)} aria-hidden="true">
+        {[
+          ['Landelijk cultuurfonds: Fotografie', '25 dagen'],
+          ['Gemeentelijk cultuurfonds', '58 dagen'],
+        ].map(([naam, dagen]) => (
+          <div key={naam} style={css('display: flex; align-items: center; justify-content: space-between; gap: 10px;')}>
+            <span style={css('font-weight: 700; color: #2C4A5E; min-width: 0;')}>{naam}</span>
+            <span style={css('display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: #687974;')}>
+              {dagen}
+              <span style={css('width: 30px; height: 17px; border-radius: 999px; background: #4E9A6C; position: relative; display: inline-block;')}>
+                <span style={css('position: absolute; right: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #FFFFFF;')} />
+              </span>
+            </span>
+          </div>
+        ))}
+        <div style={css('font-size: 12px; color: #687974;')}>Herinnering per e-mail vóór de deadline</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={css(kader)} aria-hidden="true">
+      {[
+        ['✓', '#4E9A6C', 'Heldere doelstelling en doelgroep'],
+        ['✓', '#4E9A6C', 'Begroting sluit en is onderbouwd'],
+        ['!', '#C98A2B', 'Maak de impact meetbaar met concrete indicatoren'],
+      ].map(([teken, kleur, tekst]) => (
+        <div key={tekst} style={css('display: flex; gap: 9px; align-items: flex-start;')}>
+          <span style={css(`flex-shrink: 0; width: 17px; height: 17px; border-radius: 50%; background: ${kleur}; color: #FFFFFF; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center;`)}>
+            {teken}
+          </span>
+          <span>{tekst}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function HoeHetWerktPage() {
   const app = useApp();
   const tier = app.subscriptionTier || 'free';
-  const STAPPEN = useStappen() || STAPPEN_STANDAARD;
-  // Looptijd voor de prijsweergave: een eerder bewaarde keuze, anders de standaard. Alleen weergave.
-  const [looptijd, setLooptijd] = useState(() => leesLooptijd() || STANDAARD_LOOPTIJD);
+  // Looptijd voor de prijsweergave: de pagina begint altijd op maandelijks. Alleen weergave.
+  const [looptijd, setLooptijd] = useState(STANDAARD_LOOPTIJD);
   const kiesLooptijd = (code) => {
     setLooptijd(code);
     bewaarLooptijd(code);
@@ -143,196 +258,111 @@ export default function HoeHetWerktPage() {
     naar(abonnerenHash(code, looptijd));
   };
 
+  const naarAbonnementen = () => {
+    const el = typeof document !== 'undefined' ? document.getElementById('abonnementen') : null;
+
+    if (el && el.scrollIntoView) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <div style={css('min-height: 100vh; background: #F7F9F8;')}>
       <KompasSubnav actief="werkt" toonPlan />
 
-      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(40px, 6vw, 66px) clamp(16px, 4vw, 24px) clamp(26px, 3.4vw, 38px);')}>
-        <h1 style={css("margin: 0 0 18px; font-family: 'Newsreader', serif; font-size: clamp(30px, 5vw, 46px); font-weight: 600; color: #2C4A5E; line-height: 1.15; max-width: 820px; text-wrap: balance;")}>
-          Uw subsidieadviseur en fondsenwerver in één
+      {/* HERO */}
+      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(40px, 6vw, 72px) clamp(16px, 4vw, 24px) clamp(34px, 4.6vw, 56px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: clamp(28px, 4vw, 56px); align-items: center;')}>
+        <div>
+        <div style={css('display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 13px; font-weight: 700; margin-bottom: 20px;')}>
+          <img src="/uploads/kompas-logo.png" alt="" style={css('width: 26px; height: 26px; border-radius: 50%; object-fit: contain; display: block;')} />
+          Subsidie Kompas
+        </div>
+
+        <h1 style={css("margin: 0 0 18px; font-family: 'Newsreader', serif; font-size: clamp(32px, 5.4vw, 52px); font-weight: 600; color: #2C4A5E; line-height: 1.12; max-width: 640px; text-wrap: balance;")}>
+          Sneller werken, scherper aanvragen, meer impact maken.
         </h1>
 
-        <p style={css("margin: 0 0 20px; font-family: 'Newsreader', serif; font-size: clamp(19px, 2.3vw, 24px); font-weight: 500; line-height: 1.45; color: #4E9A6C; max-width: 660px;")}>
-          Sneller werken, scherper aanvragen, meer impact maken.
+        <p style={css('margin: 0 0 28px; font-size: 17.5px; line-height: 1.65; color: #4B5C58; max-width: 620px;')}>
+          Subsidie Kompas is uw werkplek voor fondsenwerving: passende fondsen vinden, een dekkingsplan opstellen, deadlines bewaken en uw aanvraag schrijven en toetsen.
         </p>
 
-        <p style={css('margin: 0 0 30px; font-size: 18px; line-height: 1.65; color: #4B5C58; max-width: 660px;')}>
-          Subsidie Kompas verkort de weg van eerste idee naar ingediende aanvraag.
-        </p>
+        <div style={css('display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 34px;')}>
+          <a href="#/subsidie-kompas" style={css('display: inline-block; padding: 15px 30px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px;')}>
+            Probeer Subsidie Kompas →
+          </a>
+          <button
+            type="button"
+            onClick={naarAbonnementen}
+            style={css("cursor: pointer; padding: 14px 28px; border: 1px solid #C9D8D0; background: #FFFFFF; color: #2C4A5E; border-radius: 999px; font-family: 'Mulish', sans-serif; font-weight: 700; font-size: 16px;")}
+          >
+            Bekijk de abonnementen
+          </button>
+        </div>
 
         <div style={css('display: flex; flex-wrap: wrap; gap: 12px 34px;')}>
           <div>
             <div style={css("font-family: 'Newsreader', serif; font-size: 26px; font-weight: 600; color: #2C4A5E; line-height: 1.1;")}>
               <FundingDatabaseCount />
             </div>
-            <div style={css('margin-top: 3px; font-size: 13px; font-weight: 700; color: #687974;')}>
-              fondsen en regelingen
-            </div>
+            <div style={css('margin-top: 3px; font-size: 13px; font-weight: 700; color: #687974;')}>fondsen en regelingen</div>
           </div>
           <div>
-            <div style={css("font-family: 'Newsreader', serif; font-size: 26px; font-weight: 600; color: #2C4A5E; line-height: 1.1;")}>
-              Dagelijks
-            </div>
-            <div style={css('margin-top: 3px; font-size: 13px; font-weight: 700; color: #687974;')}>
-              actuele deadlines
-            </div>
+            <div style={css("font-family: 'Newsreader', serif; font-size: 26px; font-weight: 600; color: #2C4A5E; line-height: 1.1;")}>Dagelijks</div>
+            <div style={css('margin-top: 3px; font-size: 13px; font-weight: 700; color: #687974;')}>actuele deadlines</div>
           </div>
         </div>
-      </div>
-
-      <div style={css('background: #2C4A5E; margin-top: clamp(28px, 4vw, 46px); padding: clamp(38px, 5.4vw, 74px) 0;')}>
-        <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: clamp(28px, 4vw, 52px); align-items: center;')}>
-          <div>
-            <div style={css('display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #FFFFFF; font-size: 13px; font-weight: 700; margin-bottom: 18px;')}>
-              <img
-                src="/uploads/kompas-logo.png"
-                alt="Subsidie Kompas"
-                style={css('width: 26px; height: 26px; border-radius: 50%; object-fit: contain; display: block;')}
-              />
-              Subsidie Kompas
-            </div>
-
-            <div style={css("margin-bottom: 26px; font-family: 'Newsreader', serif; font-size: clamp(26px, 3.4vw, 34px); font-weight: 600; color: #FFFFFF; line-height: 1.2;")}>
-              Wat Subsidie Kompas voor u doet
-            </div>
-
-            <div style={css('display: flex; flex-direction: column; gap: 15px; margin-bottom: 32px;')}>
-              {WAT_HET_DOET.map((t) => (
-                <div key={t} style={css('display: flex; gap: 13px; align-items: flex-start;')}>
-                  <div style={css('width: 7px; height: 7px; border-radius: 50%; background: #A8D5BA; margin-top: 8px; flex-shrink: 0;')} />
-                  <div style={css('font-size: 15.5px; line-height: 1.5; color: #EAF1F5; font-weight: 600;')}>{t}</div>
-                </div>
-              ))}
-            </div>
-
-            <a
-              href="#/subsidie-kompas"
-              style={css('display: inline-block; padding: 15px 30px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px;')}
-            >
-              Probeer Subsidie Kompas →
-            </a>
-          </div>
-
-          <div style={css('background: #F7F9F8; border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 12px;')}>
-            <div style={css('display: flex; align-items: center; gap: 10px; padding: 0 4px;')}>
-              <img
-                src="/uploads/kompas-logo.png"
-                alt="Subsidie Kompas"
-                style={css('width: 32px; height: 32px; border-radius: 50%; object-fit: contain; flex-shrink: 0; display: block;')}
-              />
-              <div style={css('font-weight: 700; color: #2C4A5E; font-size: 14.5px;')}>Subsidie Kompas</div>
-              <div style={css('width: 7px; height: 7px; border-radius: 50%; background: #4E9A6C; margin-left: 2px;')} />
-              <div style={css('font-size: 12.5px; color: #4B5C58;')}>online</div>
-            </div>
-            <div style={css('align-self: flex-end; max-width: 88%; background: #2C4A5E; color: #FFFFFF; padding: 12px 16px; border-radius: 16px 16px 4px 16px; font-size: 14.5px; line-height: 1.5;')}>
-              Theaterprogramma over de Tweede Wereldoorlog, 12 tot 16 jaar, Gelderland. Budget €80.000.
-            </div>
-            <div style={css('align-self: flex-start; max-width: 92%; background: #FFFFFF; border: 1px solid #E4EBE7; color: #2E3A38; padding: 12px 16px; border-radius: 16px 16px 16px 4px; font-size: 14.5px; line-height: 1.55;')}>
-              Kansrijk: educatie én herinneringscultuur. Is de samenwerking met scholen al vastgelegd?
-            </div>
-          </div>
         </div>
+
+        <WerkplekFilm />
       </div>
 
-      <div style={css('background: #FFFFFF; border-top: 1px solid #E9EFEB; border-bottom: 1px solid #E9EFEB; padding: clamp(44px, 6vw, 84px) 0;')}>
+      {/* VIER STAPPEN */}
+      <div style={css('background: #FFFFFF; border-top: 1px solid #E9EFEB; border-bottom: 1px solid #E9EFEB; padding: clamp(40px, 5.6vw, 76px) 0;')}>
         <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px);')}>
-          <div style={css('margin-bottom: clamp(30px, 3.6vw, 46px); max-width: 680px;')}>
-            <div style={css('margin-bottom: 14px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.12em; color: #4E9A6C;')}>
-              ZO WERKT HET
-            </div>
-            <div style={css("font-family: 'Newsreader', serif; font-size: clamp(27px, 4.2vw, 38px); font-weight: 600; color: #2C4A5E; line-height: 1.15; text-wrap: balance;")}>
-              Van eerste vraag naar ingediende aanvraag, in vijf stappen
+          <div style={css('margin-bottom: clamp(24px, 3vw, 38px); max-width: 720px;')}>
+            <div style={css('margin-bottom: 12px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.12em; color: #4E9A6C;')}>ZO WERKT HET</div>
+            <div style={css("font-family: 'Newsreader', serif; font-size: clamp(26px, 4vw, 36px); font-weight: 600; color: #2C4A5E; line-height: 1.18; text-wrap: balance;")}>
+              Subsidie Kompas: uw subsidieadviseur en fondsenwervingsexpert
             </div>
           </div>
 
-          {STAPPEN.map((s, i) => {
-            const laatste = i === STAPPEN.length - 1;
-
-            return (
-              <div key={s.n} style={css('display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: clamp(16px, 2.2vw, 30px); align-items: start;')}>
-                <div style={css('display: flex; flex-direction: column; align-items: center; align-self: stretch;')}>
-                  <div style={css("width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; background: #EAF1F6; display: flex; align-items: center; justify-content: center; font-family: 'Newsreader', serif; font-size: 20px; font-weight: 600; color: #2C4A5E;")}>
+          <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 18px;')}>
+            {STAPPEN.map((s) => (
+              <div key={s.n} style={css('background: #FFFFFF; border: 1px solid #E4EBE7; border-radius: 20px; padding: clamp(20px, 2.4vw, 26px); display: flex; flex-direction: column; gap: 14px;')}>
+                <div style={css('display: flex; align-items: center; gap: 12px;')}>
+                  <span style={css("width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: #EAF1F6; display: flex; align-items: center; justify-content: center; font-family: 'Newsreader', serif; font-size: 17px; font-weight: 600; color: #2C4A5E;")}>
                     {s.n}
-                  </div>
-                  {!laatste && <div style={css('flex: 1 1 auto; width: 1px; min-height: 40px; background: #DDE7E2;')} />}
+                  </span>
+                  <span style={css("font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E; line-height: 1.25;")}>{s.titel}</span>
                 </div>
-
-                <div style={css(`padding-bottom: ${laatste ? '0' : '34px'};`)}>
-                  <div style={css('margin-bottom: 9px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;')}>
-                    <span style={css("font-family: 'Newsreader', serif; font-size: clamp(22px, 2.5vw, 27px); font-weight: 600; color: #2C4A5E; line-height: 1.25;")}>
-                      {s.titel}
-                    </span>
-                    {s.tag && (
-                      <span style={css('padding: 4px 12px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 11px; font-weight: 800; letter-spacing: 0.06em;')}>
-                        {s.tag}
-                      </span>
-                    )}
-                  </div>
-                  <div style={css('font-size: 16.5px; line-height: 1.72; color: #4B5C58; max-width: 660px; text-wrap: pretty;')}>
-                    {s.tekst}
-                  </div>
-                </div>
+                <div style={css('font-size: 15.5px; line-height: 1.65; color: #4B5C58;')}>{s.tekst}</div>
+                <Voorbeeld soort={s.voorbeeld} />
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={css('background: #EAF4EE; border-bottom: 1px solid #D5E6DB; padding: clamp(40px, 5.6vw, 78px) 0;')}>
-        <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: clamp(28px, 4vw, 56px); align-items: center;')}>
-          <div>
-            <div style={css('font-size: 12.5px; font-weight: 800; color: #4E9A6C; letter-spacing: 0.09em; margin-bottom: 14px;')}>
-              PREMIUM
-            </div>
-            <div style={css("font-family: 'Newsreader', serif; font-size: clamp(24px, 3.2vw, 32px); font-weight: 600; color: #2C4A5E; line-height: 1.18;")}>
-              Meer kennis. Betere matches. Sterkere aanvragen.
-            </div>
-          </div>
-
-          <div style={css('display: flex; flex-direction: column; gap: 20px;')}>
-            <p style={css('margin: 0; font-size: 16px; line-height: 1.65; color: #4B5C58;')}>
-              Premium doorzoekt naast actuele online informatie een exclusieve database met meer dan{' '}
-              <FundingDatabaseCount /> fondsen en subsidieregelingen, waaronder private vermogensfondsen die online
-              nauwelijks vindbaar zijn.
-            </p>
-            <p style={css('margin: 0; font-size: 16px; line-height: 1.65; color: #4B5C58;')}>
-              Dat levert completere matches en financieringskansen die een zoekmachine mist.
-            </p>
-            <p style={css('margin: 0; font-size: 16px; line-height: 1.65; color: #4B5C58;')}>
-              Uw organisatieprofiel, documenten en eerdere gesprekken komen daarbij: een AI-fondsenwerver die uw
-              organisatie en schrijfstijl kent.
-            </p>
+            ))}
           </div>
         </div>
       </div>
 
       {/* ABONNEMENTEN */}
-      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(44px, 6vw, 84px) clamp(16px, 4vw, 24px) 0; text-align: center;')}>
-        <div style={css("font-family: 'Newsreader', serif; font-size: clamp(30px, 4.6vw, 42px); font-weight: 600; color: #2C4A5E; line-height: 1.15; max-width: 620px; margin: 0 auto 18px;")}>
-          Kies het abonnement dat bij u past
-        </div>
-        <div style={css('font-size: 16.5px; line-height: 1.6; color: #4B5C58; max-width: 660px; margin: 0 auto;')}>
-          Start gratis, genereer met Pro professionele documenten of maak van Subsidie Kompas met Premium uw
-          persoonlijke AI-fondsenwerver.
+      <div id="abonnementen" style={css('max-width: 1180px; margin: 0 auto; padding: clamp(44px, 6vw, 80px) clamp(16px, 4vw, 24px) 0; text-align: center; scroll-margin-top: 16px;')}>
+        <div style={css("font-family: 'Newsreader', serif; font-size: clamp(28px, 4.4vw, 40px); font-weight: 600; color: #2C4A5E; line-height: 1.15; max-width: 620px; margin: 0 auto;")}>
+          Subsidie Kompas als uw rechterhand
         </div>
       </div>
 
-      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(24px, 3vw, 34px) clamp(16px, 4vw, 24px) 0; text-align: center;')}>
+      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(22px, 3vw, 30px) clamp(16px, 4vw, 24px) 0; text-align: center;')}>
         <LooptijdSchakelaar waarde={looptijd} onChange={kiesLooptijd} />
-        <div style={css('max-width: 640px; margin: 14px auto 0; font-size: 14px; line-height: 1.6; color: #4B5C58;')}>
-          Vooruit betalen geeft korting (tot {maxBesparingPercentage('JAAR')}% bij een jaar). Na de gekozen periode loopt uw
-          abonnement automatisch door voor de maandprijs, per maand opzegbaar.
-        </div>
       </div>
 
       <div
         style={css(
-          'max-width: 1180px; margin: 0 auto; padding: clamp(30px, 4vw, 46px) clamp(16px, 4vw, 24px) clamp(48px, 7vw, 90px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 18px; align-items: stretch;',
+          'max-width: 1180px; margin: 0 auto; padding: clamp(28px, 3.6vw, 40px) clamp(16px, 4vw, 24px) clamp(44px, 6vw, 80px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 18px; align-items: stretch;',
         )}
       >
         {PLANNEN.map((plan) => {
           const huidig = tier === plan.tier;
-          const prijs = plan.tier === 'free' ? null : prijsInfo(plan.tier, looptijd);
+          const enterprise = plan.tier === 'enterprise';
+          const prijs = plan.tier === 'free' || enterprise ? null : prijsInfo(plan.tier, looptijd);
           const vooruit = Boolean(prijs && prijs.vooruit);
           const ctaTekst = !plan.ctaTekst || !prijs ? plan.ctaTekst : prijs.vooruit ? `Kies ${plan.naam} ${LOOPTIJD_INFO[looptijd].periode}` : plan.ctaTekst;
 
@@ -347,6 +377,7 @@ export default function HoeHetWerktPage() {
                 padding: clamp(22px, 2.6vw, 28px);
                 display: flex;
                 flex-direction: column;
+                text-align: left;
               `)}
             >
               {plan.uitgelicht && (
@@ -355,19 +386,18 @@ export default function HoeHetWerktPage() {
                     'position: absolute; top: -14px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 999px; background: #4E9A6C; color: #FFFFFF; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; white-space: nowrap;',
                   )}
                 >
-                  MEEST GEKOZEN
+                  MEEST UITGEBREID
                 </div>
               )}
 
-              <div style={css('align-self: flex-start; height: 27px; margin-bottom: 14px; margin-top: 6px;')} aria-hidden="true" />
               <div style={css('font-size: 15px; font-weight: 800; color: #4E9A6C; margin-bottom: 10px;')}>{plan.naam}</div>
-              <div style={css('display: flex; align-items: baseline; gap: 8px; margin-bottom: 14px;')}>
-                <span style={css("font-family: 'Newsreader', serif; font-size: 46px; font-weight: 600; color: #2C4A5E; line-height: 1;")}>
-                  {prijs ? prijs.perMaand : plan.prijs}
+              <div style={css('display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; min-height: 48px;')}>
+                <span style={css(`font-family: 'Newsreader', serif; font-size: ${enterprise ? '30px' : '46px'}; font-weight: 600; color: #2C4A5E; line-height: 1;`)}>
+                  {enterprise ? plan.prijsTekst : prijs ? prijs.perMaand : plan.prijs}
                 </span>
-                <span style={css('font-size: 14px; color: #6B7B77;')}>{plan.tier === 'free' ? 'per maand' : 'per maand excl. btw'}</span>
+                {!enterprise && <span style={css('font-size: 14px; color: #6B7B77;')}>per maand</span>}
               </div>
-              <div style={css('min-height: 42px; font-size: 13.5px; line-height: 1.5; color: #4B5C58; margin-bottom: 8px;')} data-testid={`prijsregel-${plan.tier}`}>
+              <div style={css('min-height: 42px; font-size: 13.5px; line-height: 1.5; color: #4B5C58; margin-bottom: 6px;')} data-testid={`prijsregel-${plan.tier}`}>
                 {vooruit ? (
                   <>
                     {prijs.totaal} {prijs.periode} vooruit betaald
@@ -377,21 +407,28 @@ export default function HoeHetWerktPage() {
                   </>
                 ) : null}
               </div>
-              <div style={css('min-height: 22px; font-size: 14px; font-weight: 800; color: #4E9A6C; margin-bottom: 16px;')}>
-                {huidig || vooruit ? '' : plan.proefperiode}
+              <div style={css('min-height: 22px; font-size: 14px; font-weight: 800; color: #4E9A6C; margin-bottom: 12px;')}>
+                {huidig || vooruit || enterprise ? '' : plan.proefperiode}
               </div>
-              <div style={css('min-height: 48px; font-size: 15px; line-height: 1.6; color: #4B5C58; margin-bottom: 26px;')}>
-                {plan.omschrijving}
-              </div>
+              <div style={css('min-height: 48px; font-size: 15px; line-height: 1.6; color: #4B5C58; margin-bottom: 22px;')}>{plan.omschrijving}</div>
 
               {huidig ? (
                 <div
                   style={css(
-                    'box-sizing: border-box; min-height: 56px; margin-bottom: 26px; padding: 16px 20px; border-radius: 14px; background: #EEF3F6; color: #2C4A5E; font-size: 15px; font-weight: 800; text-align: center; display: flex; align-items: center; justify-content: center;',
+                    'box-sizing: border-box; min-height: 56px; margin-bottom: 24px; padding: 16px 20px; border-radius: 14px; background: #EEF3F6; color: #2C4A5E; font-size: 15px; font-weight: 800; text-align: center; display: flex; align-items: center; justify-content: center;',
                   )}
                 >
                   Huidig abonnement
                 </div>
+              ) : enterprise ? (
+                <a
+                  href={ENTERPRISE_MAIL}
+                  style={css(
+                    "box-sizing: border-box; min-height: 56px; margin-bottom: 24px; padding: 16px 20px; border: 1.5px solid #2C4A5E; border-radius: 14px; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 15px; font-weight: 800; text-align: center; display: flex; align-items: center; justify-content: center;",
+                  )}
+                >
+                  {plan.ctaTekst}
+                </a>
               ) : ctaTekst ? (
                 <button
                   type="button"
@@ -400,7 +437,7 @@ export default function HoeHetWerktPage() {
                     cursor: pointer;
                     box-sizing: border-box;
                     min-height: 56px;
-                    margin-bottom: 26px;
+                    margin-bottom: 24px;
                     padding: 16px 20px;
                     border: none;
                     border-radius: 14px;
@@ -415,22 +452,17 @@ export default function HoeHetWerktPage() {
                   {ctaTekst}
                 </button>
               ) : (
-                <div style={css('box-sizing: border-box; min-height: 56px; margin-bottom: 26px;')} aria-hidden="true" />
+                <div style={css('box-sizing: border-box; min-height: 56px; margin-bottom: 24px;')} aria-hidden="true" />
               )}
 
-              <div style={css('font-size: 12.5px; font-weight: 800; color: #2C4A5E; letter-spacing: 0.06em; margin-bottom: 16px;')}>
-                INBEGREPEN
-              </div>
-              <div style={css('display: flex; flex-direction: column; gap: 9px;')}>
-                {plan.features.map((f, i) => (
-                  <div key={i} style={css('display: flex; gap: 10px; align-items: flex-start;')}>
-                    <span style={css('flex-shrink: 0; width: 15px; color: #4E9A6C; font-size: 13px; font-weight: 700; line-height: 1.6;')}>
-                      ✓
-                    </span>
+              <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
+                {plan.features.map((f) => (
+                  <div key={f} style={css('display: flex; gap: 10px; align-items: flex-start;')}>
+                    <span style={css('flex-shrink: 0; width: 15px; color: #4E9A6C; font-size: 13px; font-weight: 700; line-height: 1.6;')}>✓</span>
                     <span style={css('font-size: 14px; line-height: 1.6; color: #3D4B48;')}>
                       {f === 'fondsendatabase' ? (
                         <>
-                          Uitgebreide exclusieve fondsendatabase met <FundingDatabaseCount /> fondsen en regelingen
+                          Toegang tot de volledige Premium-database met <FundingDatabaseCount /> fondsen en regelingen, waaronder fondsen die elders moeilijk te vinden zijn
                         </>
                       ) : (
                         f
@@ -444,30 +476,18 @@ export default function HoeHetWerktPage() {
         })}
       </div>
 
-      <div style={css('background: #2C4A5E; padding: clamp(36px, 5vw, 66px) 0;')}>
-        <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px); display: flex; align-items: center; justify-content: space-between; gap: 26px; flex-wrap: wrap;')}>
-          <div style={css('flex: 1 1 320px; min-width: 0;')}>
-            <div style={css("margin-bottom: 10px; font-family: 'Newsreader', serif; font-size: clamp(24px, 3.2vw, 32px); font-weight: 600; color: #FFFFFF; line-height: 1.2; text-wrap: balance;")}>
-              Begin vandaag met uw eerstvolgende aanvraag
-            </div>
-            <div style={css('font-size: 16px; line-height: 1.6; color: #C9DAE4; max-width: 520px;')}>
-              Gratis starten, Premium 24 uur uitproberen. Uw organisatieprofiel blijft bewaard.
-            </div>
+      <div style={css('background: #2C4A5E; padding: clamp(32px, 4.6vw, 56px) 0;')}>
+        <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px); display: flex; align-items: center; justify-content: space-between; gap: 22px; flex-wrap: wrap;')}>
+          <div style={css("flex: 1 1 320px; min-width: 0; font-family: 'Newsreader', serif; font-size: clamp(22px, 3vw, 30px); font-weight: 600; color: #FFFFFF; line-height: 1.25; text-wrap: balance;")}>
+            Begin vandaag met meer vertrouwen en meer impact.
           </div>
 
           <div style={css('display: flex; gap: 12px; flex-wrap: wrap;')}>
-            <button
-              type="button"
-              onClick={app.goAbonnementen}
-              style={css("cursor: pointer; padding: 15px 30px; border: none; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-family: 'Mulish', sans-serif; font-weight: 700; font-size: 16px; white-space: nowrap;")}
-            >
-              Bekijk de abonnementen
-            </button>
-            <a
-              href="#/kompas/deadlines"
-              style={css('padding: 15px 28px; border: 1px solid rgba(255,255,255,0.4); color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px; white-space: nowrap;')}
-            >
-              Bekijk actuele deadlines
+            <a href="#/subsidie-kompas" style={css('padding: 15px 30px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px; white-space: nowrap;')}>
+              Gratis starten
+            </a>
+            <a href="#/kompas/faq" style={css('padding: 15px 28px; border: 1px solid rgba(255,255,255,0.4); color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px; white-space: nowrap;')}>
+              Veelgestelde vragen
             </a>
           </div>
         </div>

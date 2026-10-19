@@ -181,7 +181,7 @@ export function AbonnerenBevestiging({ intentie, aanbod, looptijd = BASIS_LOOPTI
   const prijsblok = vooruit ? (
     <div style={PRIJSBLOK}>
       <div style={PRIJS_GROOT}>{p.totaal} nu betalen</div>
-      <div style={PRIJS_KLEIN}>voor {p.duur} ({p.perMaand} per maand, excl. btw)</div>
+      <div style={PRIJS_KLEIN}>voor {p.duur} ({p.perMaand} per maand)</div>
       <div style={css('margin-top: 6px; font-size: 15px; color: #4B5C58;')}>
         U bespaart {p.besparing} ten opzichte van maandelijks betalen. Daarna {p.maandPrijs} per maand.
       </div>
@@ -198,57 +198,18 @@ export function AbonnerenBevestiging({ intentie, aanbod, looptijd = BASIS_LOOPTI
     </div>
   );
 
-  const kop = vooruit ? (
-    <>
-      <h1 style={KOP}>{info.naam} — {p.label.toLowerCase()}</h1>
-      <p style={TEKST}>{p.totaal} voor {p.duur}, daarna {p.maandPrijs} per maand.</p>
-    </>
-  ) : metTrial ? (
-    <>
-      <h1 style={KOP}>{info.naam}</h1>
-      <p style={TEKST}>{info.proefDuur} gratis, daarna {info.prijsTekst}.</p>
-    </>
-  ) : (
-    <>
-      <h1 style={KOP}>{info.naam} — {info.prijsTekst}</h1>
-      <p style={TEKST}>Uw gratis proefperiode is al gebruikt.</p>
-    </>
+  const kop = (
+    <h1 style={KOP}>{vooruit ? `${info.naam} — ${p.label.toLowerCase()}` : info.naam}</h1>
   );
 
-  const punten = vooruit ? (
+  // Wat u krijgt: uit data/abonnementen.js (zelfde lijst als op de abonnementenpagina).
+  const punten = (
     <Punten
-      items={[
-        `${p.totaal} excl. btw, in één keer betaald voor ${p.duur} (${p.perMaand} per maand). Een betaalmethode is vereist.`,
-        `U bespaart ${p.besparing} ten opzichte van maandelijks betalen.`,
-        `Daarna loopt uw abonnement automatisch door voor ${p.maandPrijs} per maand excl. btw, totdat u opzegt.`,
-        'Een gratis proefperiode is er alleen bij maandelijks betalen.',
-        'Opzeggen kan altijd. U houdt toegang tot het einde van de betaalde periode; daarna valt uw account terug op Free.',
-      ]}
-    />
-  ) : metTrial ? (
-    <Punten
-      items={[
-        `${info.proefDuur} gratis. Een betaalmethode is vereist om te starten.`,
-        `Daarna ${info.prijsTekst}, automatisch maandelijks verlengd totdat u opzegt.`,
-        'Opzeggen tijdens de proefperiode voorkomt de eerste betaling. U houdt toegang tot het einde van de proefperiode; daarna valt uw account terug op Free.',
-        'Elk account heeft één gratis proefperiode.',
-      ]}
-    />
-  ) : (
-    <Punten
-      items={[
-        `${info.prijsTekst}. Een betaalmethode is vereist om te starten.`,
-        'Automatisch maandelijks verlengd totdat u opzegt.',
-        'Opzeggen kan altijd. U houdt toegang tot het einde van de betaalde periode; daarna valt uw account terug op Free.',
-      ]}
+      items={info.kenmerken.map((k) => (k === 'fondsendatabase' ? 'Toegang tot de volledige Premium-database, waaronder fondsen die elders moeilijk te vinden zijn' : k))}
     />
   );
 
-  const akkoordTekst = vooruit
-    ? <>Ik ga akkoord met de {voorwaardenLinks} en begrijp dat ik nu {p.totaal} betaal voor {p.duur} en dat mijn abonnement daarna automatisch doorloopt voor {p.maandPrijs} per maand totdat ik opzeg.</>
-    : metTrial
-    ? <>Ik ga akkoord met de {voorwaardenLinks} en begrijp dat mijn gratis proefperiode daarna automatisch overgaat in een betaald abonnement totdat ik opzeg.</>
-    : <>Ik ga akkoord met de {voorwaardenLinks} en begrijp dat mijn abonnement maandelijks automatisch wordt verlengd totdat ik opzeg.</>;
+  const akkoordTekst = <>Ik ga akkoord met de {voorwaardenLinks}. Het abonnement wordt automatisch verlengd totdat ik opzeg.</>;
 
   const samenvatting = (
     <>

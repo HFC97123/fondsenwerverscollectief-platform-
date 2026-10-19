@@ -215,7 +215,7 @@ await scenario('I checkout=cancelled', async (page, c) => {
   await page.goto(ORIGIN + '/#/kompas/abonneren?intent=PREMIUM&checkout=cancelled'); await page.waitForLoadState('networkidle'); await sleep(600);
   const t = await page.locator('body').innerText();
   ok(t.includes('De betaling is niet afgerond. Er is niets in rekening gebracht en er is niets geactiveerd.'), 'melding bij annuleren');
-  ok(t.includes('24 uur gratis') && t.includes('€75 per maand excl. btw'), 'bevestigingsflow voor PREMIUM blijft bereikbaar');
+  ok(t.includes('24 uur gratis') && t.includes('€75 per maand'), 'bevestigingsflow voor PREMIUM blijft bereikbaar');
   ok(c.fn.length === 0, 'terugkeer start geen nieuwe checkout');
 });
 await scenario('J checkout=success geeft geen rechten', async (page, c) => {

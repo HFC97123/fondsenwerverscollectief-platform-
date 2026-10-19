@@ -604,7 +604,7 @@ huidig = 'N looptijden';
   ok(ab.prijsPerMaandCent('free', 'MAAND') === null && ab.prijsPerMaandCent('pro', 'WEEK') === null && ab.prijsInfo('pro', 'x') === null, 'onbekende tier of looptijd = null');
   ok(ab.formatEuro(4000) === '€40' && ab.formatEuro(3250) === '€32,50', 'formatEuro: hele euro zonder decimalen, anders komma');
   ok(ab.proefMogelijk('MAAND') === true && ['KWARTAAL', 'HALFJAAR', 'JAAR'].every((l) => ab.proefMogelijk(l) === false), 'proef alleen bij maand');
-  ok(ab.ABONNEMENTEN.pro.prijsTekst === '€40 per maand excl. btw' && ab.ABONNEMENTEN.premium.prijsTekst === '€75 per maand excl. btw', 'maandprijzen €40 / €75 excl. btw');
+  ok(ab.ABONNEMENTEN.pro.prijsTekst === '€40 per maand' && ab.ABONNEMENTEN.premium.prijsTekst === '€75 per maand', 'maandprijzen €40 / €75');
 
   // N2. Pro per kwartaal: meteen betalen, geen proef, juiste tekst en juiste body
   opnieuw(GOED);
@@ -614,7 +614,7 @@ huidig = 'N looptijden';
     ok(t.includes('€105 nu betalen') && t.includes('3 maanden') && t.includes('€35 per maand') && t.includes('Daarna €40 per maand'), 'kwartaal: €105 nu, 3 maanden, daarna €40 per maand');
     ok(t.includes('U bespaart €15'), 'kwartaal: besparing €15 genoemd');
     ok(!t.includes('7 dagen gratis'), 'kwartaal: GEEN gratis proefperiode');
-    ok(t.includes('excl. btw') && !/\bbtw\b[^.]*\d+%/.test(t), 'excl. btw genoemd, geen btw-berekening');
+    ok(!/\bbtw\b[^.]*\d+%/.test(t), 'geen btw-berekening in de app');
   }
   await vink();
   await klik(knop('Doorgaan naar betalen'));
@@ -634,9 +634,9 @@ huidig = 'N looptijden';
   // N4. maand blijft zoals voorheen (met proef) en vooruit negeert een trial-aanbod
   opnieuw(GOED);
   await render(React.createElement(AbonnerenBevestiging, { intentie: 'PREMIUM', looptijd: 'MAAND' }));
-  ok(tekst().includes('24 uur gratis') && tekst().includes('€75 per maand excl. btw'), 'maand: proef en maandprijs zoals voorheen');
+  ok(tekst().includes('24 uur gratis') && tekst().includes('€75 per maand'), 'maand: proef en maandprijs zoals voorheen');
   await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'MAAND', aanbod: { trialBeschikbaar: false } }));
-  ok(tekst().includes('Uw gratis proefperiode is al gebruikt') && tekst().includes('€40 per maand excl. btw'), 'maand zonder trialrecht: geen proef, €40');
+  ok(tekst().includes('Uw gratis proefperiode is al gebruikt') && tekst().includes('€40 per maand'), 'maand zonder trialrecht: geen proef, €40');
   await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO' }));
   ok(tekst().includes('7 dagen gratis'), 'zonder looptijd-prop: gewone maandkeuze (oude gedrag)');
 

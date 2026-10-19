@@ -9,7 +9,7 @@
 //  - Een gratis proefperiode bestaat alleen bij de maandkeuze.
 //
 // Spelregels:
-//  - prijzen staan altijd EXCLUSIEF btw en worden zo ook getoond. De app rekent
+//  - prijzen zijn altijd EXCLUSIEF btw (genoemd in de FAQ en bij het afrekenen); op de kaarten staat het niet apart. De app rekent
 //    NOOIT btw uit; dat doet Stripe bij het afrekenen;
 //  - dit bestand beslist nooit of iemand een proefperiode krijgt, betaald heeft
 //    of toegang heeft. Dat bepaalt de server (Stripe), niet de frontend;
@@ -20,18 +20,18 @@
 
 export const LOOPTIJDEN = ['MAAND', 'KWARTAAL', 'HALFJAAR', 'JAAR'];
 
-// Looptijd die de prijsvergelijking op de website standaard toont (meeste besparing).
-export const STANDAARD_LOOPTIJD = 'JAAR';
+// Looptijd waarmee de prijsvergelijking op de website altijd begint: de gewone maandprijs.
+export const STANDAARD_LOOPTIJD = 'MAAND';
 
 // Looptijd als er niets gekozen is op de abonneren-pagina (oude links, geen bewaarde keuze):
 // de gewone maandkeuze, zodat niemand onverwacht een groot bedrag vooruit ziet staan.
 export const BASIS_LOOPTIJD = 'MAAND';
 
 export const LOOPTIJD_INFO = {
-  MAAND: { code: 'MAAND', maanden: 1, label: 'Maandelijks', periode: 'per maand', duur: '1 maand' },
-  KWARTAAL: { code: 'KWARTAAL', maanden: 3, label: 'Per kwartaal', periode: 'per kwartaal', duur: '3 maanden' },
-  HALFJAAR: { code: 'HALFJAAR', maanden: 6, label: 'Per half jaar', periode: 'per half jaar', duur: '6 maanden' },
-  JAAR: { code: 'JAAR', maanden: 12, label: 'Per jaar', periode: 'per jaar', duur: '12 maanden' },
+  MAAND: { code: 'MAAND', maanden: 1, label: 'Maandelijks', kort: 'Maand', periode: 'per maand', duur: '1 maand' },
+  KWARTAAL: { code: 'KWARTAAL', maanden: 3, label: 'Per kwartaal', kort: 'Kwartaal', periode: 'per kwartaal', duur: '3 maanden' },
+  HALFJAAR: { code: 'HALFJAAR', maanden: 6, label: 'Per half jaar', kort: 'Half jaar', periode: 'per half jaar', duur: '6 maanden' },
+  JAAR: { code: 'JAAR', maanden: 12, label: 'Per jaar', kort: 'Jaar', periode: 'per jaar', duur: '12 maanden' },
 };
 
 // Prijs PER MAAND in centen, per tier en looptijd.
@@ -131,13 +131,26 @@ export const ABONNEMENTEN = {
   pro: {
     tier: 'pro',
     naam: 'Pro',
-    prijsTekst: `${formatEuro(maandPrijsCent('pro'))} per maand excl. btw`,
+    prijsTekst: `${formatEuro(maandPrijsCent('pro'))} per maand`,
     proefDuur: '7 dagen',
+    kenmerken: [
+      'AI-matching met passende fondsen en regelingen',
+      'Sluitende begroting, dekkingsplan en actieplan per project',
+      '1 projectplan genereren per maand',
+      '6 aanvragen beoordelen per maand',
+    ],
   },
   premium: {
     tier: 'premium',
     naam: 'Premium',
-    prijsTekst: `${formatEuro(maandPrijsCent('premium'))} per maand excl. btw`,
+    prijsTekst: `${formatEuro(maandPrijsCent('premium'))} per maand`,
     proefDuur: '24 uur',
+    // 'fondsendatabase' is een plaatshouder: de website zet hier het aantal fondsen in.
+    kenmerken: [
+      'Alles uit Pro',
+      'fondsendatabase',
+      '3 projectplannen genereren per maand',
+      '10 aanvragen beoordelen per maand',
+    ],
   },
 };
