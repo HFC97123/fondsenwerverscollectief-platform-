@@ -44,6 +44,27 @@ export interface BeoordelingConfig {
   netNietLijst: boolean;
 }
 
+// Aanvraag-assistent (aanvraag beoordelen en projectplan genereren). Alles wat per abonnement verschilt staat hier; de server beslist, de client toont alleen.
+// Deze grenzen zijn HARD (anders dan het observatiebudget hierboven): is de maand op, dan weigert de server de aanroep met een duidelijke melding.
+// Aantallen zijn startwaarden (Aisya, 19 oktober 2026) en worden na de eerste meting met de gebruiksmeter bijgesteld.
+export interface AanvraagAssistentConfig {
+  beoordelingenPerMaand: number;
+  plannenPerMaand: number;
+  // Eisenlijsten ophalen (website lezen en eisen halen) kost ook een modelaanroep; een ruime maandgrens voorkomt dat dit onbegrensd wordt herhaald.
+  eisenOphalenPerMaand: number;
+  // Bovengrenzen per aanroep, zodat de kosten van één beoordeling begrensd zijn.
+  maxEisen: number;
+  maxAanvraagTekens: number;
+  maxRichtlijnTekens: number;
+  // Uitbreidingen die nog NIET gebouwd zijn: blijven uit tot de onderdelen bestaan. De velden staan er al, zodat het verschil tussen Pro en Premium
+  // later alleen een instelling is.
+  rijkeEditor: boolean;
+  aiPaneel: boolean;
+  paneelActiesPerMaand: number;
+  dekkingsoverzicht: boolean;
+  commissieblik: boolean;
+}
+
 export interface TierConfig {
   tier: Tier;
   // Mag deze tier de dekkingsplan-flow gebruiken (het dashboard van Pro/Premium)? Free is een chatbot.
@@ -78,6 +99,8 @@ export interface TierConfig {
   beoordeling: BeoordelingConfig | null;
   // Intern observatiebudget per gebruiker per maand in euro. UITSLUITEND meten: nooit blokkeren, afremmen, melden of een paywall.
   maandBudgetObservatieEur: number | null;
+  // Null = geen aanvraag-assistent (Free).
+  aanvraagAssistent: AanvraagAssistentConfig | null;
 }
 
 const PRO: TierConfig = {
@@ -96,6 +119,19 @@ const PRO: TierConfig = {
   premiumHint: true,
   beoordeling: { maxKandidaten: 25, dekkingsdoelLijst: 1.0, maxFactorLijst: 1.2, netNietLijst: false },
   maandBudgetObservatieEur: 7,
+  aanvraagAssistent: {
+    beoordelingenPerMaand: 6,
+    plannenPerMaand: 1,
+    eisenOphalenPerMaand: 12,
+    maxEisen: 40,
+    maxAanvraagTekens: 60_000,
+    maxRichtlijnTekens: 40_000,
+    rijkeEditor: false,
+    aiPaneel: false,
+    paneelActiesPerMaand: 0,
+    dekkingsoverzicht: false,
+    commissieblik: false,
+  },
 };
 
 const PREMIUM: TierConfig = {
@@ -114,6 +150,21 @@ const PREMIUM: TierConfig = {
   premiumHint: false,
   beoordeling: { maxKandidaten: 40, dekkingsdoelLijst: 1.4, maxFactorLijst: 1.4, netNietLijst: true },
   maandBudgetObservatieEur: 14,
+  // Voor nu hetzelfde als Pro, met meer beoordelingen en plannen. De uitbreidingen (rijke editor, AI-paneel, dekkingsoverzicht, commissieblik) staan
+  // uit tot ze gebouwd zijn.
+  aanvraagAssistent: {
+    beoordelingenPerMaand: 10,
+    plannenPerMaand: 3,
+    eisenOphalenPerMaand: 40,
+    maxEisen: 40,
+    maxAanvraagTekens: 60_000,
+    maxRichtlijnTekens: 40_000,
+    rijkeEditor: false,
+    aiPaneel: false,
+    paneelActiesPerMaand: 0,
+    dekkingsoverzicht: false,
+    commissieblik: false,
+  },
 };
 
 const FREE: TierConfig = {
@@ -132,9 +183,20 @@ const FREE: TierConfig = {
   premiumHint: false,
   beoordeling: null,
   maandBudgetObservatieEur: null,
+  aanvraagAssistent: null,
 };
 
-const CONFIGS: Readonly<Record<Tier, TierConfig>> = Object.freeze({ free: Object.freeze(FREE), pro: Object.freeze(PRO), premium: Object.freeze(PREMIUM) });
+// Diep bevroren: ook de ingebedde blokken (beoordeling, online, aanvraagassistent) zijn tijdens runtime niet te wijzigen.
+function diepBevroren<T>(o: T): T {
+  if (o && typeof o === 'object') {
+    for (const v of Object.values(o as Record<string, unknown>)) diepBevroren(v);
+    Object.freeze(o);
+  }
+
+  return o;
+}
+
+const CONFIGS: Readonly<Record<Tier, TierConfig>> = Object.freeze({ free: diepBevroren(FREE), pro: diepBevroren(PRO), premium: diepBevroren(PREMIUM) });
 
 // Onbekende of ontbrekende tierwaarden vallen op Free (fail closed). Admin krijgt de Premium-regels.
 export function tierConfigVoor(tier: unknown, isAdmin = false): TierConfig {

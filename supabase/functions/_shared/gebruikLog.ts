@@ -22,6 +22,9 @@ export const ACTIE_TYPES = [
   'project_advice',
   'document_analyse',
   'website_analyse',
+  'aanvraag_eisen', // aanvraag-assistent: eisenlijst uit website en tekst van het lid
+  'aanvraag_beoordeling', // aanvraag-assistent: aanvraag beoordelen tegen de eisen
+  'aanvraag_plan', // aanvraag-assistent: projectplan schrijven uit projectgegevens en documentatie
 ] as const;
 
 export type ActieType = (typeof ACTIE_TYPES)[number];

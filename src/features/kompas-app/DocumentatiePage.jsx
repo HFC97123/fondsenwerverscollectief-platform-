@@ -48,6 +48,10 @@ import { Blok, Leeg, Melding, PaginaKop, Tabs, WerkPagina } from '../../shared/u
 // staan daar nu eenmalig, met dezelfde Word-generator en begrotings-Excel.
 import ExportMenu from '../../shared/ui/ExportMenu.jsx';
 import { opgeslagenDocumentExport } from './exportBronnen.js';
+// Aanvraag-assistent (Pro/Premium): tabbladen Projectplan en Aanvragen. Ze verschijnen alleen als de server de functie voor dit lid aanzet.
+import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
+import ProjectplanTab from './aanvraag/ProjectplanTab.jsx';
+import AanvragenTab from './aanvraag/AanvragenTab.jsx';
 
 // Tot er een tweede documentgenerator bestaat (Excel/PDF, een latere stap) is
 // elk echt document hier altijd een .docx - geen verzonnen Excel/PDF-variant.
@@ -67,7 +71,7 @@ function leesProjectUitUrl() {
 // projectinhoud van dat project, en de pagina zelf de bestanden.
 function leesTabUitUrl() {
   const h = window.location.hash || '';
-  const m = /[?&]tab=(inhoud|bestanden)(&|$)/.exec(h);
+  const m = /[?&]tab=(inhoud|bestanden|plan|aanvragen)(&|$)/.exec(h);
 
   if (m) return m[1];
 
@@ -94,10 +98,16 @@ export default function DocumentatiePage() {
   const [gekozen, setGekozen] = useState(leesProjectUitUrl);
   const [tab, setTab] = useState(leesTabUitUrl);
   const [projectFilter, setProjectFilter] = useState(() => leesProjectUitUrl() || 'alle');
+  const assistent = useAanvraagAssistent(paid);
+  const [aanvraagStart, setAanvraagStart] = useState(null);
 
   // Alleen echte, niet-gearchiveerde projecten: Projectinformatie hoort bij een bewaard project.
   const projecten = useMemo(() => (store.projects || []).filter((p) => isEchtId(p.id) && !p.gearchiveerd), [store.projects]);
   const projectId = projecten.some((p) => p.id === gekozen) ? gekozen : projecten.length ? projecten[0].id : '';
+
+  // Een link naar Projectplan of Aanvragen toont, zolang de functie er niet is (of nog laadt), gewoon de bestanden.
+  const vraagtAssistent = tab === 'plan' || tab === 'aanvragen';
+  const tabActief = vraagtAssistent && assistent.klaar && !assistent.beschikbaar ? 'bestanden' : tab;
 
   const kiesProject = useCallback((id) => {
     setGekozen(id);
@@ -155,6 +165,9 @@ export default function DocumentatiePage() {
           <>
             <p>Bestanden zijn de documenten bij uw projecten: wat u uploadt en wat Subsidie Kompas voor u opmaakte. Klik op een naam om er in de chat mee verder te werken.</p>
             <p>Projectinhoud is de inhoud waarmee Subsidie Kompas teksten en aanvragen voor een project schrijft. Wat daar niet staat, verzint Subsidie Kompas niet.</p>
+            {assistent.beschikbaar && (
+              <p>Onder Projectplan schrijft u een algemeen plan of een plan voor één fonds. Onder Aanvragen houdt u per fonds de criteria, uw versie en de beoordeling van uw eigen tekst bij elkaar.</p>
+            )}
           </>
         }
       />
@@ -163,12 +176,57 @@ export default function DocumentatiePage() {
         tabs={[
           { id: 'bestanden', label: 'Bestanden', aantal: alle.length },
           { id: 'inhoud', label: 'Projectinhoud' },
+          ...(assistent.beschikbaar
+            ? [
+                { id: 'plan', label: 'Projectplan' },
+                { id: 'aanvragen', label: 'Aanvragen' },
+              ]
+            : []),
         ]}
-        actief={tab}
+        actief={tabActief}
         onKies={setTab}
         label="Documenten"
         testidPrefix="documenten-tab-"
       />
+
+      {(tabActief === 'plan' || tabActief === 'aanvragen') && !assistent.beschikbaar && <Leeg>Even laden…</Leeg>}
+
+      {tabActief === 'plan' && assistent.beschikbaar && (projecten.length > 0 ? (
+        <ProjectplanTab
+          project={projecten.find((p) => p.id === projectId) || null}
+          projecten={projecten}
+          onKiesProject={kiesProject}
+          store={store}
+          assistent={assistent}
+          onNieuweAanvraag={(fonds) => {
+            setAanvraagStart({ fonds, nonce: Date.now() });
+            setTab('aanvragen');
+          }}
+          onOpenAanvraag={(id) => {
+            setAanvraagStart({ aanvraagId: id, nonce: Date.now() });
+            setTab('aanvragen');
+          }}
+          onNaarProjectinhoud={() => setTab('inhoud')}
+        />
+      ) : (
+        <Leeg>
+          Nog geen project.{' '}
+          <a href="#/kompas/projecten?nieuw=1" className="fwk-wp-link">
+            Project aanmaken
+          </a>
+        </Leeg>
+      ))}
+
+      {tabActief === 'aanvragen' && assistent.beschikbaar && (projecten.length > 0 ? (
+        <AanvragenTab project={projecten.find((p) => p.id === projectId) || null} projecten={projecten} onKiesProject={kiesProject} store={store} assistent={assistent} start={aanvraagStart} />
+      ) : (
+        <Leeg>
+          Nog geen project.{' '}
+          <a href="#/kompas/projecten?nieuw=1" className="fwk-wp-link">
+            Project aanmaken
+          </a>
+        </Leeg>
+      ))}
 
       {tab === 'inhoud' &&
         (projecten.length > 0 ? (
@@ -184,7 +242,7 @@ export default function DocumentatiePage() {
           </div>
         ))}
 
-      {tab === 'bestanden' && (
+      {tabActief === 'bestanden' && (
         <Blok kaal testid="documenten-bestanden">
           <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 14px;')}>
             <select
