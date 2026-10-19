@@ -503,7 +503,8 @@ async function typ(el, waarde) {
     el.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   });
 }
-const werkruimte = (s, extra = {}) => <VoorstelWerkruimte project={PROJECT_OK} beschikbaar opgeslagen diensten={s.diensten} {...extra} />;
+// De meeste secties testen het voorbeeld (kiezen, bedragen, validatie): daar staat direct opslaan uit. Sectie 'Direct opslaan' test de standaard.
+const werkruimte = (s, extra = {}) => <VoorstelWerkruimte project={PROJECT_OK} beschikbaar opgeslagen diensten={s.diensten} directOpslaan={false} {...extra} />;
 const kopStatus = (n) => qa('[data-testid="voorstel-rij"]')[n].querySelector('[data-testid="financieringsregel-status"]');
 const statussen = () => qa('[data-testid="voorstel-rij"]').map((r) => { const x = r.querySelector('[data-testid="financieringsregel-status"]'); return x ? x.dataset.status : '-'; });
 const console_errors = [];
@@ -1194,6 +1195,36 @@ sectie('13. Statische eigenschappen van de client');
   check('het model noemt geen nieuwe werkveld-taxonomie: werkvelden komen uit dezelfde tabel als disciplines', /sleutel: 'werkvelden'[^}]*bron: 'themas'/.test(model) && /sleutel: 'disciplines'[^}]*bron: 'themas'/.test(model));
   check('de naam in de frontend is overal "Subsidie Kompas" (niet "Subsidiekompas")', ['src/features/kompas-app/financiering/VoorstelStart.jsx', 'src/features/kompas-app/financiering/VoorstelWerkruimte.jsx', 'src/features/kompas-app/financiering/VoorstelPreview.jsx', 'src/data/services/voorstelGenereren.js'].every((f) => !/Subsidiekompas/.test(lees(f))));
   check('het concept staat niet in de database (alleen browseropslag, geen migratie)', !/\.insert\(|\.upsert\(|subsidie_kompas_/.test(code(model)));
+}
+
+sectie('Direct opslaan: Subsidie Kompas zet het advies meteen in het dekkingsplan (Projectfinanciering)');
+{
+  const s = maakServer();
+  let opgeslagen = null;
+  await toon(<VoorstelWerkruimte project={PROJECT_OK} beschikbaar opgeslagen diensten={s.diensten} onOpgeslagen={(u) => { opgeslagen = u; }} />);
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(120);
+  const calls = opslagCalls(s);
+  check('zonder tussenvoorbeeld: één opslag-aanroep met het advies (regels met bedrag, geen reserve)', calls.length === 1 && calls[0].regels.length === 2 && calls[0].regels.every((r) => r.bedrag > 0), JSON.stringify(calls));
+  check('geen voorbeeld en geen samenvatting na een geslaagde opslag', !q('[data-testid="voorstel-resultaat"]') && !q('[data-testid="voorstel-opgeslagen"]') && q('[data-testid="voorstel-werkruimte"]').dataset.fase === 'idle');
+  check('het dekkingsplan hoort het: onOpgeslagen met de opgeslagen regels (voor het label Nieuw)', opgeslagen && opgeslagen.regels.filter((r) => r.status === 'opgeslagen' && r.fundingId).length === 2);
+  check('geen broncontrole vanuit de browser nodig om op te slaan', aanroepen(s, 'controleer').length === 0);
+  await weg();
+}
+{
+  const s = maakServer({ valideer: () => ({ algemeen: { code: 'boven-financieringsgat', melding: 'Te veel.' } }) });
+  await toon(<VoorstelWerkruimte project={PROJECT_OK} beschikbaar opgeslagen diensten={s.diensten} />);
+  await klik(q('[data-testid="voorstel-start-knop"]'));
+  await rust(120);
+  check('weigert de server: terug naar het voorbeeld met de melding, er gaat niets verloren', Boolean(q('[data-testid="voorstel-resultaat"]')) && q('[data-testid="voorstel-werkruimte"]').dataset.fase === 'klaar');
+  await weg();
+}
+{
+  const s = maakServer();
+  await toon(<VoorstelWerkruimte project={PROJECT_OK} beschikbaar opgeslagen diensten={s.diensten} startpunt={{ regels: [] }} autoStart metStartknop={false} />);
+  await rust(120);
+  check('vanuit de chat (startpunt) blijft het lid eerst kiezen: geen automatische opslag', opslagCalls(s).length === 0);
+  await weg();
 }
 
 console.error = origError;

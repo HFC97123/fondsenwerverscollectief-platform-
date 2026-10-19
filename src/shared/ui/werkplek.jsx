@@ -61,6 +61,14 @@ export const CSS_WERKPLEK = `
 .fwk-wp-tab .fwk-wp-tel { margin-left: 6px; font-weight: 700; color: ${color.tekstLicht}; }
 .fwk-wp-paneel-achter { position: fixed; inset: 0; z-index: 60; background: rgba(44,74,94,0.18); }
 .fwk-wp-paneel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 61; box-sizing: border-box; width: min(460px, 100vw); overflow-y: auto; padding: 18px 22px 28px; background: ${color.wit}; border-left: 1px solid ${color.lijn}; box-shadow: -12px 0 32px rgba(44,74,94,0.12); font-family: ${font.tekst}; }
+.fwk-wp-paneel { animation: fwk-wp-in .22s ease-out; }
+@keyframes fwk-wp-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@media (min-width: 900px) {
+  .fwk-wp-paneel-achter { z-index: 58; background: rgba(247,249,248,0.6); }
+  .fwk-wp-paneel { top: 16px; right: 16px; bottom: auto; max-height: calc(100vh - 32px); width: min(480px, calc(100vw - 32px)); padding: 24px 26px 26px; border: 1px solid ${color.lijn}; border-radius: 22px; box-shadow: 0 24px 60px rgba(44,74,94,0.16); }
+  .fwk-wp-paneel-kop h2 { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .fwk-wp-paneel { animation: none; } }
 .fwk-wp-paneel-kop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .fwk-wp-paneel-kop h2 { margin: 0; font-family: ${font.kop}; font-size: 22px; font-weight: 600; line-height: 1.2; color: ${color.donkerblauw}; overflow-wrap: anywhere; }
 .fwk-wp-sluit { cursor: pointer; flex: none; width: 36px; height: 36px; border: 1px solid ${color.lijn}; border-radius: 50%; background: ${color.wit}; font-size: 18px; line-height: 1; color: ${color.tekstGrijs}; }

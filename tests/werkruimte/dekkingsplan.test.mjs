@@ -198,7 +198,8 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
 
   const svc = lees('src/data/services/projectFinanciering.js');
   check('service: leest alleen via kompas_dekkingsplan, nooit rechtstreeks uit funders/regelingen/rondes', /rpc\('kompas_dekkingsplan'/.test(svc) && !/from\('(funders|subsidieregelingen|subsidieregeling_rondes|funder_datamomenten)'\)/.test(svc.replace(/\/\/.*$/gm, '')));
-  check('service: schrijft alleen naar subsidie_kompas_program_funding', (svc.match(/\.from\('([^']+)'\)/g) || []).every((m) => m.includes('subsidie_kompas_program_funding')));
+  check('service: schrijft alleen naar subsidie_kompas_program_funding (plus: bij verwijderen gaan de open Subsidie Kompas-taken van die regel mee)', (svc.match(/\.from\('([^']+)'\)/g) || []).every((m) => m.includes('subsidie_kompas_program_funding') || m.includes('subsidie_kompas_program_actions')));
+  check('verwijderen: alleen open taken van Subsidie Kompas (source chat, niet afgerond) bij die regel, van het eigen lid', /from\('subsidie_kompas_program_actions'\)\s*\.delete\(\)\s*\.eq\('funding_id', regelId\)\s*\.eq\('user_id', userId\)\s*\.eq\('source', 'chat'\)\s*\.neq\('status', 'done'\)/.test(svc) && (svc.match(/subsidie_kompas_program_actions/g) || []).length === 1);
   check('service: geen kopie van naam/budget/deadline in de insert', !/(naam|name|budget|deadline)\s*:/.test(svc.slice(svc.indexOf('.insert('), svc.indexOf('.select(\'id\')'))));
 
   // Test 22-26: verboden onderdelen niet aangeraakt (geen verwijzing naar de nieuwe bron)

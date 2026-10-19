@@ -85,7 +85,7 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: P1, bron_type: 'regelin
 {
   check('18: deeplink-pad = /kompas/projecten/<id>?tab=projectfinanciering', projectFinancieringPad(P1) === `/kompas/projecten/${P1}?tab=projectfinanciering` && projectFinancieringHref(P1) === `#/kompas/projecten/${P1}?tab=projectfinanciering`);
   check('18: ongeldig id (geen uuid, geen padinjectie) valt terug op het projectenoverzicht', projectFinancieringPad('../x?tab=1') === '/kompas/projecten' && projectFinancieringPad(null) === '/kompas/projecten' && projectFinancieringPad('abc') === '/kompas/projecten');
-  const bronnen = ['src/features/kompas-app/dashboard/DashboardPage.jsx', 'src/features/kompas-app/ProjectenPage.jsx', 'src/features/kompas-app/deadlines/FundingDeadlineRow.jsx', 'src/features/kompas-app/deadlines/AddToProjectFundingDialog.jsx'];
+  const bronnen = ['src/features/kompas-app/dashboard/DashboardPage.jsx', 'src/features/kompas-app/ProjectenPage.jsx', 'src/features/kompas-app/deadlines/FundingDeadlineRow.jsx', 'src/features/kompas-app/deadlines/ProjectOpnemen.jsx'];
   check('18: Dashboard, Projecten, Mijn deadlines en dialoog gebruiken de helper, geen eigen ?tab=-string', bronnen.every((f) => /projectFinancieringHref/.test(lees(f)) && !/tab=projectfinanciering/.test(zonderCommentaar(lees(f)))));
 }
 
@@ -113,14 +113,14 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: P1, bron_type: 'regelin
   const bestanden = loop('src/features/kompas-app').filter((f) => /\.(js|jsx)$/.test(f));
   const metInsert = bestanden.filter((f) => /voegRegelToe/.test(zonderCommentaar(lees(f)))).map((f) => f.replace(/\\/g, '/'));
   check('geen tweede insertpad: voegRegelToe wordt alleen door financiering/toevoegen.js aangeroepen', metInsert.join() === 'src/features/kompas-app/financiering/toevoegen.js', metInsert.join());
-  const nieuw = ['src/features/kompas-app/deadlines/MijnDeadlines.jsx', 'src/features/kompas-app/deadlines/FundingDeadlineRow.jsx', 'src/features/kompas-app/deadlines/AddToProjectFundingDialog.jsx', 'src/features/kompas-app/financiering/toevoegen.js', 'src/features/kompas-app/financiering/deeplinks.js'];
+  const nieuw = ['src/features/kompas-app/deadlines/MijnDeadlines.jsx', 'src/features/kompas-app/deadlines/FundingDeadlineRow.jsx', 'src/features/kompas-app/deadlines/ProjectOpnemen.jsx', 'src/features/kompas-app/financiering/toevoegen.js', 'src/features/kompas-app/financiering/deeplinks.js'];
   check('geen localStorage/sessionStorage in de nieuwe Fase 3-bestanden (alleen id\'s in state)', nieuw.every((f) => !/localStorage|sessionStorage|indexedDB/.test(zonderCommentaar(lees(f)))));
   check('Bespreek met Subsidie Kompas: alleen navigatie naar de bestaande Chat (goKompas), geen chatverzoek met fondsdata, geen askKompas/functions.invoke', /onClick=\{app\.goKompas\}>\s*<span data-testid="detail-bespreek"/.test(dl) && !/zetChatVerzoek|askKompas|functions\.invoke|buildProjectFundingContext/.test(dlCode));
-  check('Free: Deadlines-pagina haalt zelf geen dekkingsplannen op; Mijn deadlines en dialoog alleen voor betalende tiers', /\{paid && segment === 'mijn' &&/.test(dl) && /\{addBron && paid &&/.test(dl) && /\{paid && bronUitDeadlineRij\(detail\)/.test(dl) && /\{!paid && detail\.bronType !== 'funder'/.test(dl));
+  check('Free: Deadlines-pagina haalt zelf geen dekkingsplannen op; Mijn deadlines en Opnemen in een project alleen voor betalende tiers', /\{paid && segment === 'mijn' &&/.test(dl) && /detail && paid \? bronUitDeadlineRij\(detail\)/.test(dl) && /\{detailBron && <ProjectOpnemen/.test(dl) && /\{!paid && detail\.bronType !== 'funder'/.test(dl));
   check('entitlement: geen nieuwe entitlementlogica (geen tier-/premium-vergelijking in de nieuwe bestanden behalve de bestaande getDeadlineAccess)', nieuw.every((f) => !/subscriptionTier|current_user_has|subsidie_zichtbaar_voor_tier|premium_exclusive/.test(zonderCommentaar(lees(f)))));
   check('reminders: alleen de vlag reminder_enabled; geen e-mail/cron/push/functions in de nieuwe bestanden', [...nieuw, 'src/features/kompas-app/financiering/FinancieringUi.jsx'].every((f) => !/mailto|sendgrid|resend|cron|pushManager|Notification\(|functions\.invoke|setInterval|setTimeout/.test(zonderCommentaar(lees(f)))));
   const verboden = ['supabase/functions/subsidie-kompas/index.ts', 'src/features/kompas-app/KompasToolPage.jsx', 'src/features/kompas-app/useKompasApp.js'];
-  const nieuweBron = /mijnDeadlines|toevoegen\.js|deeplinks\.js|AddToProjectFundingDialog|MijnDeadlines/;
+  const nieuweBron = /mijnDeadlines|toevoegen\.js|deeplinks\.js|AddToProjectFundingDialog|ProjectOpnemen|MijnDeadlines/;
   check('verboden onderdelen (askKompas/Edge Function/chatpagina/useApp) verwijzen niet naar Fase 3-code', verboden.every((f) => !nieuweBron.test(lees(f))));
   const matching = [...loop('src/data'), ...loop('src/shared')].filter((f) => /\.(js|jsx|ts)$/.test(f));
   check('matching/fondsadvies/export/documentgeneratie gebruiken geen Fase 3-code', matching.every((f) => !nieuweBron.test(zonderCommentaar(lees(f)))));

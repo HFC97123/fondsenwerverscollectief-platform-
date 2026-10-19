@@ -4,7 +4,7 @@ import React from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { STATUS_LABEL, deadlineWeergave, formatEuro } from './dekkingsplan.js';
 
-export const KLEUR = { toegekend: '#4E9A6C', aangevraagd: '#7FB3D5', overige: '#A8D5BA', nogNodig: '#E9EFEB' };
+export const KLEUR = { toegekend: '#4E9A6C', aangevraagd: '#7FB3D5', overige: '#A8D5BA', gepland: '#C9D9E8', nogNodig: '#E9EFEB' };
 
 export const STATUS_CHIP = {
   interesting: { bg: '#EAF1F6', color: '#2C4A5E', border: '#CFDFEA' },
@@ -30,9 +30,11 @@ export function StatusChip({ status }) {
   );
 }
 
-export function Voortgangsbalk({ dekking, projectNaam, hoogte = 10 }) {
-  const s = dekking.segmenten;
-  const beschrijving = `Financiering van ${projectNaam}: toegekend ${formatEuro(dekking.toegekend)}, aangevraagd ${formatEuro(dekking.aangevraagd)}, eigen bijdrage ${formatEuro(dekking.overige)}, nog te financieren ${formatEuro(dekking.nogNodig)}.`;
+// metPlan: ook wat gepland staat (Interessant / In voorbereiding) als eigen deel van de balk, zoals in het dekkingsplan.
+export function Voortgangsbalk({ dekking, projectNaam, hoogte = 10, metPlan = false }) {
+  const plan = metPlan && dekking.planSegmenten && dekking.gepland > 0;
+  const s = plan ? dekking.planSegmenten : dekking.segmenten;
+  const beschrijving = `Financiering van ${projectNaam}: toegekend ${formatEuro(dekking.toegekend)}, aangevraagd ${formatEuro(dekking.aangevraagd)}, eigen bijdrage ${formatEuro(dekking.overige)}${plan ? `, gepland ${formatEuro(dekking.gepland)}` : ''}, nog te financieren ${formatEuro(dekking.nogNodig)}.`;
 
   return (
     <div
@@ -44,6 +46,7 @@ export function Voortgangsbalk({ dekking, projectNaam, hoogte = 10 }) {
       <span data-seg="toegekend" style={css(`width: ${s.toegekend}%; background: ${KLEUR.toegekend};`)} />
       <span data-seg="aangevraagd" style={css(`width: ${s.aangevraagd}%; background: ${KLEUR.aangevraagd};`)} />
       <span data-seg="overige" style={css(`width: ${s.overige}%; background: ${KLEUR.overige};`)} />
+      {plan && <span data-seg="gepland" style={css(`width: ${s.gepland}%; background: ${KLEUR.gepland};`)} />}
     </div>
   );
 }

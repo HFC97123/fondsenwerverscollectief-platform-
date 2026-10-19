@@ -21,7 +21,7 @@ export const SELECT = [
   'volledig_zichtbaar, deadline_datum, dagen_resterend, deadline_periode,',
   'bedrag_min, bedrag_max, voorwaarden, funder_naam, funder_website, funder_type,',
   'themas_namen, doelgroepen_namen, werkgebieden_namen, bandbreedte_bijdrage_naam,',
-  'beoordelingsdatum, beoordelingsperiode, rondes_aantal',
+  'beoordelingsdatum, beoordelingsperiode, rondes_aantal, access_tier',
 ].join(' ');
 
 export const STATUS_ORDER = [
@@ -74,6 +74,8 @@ export function normalize(row) {
     beoordelingsdatum: row.beoordelingsdatum || null,
     beoordelingsperiode: row.beoordelingsperiode || null,
     rondesAantal: typeof row.rondes_aantal === 'number' ? row.rondes_aantal : 0,
+    // Toegangsniveau van de regeling (free/pro/premium), alleen om Premium-informatie te kunnen labelen.
+    accessTier: row.access_tier || null,
   };
 }
 
@@ -108,7 +110,7 @@ export const FUNDER_SELECT = [
   'data_tier, source_type, volledig_zichtbaar, deadline_datum, dagen_resterend,',
   'deadline_periode, sluitingstijd, toelichting, bron_url, funder_website, missie,',
   'aanvraagcriteria, bijdrage_min, bijdrage_max, bandbreedte_bijdrage_naam,',
-  'themas_namen, doelgroepen_namen, werkgebieden_namen',
+  'themas_namen, doelgroepen_namen, werkgebieden_namen, access_tier',
 ].join(' ');
 
 // Brengt een rij uit funder_deadlines naar dezelfde vorm als normalize()
@@ -159,6 +161,7 @@ export function normalizeFunderDeadline(row) {
     datamomentNaam: row.datamoment_naam || null,
     toelichting: row.toelichting || '',
     funderWebsite: row.funder_website || '',
+    accessTier: row.access_tier || null,
   };
 }
 
@@ -172,14 +175,76 @@ export async function fetchFunderDeadlines({ limit = 200 } = {}) {
   };
 }
 
-// Details van de regelingen en fondsen in een dekkingsplan (bandbreedte, bijdragegrenzen, omschrijving, voorwaarden, bron),
-// uit DEZELFDE views als de Deadlines-pagina en dus met dezelfde toegangsregels: wat een gebruiker niet mag zien, komt als
-// null terug uit de database zelf. Alleen lezen. Een fonds zonder actueel datamoment staat niet in funder_deadlines en
-// geeft dan simpelweg geen details.
-// -> { perRegeling: { [schemeId]: rij }, perFonds: { [funderId]: rij }, error }
+// Details van regelingen en fondsen (beschrijving, voorwaarden, disciplines, doelgroepen, werkgebieden, bandbreedte, bijdrage, deadline en
+// aanvraagdetails) voor het detailpaneel van Deadlines en de uitklapregels van het dekkingsplan.
+// Bron: de leesfunctie kompas_bron_details. Die past PRECIES de zichtbaarheidsregel van kompas_dekkingsplan toe: wat een lid niet mag zien,
+// komt niet terug. Werkt voor elk fonds, ook zonder actueel datamoment (de view funder_deadlines bevat alleen fondsen met een datamoment).
+// Bestaat de functie (nog) niet, dan vallen we terug op de views, met minder details. Alleen lezen.
+// -> { perRegeling: { [schemeId]: details }, perFonds: { [funderId]: details }, error }
+export function normalizeBronDetail(row) {
+  const themasNamen = row.themas_namen || [];
+  const doelgroepenNamen = row.doelgroepen_namen || [];
+  const werkgebiedenNamen = row.werkgebieden_namen || [];
+  const tekst = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+
+  return {
+    id: row.bron_id,
+    bronType: row.bron_type === 'fonds' ? 'funder' : 'regeling',
+    naam: row.naam || '—',
+    funder: row.funder_naam || '—',
+    funderType: row.funder_type || '',
+    regio: werkgebiedenNamen.length ? werkgebiedenNamen.join(', ') : '',
+    thema: themasNamen.join(', '),
+    themasNamen,
+    doelgroepenNamen,
+    werkgebiedenNamen,
+    bandbreedteBijdrage: row.bandbreedte_bijdrage_naam || null,
+    bedragMin: row.bedrag_min ?? null,
+    bedragMax: row.bedrag_max ?? null,
+    deadline: row.deadline_datum || null,
+    beoordelingsdatum: row.beoordelingsdatum || null,
+    beoordelingsperiode: row.beoordelingsperiode || null,
+    omschrijving: tekst(row.omschrijving),
+    voorwaarden: tekst(row.voorwaarden),
+    url: row.website || '',
+    accessTier: row.access_tier || null,
+    aanvraag: {
+      beoordelingscriteria: tekst(row.beoordelingscriteria),
+      typeProjecten: tekst(row.type_projecten),
+      begrotingseisen: tekst(row.begrotingseisen),
+      eigenBijdrage: tekst(row.eigen_bijdrage),
+      cofinanciering: tekst(row.cofinanciering),
+      behandeltermijn: tekst(row.behandeltermijn),
+      aanvraagprocedure: tekst(row.aanvraagprocedure),
+      aanvraaglink: tekst(row.aanvraaglink),
+      bijdrageToelichting: tekst(row.bijdrage_toelichting),
+    },
+  };
+}
+
 export async function haalBronDetails({ schemeIds = [], funderIds = [] } = {}) {
-  const sIds = Array.from(new Set((schemeIds || []).filter(Boolean)));
-  const fIds = Array.from(new Set((funderIds || []).filter(Boolean)));
+  const sIds = Array.from(new Set((schemeIds || []).filter(Boolean))).slice(0, 100);
+  const fIds = Array.from(new Set((funderIds || []).filter(Boolean))).slice(0, 100);
+
+  if (!sIds.length && !fIds.length) return { perRegeling: {}, perFonds: {}, error: null };
+
+  const rpc = await query((sb) => sb.rpc('kompas_bron_details', { p_scheme_ids: sIds, p_funder_ids: fIds }), []);
+
+  if (!rpc.error && Array.isArray(rpc.data)) {
+    const perRegeling = {};
+    const perFonds = {};
+
+    rpc.data.forEach((row) => {
+      const n = normalizeBronDetail(row);
+
+      if (row.bron_type === 'fonds') perFonds[n.id] = n;
+      else perRegeling[n.id] = n;
+    });
+
+    return { perRegeling, perFonds, error: null };
+  }
+
+  // Terugval: dezelfde views als de Deadlines-pagina (fondsen zonder actueel datamoment geven dan geen details).
   const [r, f] = await Promise.all([
     sIds.length ? query((sb) => sb.from('subsidieregelingen_deadlines').select(SELECT).in('id', sIds), []) : Promise.resolve({ data: [], error: null }),
     fIds.length ? query((sb) => sb.from('funder_deadlines').select(FUNDER_SELECT).in('funder_id', fIds), []) : Promise.resolve({ data: [], error: null }),

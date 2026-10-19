@@ -182,6 +182,16 @@ export async function verwijderRegel(regelId) {
     return { ok: false };
   }
 
+  // Taken die Subsidie Kompas bij dit fonds in het actieplan zette en nog open staan, gaan mee weg. Zelf toegevoegde taken en afgeronde
+  // taken blijven staan (de database koppelt ze dan los van het fonds). Lukt dit niet, dan gaat het verwijderen van de regel gewoon door.
+  await supabase
+    .from('subsidie_kompas_program_actions')
+    .delete()
+    .eq('funding_id', regelId)
+    .eq('user_id', userId)
+    .eq('source', 'chat')
+    .neq('status', 'done');
+
   const { error } = await supabase.from('subsidie_kompas_program_funding').delete().eq('id', regelId).eq('user_id', userId);
 
   return { ok: !error };

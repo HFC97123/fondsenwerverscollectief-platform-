@@ -33,6 +33,12 @@ const INVOER =
   "box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid #CFDDD5; border-radius: 10px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; color: #2C4A5E;";
 
 const CSS_TAB = `
+.fwk-pf-nieuwbalk { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 12px; padding: 12px 16px; border: 1px solid #CFDFEA; border-radius: 14px; background: #EAF1F6; font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.5; color: #2C4A5E; }
+.fwk-pf-nieuwtekst { flex: 1 1 360px; min-width: 0; }
+.fwk-pf-nieuwlijst { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.fwk-pf-nieuwlijst li { display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 11px; border: 1px solid #CFDFEA; border-radius: 999px; background: #FFFFFF; font-size: 13px; font-weight: 700; color: #2C4A5E; }
+.fwk-pf-nieuwlijst button { cursor: pointer; width: 24px; height: 24px; border: none; border-radius: 50%; background: none; font-size: 16px; line-height: 1; color: #7B8985; }
+.fwk-pf-nieuwlijst button:hover { background: #F9ECEA; color: #9E3B2C; }
 .fwk-pf-rij { display: grid; gap: 12px 14px; align-items: start; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 12px; padding-top: 12px; border-top: 1px solid #EEF2EF; }
 .fwk-pf-label { display: block; margin-bottom: 4px; }
 .fwk-pf-notitie { grid-column: 1 / 4; }
@@ -51,7 +57,7 @@ function Legenda({ dekking }) {
     ['Totale begroting', dekking.heeftBegroting ? formatEuro(dekking.begroting) : '—', '#C5D2CB'],
     ['Toegekend', formatEuro(dekking.toegekend), KLEUR.toegekend],
     ['Aangevraagd', formatEuro(dekking.aangevraagd), KLEUR.aangevraagd],
-    ['Gepland', formatEuro(dekking.gepland), '#C9D9E8'],
+    ['Gepland', formatEuro(dekking.gepland), KLEUR.gepland],
     ['Eigen bijdrage', formatEuro(dekking.overige), KLEUR.overige],
     ['Nog te financieren', dekking.heeftBegroting ? formatEuro(dekking.nogNodig) : '—', '#E1EAE4'],
   ];
@@ -103,6 +109,18 @@ function InfoVeld({ label, children, testid, leeg }) {
 
 // Meer informatie in de uitklapregel: wat het fonds ondersteunt, waarom het past, voor wie en waar, voorwaarden en de bron.
 // Uitsluitend bestaande gegevens; wat ontbreekt staat er als "nog niet bekend", niet verzonnen.
+// Aanvraagdetails uit kompas_bron_details; alleen wat gevuld is, wordt getoond.
+const AANVRAAG_VELDEN = [
+  ['typeProjecten', 'Type projecten'],
+  ['beoordelingscriteria', 'Beoordelingscriteria'],
+  ['eigenBijdrage', 'Eigen bijdrage'],
+  ['cofinanciering', 'Cofinanciering'],
+  ['begrotingseisen', 'Begrotingseisen'],
+  ['behandeltermijn', 'Behandeltermijn'],
+  ['aanvraagprocedure', 'Aanvraagprocedure'],
+  ['bijdrageToelichting', 'Over de bijdrage'],
+];
+
 function RegelInfo({ regel, bron, details, kans, heeftBron }) {
   if (!heeftBron) {
     return (
@@ -137,9 +155,22 @@ function RegelInfo({ regel, bron, details, kans, heeftBron }) {
           <InfoVeld label={regel.bronType === 'fonds' ? 'Toelichting' : 'Voorwaarden om te controleren'} leeg={!(details && details.voorwaarden)}>
             {(details && details.voorwaarden) || 'Nog niet bekend; controleer ze bij de officiële bron.'}
           </InfoVeld>
+          {details && details.aanvraag &&
+            AANVRAAG_VELDEN.filter(([k]) => details.aanvraag[k]).map(([k, label]) => (
+              <InfoVeld key={k} label={label} testid="pf-regel-aanvraag">
+                {details.aanvraag[k]}
+              </InfoVeld>
+            ))}
         </>
       )}
       <InfoVeld label="Bron">
+        {details && details.aanvraag && details.aanvraag.aanvraaglink && details.aanvraag.aanvraaglink !== website && (
+          <div style={css('margin-bottom: 4px;')}>
+            <a href={details.aanvraag.aanvraaglink} target="_blank" rel="noopener noreferrer" style={css('color: #4E9A6C; font-weight: 800;')}>
+              Aanvraagformulier →
+            </a>
+          </div>
+        )}
         {website ? (
           <a href={website} target="_blank" rel="noopener noreferrer" style={css('color: #4E9A6C; font-weight: 800;')}>
             Officiële website →
@@ -160,7 +191,7 @@ function RegelInfo({ regel, bron, details, kans, heeftBron }) {
   );
 }
 
-function Regel({ regel, bron = null, details = null, kans = null, open = false, onToggle, onWijzig, onVerwijder }) {
+function Regel({ regel, bron = null, details = null, kans = null, nieuw = false, open = false, onToggle, onWijzig, onVerwijder }) {
   const [aangevraagd, setAangevraagd] = useState(bedragVoorInvoer(regel.requested));
   const [toegekend, setToegekend] = useState(bedragVoorInvoer(regel.awarded));
   const [notitie, setNotitie] = useState(regel.notitie || '');
@@ -214,7 +245,7 @@ function Regel({ regel, bron = null, details = null, kans = null, open = false, 
     if (regel.status === 'submitted') return `aangevraagd ${formatEuro(regel.requested)}`;
     if (regel.status === 'rejected' || regel.status === 'withdrawn') return `${STATUS_LABEL[regel.status].toLowerCase()}: ${formatEuro(regel.requested)}`;
 
-    return `kan ${formatEuro(regel.requested)}`;
+    return `advies ${formatEuro(regel.requested)}`;
   })();
   const deadlineKort = regel.deadline ? formatDatum(regel.deadline) : null;
   const samenvatting = [
@@ -236,9 +267,21 @@ function Regel({ regel, bron = null, details = null, kans = null, open = false, 
       open={open}
       onToggle={onToggle}
       titel={
-        <span data-testid="pf-regel-naam" style={heeftBron ? undefined : { color: '#7B8985', fontStyle: 'italic' }}>
-          {naam}
-        </span>
+        <>
+          <span data-testid="pf-regel-naam" style={heeftBron ? undefined : { color: '#7B8985', fontStyle: 'italic' }}>
+            {naam}
+          </span>
+          {nieuw && (
+            <span data-testid="pf-regel-nieuw" style={css("margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #EAF1F6; font-family: 'Mulish', sans-serif; font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #2C4A5E; vertical-align: 1px;")}>
+              Nieuw van Subsidie Kompas
+            </span>
+          )}
+          {heeftBron && details && details.accessTier === 'premium' && (
+            <span data-testid="pf-regel-premium" style={css("margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #EAF4EE; font-family: 'Mulish', sans-serif; font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #2F6D47; vertical-align: 1px;")}>
+              Premium
+            </span>
+          )}
+        </>
       }
       bedrag={bedragLabel}
       bedragLeeg="bedrag nog niet ingevuld"
@@ -376,9 +419,51 @@ function Regel({ regel, bron = null, details = null, kans = null, open = false, 
   );
 }
 
+function leesNieuw(sleutel) {
+  try {
+    const ruw = sleutel && window.localStorage ? JSON.parse(window.localStorage.getItem(sleutel) || '[]') : [];
+
+    return Array.isArray(ruw) ? ruw.filter((x) => typeof x === 'string') : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function bewaarNieuw(sleutel, ids) {
+  try {
+    if (!sleutel || !window.localStorage) return;
+    if (ids.length) window.localStorage.setItem(sleutel, JSON.stringify(ids));
+    else window.localStorage.removeItem(sleutel);
+  } catch (e) {
+    // Geen opslag beschikbaar: het label verdwijnt dan na verversen; verder werkt alles.
+  }
+}
+
 export default function ProjectfinancieringTab({ project, financiering, dekking, toonActieplan = true }) {
-  const { status, fout, regels, wijzig, verwijder, laad } = financiering;
+  const { status, fout, regels, wijzig: wijzigRegel, verwijder: verwijderRegelUitPlan, laad } = financiering;
   const store = useKompas();
+  // Regels die Subsidie Kompas net aan het plan toevoegde: herkenbaar met een label tot het lid er iets aan verandert, en in één keer terug te draaien.
+  const nieuwSleutel = project && project.id ? `sk-nieuw-${project.id}` : '';
+  const [nieuweIds, setNieuweIds] = useState(() => leesNieuw(nieuwSleutel));
+  const zetNieuw = (ids) => {
+    setNieuweIds(ids);
+    bewaarNieuw(nieuwSleutel, ids);
+  };
+  const haalUitNieuw = (id) => {
+    if (nieuweIds.includes(id)) zetNieuw(nieuweIds.filter((x) => x !== id));
+  };
+  const wijzig = (id, wijziging) => {
+    haalUitNieuw(id);
+
+    return wijzigRegel(id, wijziging);
+  };
+  const verwijder = (id) => {
+    haalUitNieuw(id);
+
+    return verwijderRegelUitPlan(id);
+  };
+  const nieuwInPlan = status === 'klaar' ? regels.filter((r) => nieuweIds.includes(r.id)) : [];
+  const nieuwSamen = nieuwInPlan.reduce((t, r) => t + (Number(r.requested) || 0), 0);
   const [actieVersie, setActieVersie] = useState(0);
   const [openRegels, setOpenRegels] = useState({});
   const [bronDetails, setBronDetails] = useState({ perRegeling: {}, perFonds: {} });
@@ -438,11 +523,53 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
       <VoorstelWerkruimte
         project={project}
         opgeslagen={status !== 'geen-database' && Boolean(project && project.id)}
-        onOpgeslagen={() => {
+        onOpgeslagen={(uit) => {
+          const ids = uit ? [...(uit.regels || []), ...(uit.suggesties || [])].filter((r) => r.status === 'opgeslagen' && r.fundingId).map((r) => r.fundingId) : [];
+
+          if (ids.length) zetNieuw(ids);
           laad();
           setActieVersie((v) => v + 1);
         }}
       />
+
+      <Blok
+        testid="pf-dekking"
+        titel="Dekking van de begroting"
+        actie={
+          <HelpKnop label="Hoe telt dit?">
+            <p>Toegekend telt het toegekende bedrag (is dat leeg, dan het aangevraagde bedrag). Aangevraagd telt regels met status Aangevraagd.</p>
+            <p>Gepland telt het bedrag van regels met status Interessant of In voorbereiding. Eigen bijdrage staat bij de projectgegevens.</p>
+          </HelpKnop>
+        }
+      >
+        {dekking.heeftBegroting ? (
+          <>
+            <Voortgangsbalk dekking={dekking} projectNaam={project.naam || 'dit project'} hoogte={10} metPlan />
+            <div data-testid="pf-samenvatting" style={css(`${TEKST} margin-top: 8px; font-weight: 700; color: ${dekking.volledigGedekt ? '#2F6D47' : '#2C4A5E'};`)}>
+              {dekking.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren: ${formatEuro(dekking.nogNodig)}`}
+            </div>
+            {!dekking.volledigGedekt && dekking.planVolledig && (
+              <div data-testid="pf-sluitend" style={css(`${TEKST} margin-top: 2px; font-size: 13.5px; color: #2F6D47;`)}>
+                Met wat gepland staat is de begroting sluitend
+                {dekking.overgedekt > 0 ? `, plus ca. ${Math.round((dekking.overgedekt / dekking.begroting) * 100)}% buffer voor afwijzingen` : ''}.
+              </div>
+            )}
+          </>
+        ) : (
+          <Leeg>
+            Nog geen begroting.{' '}
+            <a href={`#/kompas/projecten/${project.id}?bewerk=1`} className="fwk-wp-link">
+              Begroting invullen
+            </a>
+          </Leeg>
+        )}
+        <Legenda dekking={dekking} />
+        {dekking.heeftBegroting && (
+          <div data-testid="pf-nog-te-plannen" style={css(`${TEKST} margin-top: 10px; font-size: 13px; color: #4B5C58;`)}>
+            Waarvan nog niet gepland: <strong>{formatEuro(dekking.nogTePlannen)}</strong>
+          </div>
+        )}
+      </Blok>
 
       <Blok
         testid="pf-regels"
@@ -455,12 +582,6 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
         }
         kaal
       >
-        {status === 'klaar' && project && project.id && (
-          <div style={css('margin-bottom: 12px;')}>
-            <FinancierFormulier projectId={project.id} onKlaar={laad} />
-          </div>
-        )}
-
         {status === 'laden' && <Leeg>Dekkingsplan wordt geladen…</Leeg>}
 
         {status === 'klaar' && regels.length === 0 && (
@@ -469,6 +590,33 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
             <a href="#/kompas/deadlines" className="fwk-wp-link">
               Regelingen zoeken
             </a>
+          </div>
+        )}
+
+        {nieuwInPlan.length > 0 && (
+          <div data-testid="pf-nieuw-balk" role="status" className="fwk-pf-nieuwbalk">
+            <div className="fwk-pf-nieuwtekst">
+              <div>
+                <strong>
+                  Subsidie Kompas heeft {nieuwInPlan.length} {nieuwInPlan.length === 1 ? 'fonds' : 'fondsen'} toegevoegd
+                </strong>
+                {nieuwSamen > 0 ? `, samen ${formatEuro(nieuwSamen)} geadviseerd` : ''}:
+              </div>
+              <ul className="fwk-pf-nieuwlijst" data-testid="pf-nieuw-lijst">
+                {nieuwInPlan.map((r) => {
+                  const naam = r.naam || 'Financier';
+
+                  return (
+                    <li key={r.id} data-testid="pf-nieuw-fonds">
+                      <span>{naam}</span>
+                      <button type="button" aria-label={`${naam} weghalen uit het dekkingsplan`} title="Weghalen" onClick={() => verwijder(r.id)} data-testid="pf-nieuw-weg">
+                        ×
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           </div>
         )}
 
@@ -495,6 +643,7 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
                     bron={bronVoorRegel(r, bronRijen)}
                     details={details}
                     kans={r.bronType !== 'financier' && r.bronStatus === 'zichtbaar' && details ? kansrijkheid(details, store.orgProfile || {}, store.projects) : null}
+                    nieuw={nieuweIds.includes(r.id)}
                     open={Boolean(openRegels[r.id])}
                     onToggle={(v) => setOpenRegels((cur) => ({ ...cur, [r.id]: v }))}
                     onWijzig={wijzig}
@@ -509,37 +658,9 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
             </div>
           </>
         )}
-      </Blok>
-
-      <Blok
-        testid="pf-dekking"
-        titel="Dekking van de begroting"
-        actie={
-          <HelpKnop label="Hoe telt dit?">
-            <p>Toegekend telt het toegekende bedrag (is dat leeg, dan het aangevraagde bedrag). Aangevraagd telt regels met status Aangevraagd.</p>
-            <p>Gepland telt het bedrag van regels met status Interessant of In voorbereiding. Eigen bijdrage staat bij de projectgegevens.</p>
-          </HelpKnop>
-        }
-      >
-        {dekking.heeftBegroting ? (
-          <>
-            <Voortgangsbalk dekking={dekking} projectNaam={project.naam || 'dit project'} hoogte={10} />
-            <div data-testid="pf-samenvatting" style={css(`${TEKST} margin-top: 8px; font-weight: 700; color: ${dekking.volledigGedekt ? '#2F6D47' : '#2C4A5E'};`)}>
-              {dekking.volledigGedekt ? 'Volledig gedekt' : `Nog te financieren: ${formatEuro(dekking.nogNodig)}`}
-            </div>
-          </>
-        ) : (
-          <Leeg>
-            Nog geen begroting.{' '}
-            <a href={`#/kompas/projecten/${project.id}?bewerk=1`} className="fwk-wp-link">
-              Begroting invullen
-            </a>
-          </Leeg>
-        )}
-        <Legenda dekking={dekking} />
-        {dekking.heeftBegroting && (
-          <div data-testid="pf-nog-te-plannen" style={css(`${TEKST} margin-top: 10px; font-size: 13px; color: #4B5C58;`)}>
-            Waarvan nog niet gepland: <strong>{formatEuro(dekking.nogTePlannen)}</strong>
+        {status === 'klaar' && project && project.id && (
+          <div style={css('margin-top: 12px;')}>
+            <FinancierFormulier projectId={project.id} onKlaar={laad} />
           </div>
         )}
       </Blok>

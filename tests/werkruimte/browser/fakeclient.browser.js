@@ -69,6 +69,12 @@ export const supabase = {
   functions: { invoke: async (n, opts) => { window.__LOG.push({ tabel: `functions:${n}`, op: 'invoke', filters: [JSON.stringify((opts && opts.body) || {})] }); if (window.__FN) return window.__FN(n, opts && opts.body); return { data: null, error: null }; } },
   rpc: async (naam, args) => {
     window.__LOG.push({ tabel: `rpc:${naam}`, op: 'rpc', filters: [JSON.stringify(args || {})] });
+    if (naam === 'kompas_bron_details') {
+      // Zonder __BRON_DETAILS gedraagt de nep-database zich als een database zonder deze functie (de app valt terug op de views).
+      if (!window.__BRON_DETAILS) return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.kompas_bron_details' } };
+      const a = args || {};
+      return { data: window.__BRON_DETAILS.filter((r) => (r.bron_type === 'fonds' ? (a.p_funder_ids || []) : (a.p_scheme_ids || [])).includes(r.bron_id)).map((r) => ({ ...r })), error: null };
+    }
     if (naam !== 'kompas_dekkingsplan') return { data: null, error: null };
     if (window.__RPCFOUT === 'niet-beschikbaar') return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.kompas_dekkingsplan' } };
     if (window.__RPCFOUT === 'fout') return { data: null, error: { code: 'XX000', message: 'boem' } };

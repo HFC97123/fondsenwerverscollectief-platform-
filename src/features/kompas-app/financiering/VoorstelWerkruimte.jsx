@@ -214,6 +214,7 @@ export default function VoorstelWerkruimte({
   profielBerichten = null, // chat: de berichten van het lid (alleen role 'user' wordt door de server gebruikt)
   metStartknop = null, // standaard: de startknop staat er, behalve bij een startpunt vanuit de chat
   opslag = undefined,
+  directOpslaan = null, // standaard: bij Projectfinanciering zet Subsidie Kompas de fondsen direct in het dekkingsplan (geen tussenvoorbeeld)
 }) {
   const [fase, setFase] = useState('idle'); // idle | profiel-laden | profiel | bezig | klaar | fout | opslaan | opgeslagen
   const [profiel, setProfiel] = useState(null); // de bewerkbare toestand van het zoekprofiel (zoekprofielModel)
@@ -250,6 +251,14 @@ export default function VoorstelWerkruimte({
   // profielstap. Alleen het zoekprofiel uit een chatgesprek wordt nog eerst opgesteld.
   const profielStap = !startpunt && profielRoute === 'chat' && typeof diensten.zoekprofiel === 'function';
   const toonStartknop = metStartknop === null ? !startpunt : metStartknop;
+  // Direct opslaan: het voorstel komt meteen in het dekkingsplan; het lid haalt daar weg wat niet past. Vanuit de chat blijft het lid eerst kiezen.
+  // (window.__SK_VOORBEELD: alleen voor de browsertests die het voorbeeld zelf testen.)
+  const voorbeeldGevraagd = typeof window !== 'undefined' && window.__SK_VOORBEELD === true;
+  const direct = directOpslaan === null ? !startpunt && profielRoute === 'project' && !voorbeeldGevraagd : Boolean(directOpslaan);
+  const directRef = useRef(direct);
+  const slaOpRef = useRef(null);
+
+  directRef.current = direct;
 
   dienstenRef.current = diensten;
   profielRef.current = profiel;
@@ -362,6 +371,29 @@ export default function VoorstelWerkruimte({
         }
 
         setModel(m);
+
+        // Direct opslaan (Projectfinanciering): wat Subsidie Kompas adviseert gaat meteen het dekkingsplan in. Lukt dat niet, dan valt het terug op
+        // het voorbeeld met de fouten erbij, zodat er niets verloren gaat.
+        if (directRef.current && !m.bedragOnbekend) {
+          const sel = beginSelectie(m);
+          const bed = beginBedragen(m);
+
+          if (sel.regels.size > 0) {
+            setSelectie(sel);
+            setBedragen(bed);
+            setStap(STAP.VOORBEREIDEN);
+
+            const klaar = await slaOpRef.current(m, sel, bed, { direct: true });
+
+            if (klaar || generatieRef.current !== generatie) return;
+
+            setControles(beginControles(m));
+            startControles(m, generatie);
+
+            return;
+          }
+        }
+
         // Vanuit de chat, of zonder bekend bedrag, kiest het lid zelf wat meegaat: alles staat aan, zonder bedrag.
         setSelectie(startpunt || m.bedragOnbekend ? beginSelectieChat(m) : beginSelectie(m));
         setBedragen(beginBedragen(m));
@@ -525,37 +557,63 @@ export default function VoorstelWerkruimte({
       return { ...cur, [soort]: volgende };
     });
 
+  // Opslaan via de server (dezelfde route voor het voorbeeld en voor direct opslaan). -> true als het is opgeslagen.
+  // Bij direct opslaan verschijnt er geen samenvatting: het dekkingsplan toont de nieuwe fondsen. Alleen als er iets misging (een regel niet
+  // opgeslagen, of het actieplan niet compleet) blijft de samenvatting staan met de knop om het actieplan opnieuw te proberen.
+  const slaOp = async (m, sel, bed, { direct: zonderVoorbeeld = false } = {}) => {
+    const v = bouwOpslagVerzoek(m, sel, bed);
+
+    if (v.ongeldig.length) {
+      if (zonderVoorbeeld) setFase('klaar');
+
+      return false;
+    }
+
+    setFase(zonderVoorbeeld ? 'bezig' : 'opslaan');
+    setOpslagFouten(null);
+
+    const uit = await voerOpslagUit({ projectId, verzoek: v, diensten });
+
+    if (!uit.ok) {
+      // De server heeft NIETS opgeslagen. De invoer blijft staan; de fouten staan bij de regel waar ze bij horen.
+      setOpslagFouten(uit.soort === 'validatie' ? { regelFouten: uit.regelFouten, algemeen: uit.algemeen, melding: '' } : { regelFouten: {}, algemeen: null, melding: uit.melding });
+      setFase('klaar');
+
+      return false;
+    }
+
+    // Controles die nog liepen zijn niet meer van belang voor dit scherm; de server heeft de status van dit moment vastgelegd.
+    generatieRef.current += 1;
+    setUitkomst(uit);
+    setVerzoek(v);
+    // Het voorstel is opgeslagen: het concept van het zoekprofiel is niet meer nodig.
+    wisConcept(opslagRef.current, projectId, profielRoute);
+
+    const probleem = uit.regels.some((r) => r.status === 'mislukt') || (uit.actieplan && (uit.actieplan.status === 'mislukt' || uit.actieplan.status === 'deels'));
+
+    if (zonderVoorbeeld && !probleem) {
+      setFase('idle');
+      setModel(null);
+      setSelectie(null);
+      setControles({});
+    } else {
+      setFase('opgeslagen');
+    }
+
+    if (typeof onOpgeslagen === 'function') onOpgeslagen(uit);
+
+    return true;
+  };
+
+  slaOpRef.current = slaOp;
+
   const opslaan = async () => {
     if (bezigRef.current || !model || !selectie) return;
 
-    const v = bouwOpslagVerzoek(model, selectie, bedragen);
-
-    if (v.ongeldig.length) return;
-
     bezigRef.current = true;
-    setFase('opslaan');
-    setOpslagFouten(null);
 
     try {
-      const uit = await voerOpslagUit({ projectId, verzoek: v, diensten });
-
-      if (!uit.ok) {
-        // De server heeft NIETS opgeslagen. De invoer blijft staan; de fouten staan bij de regel waar ze bij horen.
-        setOpslagFouten(uit.soort === 'validatie' ? { regelFouten: uit.regelFouten, algemeen: uit.algemeen, melding: '' } : { regelFouten: {}, algemeen: null, melding: uit.melding });
-        setFase('klaar');
-
-        return;
-      }
-
-      // Controles die nog liepen zijn niet meer van belang voor dit scherm; de server heeft de status van dit moment vastgelegd.
-      generatieRef.current += 1;
-      setUitkomst(uit);
-      setVerzoek(v);
-      setFase('opgeslagen');
-      // Het voorstel is opgeslagen: het concept van het zoekprofiel is niet meer nodig.
-      wisConcept(opslagRef.current, projectId, profielRoute);
-
-      if (typeof onOpgeslagen === 'function') onOpgeslagen(uit);
+      await slaOp(model, selectie, bedragen);
     } finally {
       bezigRef.current = false;
     }
@@ -819,7 +877,7 @@ export default function VoorstelWerkruimte({
                     <FinancieringsRegel
                       testId="voorstel-regel"
                       titel={d.naam}
-                      bedrag={b.ok && b.waarde != null ? `kan ${formatEuro(b.waarde)}` : null}
+                      bedrag={b.ok && b.waarde != null ? `advies ${formatEuro(b.waarde)}` : null}
                       bedragLeeg="Geen bedrag"
                       extra={
                         r.grenzen.min != null || r.grenzen.max != null ? (

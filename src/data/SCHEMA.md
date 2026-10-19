@@ -194,3 +194,12 @@ assistent blijft werken.
 
 Voor de uiteindelijke opzet met OpenAI, internetzoeken en de premiumdatabase
 verandert er aan de frontend niets: `askKompas()` blijft de enige ingang.
+
+## Brondetails (kompas_bron_details, sinds 19-10-2026)
+
+`rpc('kompas_bron_details', { p_scheme_ids, p_funder_ids })` — alleen lezen, alleen ingelogd, hooguit 100 id's per soort. Geeft per
+regeling of fonds de details voor het detailpaneel (Deadlines) en de uitklapregels (dekkingsplan): beschrijving (algemene beschrijving,
+anders missie), voorwaarden, disciplines, doelgroepen, werkgebieden, bandbreedte, bijdrage, eerstvolgende deadline, aanvraagdetails en
+`access_tier`. Zelfde zichtbaarheidsregel als `kompas_dekkingsplan`. Werkt ook voor fondsen zonder actueel datamoment (die staan niet in
+`funder_deadlines`). Gebruik via `haalBronDetails()` in services/deadlines.js. De views `subsidieregelingen_deadlines` en
+`funder_deadlines` geven sindsdien ook `access_tier` mee (alleen voor het label "Premium").

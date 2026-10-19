@@ -124,13 +124,15 @@ const BASE = `http://localhost:${PORT}/index.html`;
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
 
-async function nieuwePagina(tier = 'pro', viewport = { width: 1280, height: 1000 }, { hash = `#/kompas/projecten/${PID}?tab=projectfinanciering`, wacht = '[data-testid="voorstel-start-knop"]' } = {}) {
+async function nieuwePagina(tier = 'pro', viewport = { width: 1280, height: 1000 }, { hash = `#/kompas/projecten/${PID}?tab=projectfinanciering`, wacht = '[data-testid="voorstel-start-knop"]', voorbeeld = true } = {}) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
 
   page.fouten = [];
   page.on('pageerror', (e) => page.fouten.push(String(e)));
   await context.exposeFunction('__serverCall', serverCall);
+  // De meeste secties testen het voorbeeld (kiezen en bedragen aanpassen vóór opslaan); sectie 'Direct opslaan' test de standaard zonder voorbeeld.
+  if (voorbeeld) await context.addInitScript(() => { window.__SK_VOORBEELD = true; });
   await context.addInitScript(() => {
     window.__FN = async (naam, body) => {
       const r = await window.__serverCall(body);
@@ -421,6 +423,40 @@ async function wachtOpVoorstel(page) {
   await page.waitForSelector('[data-testid="voorstel-resultaat"]', { timeout: 40000 });
   await page.waitForSelector('[data-testid="voorstel-controles-klaar"]', { timeout: 25000 }).catch(() => {});
   await sleep(300);
+}
+
+sectie('3b. Direct opslaan: Subsidie Kompas zet het advies meteen in het dekkingsplan; × haalt een fonds weg, met zijn taken');
+{
+  resetGenereren({ ...pool(), profile: PRO, dbActief: true });
+  aanroepen = [];
+  faal = { opslaan: 0 };
+  const { context, page } = await nieuwePagina('pro', undefined, { voorbeeld: false });
+
+  await t(page, 'voorstel-start-knop').click();
+  await page.waitForSelector('[data-testid="pf-nieuw-balk"]', { timeout: 40000 });
+  await sleep(500);
+  const n = w.db.funding.length;
+  const labels = await t(page, 'pf-nieuw-fonds').count();
+
+  check('zonder voorbeeld: het advies staat meteen in het dekkingsplan (status Interessant)', n >= 2 && w.db.funding.every((f) => f.status === 'interesting'), String(n));
+  check('geen voorbeeld en geen samenvatting na opslaan', (await t(page, 'voorstel-resultaat').count()) === 0 && (await t(page, 'voorstel-opgeslagen').count()) === 0);
+  check('de balk noemt de nieuwe fondsen bij naam; elke nieuwe regel heeft het label', labels === n && (await t(page, 'pf-regel-nieuw').count()) === n, `${labels} ${n}`);
+  check('"advies" bij de bedragen in het dekkingsplan', /advies €/.test((await t(page, 'pf-regel').allInnerTexts()).join(' ')));
+  await page.screenshot({ path: join(SHOTS, '70-direct-opgeslagen.png'), fullPage: true });
+
+  // Weghalen gebeurt in de browser (RLS van het lid); de testdatabase van de browser is window.__DBL.
+  const lees = () => page.evaluate(() => ({ funding: window.__DBL.subsidie_kompas_program_funding.filter((f) => f.program_id === '22222222-2222-4222-8222-222222222222').map((f) => f.id), acties: window.__DBL.subsidie_kompas_program_actions.map((a) => ({ f: a.funding_id, s: a.source, st: a.status })) }));
+  const voor = await lees();
+  const eersteNaam = await t(page, 'pf-nieuw-fonds').first().innerText();
+  const eerste = (await page.evaluate((naam) => { const r = [...document.querySelectorAll('[data-testid="pf-regel"]')].find((x) => x.innerText.includes(naam.replace('×', '').trim())); return r && r.dataset.regelId; }, eersteNaam)) || voor.funding[0];
+  const takenVoor = voor.acties.filter((x) => x.f === eerste).length;
+  await t(page, 'pf-nieuw-weg').first().click();
+  await sleep(800);
+  const na = await lees();
+  check('× haalt het fonds weg uit het dekkingsplan', na.funding.length === voor.funding.length - 1 && (await t(page, 'pf-regel').count()) === n - 1 && (await t(page, 'pf-nieuw-fonds').count()) === labels - 1);
+  check('de open taken van Subsidie Kompas bij dat fonds gaan mee weg', takenVoor > 0 && na.acties.filter((x) => x.f === eerste).length === 0, `${takenVoor} ${JSON.stringify(voor.acties.slice(0, 2))}`);
+  check('geen pageerrors', page.fouten.length === 0, page.fouten.join(' | '));
+  await context.close();
 }
 
 sectie('4. PROJECTROUTE: het project is het zoekprofiel; één klik, fout en opnieuw, preview, opslaan, actieplan');
