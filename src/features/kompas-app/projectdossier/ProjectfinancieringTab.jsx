@@ -18,6 +18,8 @@ import FinancieringsRegel from '../financiering/FinancieringsRegel.jsx';
 import { kansrijkheid } from '../financiering/kansrijkheid.js';
 import { haalBronDetails } from '../../../data/services/deadlines.js';
 import { useKompas } from '../KompasStore.jsx';
+import { useApp } from '../useKompasApp.js';
+import PremiumTeasers from './PremiumTeasers.jsx';
 import {
   STATUSSEN,
   STATUS_LABEL,
@@ -442,6 +444,7 @@ function bewaarNieuw(sleutel, ids) {
 export default function ProjectfinancieringTab({ project, financiering, dekking, toonActieplan = true }) {
   const { status, fout, regels, wijzig: wijzigRegel, verwijder: verwijderRegelUitPlan, laad } = financiering;
   const store = useKompas();
+  const app = useApp();
   // Regels die Subsidie Kompas net aan het plan toevoegde: herkenbaar met een label tot het lid er iets aan verandert, en in één keer terug te draaien.
   const nieuwSleutel = project && project.id ? `sk-nieuw-${project.id}` : '';
   const [nieuweIds, setNieuweIds] = useState(() => leesNieuw(nieuwSleutel));
@@ -664,6 +667,11 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
           </div>
         )}
       </Blok>
+
+      {/* Alleen Pro: passende Premium-fondsen zonder naam of bedrag, los van het dekkingsplan (telt niet mee in de dekking). */}
+      {status === 'klaar' && project && project.id && app.subscriptionTier === 'pro' && (
+        <PremiumTeasers projectId={project.id} versie={aantalRegels} onUpgrade={app.goAbonnementen} />
+      )}
 
       {toonActieplan && status === 'klaar' && project && project.id && (
         <section id="pf-acties" data-testid="pf-acties" style={css('box-sizing: border-box; padding: 18px 20px; border: 1px solid #E1EAE4; border-radius: 16px; background: #FFFFFF;')}>

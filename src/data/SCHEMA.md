@@ -203,3 +203,9 @@ anders missie), voorwaarden, disciplines, doelgroepen, werkgebieden, bandbreedte
 `access_tier`. Zelfde zichtbaarheidsregel als `kompas_dekkingsplan`. Werkt ook voor fondsen zonder actueel datamoment (die staan niet in
 `funder_deadlines`). Gebruik via `haalBronDetails()` in services/deadlines.js. De views `subsidieregelingen_deadlines` en
 `funder_deadlines` geven sindsdien ook `access_tier` mee (alleen voor het label "Premium").
+
+## Premium-teasers (kompas_premium_teasers, sinds 19-10-2026)
+
+`rpc('kompas_premium_teasers', { p_program_id })` — alleen Pro, alleen het eigen project, alleen lezen. Hooguit 3 passende Premium-fondsen of
+-regelingen ZONDER naam, id, website, bedrag of deadline: soort, bandbreedte, gedeelde disciplines/doelgroepen, match (sterk/goed) en het
+totaal. Gebruik via `haalPremiumTeasers()` in services/projectFinanciering.js (blok onder het dekkingsplan, telt niet mee in de dekking).

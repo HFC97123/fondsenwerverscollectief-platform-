@@ -196,3 +196,30 @@ export async function verwijderRegel(regelId) {
 
   return { ok: !error };
 }
+
+// Premium-teasers voor Pro (kompas_premium_teasers): hooguit 3 passende Premium-fondsen of -regelingen voor dit project, ZONDER naam, id,
+// website, bedrag of deadline. De database bepaalt alles (alleen voor Pro, alleen het eigen project); dit leest alleen.
+// -> { teasers: [{ volgnummer, soort, bandbreedte, disciplines, doelgroepen, match }], totaal }
+export async function haalPremiumTeasers(projectId) {
+  if (!supabase || !isEchtId(projectId)) return { teasers: [], totaal: 0 };
+
+  try {
+    const { data, error } = await supabase.rpc('kompas_premium_teasers', { p_program_id: projectId });
+
+    if (error || !Array.isArray(data)) return { teasers: [], totaal: 0 };
+
+    return {
+      teasers: data.map((r) => ({
+        volgnummer: r.volgnummer,
+        soort: r.soort === 'regeling' ? 'regeling' : 'fonds',
+        bandbreedte: r.bandbreedte_bijdrage_naam || null,
+        disciplines: Array.isArray(r.disciplines) ? r.disciplines : [],
+        doelgroepen: Array.isArray(r.doelgroepen) ? r.doelgroepen : [],
+        match: r.match === 'sterk' ? 'sterk' : 'goed',
+      })),
+      totaal: data.length ? Number(data[0].totaal) || data.length : 0,
+    };
+  } catch (e) {
+    return { teasers: [], totaal: 0 };
+  }
+}
