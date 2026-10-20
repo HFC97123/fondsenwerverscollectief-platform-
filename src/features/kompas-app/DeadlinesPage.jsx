@@ -96,6 +96,11 @@ function formatAmount(min, max) {
 }
 
 // Heeft een regeling een bekend minimum- of maximumbedrag?
+// Een vergrendelde rij toont nooit de echte tekst, ook niet wazig: letters en cijfers worden bolletjes (spaties blijven, zodat de regel er natuurlijk uitziet).
+function wazigeTekst(tekst) {
+  return String(tekst ?? '').replace(/[\p{L}\p{N}]/gu, '•');
+}
+
 function heeftBedrag(row) {
   return Boolean(row && (row.bedragMin || row.bedragMax));
 }
@@ -758,6 +763,7 @@ export default function DeadlinesPage() {
                             className="fwk-dl-rij"
                             data-testid="deadline-rij"
                             data-vergrendeld={locked ? 'ja' : 'nee'}
+                            aria-label={locked ? 'Regeling met Premium. Klik voor meer informatie over Premium.' : undefined}
                             aria-current={gekozen ? 'true' : undefined}
                             onClick={() => handleCardClick(r)}
                             onKeyDown={(e) => {
@@ -768,15 +774,15 @@ export default function DeadlinesPage() {
                             }}
                           >
                             <div className="fwk-dl-naam">
-                              <div className="fwk-dl-titel">
-                                {r.naam}
+                              <div className={locked ? 'fwk-dl-titel fwk-dl-wazig' : 'fwk-dl-titel'} aria-hidden={locked ? 'true' : undefined} data-testid={locked ? 'rij-naam-wazig' : undefined}>
+                                {locked ? wazigeTekst(r.naam) : r.naam}
                                 {!locked && r.accessTier === 'premium' && (
                                   <span className="fwk-dl-tag fwk-dl-premiumlabel" data-toon="premium" data-testid="rij-premium">
                                     Premium
                                   </span>
                                 )}
                               </div>
-                              <div className="fwk-dl-sub">{locked ? `${r.thema || 'Discipline onbekend'} · ${r.regio}` : `${r.funder} · ${r.regio}`}</div>
+                              <div className={locked ? 'fwk-dl-sub fwk-dl-wazig' : 'fwk-dl-sub'} aria-hidden={locked ? 'true' : undefined}>{locked ? wazigeTekst(`${r.thema || 'Discipline onbekend'} · ${r.regio}`) : `${r.funder} · ${r.regio}`}</div>
                               {isAdmin && (
                                 <div className="fwk-dl-admin" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                                   <button type="button" aria-pressed={adminExpanded} onClick={() => setExpandedAdminId(adminExpanded ? null : r.id)}>
@@ -824,9 +830,13 @@ export default function DeadlinesPage() {
                             </div>
 
                             <div className="fwk-dl-eind">
-                              <span className="fwk-dl-status" style={css(`border-color: ${st.border}; background: ${st.bg}; color: ${st.color};`)}>
-                                {r.status}
-                              </span>
+                              {locked ? (
+                                <span className="fwk-dl-status fwk-dl-wazig" aria-hidden="true">{wazigeTekst(r.status)}</span>
+                              ) : (
+                                <span className="fwk-dl-status" style={css(`border-color: ${st.border}; background: ${st.bg}; color: ${st.color};`)}>
+                                  {r.status}
+                                </span>
+                              )}
                             </div>
                           </div>
 
