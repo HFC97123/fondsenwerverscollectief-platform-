@@ -11,9 +11,9 @@ import { leesWordBestand } from './wordUpload.js';
 
 const MIN_FORMULIER_TEKENS = 20;
 
-export default function NieuweAanvraag({ project, fondsStart = '', assistent, onKlaar, onTerug }) {
+export default function NieuweAanvraag({ project, fondsStart = '', websiteStart = '', assistent, onKlaar, onTerug }) {
   const [fonds, setFonds] = useState(fondsStart);
-  const [urls, setUrls] = useState(['']);
+  const [urls, setUrls] = useState([websiteStart || '']);
   const [formulier, setFormulier] = useState('');
   const [plakken, setPlakken] = useState(false);
   const [bestand, setBestand] = useState('');

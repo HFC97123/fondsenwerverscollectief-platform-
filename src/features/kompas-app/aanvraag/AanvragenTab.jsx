@@ -50,7 +50,7 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
     laatsteStart.current = start;
 
     if (start.aanvraagId) setScherm({ naam: 'werk', aanvraagId: start.aanvraagId });
-    else setScherm({ naam: 'nieuw', fonds: start.fonds || '' });
+    else setScherm({ naam: 'nieuw', fonds: start.fonds || '', website: start.website || '' });
   }, [start]);
 
   const naarLijst = () => {
@@ -65,6 +65,7 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
       <NieuweAanvraag
         project={project}
         fondsStart={scherm.fonds}
+        websiteStart={scherm.website || ''}
         assistent={assistent}
         onTerug={naarLijst}
         onKlaar={(r) => setScherm({ naam: 'werk', aanvraagId: r.aanvraagId, fondsLabel: r.fondsLabel, voorlopig: r.voorlopig })}

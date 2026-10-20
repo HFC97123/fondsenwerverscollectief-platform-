@@ -18,6 +18,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
   const [lijst, setLijst] = useState(null);
   const [lijstFout, setLijstFout] = useState('');
   const [fonds, setFonds] = useState('');
+  const [site, setSite] = useState('');
   const [open, setOpen] = useState(null); // { plan, opgeslagen }
   const [bezig, setBezig] = useState('');
   const [fout, setFout] = useState(null); // { melding, reden }
@@ -131,7 +132,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
 
 
   const naarFonds = () => {
-    onNieuweAanvraag(fonds.trim());
+    onNieuweAanvraag(fonds.trim(), site.trim());
   };
 
   if (open) {
@@ -261,6 +262,12 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                   Welk fonds?
                 </label>
                 <input id="aa-fonds-plan" data-testid="aa-fonds-plan" className="fwk-aa-veld" type="text" value={fonds} maxLength={200} onChange={(e) => setFonds(e.target.value)} placeholder="Bijvoorbeeld Stichting Voorbeeldfonds" />
+              </div>
+              <div>
+                <label htmlFor="aa-site-plan" className="fwk-aa-label">
+                  Website van het fonds (optioneel)
+                </label>
+                <input id="aa-site-plan" data-testid="aa-site-plan" className="fwk-aa-veld" type="url" value={site} maxLength={500} onChange={(e) => setSite(e.target.value)} placeholder="https://www.voorbeeldfonds.nl/aanvragen" />
               </div>
               <div className="fwk-aa-onder">
                 <Button variant="dark" onClick={naarFonds} disabled={fonds.trim().length < 2 || !projectId} ariaLabel="Kies fonds en maak criteria">

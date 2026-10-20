@@ -41,7 +41,7 @@ function Harnas({ store }) {
         <button type="button" data-testid="tab-aanvragen" onClick={() => setTab('aanvragen')}>Aanvragen</button>
         <button type="button" data-testid="tab-inhoud" onClick={() => setTab('inhoud')}>Projectinhoud</button>
       </nav>
-      {tab === 'plan' && <ProjectplanTab project={project} projecten={[project]} onKiesProject={() => {}} store={store} assistent={assistent} onNieuweAanvraag={(fonds) => { setStart({ fonds, nonce: Date.now() }); setTab('aanvragen'); }} onOpenAanvraag={(id) => { setStart({ aanvraagId: id, nonce: Date.now() }); setTab('aanvragen'); }} onNaarProjectinhoud={() => setTab('inhoud')} />}
+      {tab === 'plan' && <ProjectplanTab project={project} projecten={[project]} onKiesProject={() => {}} store={store} assistent={assistent} onNieuweAanvraag={(fonds, website) => { setStart({ fonds, website, nonce: Date.now() }); setTab('aanvragen'); }} onOpenAanvraag={(id) => { setStart({ aanvraagId: id, nonce: Date.now() }); setTab('aanvragen'); }} onNaarProjectinhoud={() => setTab('inhoud')} />}
       {tab === 'aanvragen' && <AanvragenTab project={project} projecten={[project]} onKiesProject={() => {}} store={store} assistent={assistent} start={start} />}
       {tab === 'inhoud' && <div data-testid="inhoud">inhoud</div>}
     </div>
@@ -135,8 +135,11 @@ sectie('3. Nieuwe aanvraag: criteria ophalen uit geplakte formuliervragen');
   const fondsVeld = $('[data-testid="aa-fonds-plan"]');
   check('"Kies fonds" is uit zolang er geen fondsnaam staat', knop('Kies fonds en maak criteria').disabled === true);
   await typ(fondsVeld, 'Stichting Voorbeeldfonds');
+  await typ($('[data-testid="aa-site-plan"]'), 'https://www.voorbeeldfonds.nl/aanvragen');
   await klik(knop('Kies fonds en maak criteria'));
   check('gaat naar Nieuwe aanvraag met het fonds al ingevuld', await wacht(() => $('[data-testid="aa-nieuw"]')) && $('[data-testid="aa-fonds"]').value === 'Stichting Voorbeeldfonds');
+  check('de website uit het middelste vakje staat al ingevuld in de volgende stap', $('[data-testid="aa-url-0"]').value === 'https://www.voorbeeldfonds.nl/aanvragen');
+  await typ($('[data-testid="aa-url-0"]'), '');
   check('stappen zichtbaar, geen "eisen" in de teksten', $('[data-testid="aa-stappen"]') && !/\beisen\b|eisenlijst/i.test(tekst()));
   check('privaatfonds-kaart met mailknop naar het Collectief', ($('[data-testid="aa-mail-collectief"]') || { href: '' }).href.startsWith('mailto:info@fondsenwerverscollectief.nl') && /privaatfonds of familiefonds/.test(tekst()));
   check('Criteria ophalen is uit zolang er geen bron is', knop('Criteria ophalen').disabled === true);

@@ -198,8 +198,8 @@ export default function DocumentatiePage() {
           onKiesProject={kiesProject}
           store={store}
           assistent={assistent}
-          onNieuweAanvraag={(fonds) => {
-            setAanvraagStart({ fonds, nonce: Date.now() });
+          onNieuweAanvraag={(fonds, website) => {
+            setAanvraagStart({ fonds, website: website || '', nonce: Date.now() });
             setTab('aanvragen');
           }}
           onOpenAanvraag={(id) => {
