@@ -93,8 +93,8 @@ export function AbonnerenBevestiging({ intentie, aanbod, looptijd = BASIS_LOOPTI
   const p = prijsInfo(tier, looptijd) || prijsInfo(tier, BASIS_LOOPTIJD);
   const vooruit = p.vooruit;
   // Alleen een expliciet "false" van de server toont de variant zonder trial. Een gratis proefperiode
-  // bestaat alleen bij maandelijks betalen: wie vooruit betaalt, betaalt meteen.
-  const metTrial = !vooruit && !(aanbod && aanbod.trialBeschikbaar === false);
+  // geldt voor elke looptijd (maand, half jaar en jaar); de server beslist of die nog beschikbaar is.
+  const metTrial = !(aanbod && aanbod.trialBeschikbaar === false);
 
   // Een andere looptijd = een ander bedrag en andere voorwaarden: het akkoord moet opnieuw gegeven worden.
   const wijzigLooptijd = (code) => {
@@ -178,18 +178,25 @@ export function AbonnerenBevestiging({ intentie, aanbod, looptijd = BASIS_LOOPTI
     </>
   );
 
-  const prijsblok = vooruit ? (
+  const prijsblok = metTrial ? (
+    <div style={PRIJSBLOK}>
+      <div style={PRIJS_GROOT}>{info.proefDuur} gratis</div>
+      <div style={PRIJS_KLEIN}>
+        {vooruit ? `daarna ${p.totaal} voor ${p.duur} (${p.perMaand} per maand)` : `daarna ${info.prijsTekst}`}
+      </div>
+      {vooruit && (
+        <div style={css('margin-top: 6px; font-size: 15px; color: #4B5C58;')}>
+          U bespaart {p.besparing} ten opzichte van maandelijks betalen.
+        </div>
+      )}
+    </div>
+  ) : vooruit ? (
     <div style={PRIJSBLOK}>
       <div style={PRIJS_GROOT}>{p.totaal} nu betalen</div>
       <div style={PRIJS_KLEIN}>voor {p.duur} ({p.perMaand} per maand)</div>
       <div style={css('margin-top: 6px; font-size: 15px; color: #4B5C58;')}>
-        U bespaart {p.besparing} ten opzichte van maandelijks betalen. Daarna {p.maandPrijs} per maand.
+        U bespaart {p.besparing} ten opzichte van maandelijks betalen.
       </div>
-    </div>
-  ) : metTrial ? (
-    <div style={PRIJSBLOK}>
-      <div style={PRIJS_GROOT}>{info.proefDuur} gratis</div>
-      <div style={PRIJS_KLEIN}>daarna {info.prijsTekst}</div>
     </div>
   ) : (
     <div style={PRIJSBLOK}>

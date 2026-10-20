@@ -6,7 +6,7 @@
 //  - Wie een half jaar of jaar VOORUIT betaalt, krijgt korting. Na die
 //    vooruitbetaalde periode gaat het abonnement automatisch over op de gewone
 //    maandprijs, tenzij het is opgezegd.
-//  - Een gratis proefperiode bestaat alleen bij de maandkeuze.
+//  - De gratis proefperiode geldt voor elke looptijd (maand, half jaar en jaar).
 //
 // Spelregels:
 //  - prijzen zijn altijd EXCLUSIEF btw (genoemd in de FAQ en bij het afrekenen); op de kaarten staat het niet apart. De app rekent
@@ -95,9 +95,9 @@ export function maxBesparingPercentage(looptijd) {
   return Math.max(besparingPercentage('pro', looptijd) ?? 0, besparingPercentage('premium', looptijd) ?? 0);
 }
 
-// Alleen bij de maandkeuze bestaat een gratis proefperiode. Of een lid er recht op heeft, bepaalt de server.
+// De gratis proefperiode geldt voor elke looptijd (maand, half jaar en jaar). Of een lid er recht op heeft, bepaalt de server.
 export function proefMogelijk(looptijd) {
-  return looptijd === 'MAAND';
+  return LOOPTIJDEN.includes(looptijd);
 }
 
 // Alle weergaveteksten voor één combinatie, uit dezelfde bron.

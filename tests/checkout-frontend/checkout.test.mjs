@@ -604,17 +604,17 @@ huidig = 'N looptijden';
   ok(ab.besparingCent('pro', 'JAAR') === 9600 && ab.besparingPercentage('pro', 'JAAR') === 20, 'Pro jaar: bespaart 96, 20%');
   ok(ab.prijsPerMaandCent('free', 'MAAND') === null && ab.prijsPerMaandCent('pro', 'WEEK') === null && ab.prijsInfo('pro', 'x') === null, 'onbekende tier of looptijd = null');
   ok(ab.formatEuro(4000) === '€40' && ab.formatEuro(3250) === '€32,50', 'formatEuro: hele euro zonder decimalen, anders komma');
-  ok(ab.proefMogelijk('MAAND') === true && ['HALFJAAR', 'JAAR'].every((l) => ab.proefMogelijk(l) === false), 'proef alleen bij maand');
+  ok(ab.LOOPTIJDEN.every((l) => ab.proefMogelijk(l) === true) && ab.proefMogelijk('WEEK') === false, 'proef bij elke looptijd (maand, half jaar, jaar)');
   ok(ab.ABONNEMENTEN.pro.prijsTekst === '€40 per maand' && ab.ABONNEMENTEN.premium.prijsTekst === '€75 per maand', 'maandprijzen €40 / €75');
 
   // N2. Pro per half jaar: meteen betalen, geen proef, juiste tekst en juiste body
   opnieuw(GOED);
-  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'HALFJAAR' }));
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'HALFJAAR', aanbod: { trialBeschikbaar: false } }));
   {
     const t = tekst();
-    ok(t.includes('€210 nu betalen') && t.includes('6 maanden') && t.includes('€35 per maand') && t.includes('Daarna €40 per maand'), 'half jaar: €210 nu, 6 maanden, daarna €40 per maand');
+    ok(t.includes('€210 nu betalen') && t.includes('6 maanden') && t.includes('€35 per maand') && !t.includes('Daarna €40 per maand'), 'half jaar zonder trialrecht: €210 nu, 6 maanden, geen maandprijs-claim');
     ok(t.includes('U bespaart €30'), 'half jaar: besparing €30 genoemd');
-    ok(!t.includes('7 dagen gratis'), 'half jaar: GEEN gratis proefperiode');
+    ok(!t.includes('7 dagen gratis'), 'half jaar zonder trialrecht: geen gratis proefperiode');
     ok(!/\bbtw\b[^.]*\d+%/.test(t), 'geen btw-berekening in de app');
   }
   await vink();
@@ -623,10 +623,15 @@ huidig = 'N looptijden';
   ok(JSON.stringify(client.log.invoke[0].opties.body) === JSON.stringify(PRO_NAAR('PRO', 'HALFJAAR')), 'body bevat looptijd HALFJAAR en verder niets');
   ok(!('bedrag' in client.log.invoke[0].opties.body) && !('amount' in client.log.invoke[0].opties.body) && !('price' in client.log.invoke[0].opties.body), 'frontend stuurt nooit een bedrag of prijs');
 
+  // N2b. Pro per half jaar MET trialrecht: gratis proef, daarna het halfjaarbedrag
+  opnieuw(GOED);
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'HALFJAAR' }));
+  ok(tekst().includes('7 dagen gratis') && tekst().includes('daarna €210 voor 6 maanden') && !tekst().includes('nu betalen'), 'half jaar met trialrecht: 7 dagen gratis, daarna €210 voor 6 maanden');
+
   // N3. Premium per jaar
   opnieuw(GOED);
   await render(React.createElement(AbonnerenBevestiging, { intentie: 'PREMIUM', looptijd: 'JAAR' }));
-  ok(tekst().includes('€720 nu betalen') && tekst().includes('Daarna €75 per maand') && !tekst().includes('24 uur gratis'), 'Premium jaar: €720, daarna €75 per maand, geen 24-uurs proef');
+  ok(tekst().includes('24 uur gratis') && tekst().includes('daarna €720') && !tekst().includes('nu betalen'), 'Premium jaar met trialrecht: 24 uur gratis, daarna €720');
   await vink();
   await klik(knop('Doorgaan naar betalen'));
   await wacht();
@@ -645,12 +650,12 @@ huidig = 'N looptijden';
   opnieuw(GOED);
   dom.window.location.hash = '#/kompas/abonneren?intent=PRO&looptijd=HALFJAAR';
   await render(React.createElement(AbonnerenPage));
-  ok(tekst().includes('€210 nu betalen'), 'looptijd uit de URL (half jaar: €210)');
+  ok(tekst().includes('7 dagen gratis') && tekst().includes('daarna €210'), 'looptijd uit de URL (half jaar: 7 dagen gratis, daarna €210)');
   ok(JSON.parse(dom.window.localStorage.getItem('fc.koopintentie') || '{}').looptijd === 'HALFJAAR', 'looptijd samen met de intentie bewaard');
   await vink();
   ok(container.querySelector('input[type=checkbox]').checked, 'akkoord gegeven');
   await klik(container.querySelector('[data-looptijd="JAAR"]'));
-  ok(tekst().includes('€384 nu betalen'), 'wisselen naar jaar toont €384');
+  ok(tekst().includes('daarna €384'), 'wisselen naar jaar toont €384');
   ok(container.querySelector('input[type=checkbox]').checked === false, 'na wisselen moet het akkoord opnieuw gegeven worden');
   ok(JSON.parse(dom.window.localStorage.getItem('fc.koopintentie') || '{}').looptijd === 'JAAR', 'gewijzigde looptijd bewaard');
   await klik(container.querySelector('[data-looptijd="MAAND"]'));

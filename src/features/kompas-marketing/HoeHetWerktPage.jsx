@@ -405,7 +405,7 @@ export default function HoeHetWerktPage() {
                 {vooruit && prijs.besparingPercentage > 0 ? `Bespaar ${prijs.besparingPercentage}%` : null}
               </div>
               <div style={css('min-height: 22px; font-size: 14px; font-weight: 800; color: #4E9A6C; margin-bottom: 12px;')}>
-                {huidig || vooruit || enterprise ? '' : plan.proefperiode}
+                {huidig || enterprise ? '' : plan.proefperiode}
               </div>
               <div style={css('min-height: 48px; font-size: 15px; line-height: 1.6; color: #4B5C58; margin-bottom: 22px;')}>{plan.omschrijving}</div>
 
