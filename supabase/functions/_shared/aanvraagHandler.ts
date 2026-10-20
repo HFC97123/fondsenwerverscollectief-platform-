@@ -6,6 +6,8 @@
 //   - Standaard AAN voor Pro en Premium. Alleen met AANVRAAG_ASSISTENT=uit is de functie voor iedereen uit (noodrem; er is geen testersfase).
 //   - Free heeft geen toegang. Pro en Premium krijgen de grenzen uit tierConfig.ts (aanvraagAssistent).
 //   - Kan een maandtelling niet worden gelezen, dan weigert de server (fail closed): een grens die niet te controleren is, is geen grens.
+//   - Het algemene projectplan wordt één keer per project geschreven (deps.planReserveer); het aantal projecten per rollend jaar hangt af van het abonnement.
+//     Het plan wordt pas geschreven als de projectinformatie volledig is (voortgangsmeter, planGereedheid). Teksten voor een fonds tellen bij de beoordelingen.
 //   - De maandgrens is atomair: vlak vóór de AI-aanroep reserveert de server een plek (deps.reserveer, één database-stap met een slot per gebruiker) en rondt die
 //     daarna af (deps.rondAf). Zo komen twee gelijktijdige verzoeken er niet allebei door, en een mislukte aanroep telt niet mee. De teller hangt aan het account.
 //   - Een beoordeling zonder één geldig oordeel (modelstoring) wordt niet opgeslagen en telt niet mee voor de maandgrens.
@@ -27,7 +29,7 @@ import {
   type ModelAanroep,
 } from './aanvraagAssistent.ts';
 import { tierConfigVoor } from './tierConfig.ts';
-import { bouwFeiten, fondsSleutel, MIN_FEITEN, schrijfPlan, sectiesUitCriteria, STANDAARD_SECTIES, type PlanBron } from './projectplan.ts';
+import { bouwFeiten, fondsSleutel, MIN_FEITEN, planGereedheid, schrijfPlan, sectiesUitCriteria, STANDAARD_SECTIES, type PlanBron } from './projectplan.ts';
 
 export const MAX_BODY_TEKENS = 600_000;
 export const MAX_PAGINAS = 2;
@@ -35,9 +37,20 @@ export const MAX_FONDSLABEL = 200;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'aanvragen' | 'aanvraag';
+export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag';
 
-const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'aanvragen', 'aanvraag'];
+const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag'];
+
+// Het algemene projectplan telt per rollend jaar (aantal verschillende projecten); een verwijderd project geeft zijn plek niet terug.
+export const PLAN_VENSTER_MAANDEN = 12;
+
+export function planStartIso(nu: Date): string {
+  const d = new Date(nu.getTime());
+
+  d.setUTCMonth(d.getUTCMonth() - PLAN_VENSTER_MAANDEN);
+
+  return d.toISOString();
+}
 
 // Eén aanvraag = alles wat bij één fonds (of het algemene plan) van één project hoort: criteria, plan en laatste uitkomst.
 export interface AanvraagRij {
@@ -110,6 +123,13 @@ export type Verbruikssoort = 'beoordelingen' | 'eisen' | 'plannen';
 
 export type Reservering = { ok: true; id: string; gebruikt: number } | { ok: false; reden: 'maand-op' | 'te-veel-mislukt' | 'storing'; gebruikt?: number };
 
+export type PlanReservering = { ok: true; id: string; gebruikt: number } | { ok: false; reden: 'al-geschreven' | 'plan-limiet' | 'te-veel-mislukt' | 'storing'; gebruikt?: number };
+
+export interface PlanStand {
+  gebruikt: number; // verschillende projecten met een geschreven plan in het rollende jaar
+  projectKlaar: boolean; // is het plan van dit project al geschreven?
+}
+
 export type PaginaUitkomst = { ok: true; tekst: string } | { ok: false; reden: 'niet-bereikbaar' | 'niet-toegestaan' | 'niet-leesbaar' };
 
 export interface HandlerDeps {
@@ -122,6 +142,8 @@ export interface HandlerDeps {
   projectIsVanGebruiker(projectId: string, userId: string): Promise<boolean | null>; // null = storing
   telRijen(userId: string, soort: Verbruikssoort, sindsIso: string): Promise<number | null>; // null = niet te lezen
   reserveer(userId: string, soort: Verbruikssoort, limiet: number, sindsIso: string): Promise<Reservering>; // atomair: controleert de maandgrens en reserveert in één stap
+  planStand(userId: string, projectId: string | null, sindsIso: string): Promise<PlanStand | null>; // null = niet te lezen
+  planReserveer(userId: string, projectId: string, limiet: number, sindsIso: string): Promise<PlanReservering>; // atomair: één keer per project en een grens op het aantal projecten
   rondAf(reserveringId: string, userId: string, succes: boolean): Promise<void>; // gelukt = telt mee, mislukt = telt niet mee; gooit nooit
   lijstAanvragen(userId: string, projectId: string): Promise<AanvraagRij[] | null>; // null = storing
   leesAanvraag(userId: string, id: string): Promise<AanvraagRij | null | 'storing'>; // null = niet gevonden (of van iemand anders)
@@ -248,7 +270,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
   // ── status ────────────────────────────────────────────────────────────────────────────────────────────────
   if (modus === 'status') {
-    const [beoordelingen, eisen, plannen] = await Promise.all([deps.telRijen(userId, 'beoordelingen', sinds), deps.telRijen(userId, 'eisen', sinds), deps.telRijen(userId, 'plannen', sinds)]);
+    const [beoordelingen, eisen, planStand] = await Promise.all([deps.telRijen(userId, 'beoordelingen', sinds), deps.telRijen(userId, 'eisen', sinds), deps.planStand(userId, null, planStartIso(deps.nu()))]);
 
     return {
       status: 200,
@@ -256,7 +278,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
         ok: true,
         tier: tierLabel,
         beoordelingen: { limiet: config.beoordelingenPerMaand, gebruikt: beoordelingen, resterend: beoordelingen === null ? null : maandRuimte(config, 'beoordeling', beoordelingen).resterend },
-        plannen: { limiet: config.plannenPerMaand, gebruikt: plannen, resterend: plannen === null ? null : maandRuimte(config, 'plan', plannen).resterend },
+        plannen: { limiet: config.projectplannen, gebruikt: planStand === null ? null : planStand.gebruikt, resterend: planStand === null ? null : maandRuimte(config, 'plan', planStand.gebruikt).resterend, periodeMaanden: PLAN_VENSTER_MAANDEN },
         criteriaOphalen: { limiet: config.eisenOphalenPerMaand, gebruikt: eisen },
         maxEisen: config.maxEisen,
         maxAanvraagTekens: config.maxAanvraagTekens,
@@ -447,6 +469,35 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
   }
 
   // ── plan-schrijven ────────────────────────────────────────────────────────────────────────────────────────
+  // ── plan-gereedheid (voortgangsmeter voor het algemene projectplan) ──────────────────────────────────────
+  if (modus === 'plan-gereedheid') {
+    const pid = typeof body.projectId === 'string' && UUID_RE.test(body.projectId) ? body.projectId.toLowerCase() : '';
+
+    if (!pid) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+    const check = await deps.projectIsVanGebruiker(pid, userId);
+
+    if (check === null) return fout(503, 'project', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+    if (check !== true) return fout(404, 'project', 'Dit project is niet gevonden.');
+
+    const bron = await deps.leesPlanBron(userId, pid);
+
+    if (!bron) return fout(503, 'project', 'Uw projectgegevens konden nu niet worden gelezen. Probeer het later opnieuw.');
+
+    const stand = await deps.planStand(userId, pid, planStartIso(deps.nu()));
+
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        gereedheid: planGereedheid(bouwFeiten(bron)),
+        projectKlaar: stand === null ? null : stand.projectKlaar,
+        plannen: { limiet: config.projectplannen, gebruikt: stand === null ? null : stand.gebruikt, resterend: stand === null ? null : Math.max(0, config.projectplannen - stand.gebruikt), periodeMaanden: PLAN_VENSTER_MAANDEN },
+      },
+    };
+  }
+
+  // ── plan-schrijven ────────────────────────────────────────────────────────────────────────────────────────
   if (modus === 'plan-schrijven') {
     const pid = typeof body.projectId === 'string' && UUID_RE.test(body.projectId) ? body.projectId.toLowerCase() : '';
 
@@ -461,23 +512,42 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     if (check === null) return fout(503, 'project', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
     if (check !== true) return fout(404, 'project', 'Dit project is niet gevonden.');
 
-    const gebruiktPlannen = await deps.telRijen(userId, 'plannen', sinds);
-
-    if (gebruiktPlannen === null) return fout(503, 'telling', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
-
-    const ruimtePlan = maandRuimte(config, 'plan', gebruiktPlannen);
-
-    const planMaandOp = () =>
+    // Twee soorten. Een versie voor een fonds telt bij de beoordelingen van de maand. Het algemene projectplan wordt één keer per project geschreven;
+    // het aantal verschillende projecten per rollend jaar hangt af van het abonnement.
+    const fondsVersie = Boolean(aanvraagIdPlan);
+    const sindsPlan = planStartIso(deps.nu());
+    const fondsMaandOp = () =>
       fout(
         429,
         'maand-op',
         tier === 'pro' && !isAdmin
-          ? `U heeft deze maand al ${ruimtePlan.limiet === 1 ? 'een plan' : `${ruimtePlan.limiet} plannen`} laten schrijven. Volgende maand is er weer ruimte; met Premium kunt u er meer per maand schrijven.`
-          : `U heeft deze maand al ${ruimtePlan.limiet === 1 ? 'een plan' : `${ruimtePlan.limiet} plannen`} laten schrijven. Volgende maand is er weer ruimte.`,
-        { limiet: ruimtePlan.limiet, resterend: 0 },
+          ? `U heeft deze maand al ${config.beoordelingenPerMaand} keer een aanvraag laten beoordelen of schrijven. Volgende maand is er weer ruimte; met Premium kunt u er meer per maand doen.`
+          : `U heeft deze maand al ${config.beoordelingenPerMaand} keer een aanvraag laten beoordelen of schrijven. Volgende maand is er weer ruimte.`,
+        { limiet: config.beoordelingenPerMaand, resterend: 0 },
+      );
+    const planAlGeschreven = () => fout(409, 'al-geschreven', 'Het projectplan van dit project is al geschreven. Kopieer of download het en werk het zelf verder bij; opnieuw laten schrijven kan niet.');
+    const planLimiet = () =>
+      fout(
+        429,
+        'plan-limiet',
+        tier === 'pro' && !isAdmin
+          ? 'Met Pro laat u voor één project een projectplan schrijven, en dat is al gebeurd. Voor meer projecten heeft u Premium nodig.'
+          : `U heeft het maximum van ${config.projectplannen} projecten met een geschreven plan bereikt.`,
+        { limiet: config.projectplannen, resterend: 0 },
       );
 
-    if (!ruimtePlan.toegestaan) return planMaandOp();
+    if (fondsVersie) {
+      const gebruiktFonds = await deps.telRijen(userId, 'beoordelingen', sinds);
+
+      if (gebruiktFonds === null) return fout(503, 'telling', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+      if (!maandRuimte(config, 'beoordeling', gebruiktFonds).toegestaan) return fondsMaandOp();
+    } else {
+      const stand = await deps.planStand(userId, pid, sindsPlan);
+
+      if (!stand) return fout(503, 'telling', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+      if (stand.projectKlaar) return planAlGeschreven();
+      if (stand.gebruikt >= config.projectplannen) return planLimiet();
+    }
 
     // Een plan voor een fonds hoort bij een bestaande aanvraag van dit lid en dit project; zonder aanvraag is het het algemene plan van het project.
     let rij: AanvraagRij | null = null;
@@ -501,11 +571,26 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
       return fout(422, 'te-weinig-info', 'Er staat nog te weinig in uw projectgegevens en projectdocumentatie om een plan op te baseren. Vul eerst de aanleiding, de doelgroep, de doelstelling en de activiteiten in.', { aantalFeiten: feiten.length });
     }
 
+    // Het algemene plan wordt maar één keer geschreven: pas als alle kernvelden zijn ingevuld.
+    if (!fondsVersie) {
+      const g = planGereedheid(feiten);
+
+      if (!g.klaar) {
+        return fout(422, 'onvolledig', 'Het plan kan pas worden geschreven als de projectinformatie volledig is. Het wordt maar één keer per project geschreven, dus we wachten tot alles erin staat.', { gereedheid: g });
+      }
+    }
+
     const { secties: defs, aandachtspunten, uitFormulier } = rij ? sectiesUitCriteria(rij.criteria as any[]) : { secties: STANDAARD_SECTIES.map((d) => ({ ...d })), aandachtspunten: [] as string[], uitFormulier: false };
     // Atomair reserveren vlak vóór de modelaanroep.
-    const plekPlan = await deps.reserveer(userId, 'plannen', config.plannenPerMaand, sinds);
+    const plekPlan = fondsVersie ? await deps.reserveer(userId, 'beoordelingen', config.beoordelingenPerMaand, sinds) : await deps.planReserveer(userId, pid, config.projectplannen, sindsPlan);
 
-    if (!plekPlan.ok) return plekPlan.reden === 'maand-op' ? planMaandOp() : reserveerWeigering(plekPlan.reden);
+    if (!plekPlan.ok) {
+      if (plekPlan.reden === 'maand-op') return fondsMaandOp();
+      if (plekPlan.reden === 'al-geschreven') return planAlGeschreven();
+      if (plekPlan.reden === 'plan-limiet') return planLimiet();
+
+      return reserveerWeigering(plekPlan.reden);
+    }
 
     let geschreven: Awaited<ReturnType<typeof schrijfPlan>>;
 
@@ -518,7 +603,8 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
     const nuIso = deps.nu().toISOString();
     // Gelukt = minstens één onderdeel dat het model echt heeft behandeld is goed teruggekomen (onderdelen zonder feiten tellen niet mee).
-    const gelukt = geschreven.modelAangeroepen && geschreven.stat.secties - geschreven.stat.zonderFeiten - geschreven.stat.mislukt > 0;
+    // Het algemene plan wordt maar één keer geschreven: een plan met een mislukt onderdeel telt niet (het lid mag het opnieuw proberen).
+    const gelukt = geschreven.modelAangeroepen && geschreven.stat.secties - geschreven.stat.zonderFeiten - geschreven.stat.mislukt > 0 && (fondsVersie || geschreven.stat.mislukt === 0);
 
     await deps.rondAf(plekPlan.id, userId, gelukt && geschreven.modelAangeroepen).catch(() => undefined);
 
@@ -535,22 +621,26 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     });
 
     // Geen enkel onderdeel gelukt = storing: niet opslaan en niet meetellen. (Alleen onderdelen zonder feiten tellen niet als een plan.)
-    if (!gelukt || !geschreven.modelAangeroepen) return fout(502, 'ai-mislukt', 'Het plan is nu niet gelukt. Probeer het later opnieuw; er is niets verbruikt van uw maandruimte.', { statistiek: geschreven.stat });
+    if (!gelukt || !geschreven.modelAangeroepen) return fout(502, 'ai-mislukt', fondsVersie ? 'Het plan is nu niet gelukt. Probeer het later opnieuw; er is niets verbruikt van uw maandruimte.' : 'Het plan is nu niet gelukt. Probeer het zo opnieuw; uw plek voor een projectplan is niet verbruikt.', { statistiek: geschreven.stat });
 
     const plan = { versie: 1, soort: rij ? 'fonds' : 'algemeen', gemaakt: nuIso, uitFormulier, secties: geschreven.secties, statistiek: geschreven.stat };
-    const opgeslagenId = await deps.bewaarAanvraag({
+    const planRij = {
       user_id: userId,
       program_id: pid,
-      soort: rij ? 'fonds' : 'algemeen',
+      soort: (rij ? 'fonds' : 'algemeen') as 'fonds' | 'algemeen',
       fonds_label: rij ? rij.fonds_label : '',
       fonds_sleutel: rij ? fondsSleutel(rij.fonds_label) : '',
       plan,
       plan_bijgewerkt_op: nuIso,
-    });
+    };
+    // Het algemene plan wordt maar één keer geschreven: lukt het bewaren niet, probeer het dan nog één keer voordat het lid zonder plan blijft.
+    let opgeslagenId = await deps.bewaarAanvraag(planRij);
+
+    if (opgeslagenId === null && !fondsVersie) opgeslagenId = await deps.bewaarAanvraag(planRij);
 
     return {
       status: 200,
-      body: { ok: true, aanvraagId: opgeslagenId ?? rij?.id ?? null, opgeslagen: opgeslagenId !== null, plan, resterend: Math.max(0, ruimtePlan.limiet - plekPlan.gebruikt - 1), limiet: ruimtePlan.limiet },
+      body: { ok: true, aanvraagId: opgeslagenId ?? rij?.id ?? null, opgeslagen: opgeslagenId !== null, projectKlaar: !fondsVersie, plan, resterend: Math.max(0, (fondsVersie ? config.beoordelingenPerMaand : config.projectplannen) - plekPlan.gebruikt - 1), limiet: fondsVersie ? config.beoordelingenPerMaand : config.projectplannen },
     };
   }
 

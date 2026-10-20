@@ -78,14 +78,14 @@ export function ProjectKeuze({ projecten, projectId, onKies }) {
   );
 }
 
-// "Beoordelingen x van 6" en "Plannen schrijven x van 1". De cijfers komen van de server; zonder cijfer blijft het leeg.
+// "Beoordelingen x van 6" en "Projectplannen x van 1". De cijfers komen van de server; zonder cijfer blijft het leeg.
 export function RuimteBlok({ status }) {
   const regels = ruimteRegels(status).filter((r) => r.limiet !== null);
 
   if (!regels.length) return null;
 
   return (
-    <Blok titel="Uw ruimte deze maand" testid="aa-ruimte">
+    <Blok titel="Uw ruimte" testid="aa-ruimte">
       {regels.map((r) => (
         <div key={r.label}>
           <div className="fwk-aa-regel">
@@ -97,7 +97,7 @@ export function RuimteBlok({ status }) {
           </div>
         </div>
       ))}
-      <div className="fwk-aa-klein">Met Premium kunt u er meer per maand doen.</div>
+      <div className="fwk-aa-klein">Beoordelingen tellen per maand; ook een versie voor een fonds schrijven telt daarbij. Een projectplan laat u één keer per project schrijven. Met Premium kunt u er meer doen.</div>
     </Blok>
   );
 }

@@ -49,7 +49,8 @@ export interface BeoordelingConfig {
 // Aantallen zijn startwaarden (Aisya, 19 oktober 2026) en worden na de eerste meting met de gebruiksmeter bijgesteld.
 export interface AanvraagAssistentConfig {
   beoordelingenPerMaand: number;
-  plannenPerMaand: number;
+  // Het algemene projectplan wordt één keer per project door de AI geschreven. Dit is het aantal VERSCHILLENDE projecten per rollend jaar waarvoor dat mag.
+  projectplannen: number;
   // Eisenlijsten ophalen (website lezen en eisen halen) kost ook een modelaanroep; een ruime maandgrens voorkomt dat dit onbegrensd wordt herhaald.
   eisenOphalenPerMaand: number;
   // Bovengrenzen per aanroep, zodat de kosten van één beoordeling begrensd zijn.
@@ -121,7 +122,7 @@ const PRO: TierConfig = {
   maandBudgetObservatieEur: 7,
   aanvraagAssistent: {
     beoordelingenPerMaand: 6,
-    plannenPerMaand: 1,
+    projectplannen: 1,
     eisenOphalenPerMaand: 12,
     maxEisen: 40,
     maxAanvraagTekens: 60_000,
@@ -154,7 +155,7 @@ const PREMIUM: TierConfig = {
   // uit tot ze gebouwd zijn.
   aanvraagAssistent: {
     beoordelingenPerMaand: 10,
-    plannenPerMaand: 3,
+    projectplannen: 3,
     eisenOphalenPerMaand: 40,
     maxEisen: 40,
     maxAanvraagTekens: 60_000,

@@ -12,7 +12,7 @@ sectie('1. Labels en maandruimte');
   gelijk('bron: formulier gaat voor website', [M.bronLabel({ bronType: 'lid' }), M.bronLabel({ bronType: 'website' }), M.bronLabel({ bronType: 'database' })].join('|'), 'Uw formulier|Website|Fondsgegevens');
 
   const r = M.ruimteRegels({ beoordelingen: { limiet: 6, gebruikt: 2, resterend: 4 }, plannen: { limiet: 1, gebruikt: 0, resterend: 1 } });
-  gelijk('Pro: Beoordelingen 2 van 6, Plannen schrijven 0 van 1', r.map((x) => `${x.label} ${x.tekst}`).join('; '), 'Beoordelingen 2 van 6; Plannen schrijven 0 van 1');
+  gelijk('Pro: Beoordelingen 2 van 6, Projectplannen 0 van 1', r.map((x) => `${x.label} ${x.tekst}`).join('; '), 'Beoordelingen 2 van 6; Projectplannen 0 van 1');
   check('geen regel over criteria ophalen in de zijbalk', r.length === 2);
   const onbekend = M.ruimteRegels({ beoordelingen: { limiet: 6, gebruikt: null, resterend: null }, plannen: { limiet: 1, gebruikt: null } });
   check('onbekend gebruik blijft onbekend (niets verzonnen)', onbekend[0].tekst === 'onbekend van 6' && onbekend[0].aandeel === 0);

@@ -1,15 +1,16 @@
 // Documenten › Projectplan: een algemeen projectplan schrijven (bruikbaar bij elk fonds) of meteen een versie toespitsen op één fonds.
 // Het plan wordt door de server geschreven uit de Projectgegevens, de Projectdocumentatie en het Organisatieprofiel van dit project. Wat daar niet
-// staat, wordt een [aanvullen] met een vraag; er wordt niets verzonnen. Elke keer schrijven telt mee in de maandruimte van het abonnement.
+// staat, wordt een [aanvullen] met een vraag; er wordt niets verzonnen. Het algemene plan wordt één keer per project geschreven, en pas als de voortgangsmeter
+// op 100% staat (alle kerninformatie is ingevuld). Daarna werkt het lid het zelf verder bij (kopiëren of downloaden). Een versie voor een fonds telt bij de beoordelingen.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { color } from '../../../shared/tokens.js';
 import { Button } from '../../../shared/ui/index.js';
 import { Blok, Chip, Leeg, Melding, Rij, Rijen } from '../../../shared/ui/werkplek.jsx';
-import { haalAanvraag, haalAanvragen, schrijfProjectplan } from '../../../data/services/aanvraagAssistent.js';
+import { haalAanvraag, haalAanvragen, haalPlanGereedheid, schrijfProjectplan } from '../../../data/services/aanvraagAssistent.js';
 import { AanvraagStijl, Bezig, Keuzekaart, ProjectKeuze, RuimteBlok } from './Bouwstenen.jsx';
 import PlanEditor from './PlanEditor.jsx';
-import { datumTekst, heeftPlanRuimte, splitsAanvragen } from './aanvraagModel.js';
+import { datumTekst, splitsAanvragen } from './aanvraagModel.js';
 
 export default function ProjectplanTab({ project, projecten, onKiesProject, store, assistent, onNieuweAanvraag, onOpenAanvraag, onNaarProjectinhoud }) {
   const projectId = project ? project.id : '';
@@ -20,6 +21,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
   const [bezig, setBezig] = useState('');
   const [fout, setFout] = useState(null); // { melding, reden }
   const [bevestig, setBevestig] = useState(false);
+  const [stand, setStand] = useState(null); // { gereedheid, projectKlaar, plannen } van de server; null = nog niet bekend
   const huidig = useRef('');
 
   huidig.current = projectId;
@@ -40,17 +42,34 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
     }
   }, [projectId]);
 
+  const laadStand = useCallback(async () => {
+    if (!projectId) return;
+
+    const r = await haalPlanGereedheid(projectId);
+
+    if (huidig.current !== projectId) return;
+
+    setStand(r.ok ? r.antwoord : { fout: true });
+  }, [projectId]);
+
   useEffect(() => {
     setLijst(null);
+    setStand(null);
     setOpen(null);
     setFout(null);
     setBevestig(false);
     laad();
-  }, [laad]);
+    laadStand();
+  }, [laad, laadStand]);
 
   const { algemeen, fondsen } = splitsAanvragen(lijst);
   const metPlan = fondsen.filter((a) => a.heeftPlan);
-  const ruimte = heeftPlanRuimte(assistent.status);
+  const gereedheid = stand && stand.gereedheid ? stand.gereedheid : null;
+  const klaarVoorPlan = Boolean(gereedheid && gereedheid.klaar);
+  const planGeschreven = Boolean((stand && stand.projectKlaar) || (algemeen && algemeen.heeftPlan));
+  const plannen = stand && stand.plannen ? stand.plannen : null;
+  const limietBereikt = Boolean(!planGeschreven && plannen && plannen.resterend === 0);
+  const isPro = assistent.status && assistent.status.tier === 'pro';
 
   const schrijf = async () => {
     setFout(null);
@@ -66,6 +85,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
     if (!r.ok) {
       setFout({ melding: r.melding, reden: r.reden });
       assistent.ververs();
+      laadStand();
 
       return;
     }
@@ -73,10 +93,12 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
     setOpen({ plan: r.antwoord.plan, opgeslagen: r.antwoord.opgeslagen !== false });
     assistent.ververs();
     laad();
+    laadStand();
   };
 
+  // Het plan wordt maar één keer geschreven: eerst een bevestiging.
   const start = () => {
-    if (algemeen && algemeen.heeftPlan && !bevestig) {
+    if (!bevestig) {
       setBevestig(true);
 
       return;
@@ -104,6 +126,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
     setOpen({ plan: r.antwoord.aanvraag.plan, opgeslagen: true });
   };
 
+
   const naarFonds = () => {
     onNieuweAanvraag(fonds.trim());
   };
@@ -126,16 +149,60 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
         <div className="fwk-wp-stapel">
           <div className="fwk-aa-keuzes">
             <Keuzekaart titel="Algemeen projectplan" accent testid="aa-kaart-algemeen">
-              <p>Een plan dat bij elk fonds bruikbaar is. U hoeft nog geen fonds te kiezen.</p>
+              <p>Een plan dat bij elk fonds bruikbaar is. U hoeft nog geen fonds te kiezen. Het wordt één keer per project geschreven; daarna werkt u het zelf verder bij. Daarom schrijven we het pas als de informatie compleet is.</p>
               <div className="fwk-aa-klein">Opbouw: aanleiding, doelgroep, aanpak, resultaat, planning, organisatie, financiering en borging.</div>
+
+              {!planGeschreven && gereedheid && (
+                <div data-testid="aa-meter" style={css('margin-top: 12px;')}>
+                  <div className="fwk-aa-regel">
+                    <span>Projectinformatie compleet</span>
+                    <b data-testid="aa-meter-percentage">{gereedheid.percentage}%</b>
+                  </div>
+                  <div className="fwk-aa-balk" role="progressbar" aria-label="Projectinformatie compleet" aria-valuemin={0} aria-valuemax={100} aria-valuenow={gereedheid.percentage}>
+                    <div style={{ width: `${gereedheid.percentage}%` }} />
+                  </div>
+                  {!gereedheid.klaar && (
+                    <>
+                      <div className="fwk-aa-klein" style={css('margin-bottom: 6px;')}>Nog nodig om het plan te kunnen schrijven:</div>
+                      <ul className="fwk-aa-lijst" data-testid="aa-meter-mist" style={css('padding: 0;')}>
+                        {gereedheid.onderdelen
+                          .filter((o) => !o.gevuld)
+                          .map((o) => (
+                            <li key={o.id} style={css('display: block; padding: 6px 0; border: none; font-size: 14.5px;')}>
+                              <b>{o.label}</b> <span className="fwk-aa-klein">({o.waar})</span>
+                              <div className="fwk-aa-klein">{o.vraag}</div>
+                            </li>
+                          ))}
+                      </ul>
+                      {onNaarProjectinhoud && (
+                        <button type="button" className="fwk-wp-link" onClick={onNaarProjectinhoud}>
+                          Naar de projectinhoud
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {planGeschreven && (
+                <div className="fwk-aa-klein" data-testid="aa-plan-klaar" style={css('margin-top: 10px;')}>
+                  Het projectplan van dit project is geschreven. Kopieer of download het en werk het zelf verder bij; opnieuw laten schrijven kan niet.
+                </div>
+              )}
+
+              {limietBereikt && (
+                <Melding toon="info" testid="aa-plan-limiet">
+                  {isPro ? 'Met Pro laat u voor één project een projectplan schrijven, en dat is al gebeurd. Voor meer projecten heeft u Premium nodig.' : 'U heeft het maximum aantal projecten met een geschreven plan bereikt.'}
+                </Melding>
+              )}
 
               {bevestig && (
                 <Melding toon="waarschuwing" testid="aa-bevestig-plan">
                   <span>
-                    U heeft al een algemeen plan. Een nieuw plan vervangt het en telt als een van uw plannen deze maand.
+                    Het plan wordt één keer voor dit project geschreven; opnieuw laten schrijven kan niet. Staat alles erin wat u wilt?
                     <span style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;')}>
                       <Button size="s" variant="dark" onClick={schrijf}>
-                        Ja, schrijf een nieuw plan
+                        Ja, schrijf het plan
                       </Button>
                       <Button size="s" variant="outline" onClick={() => setBevestig(false)}>
                         Annuleren
@@ -146,10 +213,16 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
               )}
 
               <div className="fwk-aa-onder">
-                <Button onClick={start} disabled={Boolean(bezig) || !ruimte || !projectId} variant="primary" ariaLabel="Start algemeen plan">
-                  {algemeen && algemeen.heeftPlan ? 'Schrijf een nieuw algemeen plan' : 'Start algemeen plan'}
-                </Button>
-                {!ruimte && <span className="fwk-aa-klein">Deze maand is uw ruimte voor plannen op.</span>}
+                {planGeschreven ? (
+                  <Button onClick={openAlgemeen} disabled={Boolean(bezig) || !algemeen} variant="primary" ariaLabel="Open het projectplan">
+                    Open het projectplan
+                  </Button>
+                ) : (
+                  <Button onClick={start} disabled={Boolean(bezig) || !klaarVoorPlan || limietBereikt || !projectId} variant="primary" ariaLabel="Start algemeen plan">
+                    Schrijf mijn projectplan
+                  </Button>
+                )}
+                {!planGeschreven && gereedheid && !klaarVoorPlan && !limietBereikt && <span className="fwk-aa-klein">Beschikbaar bij 100%.</span>}
               </div>
               {bezig && <Bezig>{bezig}</Bezig>}
             </Keuzekaart>
@@ -171,10 +244,10 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
           </div>
 
           {fout && (
-            <Melding toon={fout.reden === 'te-weinig-info' ? 'info' : 'fout'} testid="aa-plan-fout">
+            <Melding toon={fout.reden === 'te-weinig-info' || fout.reden === 'onvolledig' || fout.reden === 'al-geschreven' ? 'info' : 'fout'} testid="aa-plan-fout">
               <span>
                 {fout.melding}
-                {fout.reden === 'te-weinig-info' && onNaarProjectinhoud && (
+                {(fout.reden === 'te-weinig-info' || fout.reden === 'onvolledig') && onNaarProjectinhoud && (
                   <>
                     {' '}
                     <button type="button" className="fwk-wp-link" onClick={onNaarProjectinhoud}>

@@ -120,6 +120,52 @@ export function bouwFeiten(bron: PlanBron): Feit[] {
   return feiten;
 }
 
+// ───────────────────────── Gereedheid ─────────────────────────
+// De voortgangsmeter voor het algemene projectplan. Het plan wordt maar één keer per project geschreven, dus pas schrijven als de kern erin staat.
+// Elk kernveld telt even zwaar; 100% = alle kernvelden zijn ingevuld. De server rekent, de client toont.
+
+export type GereedheidPlek = 'Projectgegevens' | 'Projectdocumentatie' | 'Organisatieprofiel';
+
+export interface GereedheidOnderdeel {
+  id: string;
+  label: string;
+  vraag: string;
+  waar: GereedheidPlek;
+  gevuld: boolean;
+}
+
+export interface Gereedheid {
+  percentage: number;
+  klaar: boolean;
+  gevuld: number;
+  totaal: number;
+  onderdelen: GereedheidOnderdeel[];
+}
+
+const KERNVELDEN: ReadonlyArray<{ id: string; label: string; vraag: string; waar: GereedheidPlek; sleutels: string[] }> = [
+  { id: 'aanleiding', label: 'Aanleiding', vraag: 'Wat is de aanleiding of het probleem waar dit project antwoord op geeft?', waar: 'Projectdocumentatie', sleutels: ['info.aanleiding', 'info.noodzaak'] },
+  { id: 'doelgroep', label: 'Doelgroep', vraag: 'Voor wie is het project?', waar: 'Projectgegevens', sleutels: ['project.doelgroep'] },
+  { id: 'werkgebied', label: 'Werkgebied', vraag: 'In welke regio of plaats vindt het project plaats?', waar: 'Projectgegevens', sleutels: ['project.regio'] },
+  { id: 'doelstelling', label: 'Doelstelling', vraag: 'Wat wil het project bereiken?', waar: 'Projectgegevens', sleutels: ['project.doelstellingen'] },
+  { id: 'activiteiten', label: 'Activiteiten', vraag: 'Welke activiteiten voert u uit?', waar: 'Projectgegevens', sleutels: ['project.activiteiten'] },
+  { id: 'resultaat', label: 'Resultaat of impact', vraag: 'Welk resultaat of welk verschil verwacht u?', waar: 'Projectgegevens', sleutels: ['project.impact', 'info.output', 'info.outcome'] },
+  { id: 'planning', label: 'Planning', vraag: 'Wanneer start en eindigt het project, en wat gebeurt wanneer?', waar: 'Projectgegevens', sleutels: ['project.planning'] },
+  { id: 'organisatie', label: 'Naam van uw organisatie', vraag: 'Hoe heet uw organisatie?', waar: 'Organisatieprofiel', sleutels: ['organisatie.name'] },
+  { id: 'missie', label: 'Missie van uw organisatie', vraag: 'Wat is de missie van uw organisatie?', waar: 'Organisatieprofiel', sleutels: ['organisatie.mission'] },
+  { id: 'begroting', label: 'Totale projectkosten', vraag: 'Wat kost het project in totaal?', waar: 'Projectgegevens', sleutels: ['project.begroting'] },
+  { id: 'gevraagd', label: 'Gevraagd bedrag', vraag: 'Welk bedrag vraagt u aan?', waar: 'Projectgegevens', sleutels: ['project.gevraagd'] },
+  { id: 'borging', label: 'Borging na afloop', vraag: 'Wat gebeurt er met het project na afloop van de financiering?', waar: 'Projectdocumentatie', sleutels: ['info.borging'] },
+];
+
+export function planGereedheid(feiten: Feit[]): Gereedheid {
+  const aanwezig = new Set((Array.isArray(feiten) ? feiten : []).map((f) => f.sleutel));
+  const onderdelen = KERNVELDEN.map((k) => ({ id: k.id, label: k.label, vraag: k.vraag, waar: k.waar, gevuld: k.sleutels.some((x) => aanwezig.has(x)) }));
+  const gevuld = onderdelen.filter((o) => o.gevuld).length;
+  const totaal = onderdelen.length;
+
+  return { percentage: Math.floor((100 * gevuld) / totaal), klaar: gevuld === totaal, gevuld, totaal, onderdelen };
+}
+
 // ───────────────────────── Onderdelen ─────────────────────────
 
 export interface SectieDef {

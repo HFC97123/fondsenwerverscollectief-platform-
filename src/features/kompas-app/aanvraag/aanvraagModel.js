@@ -59,7 +59,7 @@ export function ruimteRegels(status) {
     return { label, limiet, gebruikt, tekst: limiet === null ? '' : gebruikt === null ? `onbekend van ${limiet}` : `${Math.min(gebruikt, limiet)} van ${limiet}`, aandeel: limiet && gebruikt !== null ? Math.max(0, Math.min(1, gebruikt / limiet)) : 0 };
   };
 
-  return [regel('Beoordelingen', s.beoordelingen), regel('Plannen schrijven', s.plannen)];
+  return [regel('Beoordelingen', s.beoordelingen), regel('Projectplannen', s.plannen)];
 }
 
 export const heeftBeoordelingRuimte = (status) => Boolean(status && status.beoordelingen && status.beoordelingen.resterend !== 0);

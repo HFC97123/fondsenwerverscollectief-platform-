@@ -16,7 +16,6 @@ import {
   criteriaGewijzigd,
   datumTekst,
   heeftBeoordelingRuimte,
-  heeftPlanRuimte,
   nieuweEis,
   soortLabel,
   tekenTekst,
@@ -467,8 +466,8 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
     );
   }
 
-  const planRuimte = heeftPlanRuimte(status);
   const beoordelingRuimte = heeftBeoordelingRuimte(status);
+  const planRuimte = beoordelingRuimte; // een versie voor een fonds telt bij de beoordelingen
   const klaarOmTeKiezen = criteria.length > 0;
 
   return (
@@ -533,7 +532,7 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
                 {bevestigPlan && (
                   <Melding toon="waarschuwing" testid="aa-bevestig-versie">
                     <span>
-                      Een nieuwe versie vervangt de huidige en telt als een van uw plannen deze maand.
+                      Een nieuwe versie vervangt de huidige en telt als een van uw beoordelingen deze maand.
                       <span style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;')}>
                         <Button size="s" variant="dark" onClick={schrijf}>
                           Ja, schrijf een nieuwe versie
@@ -550,7 +549,7 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
                   <Button onClick={startSchrijven} disabled={Boolean(bezig) || !aanvraagId || !planRuimte} ariaLabel="Start schrijven">
                     {aanvraag && aanvraag.heeftPlan ? 'Schrijf een nieuwe versie →' : 'Start schrijven →'}
                   </Button>
-                  {!planRuimte && <span className="fwk-aa-klein">Deze maand is uw ruimte voor plannen op.</span>}
+                  {!planRuimte && <span className="fwk-aa-klein">Deze maand is uw ruimte voor beoordelingen en versies op.</span>}
                 </div>
               </Keuzekaart>
 

@@ -101,12 +101,15 @@ const S = maakServer();
 {
   await toon(S);
   check('Projectplan-scherm met beide keuzes', $('[data-testid="aa-kaart-algemeen"]') && $('[data-testid="aa-kaart-fonds"]'));
-  check('ruimte: Beoordelingen 0 van 6 en Plannen schrijven 0 van 1', /Beoordelingen\s*0 van 6/.test(tekst()) && /Plannen schrijven\s*0 van 1/.test(tekst()));
+  check('ruimte: Beoordelingen 0 van 6 en Projectplannen 0 van 1', /Beoordelingen\s*0 van 6/.test(tekst()) && /Projectplannen\s*0 van 1/.test(tekst()));
+  check('voortgangsmeter: een volledig project staat op 100% en er is niets dat nog mist', await wacht(() => $('[data-testid="aa-meter-percentage"]')?.textContent === '100%') && !$('[data-testid="aa-meter-mist"]'));
   check('geen woord "eisenlijst" of "privéfonds" en geen "4 bestanden"', !/eisenlijst|privéfonds|4 bestanden/i.test(tekst()));
   check('"Waar we het plan op baseren": drie bronnen', ['Projectgegevens', 'Projectdocumentatie', 'Organisatieprofiel'].every((t) => tekst().includes(t)));
   check('privaatfonds-kaart wordt hier niet getoond, wel de lege plannenlijst', /Nog geen plannen/.test(tekst()));
 
   await klik(knop('Start algemeen plan'));
+  check('eerst een bevestiging: het plan wordt maar één keer geschreven', await wacht(() => $('[data-testid="aa-bevestig-plan"]')) && /één keer/.test($('[data-testid="aa-bevestig-plan"]').textContent) && S.s.gebruik.length === 0);
+  await klik(knop('Ja, schrijf het plan'));
   check('tijdens het schrijven: voortgangsmelding en knop uit', await wacht(() => $('[data-testid="aa-bezig"]') || $('[data-testid="aa-plan"]')));
   check('plan wordt getoond met 8 onderdelen of minder (alleen onderdelen met feiten krijgen tekst)', await wacht(() => $('[data-testid="aa-plan"]')) && $$('[data-testid="aa-plan-sectie"]').length === 8);
   check('het verzonnen getal 4500 staat nergens', !tekst().includes('4500'));
@@ -118,8 +121,8 @@ const S = maakServer();
 
   await klik(knop('Sluiten'));
   check('na sluiten: terug op Projectplan, plan staat in "Uw plannen"', await wacht(() => $('[data-testid="aa-rij-algemeen"]')));
-  check('ruimte ververst: Plannen schrijven 1 van 1', await wacht(() => /Plannen schrijven\s*1 van 1/.test(tekst())));
-  check('de knop voor een nieuw plan is uit: maand op', knop('Start algemeen plan')?.disabled === true && /ruimte voor plannen op/.test(tekst()));
+  check('ruimte ververst: Projectplannen 1 van 1', await wacht(() => /Projectplannen\s*1 van 1/.test(tekst())));
+  check('opnieuw schrijven kan niet meer: geen schrijfknop meer, wel "Open het projectplan" en uitleg', !knop('Start algemeen plan') && !!knop('Open het projectplan') && !!$('[data-testid="aa-plan-klaar"]') && !$('[data-testid="aa-meter"]'));
 
   await klik($('[data-testid="aa-rij-algemeen"] button'));
   check('het opgeslagen plan opent opnieuw', await wacht(() => $('[data-testid="aa-plan"]')) && $$('[data-testid="aa-plan-sectie"]').length === 8);
@@ -199,7 +202,7 @@ sectie('6. Versie voor dit fonds schrijven');
 {
   check('uit 1 formuliervraag... het aantal onderdelen staat in de uitleg', /formuliervragen worden|1 vraag; die wordt 1 onderdeel|standaardonderdelen/.test(tekst()));
   const voor = S.s.gebruik.filter((x) => x.actie === 'aanvraag_plan').length;
-  check('Pro heeft 1 plan per maand en dat is al gebruikt: schrijven is uit met uitleg', knop('Start schrijven').disabled === true && /ruimte voor plannen op/.test(tekst()));
+  check('een versie voor een fonds telt bij de beoordelingen (nog ruimte): schrijven is aan, ook al is het projectplan geschreven', knop('Start schrijven').disabled === false && !/ruimte voor beoordelingen en versies op/.test(tekst()));
   check('er is geen extra plan geschreven', voor === 1);
 }
 
@@ -235,8 +238,8 @@ sectie('8. Fouten worden eerlijk getoond');
 
   const weinig = maakServer({ planBron: { project: { naam: 'Samen Spelen' }, info: {}, organisatie: {} } });
   await toon(weinig);
-  await klik(knop('Start algemeen plan'));
-  check('te weinig informatie: uitleg met link naar de projectinhoud, niets verbruikt', await wacht(() => $('[data-testid="aa-plan-fout"]')) && /te weinig/i.test(tekst()) && !!knop('Naar de projectinhoud') && weinig.s.gebruik.length === 0);
+  check('voortgangsmeter bij weinig informatie: onder 100%, de lijst zegt wat nog mist en waar je het invult', await wacht(() => $('[data-testid="aa-meter-mist"]')) && parseInt($('[data-testid="aa-meter-percentage"]').textContent, 10) < 100 && /Doelgroep/.test($('[data-testid="aa-meter-mist"]').textContent) && /Projectgegevens/.test($('[data-testid="aa-meter-mist"]').textContent));
+  check('de schrijfknop is uit tot 100% en er is niets verbruikt', knop('Start algemeen plan').disabled === true && /Beschikbaar bij 100%/.test(tekst()) && weinig.s.gebruik.length === 0);
   await klik(knop('Naar de projectinhoud'));
   check('de link brengt u naar de projectinhoud', !!$('[data-testid="inhoud"]'));
   await opruimen();

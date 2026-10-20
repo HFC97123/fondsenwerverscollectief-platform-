@@ -94,6 +94,11 @@ export function schrijfProjectplan({ projectId, aanvraagId = '' }) {
   return isTekst(projectId) ? roep({ mode: 'plan-schrijven', projectId, ...(isTekst(aanvraagId) ? { aanvraagId } : {}) }) : ongeldig();
 }
 
+// Voortgangsmeter voor het algemene projectplan: hoeveel van de kerninformatie staat erin, wat mist er, en is dit project al geschreven?
+export function haalPlanGereedheid(projectId) {
+  return isTekst(projectId) ? roep({ mode: 'plan-gereedheid', projectId }) : ongeldig();
+}
+
 // Een eerder bewaarde beoordeling terugzien. Leest rechtstreeks uit de eigen tabel (RLS: alleen eigen rijen); niets wordt aangepast.
 export async function haalBeoordeling(beoordelingId) {
   if (!supabase || !isTekst(beoordelingId)) return { ok: false, beoordeling: null };

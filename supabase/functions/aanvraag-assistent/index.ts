@@ -149,6 +149,31 @@ Deno.serve(async (req) => {
       return { ok: false as const, reden: data.reden === 'te-veel-mislukt' ? ('te-veel-mislukt' as const) : ('maand-op' as const), gebruikt };
     },
 
+    // Stand van de projectplannen: hoeveel verschillende projecten hebben (in het rollende jaar) een geschreven plan, en is dit project al geschreven?
+    planStand: async (userId: string, projectId: string | null, sindsIso: string) => {
+      const { data, error } = await admin.rpc('aanvraag_plan_stand', { p_user: userId, p_project: projectId, p_sinds: sindsIso });
+
+      if (error || !data || typeof data !== 'object' || typeof data.gebruikt !== 'number') return null;
+
+      return { gebruikt: data.gebruikt, projectKlaar: data.project_klaar === true };
+    },
+
+    // Reserveert het plan van dit project in één database-stap: één keer per project, en niet meer projecten dan het abonnement toestaat.
+    planReserveer: async (userId: string, projectId: string, limiet: number, sindsIso: string) => {
+      const p_limiet = Number.isFinite(limiet) ? Math.max(0, Math.min(Math.floor(limiet), MAX_LIMIET)) : MAX_LIMIET;
+      const { data, error } = await admin.rpc('aanvraag_plan_reserveer', { p_user: userId, p_project: projectId, p_limiet, p_sinds: sindsIso });
+
+      if (error || !data || typeof data !== 'object') return { ok: false as const, reden: 'storing' as const };
+
+      const gebruikt = Number(data.gebruikt) || 0;
+
+      if (data.ok === true && typeof data.id === 'string') return { ok: true as const, id: data.id, gebruikt };
+
+      const reden = data.reden === 'al-geschreven' ? ('al-geschreven' as const) : data.reden === 'te-veel-mislukt' ? ('te-veel-mislukt' as const) : ('plan-limiet' as const);
+
+      return { ok: false as const, reden, gebruikt };
+    },
+
     // Rondt de reservering af. Lukt dat niet, dan blijft de reservering 10 minuten meetellen en daarna niet meer; het lid merkt niets.
     rondAf: async (reserveringId: string, userId: string, succes: boolean) => {
       try {

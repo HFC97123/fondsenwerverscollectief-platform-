@@ -7,15 +7,15 @@ export const NU = new Date('2026-10-19T12:00:00Z');
 export const RICHTLIJN = 'De aanvraag moet een projectbegroting bevatten. Het project dient binnen twaalf maanden te starten.';
 export const AANVRAAG = 'Het project Samen Spelen start in januari 2027 en loopt twaalf maanden. Wij richten ons op kinderen van 6 tot 12 jaar in Rotterdam-Zuid. Onze aanpak bestaat uit wekelijkse sportlessen en een zomerkamp. De organisatie bestaat sinds 2015 en heeft de ANBI-status. Een overzicht van de kosten staat in bijlage twee.';
 export const PLANBRON = {
-  project: { naam: 'Samen Spelen', omschrijving: 'Sport en spel voor kinderen in Rotterdam-Zuid.', doelgroep: 'Kinderen van 6 tot 12 jaar', doelstellingen: 'Kinderen bewegen meer en leren samenwerken.', activiteiten: 'Wekelijkse sportlessen en een zomerkamp.', begroting: 40000, gevraagd: 25000 },
-  info: { aanleiding: 'In de wijk zijn weinig plekken om veilig te spelen.' },
-  organisatie: { name: 'Stichting Samen Spelen', rechtsvorm: 'stichting', opgericht: 2015 },
+  project: { naam: 'Samen Spelen', omschrijving: 'Sport en spel voor kinderen in Rotterdam-Zuid.', doelgroep: 'Kinderen van 6 tot 12 jaar', doelstellingen: 'Kinderen bewegen meer en leren samenwerken.', activiteiten: 'Wekelijkse sportlessen en een zomerkamp.', begroting: 40000, gevraagd: 25000, regio: 'Rotterdam-Zuid', impact: 'Kinderen bewegen meer.', planning: 'Januari tot en met december 2027.' },
+  info: { aanleiding: 'In de wijk zijn weinig plekken om veilig te spelen.', borging: 'De gemeente neemt de lessen na twee jaar over.' },
+  organisatie: { name: 'Stichting Samen Spelen', rechtsvorm: 'stichting', opgericht: 2015, mission: 'Elk kind verdient een plek om te spelen.' },
 };
 
 
 // ── Een server met de echte regels en een geheugendatabase ──────────────────────────────────────────────────────────────────────────────
 export function maakServer(o = {}) {
-  const s = { aanroepen: [], gebruik: [], tabel: new Map(), beoordelingen: new Map(), opties: { vlag: true, tier: 'pro', pagina: { ok: true, tekst: RICHTLIJN }, ...o } };
+  const s = { aanroepen: [], gebruik: [], planProjecten: new Set(), planIds: new Map(), tabel: new Map(), beoordelingen: new Map(), opties: { vlag: true, tier: 'pro', pagina: { ok: true, tekst: RICHTLIJN }, ...o } };
   const maand = (soort) => s.gebruik.filter((x) => x.succes && x.actie === soort).length;
   const deps = {
     modelNaam: 'test', nu: () => NU, vlagAan: () => s.opties.vlag,
@@ -24,6 +24,20 @@ export function maakServer(o = {}) {
     rateLimitOk: async () => true,
     projectIsVanGebruiker: async (p, u) => p === PROJECT && u === USER,
     telRijen: async (u, soort) => (soort === 'beoordelingen' ? s.beoordelingen.size : soort === 'plannen' ? maand('aanvraag_plan') : maand('aanvraag_eisen')),
+    reserveer: async (u, soort, limiet) => {
+      const g = soort === 'beoordelingen' ? s.beoordelingen.size : maand('aanvraag_eisen');
+      return g >= limiet ? { ok: false, reden: 'maand-op', gebruikt: g } : { ok: true, id: `rr000000-0000-4000-8000-${String(s.aanroepen.length).padStart(12, '0')}`, gebruikt: g };
+    },
+    planStand: async (u, p) => ({ gebruikt: s.planProjecten.size, projectKlaar: p ? s.planProjecten.has(p) : false }),
+    planReserveer: async (u, p, limiet) => {
+      if (s.planProjecten.has(p)) return { ok: false, reden: 'al-geschreven', gebruikt: s.planProjecten.size };
+      if (s.planProjecten.size >= limiet) return { ok: false, reden: 'plan-limiet', gebruikt: s.planProjecten.size };
+      const id = `pp000000-0000-4000-8000-${String(s.planIds.size + 1).padStart(12, '0')}`;
+      s.planIds.set(id, p);
+      s.planProjecten.add(p);
+      return { ok: true, id, gebruikt: s.planProjecten.size - 1 };
+    },
+    rondAf: async (id, u, succes) => { if (!succes && s.planIds.has(id)) s.planProjecten.delete(s.planIds.get(id)); },
     lijstAanvragen: async (u, p) => [...s.tabel.values()].filter((r) => r.user_id === u && r.program_id === p),
     leesAanvraag: async (u, id) => { const r = s.tabel.get(id); return r && r.user_id === u ? r : null; },
     bewaarAanvraag: async (rij) => {

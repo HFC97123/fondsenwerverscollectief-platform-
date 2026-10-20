@@ -1,6 +1,6 @@
 // Projectplan schrijven: de zuivere regels (feiten, onderdelen, controle van het modelantwoord).
 //   node tests/aanvraag-assistent/run.mjs   (vanuit de repo-root)
-import { bouwFeiten, sectiesUitCriteria, STANDAARD_SECTIES, verwijderOngedekteZinnen, valideerSectie, schrijfPlan, fondsSleutel, feitenVoorSectie, sectieZonderFeiten, aantalAanvullen, MIN_FEITEN, MAX_FEITEN_TEKENS } from '../../supabase/functions/_shared/projectplan.ts';
+import { bouwFeiten, planGereedheid, sectiesUitCriteria, STANDAARD_SECTIES, verwijderOngedekteZinnen, valideerSectie, schrijfPlan, fondsSleutel, feitenVoorSectie, sectieZonderFeiten, aantalAanvullen, MIN_FEITEN, MAX_FEITEN_TEKENS } from '../../supabase/functions/_shared/projectplan.ts';
 import { check, gelijk, sectie, klaar, stand } from '../verificatie/hulp.mjs';
 
 stand.naam = 'projectplan';
@@ -127,6 +127,27 @@ sectie('6. Fondssleutel');
   check('verschillende fondsen blijven verschillend', fondsSleutel('Fonds A') !== fondsSleutel('Fonds B'));
   gelijk('niets geeft een lege sleutel', fondsSleutel(null), '');
   check('maximaal 120 tekens', fondsSleutel('a'.repeat(500)).length === 120);
+}
+
+sectie('Voortgangsmeter (planGereedheid)');
+{
+  const leeg = planGereedheid(bouwFeiten({ project: {}, info: {}, organisatie: {} }));
+  gelijk('niets ingevuld: 0%, niet klaar, 12 kernvelden', [leeg.percentage, leeg.klaar, leeg.totaal, leeg.gevuld], [0, false, 12, 0]);
+
+  const deels = planGereedheid(bouwFeiten(BRON));
+  check('gedeeltelijk: tussen 0 en 100, borging (alleen spaties) en organisatie (plaatshouder) tellen niet mee', deels.percentage > 0 && deels.percentage < 100 && !deels.klaar && deels.onderdelen.find((o) => o.id === 'borging').gevuld === false && deels.onderdelen.find((o) => o.id === 'organisatie').gevuld === false);
+  check('elk ontbrekend onderdeel heeft een vraag en een plek waar het ingevuld wordt', deels.onderdelen.every((o) => o.vraag.length > 5 && ['Projectgegevens', 'Projectdocumentatie', 'Organisatieprofiel'].includes(o.waar)));
+
+  const vol = planGereedheid(bouwFeiten({
+    project: { doelgroep: 'Kinderen', regio: 'Rotterdam', doelstellingen: 'Bewegen', activiteiten: 'Sport', impact: 'Gezonder', planning: '2027', begroting: 40000, gevraagd: 25000 },
+    info: { aanleiding: 'Weinig plekken', borging: 'Gemeente neemt over' },
+    organisatie: { name: 'Stichting X', mission: 'Spelen voor iedereen' },
+  }));
+  gelijk('alles ingevuld: 100% en klaar', [vol.percentage, vol.klaar, vol.gevuld], [100, true, 12]);
+
+  const bijna = planGereedheid(bouwFeiten({ project: { doelgroep: 'K', regio: 'R', doelstellingen: 'B', activiteiten: 'S', impact: 'G', planning: '2027', begroting: 40000, gevraagd: 25000 }, info: { aanleiding: 'x', borging: 'y' }, organisatie: { name: 'S' } }));
+  check('één veld mist (missie): 91% en niet klaar (nooit afgerond naar 100)', bijna.percentage === 91 && bijna.klaar === false);
+  check('een alternatief veld telt mee (output i.p.v. impact)', planGereedheid(bouwFeiten({ project: {}, info: { output: '50 kinderen' }, organisatie: {} })).onderdelen.find((o) => o.id === 'resultaat').gevuld === true);
 }
 
 klaar('projectplan');

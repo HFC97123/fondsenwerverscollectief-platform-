@@ -26,6 +26,8 @@ function omgeving(opties = {}) {
   const log = { modelAanroepen: 0, gebruik: [], opgeslagen: [], paginas: [], tellingen: [], aanvraagSchrijf: [], reserveringen: [], afgerond: [] };
   // Nagebootste atomaire teller: reserveren is synchroon (zoals het slot in de database), een mislukte aanroep geeft de plek terug.
   const teller = { beoordelingen: o.tellingBeoordelingen, eisen: o.tellingEisen, plannen: o.tellingPlannen };
+  // Projectplannen: aantal verschillende projecten met een geschreven plan, en is dit project al klaar.
+  const ps = { gebruikt: o.planGebruikt ?? o.tellingPlannen, klaar: o.projectKlaar ?? false };
   // Een geheugentabel voor aanvragen: sleutel = project|soort|fondssleutel, zoals de unieke sleutel in de database.
   const tabel = new Map();
   if (o.aanvragen) for (const r of o.aanvragen) tabel.set(r.id, r);
@@ -50,10 +52,26 @@ function omgeving(opties = {}) {
       log.reserveringen[log.reserveringen.length - 1].soort = soort;
       return { ok: true, id, gebruikt };
     },
+    planStand: async () => (o.telNull ? null : { gebruikt: ps.gebruikt, projectKlaar: ps.klaar }),
+    planReserveer: async (u, project, limiet, sinds) => {
+      log.reserveringen.push({ u, soort: 'plan', project, limiet, sinds });
+      if (o.reserveerStoring) return { ok: false, reden: 'storing' };
+      if (o.teVeelMislukt) return { ok: false, reden: 'te-veel-mislukt', gebruikt: ps.gebruikt };
+      if (ps.klaar) return { ok: false, reden: 'al-geschreven', gebruikt: ps.gebruikt };
+      if (ps.gebruikt >= limiet) return { ok: false, reden: 'plan-limiet', gebruikt: ps.gebruikt };
+      const id = `pp000000-0000-4000-8000-${String(log.reserveringen.length).padStart(12, '0')}`;
+      const gebruikt = ps.gebruikt;
+      ps.gebruikt += 1;
+      ps.klaar = true;
+      log.reserveringen[log.reserveringen.length - 1].id = id;
+      return { ok: true, id, gebruikt };
+    },
     rondAf: async (id, u, succes) => {
       log.afgerond.push({ id, u, succes });
       const r = log.reserveringen.find((x) => x.id === id);
-      if (r && !succes) teller[r.soort] -= 1;
+      if (r && !succes) {
+        if (r.soort === 'plan') { ps.gebruikt -= 1; ps.klaar = false; } else teller[r.soort] -= 1;
+      }
     },
     lijstAanvragen: async (u, p) => (o.aanvraagStoring ? null : [...tabel.values()].filter((r) => r.user_id === u && r.program_id === p)),
     leesAanvraag: async (u, id) => (o.aanvraagStoring ? 'storing' : (() => { const r = tabel.get(id); return r && r.user_id === u ? r : null; })()),
@@ -73,6 +91,7 @@ function omgeving(opties = {}) {
       if (/Je schrijft één onderdeel/.test(systeem)) {
         if (o.modelPlan === 'kapot') return null;
         const inv = JSON.parse(gebruiker);
+        if (o.modelPlan === 'deels' && inv.onderdeel.titel === 'Doelgroep en bereik') return null;
         o.gezienPlanBerichten = [...(o.gezienPlanBerichten ?? []), inv];
         const f = inv.feiten[0];
         // Het model gebruikt het eerste feit en noemt daarbij een getal dat NIET in de feiten staat, om te zien dat de server dat weghaalt.
@@ -105,6 +124,12 @@ const PLANBRON = {
   project: { naam: 'Samen Spelen', omschrijving: 'Sport en spel voor kinderen in Rotterdam-Zuid.', doelgroep: 'Kinderen van 6 tot 12 jaar', doelstellingen: 'Kinderen bewegen meer en leren samenwerken.', activiteiten: 'Wekelijkse sportlessen en een zomerkamp.', begroting: 40000, gevraagd: 25000, eigenBijdrage: 5000 },
   info: { aanleiding: 'In de wijk zijn weinig plekken om veilig te spelen.' },
   organisatie: { name: 'Stichting Samen Spelen', rechtsvorm: 'stichting', opgericht: 2015 },
+};
+// Een project waarin alle kernvelden van de voortgangsmeter zijn ingevuld (100%).
+const PLANBRON_VOL = {
+  project: { ...PLANBRON.project, regio: 'Rotterdam-Zuid', impact: 'Kinderen bewegen meer en voelen zich thuis in de wijk.', planning: 'Januari tot en met december 2027.' },
+  info: { aanleiding: 'In de wijk zijn weinig plekken om veilig te spelen.', borging: 'De gemeente neemt de lessen na twee jaar over.' },
+  organisatie: { ...PLANBRON.organisatie, mission: 'Elk kind verdient een plek om te spelen.' },
 };
 const vraag = (body, extra = {}) => ({ method: 'POST', authorization: 'Bearer goed-token', bodyText: typeof body === 'string' ? body : JSON.stringify(body), ...extra });
 const beoordeelBody = (extra = {}) => ({ mode: 'beoordelen', projectId: PROJECT, aanvraagTekst: AANVRAAG, eisen: EISEN, fondsLabel: 'Fonds Testlaan', ...extra });
@@ -156,7 +181,7 @@ sectie('2. Status');
   const { deps } = omgeving({ tellingBeoordelingen: 1, tellingEisen: 3 });
   const s = await verwerk(vraag({ mode: 'status' }), deps);
 
-  check('Pro: 6 beoordelingen, 1 gebruikt, 5 over; 1 plan', s.body.beoordelingen.limiet === 6 && s.body.beoordelingen.gebruikt === 1 && s.body.beoordelingen.resterend === 5 && s.body.plannen.limiet === 1 && s.body.plannen.resterend === 1);
+  check('Pro: 6 beoordelingen, 1 gebruikt, 5 over; 1 project met een plan', s.body.beoordelingen.limiet === 6 && s.body.beoordelingen.gebruikt === 1 && s.body.beoordelingen.resterend === 5 && s.body.plannen.limiet === 1 && s.body.plannen.resterend === 1 && s.body.plannen.periodeMaanden === 12);
   check('uitbreidingen staan uit', Object.values(s.body.uitbreidingen).every((x) => x === false));
 
   const p = omgeving({ tier: 'premium', tellingBeoordelingen: 9 });
@@ -369,7 +394,7 @@ sectie('4c. Plan schrijven');
   ], criteria_bron: 'lid + website', bronnen: [], plan: null, plan_bijgewerkt_op: null, laatste_beoordeling_id: null, laatste_uitkomst: null, created_at: '2026-10-19T10:00:00Z', updated_at: '2026-10-19T10:00:00Z', ...extra });
 
   // Algemeen plan
-  let e = omgeving();
+  let e = omgeving({ planBron: PLANBRON_VOL });
   let r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('algemeen plan: 8 standaardonderdelen, status 200', r.status === 200 && r.body.plan.secties.length === 8 && r.body.plan.soort === 'algemeen' && r.body.plan.uitFormulier === false, JSON.stringify(r.body).slice(0, 300));
   check('een verzonnen getal (4500) verdwijnt, een onbekend feit-id (f999) wordt genegeerd', r.body.plan.secties.every((s) => !s.tekst.includes('4500')) && r.body.plan.statistiek.verwijderdeZinnen > 0);
@@ -378,19 +403,63 @@ sectie('4c. Plan schrijven');
   const rijen = [...(await e.deps.lijstAanvragen(USER, PROJECT))];
   check('opgeslagen als algemeen plan zonder fondsnaam', rijen.length === 1 && rijen[0].soort === 'algemeen' && rijen[0].fonds_sleutel === '' && rijen[0].plan.secties.length === 8);
   check('gebruik gelogd als aanvraag_plan, succes, zonder inhoud', e.log.gebruik.length === 1 && e.log.gebruik[0].actie === 'aanvraag_plan' && e.log.gebruik[0].succes === true && !JSON.stringify(e.log.gebruik).includes('Rotterdam'));
-  check('onderdelen zonder feiten krijgen geen modelaanroep maar een [aanvullen] (Borging heeft hier geen feiten)', e.log.modelAanroepen + r.body.plan.statistiek.zonderFeiten === 8 && r.body.plan.statistiek.zonderFeiten >= 1 && r.body.plan.secties.find((x) => x.id === 'borging').tekst.startsWith('[aanvullen'));
-  check('na dit plan staat het resterende aantal op 0 (Pro: 1 plan)', r.body.resterend === 0 && r.body.limiet === 1);
+  check('elk onderdeel is een modelaanroep of (zonder feiten) een [aanvullen]', e.log.modelAanroepen + r.body.plan.statistiek.zonderFeiten === 8);
+  check('na dit plan staat het resterende aantal op 0 (Pro: 1 project met een plan)', r.body.resterend === 0 && r.body.limiet === 1);
+  check('het plan reserveert per project (niet per maand)', e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'plan' && e.log.reserveringen[0].project === PROJECT && e.log.reserveringen[0].limiet === 1 && e.log.reserveringen[0].sinds.startsWith('2025-10-19') && e.log.afgerond[0].succes === true);
 
-  // Maandgrens
-  e = omgeving({ tellingPlannen: 1 });
+  // Eén keer per project en een grens op het aantal projecten
+  e = omgeving({ planBron: PLANBRON_VOL, planGebruikt: 1 });
   r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
-  check('Pro, 1 plan gebruikt: 429 maand-op, geen modelaanroep, met uitleg over Premium', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0 && /Premium/.test(r.body.error));
-  e = omgeving({ tier: 'premium', tellingPlannen: 2 });
-  gelijk('Premium, 2 van 3 gebruikt: toegestaan', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 200);
-  e = omgeving({ tier: 'premium', tellingPlannen: 3 });
-  gelijk('Premium, 3 van 3 gebruikt: 429', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 429);
-  e = omgeving({ telNull: true });
+  check('Pro, al een ander project met een plan: 429 plan-limiet met uitleg over Premium, geen modelaanroep', r.status === 429 && r.body.reden === 'plan-limiet' && e.log.modelAanroepen === 0 && /Premium/.test(r.body.error));
+  e = omgeving({ planBron: PLANBRON_VOL, projectKlaar: true, planGebruikt: 1 });
+  r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
+  check('dit project heeft al een plan: 409 al-geschreven, geen modelaanroep, niets gereserveerd', r.status === 409 && r.body.reden === 'al-geschreven' && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
+  e = omgeving({ tier: 'premium', planBron: PLANBRON_VOL, planGebruikt: 2 });
+  gelijk('Premium, 2 van 3 projecten: toegestaan', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 200);
+  e = omgeving({ tier: 'premium', planBron: PLANBRON_VOL, planGebruikt: 3 });
+  gelijk('Premium, 3 van 3 projecten: 429', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 429);
+  e = omgeving({ planBron: PLANBRON_VOL, telNull: true });
   gelijk('telling onleesbaar: 503 (fail closed)', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 503);
+
+  // Het algemene plan pas bij 100%
+  e = omgeving();
+  r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
+  check('projectinformatie niet volledig: 422 onvolledig met de lijst wat nog mist, geen modelaanroep, niets gereserveerd', r.status === 422 && r.body.reden === 'onvolledig' && r.body.gereedheid.klaar === false && r.body.gereedheid.onderdelen.some((o) => o.id === 'borging' && o.gevuld === false) && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
+
+  // Een plan met een mislukt onderdeel telt niet: de plek blijft vrij
+  e = omgeving({ planBron: PLANBRON_VOL, modelPlan: 'deels' });
+  r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
+  check('algemeen plan met een mislukt onderdeel: 502, niets opgeslagen, plek weer vrij', r.status === 502 && r.body.reden === 'ai-mislukt' && e.log.aanvraagSchrijf.length === 0 && e.log.afgerond[0].succes === false);
+  e.o.modelPlan = 'goed';
+  gelijk('en een tweede poging kan dan wel', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 200);
+
+  // Teksten voor een fonds tellen bij de beoordelingen, niet bij het projectplan
+  {
+    const AIDX = 'aa000001-0000-4000-8000-000000000001';
+    const rijF = formulierAanvraag();
+    e = omgeving({ aanvragen: [rijF], planGebruikt: 1, projectKlaar: true });
+    r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT, aanvraagId: AIDX }), e.deps);
+    check('fondsversie met het projectplan al gebruikt: toch toegestaan en gereserveerd bij de beoordelingen', r.status === 200 && e.log.reserveringen[0].soort === 'beoordelingen' && e.log.reserveringen[0].limiet === 6);
+    e = omgeving({ aanvragen: [rijF], tellingBeoordelingen: 6 });
+    r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT, aanvraagId: AIDX }), e.deps);
+    check('fondsversie als de beoordelingen op zijn: 429 maand-op, geen modelaanroep', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0);
+  }
+
+  // Voortgangsmeter
+  e = omgeving();
+  r = await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
+  check('voortgangsmeter bij gedeeltelijke informatie: percentage onder 100, lijst met wat mist, geen modelaanroep', r.status === 200 && r.body.gereedheid.percentage > 0 && r.body.gereedheid.percentage < 100 && r.body.gereedheid.klaar === false && r.body.gereedheid.onderdelen.length === 12 && e.log.modelAanroepen === 0);
+  e = omgeving({ planBron: PLANBRON_VOL });
+  r = await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
+  check('voortgangsmeter volledig: 100% en klaar', r.body.gereedheid.percentage === 100 && r.body.gereedheid.klaar === true && r.body.projectKlaar === false && r.body.plannen.limiet === 1 && r.body.plannen.resterend === 1);
+  e = omgeving({ planBron: PLANBRON_VOL, projectKlaar: true, planGebruikt: 1 });
+  r = await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
+  check('voortgangsmeter: dit project is al geschreven', r.body.projectKlaar === true && r.body.plannen.resterend === 0);
+  e = omgeving({ projectVan: ANDER });
+  gelijk('voortgangsmeter van andermans project: 404', (await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps)).status, 404);
+  gelijk('voortgangsmeter zonder projectId: 400', (await verwerk(vraag({ mode: 'plan-gereedheid' }), e.deps)).status, 400);
+  e = omgeving({ tier: 'free', actief: false });
+  gelijk('voortgangsmeter voor Free: 403', (await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps)).status, 403);
   e = omgeving({ tier: 'free', actief: false });
   gelijk('Free: 403', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 403);
 
@@ -407,7 +476,7 @@ sectie('4c. Plan schrijven');
   check('te weinig informatie: 422 te-weinig-info, geen modelaanroep, niets geteld', r.status === 422 && r.body.reden === 'te-weinig-info' && e.log.modelAanroepen === 0 && e.log.gebruik.length === 0 && e.log.aanvraagSchrijf.length === 0);
 
   // Modelstoring
-  e = omgeving({ modelPlan: 'kapot' });
+  e = omgeving({ planBron: PLANBRON_VOL, modelPlan: 'kapot' });
   r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('modelstoring: 502, niets opgeslagen, gelogd als mislukt (telt niet mee)', r.status === 502 && r.body.reden === 'ai-mislukt' && e.log.aanvraagSchrijf.length === 0 && e.log.gebruik[0].succes === false);
 
@@ -456,9 +525,9 @@ sectie('6. Atomaire maandgrens: gelijktijdig, mislukt, storing');
   gelijk('en er is maar één keer het model aangeroepen', e.log.modelAanroepen, 1);
 
   // Een plan met Pro (1 per maand), twee tegelijk.
-  e = omgeving({ tellingPlannen: 0 });
+  e = omgeving({ planBron: PLANBRON_VOL });
   [r1, r2] = await Promise.all([verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps), verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)]);
-  gelijk('Pro, 1 plan per maand, twee tegelijk: één 200 en één 429', [r1.status, r2.status].sort().join(','), '200,429');
+  gelijk('Pro, hetzelfde project twee keer tegelijk: één 200, de andere 409 (al geschreven)', [r1.status, r2.status].sort().join(','), '200,409');
 
   // Criteria ophalen, twee tegelijk met nog één plek.
   e = omgeving({ tellingEisen: 11 });
@@ -483,7 +552,7 @@ sectie('6. Atomaire maandgrens: gelijktijdig, mislukt, storing');
   r = await verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps);
   check('mislukt criteria ophalen: afgerond als mislukt', r.status === 502 && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
 
-  e = omgeving({ modelPlan: 'kapot' });
+  e = omgeving({ planBron: PLANBRON_VOL, modelPlan: 'kapot' });
   r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('mislukt plan: afgerond als mislukt', r.status === 502 && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
 

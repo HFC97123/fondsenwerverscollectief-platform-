@@ -110,13 +110,13 @@ export type GebruikSoort = 'beoordeling' | 'plan';
 
 // Is er nog ruimte deze maand? `config` is de aanvraagAssistent-config van de tier (null = geen toegang); `gebruikt` komt uit de eigen tabellen.
 export function maandRuimte(
-  config: { beoordelingenPerMaand: number; plannenPerMaand: number } | null,
+  config: { beoordelingenPerMaand: number; projectplannen: number } | null,
   soort: GebruikSoort,
   gebruikt: number,
 ): { toegestaan: boolean; limiet: number; resterend: number; reden: 'geen-toegang' | 'maand-op' | null } {
   if (!config) return { toegestaan: false, limiet: 0, resterend: 0, reden: 'geen-toegang' };
 
-  const limiet = Math.max(0, Math.floor(soort === 'beoordeling' ? config.beoordelingenPerMaand : config.plannenPerMaand));
+  const limiet = Math.max(0, Math.floor(soort === 'beoordeling' ? config.beoordelingenPerMaand : config.projectplannen));
   const g = Math.max(0, Math.floor(Number(gebruikt) || 0));
   const resterend = Math.max(0, limiet - g);
 
