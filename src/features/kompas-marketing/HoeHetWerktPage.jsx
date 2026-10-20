@@ -274,9 +274,7 @@ export default function HoeHetWerktPage() {
       <KompasSubnav actief="werkt" toonPlan />
 
       {/* HERO */}
-      <div style={css('position: relative; overflow: hidden;')}>
-        <KompasAchtergrond />
-      <div style={css('position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: clamp(40px, 6vw, 72px) clamp(16px, 4vw, 24px) clamp(34px, 4.6vw, 56px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: clamp(28px, 4vw, 56px); align-items: center;')}>
+      <div style={css('max-width: 1180px; margin: 0 auto; padding: clamp(40px, 6vw, 72px) clamp(16px, 4vw, 24px) clamp(34px, 4.6vw, 56px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: clamp(28px, 4vw, 56px); align-items: center;')}>
         <div>
         <div style={css('display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 13px; font-weight: 700; margin-bottom: 20px;')}>
           <img src="/uploads/kompas-logo.png" alt="" style={css('width: 26px; height: 26px; border-radius: 50%; object-fit: contain; display: block;')} />
@@ -320,11 +318,11 @@ export default function HoeHetWerktPage() {
 
         <WerkplekFilm />
       </div>
-      </div>
 
       {/* VIER STAPPEN */}
-      <div style={css('background: #FFFFFF; border-top: 1px solid #E9EFEB; border-bottom: 1px solid #E9EFEB; padding: clamp(40px, 5.6vw, 76px) 0;')}>
-        <div style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px);')}>
+      <div style={css('position: relative; overflow: hidden; background: #FFFFFF; border-top: 1px solid #E9EFEB; border-bottom: 1px solid #E9EFEB; padding: clamp(40px, 5.6vw, 76px) 0;')}>
+        <KompasAchtergrond />
+        <div style={css('position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px);')}>
           <div style={css('margin-bottom: clamp(24px, 3vw, 38px); max-width: 720px;')}>
             <div style={css('margin-bottom: 12px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.12em; color: #4E9A6C;')}>ZO WERKT HET</div>
             <div style={css("font-family: 'Newsreader', serif; font-size: clamp(26px, 4vw, 36px); font-weight: 600; color: #2C4A5E; line-height: 1.18; text-wrap: balance;")}>

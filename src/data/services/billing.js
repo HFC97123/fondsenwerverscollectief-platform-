@@ -2,7 +2,7 @@
 // geheime sleutels horen daar niet.
 //
 // Functies:
-//   create-checkout-session  { plan: 'PRO'|'PREMIUM', looptijd: 'MAAND'|'KWARTAAL'|'HALFJAAR'|'JAAR',
+//   create-checkout-session  { plan: 'PRO'|'PREMIUM', looptijd: 'MAAND'|'HALFJAAR'|'JAAR',
 //                            voorwaarden_akkoord: true } -> { url }
 //                            afrekenpagina openen. De SERVER bepaalt trial ja/nee,
 //                            prijs en alle rechten; de client stuurt alleen de keuze.

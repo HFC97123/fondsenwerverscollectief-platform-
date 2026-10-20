@@ -585,41 +585,42 @@ huidig = 'L terugkeer-status';
   ok(!/setTier|subscription_|tier\s*=|\.update|profile/i.test(beheerFn) && /setFout\(res\.error\)/.test(beheerFn), 'beheerAbonnement: toont alleen een eventuele fout; wijzigt geen tier of profiel');
 }
 
-// ---- N. looptijden (maand, kwartaal, half jaar, jaar) ------------------------------------------------------------
+// ---- N. looptijden (maand, half jaar, jaar) ------------------------------------------------------------
 huidig = 'N looptijden';
 {
   const ab = await import('../../src/data/abonnementen.js');
   const kp = await import('../../src/data/services/koopintentie.js');
 
   // N1. prijstabel: totalen, monotone korting, nooit negatief
-  ok(ab.totaalCent('pro', 'MAAND') === 4000 && ab.totaalCent('pro', 'KWARTAAL') === 10500 && ab.totaalCent('pro', 'HALFJAAR') === 19200 && ab.totaalCent('pro', 'JAAR') === 36000, 'Pro totalen 40 / 105 / 192 / 360');
-  ok(ab.totaalCent('premium', 'MAAND') === 7500 && ab.totaalCent('premium', 'KWARTAAL') === 19500 && ab.totaalCent('premium', 'HALFJAAR') === 36000 && ab.totaalCent('premium', 'JAAR') === 66000, 'Premium totalen 75 / 195 / 360 / 660');
+  ok(ab.totaalCent('pro', 'MAAND') === 4000 && ab.totaalCent('pro', 'HALFJAAR') === 19200 && ab.totaalCent('pro', 'JAAR') === 36000, 'Pro totalen 40 / 192 / 360');
+  ok(ab.totaalCent('premium', 'MAAND') === 7500 && ab.totaalCent('premium', 'HALFJAAR') === 36000 && ab.totaalCent('premium', 'JAAR') === 66000, 'Premium totalen 75 / 360 / 660');
   for (const t of ['pro', 'premium']) {
     const per = ab.LOOPTIJDEN.map((l) => ab.prijsPerMaandCent(t, l));
     ok(per.every((x, i) => i === 0 || x < per[i - 1]), `${t}: per-maandprijs daalt bij langere looptijd (${per.join('/')})`);
-    ok(ab.LOOPTIJDEN.every((l) => ab.besparingCent(t, l) >= 0), `${t}: besparing nooit negatief`);
+    ok(!ab.LOOPTIJDEN.includes('KWARTAAL') && ab.LOOPTIJDEN.length === 3, 'drie looptijden: maand, half jaar, jaar');
+  ok(ab.LOOPTIJDEN.every((l) => ab.besparingCent(t, l) >= 0), `${t}: besparing nooit negatief`);
     ok(ab.besparingCent(t, 'MAAND') === 0 && ab.besparingPercentage(t, 'MAAND') === 0, `${t}: maand = geen korting`);
   }
   ok(ab.besparingCent('pro', 'JAAR') === 12000 && ab.besparingPercentage('pro', 'JAAR') === 25, 'Pro jaar: bespaart 120, 25%');
   ok(ab.prijsPerMaandCent('free', 'MAAND') === null && ab.prijsPerMaandCent('pro', 'WEEK') === null && ab.prijsInfo('pro', 'x') === null, 'onbekende tier of looptijd = null');
   ok(ab.formatEuro(4000) === '€40' && ab.formatEuro(3250) === '€32,50', 'formatEuro: hele euro zonder decimalen, anders komma');
-  ok(ab.proefMogelijk('MAAND') === true && ['KWARTAAL', 'HALFJAAR', 'JAAR'].every((l) => ab.proefMogelijk(l) === false), 'proef alleen bij maand');
+  ok(ab.proefMogelijk('MAAND') === true && ['HALFJAAR', 'JAAR'].every((l) => ab.proefMogelijk(l) === false), 'proef alleen bij maand');
   ok(ab.ABONNEMENTEN.pro.prijsTekst === '€40 per maand' && ab.ABONNEMENTEN.premium.prijsTekst === '€75 per maand', 'maandprijzen €40 / €75');
 
-  // N2. Pro per kwartaal: meteen betalen, geen proef, juiste tekst en juiste body
+  // N2. Pro per half jaar: meteen betalen, geen proef, juiste tekst en juiste body
   opnieuw(GOED);
-  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'KWARTAAL' }));
+  await render(React.createElement(AbonnerenBevestiging, { intentie: 'PRO', looptijd: 'HALFJAAR' }));
   {
     const t = tekst();
-    ok(t.includes('€105 nu betalen') && t.includes('3 maanden') && t.includes('€35 per maand') && t.includes('Daarna €40 per maand'), 'kwartaal: €105 nu, 3 maanden, daarna €40 per maand');
-    ok(t.includes('U bespaart €15'), 'kwartaal: besparing €15 genoemd');
-    ok(!t.includes('7 dagen gratis'), 'kwartaal: GEEN gratis proefperiode');
+    ok(t.includes('€192 nu betalen') && t.includes('6 maanden') && t.includes('€32 per maand') && t.includes('Daarna €40 per maand'), 'half jaar: €192 nu, 6 maanden, daarna €40 per maand');
+    ok(t.includes('U bespaart €48'), 'half jaar: besparing €48 genoemd');
+    ok(!t.includes('7 dagen gratis'), 'half jaar: GEEN gratis proefperiode');
     ok(!/\bbtw\b[^.]*\d+%/.test(t), 'geen btw-berekening in de app');
   }
   await vink();
   await klik(knop('Doorgaan naar betalen'));
   await wacht();
-  ok(JSON.stringify(client.log.invoke[0].opties.body) === JSON.stringify(PRO_NAAR('PRO', 'KWARTAAL')), 'body bevat looptijd KWARTAAL en verder niets');
+  ok(JSON.stringify(client.log.invoke[0].opties.body) === JSON.stringify(PRO_NAAR('PRO', 'HALFJAAR')), 'body bevat looptijd HALFJAAR en verder niets');
   ok(!('bedrag' in client.log.invoke[0].opties.body) && !('amount' in client.log.invoke[0].opties.body) && !('price' in client.log.invoke[0].opties.body), 'frontend stuurt nooit een bedrag of prijs');
 
   // N3. Premium per jaar
@@ -653,7 +654,7 @@ huidig = 'N looptijden';
   ok(container.querySelector('input[type=checkbox]').checked === false, 'na wisselen moet het akkoord opnieuw gegeven worden');
   ok(JSON.parse(dom.window.localStorage.getItem('fc.koopintentie') || '{}').looptijd === 'JAAR', 'gewijzigde looptijd bewaard');
   await klik(container.querySelector('[data-looptijd="MAAND"]'));
-  ok(tekst().includes('7 dagen gratis') && container.querySelectorAll('[role=radio]').length === 4, 'terug naar maand: proef zichtbaar; 4 keuzes in de schakelaar');
+  ok(tekst().includes('7 dagen gratis') && container.querySelectorAll('[role=radio]').length === 3, 'terug naar maand: proef zichtbaar; 3 keuzes in de schakelaar');
   ok(container.querySelector('[data-looptijd="MAAND"]').getAttribute('aria-checked') === 'true', 'schakelaar: actieve keuze staat aria-checked');
 
   // N6. oude link zonder looptijd en zonder bewaarde keuze: gewone maandkeuze
@@ -691,16 +692,16 @@ huidig = 'N looptijden';
   // N9. koopintentie: looptijd in hash en opslag, oude aanroepen ongewijzigd
   ok(kp.abonnerenHash('PRO') === '#/kompas/abonneren?intent=PRO' && kp.abonnerenHash('PRO', 'JAAR') === '#/kompas/abonneren?intent=PRO&looptijd=JAAR', 'abonnerenHash: oude vorm ongewijzigd, nieuwe met looptijd');
   ok(kp.abonnerenHash('PRO', 'EVIL') === '#/kompas/abonneren?intent=PRO' && kp.abonnerenHash('EVIL', 'JAAR') === '#/kompas/abonneren', 'abonnerenHash: ongeldige looptijd of code genegeerd');
-  ok(kp.looptijdUitHash('#/kompas/abonneren?intent=PRO&looptijd=KWARTAAL') === 'KWARTAAL' && kp.looptijdUitHash('#/x?looptijd=EVIL') === null && kp.looptijdUitHash('#/x') === null, 'looptijdUitHash alleen uit allowlist');
+  ok(kp.looptijdUitHash('#/kompas/abonneren?intent=PRO&looptijd=HALFJAAR') === 'HALFJAAR' && kp.looptijdUitHash('#/x?looptijd=EVIL') === null && kp.looptijdUitHash('#/x') === null, 'looptijdUitHash alleen uit allowlist');
   dom.window.localStorage.clear();
   ok(kp.bewaarLooptijd('JAAR') === false && kp.leesLooptijd() === null, 'looptijd zonder bewaarde intentie wordt niet bewaard');
-  kp.bewaarIntentie('PRO', 'KWARTAAL');
-  ok(kp.leesLooptijd() === 'KWARTAAL', 'bewaarIntentie bewaart looptijd');
+  kp.bewaarIntentie('PRO', 'HALFJAAR');
+  ok(kp.leesLooptijd() === 'HALFJAAR', 'bewaarIntentie bewaart looptijd');
   kp.bewaarIntentie('PREMIUM');
-  ok(kp.leesLooptijd() === 'KWARTAAL' && kp.leesIntentie() === 'PREMIUM', 'nieuwe intentie zonder looptijd behoudt de eerdere looptijd');
-  ok(kp.neemTeAanbiedenIntentie() === 'PREMIUM' && kp.leesLooptijd() === 'KWARTAAL', 'terugleiding na inloggen behoudt de looptijd');
+  ok(kp.leesLooptijd() === 'HALFJAAR' && kp.leesIntentie() === 'PREMIUM', 'nieuwe intentie zonder looptijd behoudt de eerdere looptijd');
+  ok(kp.neemTeAanbiedenIntentie() === 'PREMIUM' && kp.leesLooptijd() === 'HALFJAAR', 'terugleiding na inloggen behoudt de looptijd');
   kp.bewaarIntentie('PRO', 'EVIL');
-  ok(kp.leesLooptijd() === 'KWARTAAL', 'ongeldige looptijd overschrijft niets');
+  ok(kp.leesLooptijd() === 'HALFJAAR', 'ongeldige looptijd overschrijft niets');
   dom.window.localStorage.setItem('fc.koopintentie', JSON.stringify({ intentie: 'PRO', ts: Date.now(), aangeboden: false, looptijd: 'EVIL' }));
   ok(kp.leesLooptijd() === null && kp.leesIntentie() === 'PRO', 'beschadigde looptijd in opslag wordt genegeerd');
 

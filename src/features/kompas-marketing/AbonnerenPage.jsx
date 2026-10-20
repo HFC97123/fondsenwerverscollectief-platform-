@@ -76,7 +76,7 @@ function Punten({ items }) {
 }
 
 // De herbruikbare bevestigingsflow. `intentie` is een code uit INTENTIES.
-// `looptijd` (MAAND, KWARTAAL, HALFJAAR of JAAR) bepaalt alleen de weergave en wat er naar de
+// `looptijd` (MAAND, HALFJAAR of JAAR) bepaalt alleen de weergave en wat er naar de
 // server gaat; de server valideert en rekent zelf. `onLooptijd` wordt aangeroepen bij een andere keuze.
 // `aanbod` (optioneel, later van de server): { trialBeschikbaar: boolean }.
 export function AbonnerenBevestiging({ intentie, aanbod, looptijd = BASIS_LOOPTIJD, onLooptijd }) {

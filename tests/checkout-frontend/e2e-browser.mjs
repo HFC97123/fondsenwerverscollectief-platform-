@@ -292,9 +292,9 @@ await scenario('O looptijdschakelaar en vooruitbetalen', async (page, c) => {
   ok(t.includes('€360 per jaar vooruit betaald') && t.includes('€660 per jaar vooruit betaald') && t.includes('Daarna €40 per maand') && t.includes('Daarna €75 per maand'), 'jaar: totalen en vervolgprijs per kaart');
   ok(await page.getByRole('button', { name: 'Kies Pro per jaar' }).count() === 1 && await page.getByRole('button', { name: 'Kies Premium per jaar' }).count() === 1, 'jaar: knoppen "Kies … per jaar"');
   ok(await page.getByRole('button', { name: 'Start 7 dagen gratis' }).count() === 0, 'jaar: geen proefknop');
-  await page.getByRole('radio', { name: 'Per kwartaal' }).click(); await sleep(150);
+  await page.getByRole('radio', { name: 'Per half jaar' }).click(); await sleep(150);
   t = await page.locator('body').innerText();
-  ok(t.includes('€35') && t.includes('€65') && t.includes('€105 per kwartaal vooruit betaald') && t.includes('€195 per kwartaal vooruit betaald'), 'kwartaal: €35 / €65 en totalen');
+  ok(t.includes('€32') && t.includes('€60') && t.includes('€192 per half jaar vooruit betaald') && t.includes('€360 per half jaar vooruit betaald'), 'half jaar: €32 / €60 en totalen');
   await page.getByRole('radio', { name: 'Maandelijks' }).click(); await sleep(150);
   t = await page.locator('body').innerText();
   ok(t.includes('€40') && t.includes('€75') && !t.includes('vooruit betaald') && t.includes('7 dagen gratis proberen'), 'maand: €40 / €75, geen vooruitregel, proef zichtbaar');
@@ -302,7 +302,7 @@ await scenario('O looptijdschakelaar en vooruitbetalen', async (page, c) => {
   // pijltjestoets verplaatst de keuze
   await page.getByRole('radio', { name: 'Maandelijks' }).focus();
   await page.keyboard.press('ArrowRight'); await sleep(150);
-  ok(await page.getByRole('radio', { name: 'Per kwartaal' }).getAttribute('aria-checked') === 'true', 'pijltje rechts kiest kwartaal');
+  ok(await page.getByRole('radio', { name: 'Per half jaar' }).getAttribute('aria-checked') === 'true', 'pijltje rechts kiest half jaar');
   // Premium per half jaar -> bevestigingsstap met de gekozen looptijd (inloggen eerst)
   await page.getByRole('radio', { name: 'Per half jaar' }).click(); await sleep(150);
   await page.getByRole('button', { name: 'Kies Premium per half jaar' }).click(); await sleep(400);
@@ -328,7 +328,7 @@ await scenario('P mobiel layout', async (page) => {
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'prijzenpagina: geen horizontale scroll op 375px');
   ok(await page.getByRole('radio', { name: 'Per jaar' }).isVisible(), 'schakelaar zichtbaar op mobiel');
   await page.screenshot({ path: process.env.SHOT_DIR ? process.env.SHOT_DIR + '/prijzen-mobiel.png' : '/tmp/claude-0/prijzen-mobiel.png', fullPage: false });
-  await page.goto(ORIGIN + '/#/kompas/abonneren?intent=PRO&looptijd=KWARTAAL'); await page.waitForLoadState('networkidle'); await sleep(600);
+  await page.goto(ORIGIN + '/#/kompas/abonneren?intent=PRO&looptijd=HALFJAAR'); await page.waitForLoadState('networkidle'); await sleep(600);
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'abonneren-pagina: geen horizontale scroll op 375px');
 });
 

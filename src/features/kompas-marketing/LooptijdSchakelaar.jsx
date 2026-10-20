@@ -1,4 +1,4 @@
-// Schakelaar voor de looptijd van een Pro- of Premium-abonnement (maand, kwartaal, half jaar, jaar).
+// Schakelaar voor de looptijd van een Pro- of Premium-abonnement (maand, half jaar, jaar).
 // Uitsluitend weergave/keuze in de browser: de gekozen looptijd bepaalt nooit een bedrag. De server
 // valideert de looptijd opnieuw en rekent zelf (zie data/abonnementen.js en create-checkout-session).
 import React, { useRef } from 'react';

@@ -135,14 +135,14 @@ export const FAQ_SECTIONS = [
       {
         q: 'Kan ik korting krijgen door vooruit te betalen?',
         blocks: [
-          'Ja. U betaalt standaard per maand, maar u kunt ook een kwartaal, een half jaar of een jaar vooruit betalen en krijgt daarvoor korting.',
+          'Ja. U betaalt standaard per maand, maar u kunt ook een half jaar of een jaar vooruit betalen en krijgt daarvoor korting.',
           'Pro',
           {
-            list: [looptijdRegel('pro', 'KWARTAAL'), looptijdRegel('pro', 'HALFJAAR'), looptijdRegel('pro', 'JAAR')],
+            list: [looptijdRegel('pro', 'HALFJAAR'), looptijdRegel('pro', 'JAAR')],
           },
           'Premium',
           {
-            list: [looptijdRegel('premium', 'KWARTAAL'), looptijdRegel('premium', 'HALFJAAR'), looptijdRegel('premium', 'JAAR')],
+            list: [looptijdRegel('premium', 'HALFJAAR'), looptijdRegel('premium', 'JAAR')],
           },
           'Alle bedragen zijn exclusief btw.',
           `Na de vooruitbetaalde periode loopt uw abonnement automatisch door voor de maandprijs (Pro ${MAAND_PRO}, Premium ${MAAND_PREMIUM} per maand), per maand opzegbaar, tenzij u eerder opzegt. Een gratis proefperiode is er alleen bij maandelijks betalen.`,
@@ -426,7 +426,7 @@ export const FAQ_SECTIONS = [
         q: 'Hoe werkt de betaling?',
         blocks: [
           'Abonnementen worden standaard maandelijks vooruitbetaald en iedere maand automatisch verlengd op dezelfde datum waarop u bent gestart.',
-          'Kiest u voor een kwartaal, half jaar of jaar vooruit, dan betaalt u die periode in één keer met korting. Daarna loopt uw abonnement automatisch door tegen de maandprijs.',
+          'Kiest u voor een half jaar of jaar vooruit, dan betaalt u die periode in één keer met korting. Daarna loopt uw abonnement automatisch door tegen de maandprijs.',
         ],
       },
       {

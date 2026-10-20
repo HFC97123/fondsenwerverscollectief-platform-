@@ -15,7 +15,7 @@
 //  - vervalt automatisch na 24 uur (een bevestigingsmail kan even duren).
 // Opslag is best-effort: zonder (toegankelijke) localStorage doet dit niets.
 //
-// Naast de intentie wordt de gekozen LOOPTIJD (MAAND, KWARTAAL, HALFJAAR of JAAR) onthouden,
+// Naast de intentie wordt de gekozen LOOPTIJD (MAAND, HALFJAAR of JAAR) onthouden,
 // met dezelfde regels: alleen een allowlist, uitsluitend weergave/UX. De looptijd bepaalt
 // nooit een bedrag; de server valideert de looptijd opnieuw en rekent zelf.
 

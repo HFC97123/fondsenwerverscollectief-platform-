@@ -3,7 +3,7 @@
 //
 // Prijsmodel (Aisya, 15-10-2026):
 //  - De MAANDprijs is de gewone prijs en loopt gewoon door, per maand opzegbaar.
-//  - Wie een kwartaal, half jaar of jaar VOORUIT betaalt, krijgt korting. Na die
+//  - Wie een half jaar of jaar VOORUIT betaalt, krijgt korting. Na die
 //    vooruitbetaalde periode gaat het abonnement automatisch over op de gewone
 //    maandprijs, tenzij het is opgezegd.
 //  - Een gratis proefperiode bestaat alleen bij de maandkeuze.
@@ -18,7 +18,7 @@
 //    verwacht staan in supabase/functions/create-checkout-session/index.ts.
 //  - alle bedragen zijn in euro-CENTEN en per MAAND. Alleen hier aanpassen.
 
-export const LOOPTIJDEN = ['MAAND', 'KWARTAAL', 'HALFJAAR', 'JAAR'];
+export const LOOPTIJDEN = ['MAAND', 'HALFJAAR', 'JAAR'];
 
 // Looptijd waarmee de prijsvergelijking op de website altijd begint: de gewone maandprijs.
 export const STANDAARD_LOOPTIJD = 'MAAND';
@@ -29,15 +29,14 @@ export const BASIS_LOOPTIJD = 'MAAND';
 
 export const LOOPTIJD_INFO = {
   MAAND: { code: 'MAAND', maanden: 1, label: 'Maandelijks', kort: 'Maand', periode: 'per maand', duur: '1 maand' },
-  KWARTAAL: { code: 'KWARTAAL', maanden: 3, label: 'Per kwartaal', kort: 'Kwartaal', periode: 'per kwartaal', duur: '3 maanden' },
   HALFJAAR: { code: 'HALFJAAR', maanden: 6, label: 'Per half jaar', kort: 'Half jaar', periode: 'per half jaar', duur: '6 maanden' },
   JAAR: { code: 'JAAR', maanden: 12, label: 'Per jaar', kort: 'Jaar', periode: 'per jaar', duur: '12 maanden' },
 };
 
 // Prijs PER MAAND in centen, per tier en looptijd.
 const PRIJS_PER_MAAND_CENT = {
-  pro: { MAAND: 4000, KWARTAAL: 3500, HALFJAAR: 3200, JAAR: 3000 },
-  premium: { MAAND: 7500, KWARTAAL: 6500, HALFJAAR: 6000, JAAR: 5500 },
+  pro: { MAAND: 4000, HALFJAAR: 3200, JAAR: 3000 },
+  premium: { MAAND: 7500, HALFJAAR: 6000, JAAR: 5500 },
 };
 
 export function isGeldigeLooptijd(code) {
