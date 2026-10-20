@@ -95,6 +95,11 @@ function formatAmount(min, max) {
   return '–';
 }
 
+// Heeft een regeling een bekend minimum- of maximumbedrag?
+function heeftBedrag(row) {
+  return Boolean(row && (row.bedragMin || row.bedragMax));
+}
+
 function deadlinePredicate(value, statuses) {
   return (row) => {
     const d = daysLeft(row);
@@ -786,7 +791,17 @@ export default function DeadlinesPage() {
                               {locked ? (
                                 <div className="fwk-dl-waarde fwk-dl-wazig">€ •••• – € ••••</div>
                               ) : (
-                                <div className="fwk-dl-waarde">{formatAmount(r.bedragMin, r.bedragMax)}</div>
+                                heeftBedrag(r) ? (
+                                  <div className="fwk-dl-waarde">{formatAmount(r.bedragMin, r.bedragMax)}</div>
+                                ) : r.bandbreedteBijdrage ? (
+                                  // Geen bekend bedrag: de bandbreedte laat zien in welke orde van grootte de bijdrage ligt.
+                                  <>
+                                    <div className="fwk-dl-waarde">{r.bandbreedteBijdrage}</div>
+                                    <div className="fwk-dl-klein" data-testid="bedrag-indicatie">indicatie</div>
+                                  </>
+                                ) : (
+                                  <div className="fwk-dl-waarde">–</div>
+                                )
                               )}
                             </div>
 
@@ -872,7 +887,14 @@ export default function DeadlinesPage() {
 
             <div className="fwk-wp-feiten fwk-dl-feiten">
               {[
-                ['Bedrag', formatAmount(detail.bedragMin, detail.bedragMax) || 'Niet bekend'],
+                [
+                  'Bedrag',
+                  heeftBedrag(detail)
+                    ? formatAmount(detail.bedragMin, detail.bedragMax)
+                    : detail.bandbreedteBijdrage
+                      ? `Indicatie: ${detail.bandbreedteBijdrage}`
+                      : 'Niet bekend',
+                ],
                 [
                   'Deadline',
                   detail.deadline
@@ -885,7 +907,8 @@ export default function DeadlinesPage() {
                 detail.beoordelingsdatum || detail.beoordelingsperiode
                   ? ['Beoordeling', detail.beoordelingsdatum ? formatDate(detail.beoordelingsdatum) : detail.beoordelingsperiode]
                   : null,
-                detail.bandbreedteBijdrage ? ['Bandbreedte bijdrage', detail.bandbreedteBijdrage] : null,
+                // Zonder bekend bedrag staat de bandbreedte al bij "Bedrag" (als indicatie); niet dubbel tonen.
+                detail.bandbreedteBijdrage && heeftBedrag(detail) ? ['Bandbreedte bijdrage', detail.bandbreedteBijdrage] : null,
               ]
                 .filter(Boolean)
                 .map(([label, value]) => (
