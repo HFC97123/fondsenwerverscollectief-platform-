@@ -2,7 +2,7 @@
 // hier de matching in `subsidie-kompas` nooit raakt. STANDAARD AAN voor Pro en Premium; alleen AANVRAAG_ASSISTENT=uit zet hem uit (noodrem).
 //
 // Alle logica staat in ../_shared/aanvraagHandler.ts (testbaar zonder netwerk). Dit bestand maakt alleen de echte verbindingen:
-// Supabase (gebruiker, profiel, tellingen, opslag), OpenAI (Responses API) en het veilig ophalen van publieke websitepagina's.
+// Supabase (gebruiker, profiel, atomaire maandteller, opslag), OpenAI (Responses API) en het veilig ophalen van publieke websitepagina's.
 //
 // Geheimen (Supabase, Edge Functions): OPENAI_API_KEY (bestaat al), optioneel OPENAI_CHAT_MODEL (standaard gpt-5.5), optioneel AANVRAAG_ASSISTENT=uit (noodrem).
 // Verify JWT blijft uit: de functie controleert het token zelf.
@@ -17,7 +17,8 @@ const CORS = {
 const MODEL = Deno.env.get('OPENAI_CHAT_MODEL') || 'gpt-5.5';
 const MODEL_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_TOKENS = 4000;
-const TELLING_TABEL = { beoordelingen: 'subsidie_kompas_aanvraag_beoordelingen', eisen: 'kompas_gebruik_log', plannen: 'kompas_gebruik_log' } as const;
+const BEOORDELINGEN_TABEL = 'subsidie_kompas_aanvraag_beoordelingen';
+const MAX_LIMIET = 1_000_000; // de database-functie neemt een gewoon getal; een onbegrensde (admin-)limiet wordt hier begrensd
 const AANVRAGEN_TABEL = 'subsidie_kompas_aanvragen';
 const AANVRAAG_KOLOMMEN = 'id, program_id, soort, fonds_label, criteria, criteria_bron, bronnen, plan, plan_bijgewerkt_op, laatste_beoordeling_id, laatste_uitkomst, created_at, updated_at';
 
@@ -88,7 +89,7 @@ Deno.serve(async (req) => {
 
   // Dynamisch geladen: een verzoek met de vlag uit kost zo weinig mogelijk, en een fout in deze modules raakt alleen deze functie.
   const { verwerk, aanvraagVlagAan } = await import('../_shared/aanvraagHandler.ts');
-  const { legGebruik } = await import('../_shared/gebruikLog.ts');
+  const { legGebruik, tokensUitUsage } = await import('../_shared/gebruikLog.ts');
   const { safeFetchPublicPage } = await import('../_shared/safeFetch.ts');
   const { extractReadableText } = await import('../_shared/readableText.ts');
   const admin: any = createClient(url, serviceKey);
@@ -127,16 +128,36 @@ Deno.serve(async (req) => {
       return Boolean(data?.id);
     },
 
-    // Telt de afgeronde acties van deze maand. Een tabel die niet bestaat of niet te lezen is geeft null: de handler weigert dan (fail closed).
+    // Telt wat deze maand meetelt (afgerond, of een verse reservering) uit de eigen verbruikstabel van het account. Niet te lezen = null: de handler weigert dan (fail closed).
     telRijen: async (userId: string, soort: 'beoordelingen' | 'eisen' | 'plannen', sindsIso: string) => {
-      let q = admin.from(TELLING_TABEL[soort]).select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sindsIso);
+      const { data, error } = await admin.rpc('aanvraag_verbruik_tel', { p_user: userId, p_soort: soort, p_sinds: sindsIso });
 
-      if (soort === 'eisen') q = q.eq('action_type', 'aanvraag_eisen').eq('success', true);
-      if (soort === 'plannen') q = q.eq('action_type', 'aanvraag_plan').eq('success', true);
+      return error || typeof data !== 'number' ? null : data;
+    },
 
-      const { count, error } = await q;
+    // Controleert de maandgrens en reserveert in één database-stap (slot per gebruiker): twee gelijktijdige verzoeken komen er niet allebei door.
+    reserveer: async (userId: string, soort: 'beoordelingen' | 'eisen' | 'plannen', limiet: number, sindsIso: string) => {
+      const p_limiet = Number.isFinite(limiet) ? Math.max(0, Math.min(Math.floor(limiet), MAX_LIMIET)) : MAX_LIMIET;
+      const { data, error } = await admin.rpc('aanvraag_verbruik_reserveer', { p_user: userId, p_soort: soort, p_limiet, p_sinds: sindsIso });
 
-      return error || typeof count !== 'number' ? null : count;
+      if (error || !data || typeof data !== 'object') return { ok: false as const, reden: 'storing' as const };
+
+      const gebruikt = Number(data.gebruikt) || 0;
+
+      if (data.ok === true && typeof data.id === 'string') return { ok: true as const, id: data.id, gebruikt };
+
+      return { ok: false as const, reden: data.reden === 'te-veel-mislukt' ? ('te-veel-mislukt' as const) : ('maand-op' as const), gebruikt };
+    },
+
+    // Rondt de reservering af. Lukt dat niet, dan blijft de reservering 10 minuten meetellen en daarna niet meer; het lid merkt niets.
+    rondAf: async (reserveringId: string, userId: string, succes: boolean) => {
+      try {
+        const { error } = await admin.rpc('aanvraag_verbruik_rond_af', { p_id: reserveringId, p_user: userId, p_succes: succes });
+
+        if (error) console.error('[aanvraag-assistent] rond_af_mislukt');
+      } catch (_e) {
+        console.error('[aanvraag-assistent] rond_af_fout');
+      }
     },
 
     // Aanvragen: alleen via deze functie (service role), altijd gefilterd op de gebruiker uit het token.
@@ -205,7 +226,7 @@ Deno.serve(async (req) => {
     },
 
     slaBeoordelingOp: async (rij: Record<string, unknown>) => {
-      const { data, error } = await admin.from(TELLING_TABEL.beoordelingen).insert(rij).select('id').single();
+      const { data, error } = await admin.from(BEOORDELINGEN_TABEL).insert(rij).select('id').single();
 
       if (error) {
         console.error('[aanvraag-assistent] opslaan_mislukt');
@@ -257,7 +278,10 @@ Deno.serve(async (req) => {
 
         if (data?.status === 'failed' || data?.status === 'incomplete') return null;
 
-        return { inhoud: jsonUitTekst(leesTekst(data)), usage: data?.usage };
+        // De Responses API geeft input_tokens/output_tokens; de handler rekent met prompt_tokens/completion_tokens. Hier vertalen, anders blijft alles op 0.
+        const tokens = tokensUitUsage(data?.usage);
+
+        return { inhoud: jsonUitTekst(leesTekst(data)), usage: { prompt_tokens: tokens.input, completion_tokens: tokens.output } };
       } catch (_e) {
         return null;
       }

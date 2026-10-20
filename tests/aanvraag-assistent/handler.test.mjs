@@ -23,7 +23,9 @@ function omgeving(opties = {}) {
     tier: 'pro', actief: true, role: 'user', vlag: true, tellingBeoordelingen: 0, tellingEisen: 0, tellingPlannen: 0, telNull: false, projectVan: USER, rate: true,
     pagina: { ok: true, tekst: RICHTLIJN }, modelBeoordeling: 'goed', modelEisen: 'goed', opslaan: true, ...opties,
   };
-  const log = { modelAanroepen: 0, gebruik: [], opgeslagen: [], paginas: [], tellingen: [], aanvraagSchrijf: [] };
+  const log = { modelAanroepen: 0, gebruik: [], opgeslagen: [], paginas: [], tellingen: [], aanvraagSchrijf: [], reserveringen: [], afgerond: [] };
+  // Nagebootste atomaire teller: reserveren is synchroon (zoals het slot in de database), een mislukte aanroep geeft de plek terug.
+  const teller = { beoordelingen: o.tellingBeoordelingen, eisen: o.tellingEisen, plannen: o.tellingPlannen };
   // Een geheugentabel voor aanvragen: sleutel = project|soort|fondssleutel, zoals de unieke sleutel in de database.
   const tabel = new Map();
   if (o.aanvragen) for (const r of o.aanvragen) tabel.set(r.id, r);
@@ -36,6 +38,23 @@ function omgeving(opties = {}) {
     rateLimitOk: async () => o.rate,
     projectIsVanGebruiker: async (p, u) => (o.projectNull ? null : p === PROJECT && u === o.projectVan),
     telRijen: async (u, soort, sinds) => { log.tellingen.push({ u, soort, sinds }); return o.telNull ? null : soort === 'beoordelingen' ? o.tellingBeoordelingen : soort === 'plannen' ? o.tellingPlannen : o.tellingEisen; },
+    reserveer: async (u, soort, limiet, sinds) => {
+      log.reserveringen.push({ u, soort, limiet, sinds });
+      if (o.reserveerStoring) return { ok: false, reden: 'storing' };
+      if (o.teVeelMislukt) return { ok: false, reden: 'te-veel-mislukt', gebruikt: teller[soort] };
+      if (teller[soort] >= limiet) return { ok: false, reden: 'maand-op', gebruikt: teller[soort] };
+      const id = `rr000000-0000-4000-8000-${String(log.reserveringen.length).padStart(12, '0')}`;
+      const gebruikt = teller[soort];
+      teller[soort] += 1;
+      log.reserveringen[log.reserveringen.length - 1].id = id;
+      log.reserveringen[log.reserveringen.length - 1].soort = soort;
+      return { ok: true, id, gebruikt };
+    },
+    rondAf: async (id, u, succes) => {
+      log.afgerond.push({ id, u, succes });
+      const r = log.reserveringen.find((x) => x.id === id);
+      if (r && !succes) teller[r.soort] -= 1;
+    },
     lijstAanvragen: async (u, p) => (o.aanvraagStoring ? null : [...tabel.values()].filter((r) => r.user_id === u && r.program_id === p)),
     leesAanvraag: async (u, id) => (o.aanvraagStoring ? 'storing' : (() => { const r = tabel.get(id); return r && r.user_id === u ? r : null; })()),
     bewaarAanvraag: async (rij) => {
@@ -419,11 +438,79 @@ sectie('5. De Edge Function zelf (statische controles)');
   check('raakt subsidie-kompas niet', !/subsidie-kompas\//.test(code));
   check('model-aanroep slaat niets op bij OpenAI (store: false) en gebruikt lage redeneerinspanning', /store:\s*false/.test(code) && /effort:\s*'low'/.test(code));
   check('de service-role-sleutel verlaat de functie niet (geen console.log van sleutels of body)', !/console\.(log|error)\([^)]*(serviceKey|apiKey|bodyText|aanvraagTekst)/.test(code));
+  check('de maandgrens loopt via de atomaire database-functies, niet via kompas_gebruik_log', /aanvraag_verbruik_reserveer/.test(code) && /aanvraag_verbruik_rond_af/.test(code) && /aanvraag_verbruik_tel/.test(code) && !/kompas_gebruik_log/.test(code));
+  check('het tokengebruik van de Responses API wordt vertaald (tokensUitUsage), anders blijft het op 0', /tokensUitUsage\(data\?\.usage\)/.test(code) && /prompt_tokens:\s*tokens\.input/.test(code));
   check('geen verwijdering (delete) in de functie', !/\.delete\(/.test(code));
   check('websites alleen via de veilige ophaalfunctie, geen losse fetch naar gebruikers-URL\'s', /safeFetchPublicPage/.test(code) && (code.match(/fetch\(/g) ?? []).length === 1);
-  check('de functie schrijft alleen naar de beoordelingen en de aanvragen (en de gebruiksmeter via legGebruik)', (code.match(/\.insert\(/g) ?? []).length === 1 && (code.match(/\.upsert\(/g) ?? []).length === 1 && !/\.update\(/.test(code) && /TELLING_TABEL\.beoordelingen/.test(code) && /AANVRAGEN_TABEL/.test(code));
+  check('de functie schrijft alleen naar de beoordelingen en de aanvragen (en de gebruiksmeter via legGebruik)', (code.match(/\.insert\(/g) ?? []).length === 1 && (code.match(/\.upsert\(/g) ?? []).length === 1 && !/\.update\(/.test(code) && /BEOORDELINGEN_TABEL/.test(code) && /AANVRAGEN_TABEL/.test(code));
   check('elke aanvragenquery filtert op de gebruiker uit het token', (code.match(/\.from\(AANVRAGEN_TABEL\)[\s\S]*?\.eq\('user_id', userId\)/g) ?? []).length >= 2);
   check('het plan leest alleen het eigen, niet-gearchiveerde project', /\.eq\('user_id', userId\)\.is\('archived_at', null\)/.test(code));
+}
+
+sectie('6. Atomaire maandgrens: gelijktijdig, mislukt, storing');
+{
+  // Twee beoordelingen tegelijk met nog één plek: precies één komt erdoor (vroeger kwamen ze er allebei door).
+  let e = omgeving({ tellingBeoordelingen: 5 });
+  let [r1, r2] = await Promise.all([verwerk(vraag(beoordeelBody()), e.deps), verwerk(vraag(beoordeelBody()), e.deps)]);
+  gelijk('Pro, één plek over, twee verzoeken tegelijk: één 200 en één 429', [r1.status, r2.status].sort().join(','), '200,429');
+  gelijk('en er is maar één keer het model aangeroepen', e.log.modelAanroepen, 1);
+
+  // Een plan met Pro (1 per maand), twee tegelijk.
+  e = omgeving({ tellingPlannen: 0 });
+  [r1, r2] = await Promise.all([verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps), verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)]);
+  gelijk('Pro, 1 plan per maand, twee tegelijk: één 200 en één 429', [r1.status, r2.status].sort().join(','), '200,429');
+
+  // Criteria ophalen, twee tegelijk met nog één plek.
+  e = omgeving({ tellingEisen: 11 });
+  [r1, r2] = await Promise.all([verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps), verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps)]);
+  gelijk('criteria ophalen, één plek over, twee tegelijk: één 200 en één 429', [r1.status, r2.status].sort().join(','), '200,429');
+
+  // Een geslaagde beoordeling rondt de reservering af als gelukt.
+  e = omgeving();
+  let r = await verwerk(vraag(beoordeelBody()), e.deps);
+  check('geslaagde beoordeling: reservering op beoordelingen, afgerond als gelukt', r.status === 200 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen' && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === true);
+  check('reserveren gebruikt de limiet van het abonnement en de maandstart', e.log.reserveringen[0].limiet === 6 && e.log.reserveringen[0].sinds === '2026-10-01T00:00:00.000Z' && e.log.reserveringen[0].u === USER);
+
+  // Een mislukte aanroep telt niet mee: de plek komt terug en het lid kan het opnieuw proberen.
+  e = omgeving({ modelBeoordeling: 'kapot', tellingBeoordelingen: 5 });
+  r = await verwerk(vraag(beoordeelBody()), e.deps);
+  check('mislukte beoordeling: 502 en afgerond als mislukt', r.status === 502 && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
+  e.o.modelBeoordeling = 'goed';
+  r = await verwerk(vraag(beoordeelBody()), e.deps);
+  gelijk('na de mislukking kan de laatste plek nog worden gebruikt', r.status, 200);
+
+  e = omgeving({ modelEisen: 'kapot' });
+  r = await verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps);
+  check('mislukt criteria ophalen: afgerond als mislukt', r.status === 502 && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
+
+  e = omgeving({ modelPlan: 'kapot' });
+  r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
+  check('mislukt plan: afgerond als mislukt', r.status === 502 && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
+
+  // Een model dat een fout gooit geeft de plek ook terug.
+  e = omgeving();
+  e.deps.roep = async () => { throw new Error('boem'); };
+  let gegooid = false;
+  try { await verwerk(vraag(beoordeelBody()), e.deps); } catch (_e) { gegooid = true; }
+  check('modelfout die gegooid wordt: reservering wordt als mislukt afgerond', e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
+
+  // Storing of te veel mislukte pogingen: geen modelaanroep.
+  e = omgeving({ reserveerStoring: true });
+  r = await verwerk(vraag(beoordeelBody()), e.deps);
+  check('reserveren faalt: 503, geen modelaanroep (fail closed)', r.status === 503 && e.log.modelAanroepen === 0);
+  e = omgeving({ teVeelMislukt: true });
+  r = await verwerk(vraag(beoordeelBody()), e.deps);
+  check('te veel mislukte pogingen: 429 te-veel-mislukt met Retry-After, geen modelaanroep', r.status === 429 && r.body.reden === 'te-veel-mislukt' && r.headers?.['Retry-After'] === '3600' && e.log.modelAanroepen === 0);
+
+  // Zonder bron wordt er niets gereserveerd (geen plek verbruikt voor een verzoek dat nooit naar het model gaat).
+  e = omgeving({ pagina: { ok: false, reden: 'niet-bereikbaar' } });
+  r = await verwerk(vraag({ mode: 'eisen-ophalen', websiteUrls: ['https://voorbeeld.nl/fonds'] }), e.deps);
+  check('onleesbare website: 422 en niets gereserveerd', r.status === 422 && e.log.reserveringen.length === 0);
+
+  // Resterend telt vanaf de gereserveerde stand.
+  e = omgeving({ tellingBeoordelingen: 2 });
+  r = await verwerk(vraag(beoordeelBody()), e.deps);
+  gelijk('resterend na de derde beoordeling bij limiet 6: 3', r.body.resterend, 3);
 }
 
 klaar('aanvraag-handler');

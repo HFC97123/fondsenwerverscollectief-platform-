@@ -6,6 +6,8 @@
 //   - Standaard AAN voor Pro en Premium. Alleen met AANVRAAG_ASSISTENT=uit is de functie voor iedereen uit (noodrem; er is geen testersfase).
 //   - Free heeft geen toegang. Pro en Premium krijgen de grenzen uit tierConfig.ts (aanvraagAssistent).
 //   - Kan een maandtelling niet worden gelezen, dan weigert de server (fail closed): een grens die niet te controleren is, is geen grens.
+//   - De maandgrens is atomair: vlak vóór de AI-aanroep reserveert de server een plek (deps.reserveer, één database-stap met een slot per gebruiker) en rondt die
+//     daarna af (deps.rondAf). Zo komen twee gelijktijdige verzoeken er niet allebei door, en een mislukte aanroep telt niet mee. De teller hangt aan het account.
 //   - Een beoordeling zonder één geldig oordeel (modelstoring) wordt niet opgeslagen en telt niet mee voor de maandgrens.
 //   - Er wordt niets van de aanvraagtekst bewaard of gelogd. Opgeslagen wordt de uitkomst: eisen, status per eis, korte citaten en verbeteringen.
 import {
@@ -104,6 +106,10 @@ export interface BeoordelingRij {
   tokens_uit: number;
 }
 
+export type Verbruikssoort = 'beoordelingen' | 'eisen' | 'plannen';
+
+export type Reservering = { ok: true; id: string; gebruikt: number } | { ok: false; reden: 'maand-op' | 'te-veel-mislukt' | 'storing'; gebruikt?: number };
+
 export type PaginaUitkomst = { ok: true; tekst: string } | { ok: false; reden: 'niet-bereikbaar' | 'niet-toegestaan' | 'niet-leesbaar' };
 
 export interface HandlerDeps {
@@ -114,7 +120,9 @@ export interface HandlerDeps {
   leesProfiel(userId: string): Promise<{ profiel: ProfielRij | null; storing: boolean }>;
   rateLimitOk(userId: string): Promise<boolean>; // fail-open hoort in de implementatie: misbruikbeveiliging breekt nooit een gewoon verzoek
   projectIsVanGebruiker(projectId: string, userId: string): Promise<boolean | null>; // null = storing
-  telRijen(userId: string, soort: 'beoordelingen' | 'eisen' | 'plannen', sindsIso: string): Promise<number | null>; // null = niet te lezen
+  telRijen(userId: string, soort: Verbruikssoort, sindsIso: string): Promise<number | null>; // null = niet te lezen
+  reserveer(userId: string, soort: Verbruikssoort, limiet: number, sindsIso: string): Promise<Reservering>; // atomair: controleert de maandgrens en reserveert in één stap
+  rondAf(reserveringId: string, userId: string, succes: boolean): Promise<void>; // gelukt = telt mee, mislukt = telt niet mee; gooit nooit
   lijstAanvragen(userId: string, projectId: string): Promise<AanvraagRij[] | null>; // null = storing
   leesAanvraag(userId: string, id: string): Promise<AanvraagRij | null | 'storing'>; // null = niet gevonden (of van iemand anders)
   bewaarAanvraag(rij: AanvraagSchrijf): Promise<string | null>; // id, of null bij mislukken
@@ -138,6 +146,12 @@ export interface HandlerAntwoord {
 }
 
 const fout = (status: number, reden: string, error: string, extra: Record<string, unknown> = {}): HandlerAntwoord => ({ status, body: { ok: false, reden, error, ...extra } });
+
+// Antwoord als reserveren niet lukt om een andere reden dan een volle maand (die heeft per onderdeel eigen tekst).
+const reserveerWeigering = (reden: 'te-veel-mislukt' | 'storing'): HandlerAntwoord =>
+  reden === 'te-veel-mislukt'
+    ? { status: 429, body: { ok: false, reden: 'te-veel-mislukt', error: 'Er zijn kort achter elkaar meerdere pogingen mislukt. Probeer het over een uur opnieuw of neem contact op met Het Fondsenwervers Collectief.' }, headers: { 'Retry-After': '3600' } }
+    : fout(503, 'telling', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
 
 // Zelfde regel als effectieveTier() in subsidie-kompas/index.ts (actief abonnement of lopende proefperiode, anders Free).
 export function effectieveTier(profiel: ProfielRij | null | undefined, nu: Date): 'free' | 'pro' | 'premium' {
@@ -361,7 +375,25 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     // Een pagina die niet gelezen kon worden wordt gemeld, nooit stilzwijgend overgeslagen.
     if (!bronnen.length) return fout(422, 'geen-bron-gelezen', 'De website kon niet worden gelezen. Kopieer de vragen en criteria van het fonds naar een tekstvak of Word-bestand en plak ze hier.', { bronnen: bronStatus, inlogSignaal: false });
 
-    const uitkomst = await haalEisenOp({ bronnen, roep: deps.roep, maxEisen: config.maxEisen, maxTekensPerBron: config.maxRichtlijnTekens });
+    // Atomair reserveren vlak vóór de modelaanroep (de eerste controle hierboven is alleen om onnodig ophalen te sparen).
+    const plekEisen = await deps.reserveer(userId, 'eisen', config.eisenOphalenPerMaand, sinds);
+
+    if (!plekEisen.ok) {
+      if (plekEisen.reden === 'maand-op') return fout(429, 'maand-op', 'U heeft deze maand het maximum aantal criterialijsten opgehaald. Volgende maand is er weer ruimte.', { limiet: config.eisenOphalenPerMaand });
+
+      return reserveerWeigering(plekEisen.reden);
+    }
+
+    let uitkomst: Awaited<ReturnType<typeof haalEisenOp>>;
+
+    try {
+      uitkomst = await haalEisenOp({ bronnen, roep: deps.roep, maxEisen: config.maxEisen, maxTekensPerBron: config.maxRichtlijnTekens });
+    } catch (e) {
+      await deps.rondAf(plekEisen.id, userId, false).catch(() => undefined);
+      throw e;
+    }
+
+    await deps.rondAf(plekEisen.id, userId, uitkomst.gelukt).catch(() => undefined);
 
     await deps.meldGebruik({
       userId,
@@ -409,7 +441,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
         inlogSignaal,
         bronnen: bronStatus,
         statistiek: uitkomst.stat,
-        resterend: Math.max(0, config.eisenOphalenPerMaand - gebruikt - 1),
+        resterend: Math.max(0, config.eisenOphalenPerMaand - plekEisen.gebruikt - 1),
       },
     };
   }
@@ -435,8 +467,8 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
     const ruimtePlan = maandRuimte(config, 'plan', gebruiktPlannen);
 
-    if (!ruimtePlan.toegestaan) {
-      return fout(
+    const planMaandOp = () =>
+      fout(
         429,
         'maand-op',
         tier === 'pro' && !isAdmin
@@ -444,7 +476,8 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
           : `U heeft deze maand al ${ruimtePlan.limiet === 1 ? 'een plan' : `${ruimtePlan.limiet} plannen`} laten schrijven. Volgende maand is er weer ruimte.`,
         { limiet: ruimtePlan.limiet, resterend: 0 },
       );
-    }
+
+    if (!ruimtePlan.toegestaan) return planMaandOp();
 
     // Een plan voor een fonds hoort bij een bestaande aanvraag van dit lid en dit project; zonder aanvraag is het het algemene plan van het project.
     let rij: AanvraagRij | null = null;
@@ -469,10 +502,25 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     }
 
     const { secties: defs, aandachtspunten, uitFormulier } = rij ? sectiesUitCriteria(rij.criteria as any[]) : { secties: STANDAARD_SECTIES.map((d) => ({ ...d })), aandachtspunten: [] as string[], uitFormulier: false };
-    const geschreven = await schrijfPlan({ secties: defs, feiten, aandachtspunten, roep: deps.roep });
+    // Atomair reserveren vlak vóór de modelaanroep.
+    const plekPlan = await deps.reserveer(userId, 'plannen', config.plannenPerMaand, sinds);
+
+    if (!plekPlan.ok) return plekPlan.reden === 'maand-op' ? planMaandOp() : reserveerWeigering(plekPlan.reden);
+
+    let geschreven: Awaited<ReturnType<typeof schrijfPlan>>;
+
+    try {
+      geschreven = await schrijfPlan({ secties: defs, feiten, aandachtspunten, roep: deps.roep });
+    } catch (e) {
+      await deps.rondAf(plekPlan.id, userId, false).catch(() => undefined);
+      throw e;
+    }
+
     const nuIso = deps.nu().toISOString();
     // Gelukt = minstens één onderdeel dat het model echt heeft behandeld is goed teruggekomen (onderdelen zonder feiten tellen niet mee).
     const gelukt = geschreven.modelAangeroepen && geschreven.stat.secties - geschreven.stat.zonderFeiten - geschreven.stat.mislukt > 0;
+
+    await deps.rondAf(plekPlan.id, userId, gelukt && geschreven.modelAangeroepen).catch(() => undefined);
 
     await deps.meldGebruik({
       userId,
@@ -502,7 +550,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
     return {
       status: 200,
-      body: { ok: true, aanvraagId: opgeslagenId ?? rij?.id ?? null, opgeslagen: opgeslagenId !== null, plan, resterend: Math.max(0, ruimtePlan.resterend - 1), limiet: ruimtePlan.limiet },
+      body: { ok: true, aanvraagId: opgeslagenId ?? rij?.id ?? null, opgeslagen: opgeslagenId !== null, plan, resterend: Math.max(0, ruimtePlan.limiet - plekPlan.gebruikt - 1), limiet: ruimtePlan.limiet },
     };
   }
 
@@ -536,8 +584,8 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
   const ruimte = maandRuimte(config, 'beoordeling', gebruikt);
 
-  if (!ruimte.toegestaan) {
-    return fout(
+  const beoordelingMaandOp = () =>
+    fout(
       429,
       'maand-op',
       tier === 'pro' && !isAdmin
@@ -545,7 +593,8 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
         : `U heeft deze maand al ${ruimte.limiet} aanvragen laten beoordelen. Volgende maand is er weer ruimte.`,
       { limiet: ruimte.limiet, resterend: 0 },
     );
-  }
+
+  if (!ruimte.toegestaan) return beoordelingMaandOp();
 
   // Hoort de beoordeling bij een bestaande aanvraag? Dan moet die van dit lid en dit project zijn.
   let aanvraagRij: AanvraagRij | null = null;
@@ -560,8 +609,23 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
   }
 
   const fondsLabel = (aanvraagRij?.fonds_label || tekstVeld(body.fondsLabel, MAX_FONDSLABEL)).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
-  const uitkomst = await beoordeelAanvraag({ aanvraag, eisen, roep: deps.roep });
+  // Atomair reserveren vlak vóór de modelaanroep.
+  const plekBeoordeling = await deps.reserveer(userId, 'beoordelingen', config.beoordelingenPerMaand, sinds);
+
+  if (!plekBeoordeling.ok) return plekBeoordeling.reden === 'maand-op' ? beoordelingMaandOp() : reserveerWeigering(plekBeoordeling.reden);
+
+  let uitkomst: Awaited<ReturnType<typeof beoordeelAanvraag>>;
+
+  try {
+    uitkomst = await beoordeelAanvraag({ aanvraag, eisen, roep: deps.roep });
+  } catch (e) {
+    await deps.rondAf(plekBeoordeling.id, userId, false).catch(() => undefined);
+    throw e;
+  }
+
   const geldig = uitkomst.stat.geldig > 0;
+
+  await deps.rondAf(plekBeoordeling.id, userId, geldig).catch(() => undefined);
 
   await deps.meldGebruik({
     userId,
@@ -620,7 +684,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
       eisen,
       resultaten: uitkomst.resultaten,
       statistiek: uitkomst.stat,
-      resterend: Math.max(0, ruimte.resterend - 1),
+      resterend: Math.max(0, ruimte.limiet - plekBeoordeling.gebruikt - 1),
       limiet: ruimte.limiet,
     },
   };
