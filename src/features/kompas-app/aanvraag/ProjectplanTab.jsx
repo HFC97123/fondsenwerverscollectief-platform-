@@ -149,7 +149,6 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
         <div className="fwk-wp-stapel">
           <div className="fwk-aa-keuzes">
             <Keuzekaart titel="Projectplan" accent testid="aa-kaart-algemeen">
-              <p>Eén plan per project, geschreven door de AI.</p>
 
               {!planGeschreven && gereedheid && (
                 <div data-testid="aa-meter" style={css('margin-top: 12px;')}>
@@ -168,15 +167,19 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                           .filter((o) => !o.gevuld)
                           .map((o) => (
                             <li key={o.id} style={css('display: block; padding: 6px 0; border: none; font-size: 14.5px;')}>
-                              <b>{o.label}</b> <span className="fwk-aa-klein">({o.waar})</span>
+                              {o.waar === 'Projectdocumentatie' && onNaarProjectinhoud ? (
+                                <button type="button" className="fwk-wp-link" onClick={onNaarProjectinhoud}>
+                                  {o.label} →
+                                </button>
+                              ) : (
+                                <a className="fwk-wp-link" href={o.waar === 'Organisatieprofiel' ? '#/kompas/organisatie' : `#/kompas/projecten/${projectId}?bewerk=1`}>
+                                  {o.label} →
+                                </a>
+                              )}{' '}
+                              <span className="fwk-aa-klein">({o.waar})</span>
                             </li>
                           ))}
                       </ul>
-                      {onNaarProjectinhoud && (
-                        <button type="button" className="fwk-wp-link" onClick={onNaarProjectinhoud}>
-                          Naar de projectinhoud
-                        </button>
-                      )}
                     </>
                   )}
                 </div>

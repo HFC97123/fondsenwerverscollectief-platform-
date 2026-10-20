@@ -240,8 +240,9 @@ sectie('8. Fouten worden eerlijk getoond');
   await toon(weinig);
   check('voortgangsmeter bij weinig informatie: onder 100%, de lijst zegt wat nog mist en waar je het invult', await wacht(() => $('[data-testid="aa-meter-mist"]')) && parseInt($('[data-testid="aa-meter-percentage"]').textContent, 10) < 100 && /Doelgroep/.test($('[data-testid="aa-meter-mist"]').textContent) && /Projectgegevens/.test($('[data-testid="aa-meter-mist"]').textContent));
   check('de schrijfknop is uit tot 100% en er is niets verbruikt', knop('Start algemeen plan').disabled === true && /Beschikbaar bij 100%/.test(tekst()) && weinig.s.gebruik.length === 0);
-  await klik(knop('Naar de projectinhoud'));
-  check('de link brengt u naar de projectinhoud', !!$('[data-testid="inhoud"]'));
+  check('ontbrekende projectgegevens linken naar het projectformulier, het organisatieprofiel naar zijn pagina', $('[data-testid="aa-meter-mist"] a[href*="/kompas/projecten/33333333-3333-4333-8333-333333333333?bewerk=1"]') !== null && $('[data-testid="aa-meter-mist"] a[href="#/kompas/organisatie"]') !== null);
+  await klik(Array.from(document.querySelectorAll('[data-testid="aa-meter-mist"] button')).find((b) => /Aanleiding/.test(b.textContent)));
+  check('een ontbrekend onderdeel uit de Projectdocumentatie brengt u naar de projectinhoud', !!$('[data-testid="inhoud"]'));
   await opruimen();
 }
 
