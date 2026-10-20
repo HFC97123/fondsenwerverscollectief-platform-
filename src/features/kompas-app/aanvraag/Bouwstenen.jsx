@@ -97,7 +97,6 @@ export function RuimteBlok({ status }) {
           </div>
         </div>
       ))}
-      <div className="fwk-aa-klein">Beoordelingen tellen per maand; ook een versie voor een fonds schrijven telt daarbij. Een projectplan laat u één keer per project schrijven. Met Premium kunt u er meer doen.</div>
     </Blok>
   );
 }

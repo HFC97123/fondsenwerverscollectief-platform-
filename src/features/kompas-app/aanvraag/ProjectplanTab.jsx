@@ -135,7 +135,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
     return (
       <>
         <AanvraagStijl />
-        <PlanEditor plan={open.plan} opgeslagen={open.opgeslagen} titel={project ? `Projectplan ${project.naam || ''}`.trim() : 'Projectplan'} kop="Algemeen projectplan" projectNaam={project && project.naam} store={store} onSluit={() => setOpen(null)} />
+        <PlanEditor plan={open.plan} opgeslagen={open.opgeslagen} titel={project ? `Projectplan ${project.naam || ''}`.trim() : 'Projectplan'} kop="Projectplan" projectNaam={project && project.naam} store={store} onSluit={() => setOpen(null)} />
       </>
     );
   }
@@ -148,9 +148,8 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
       <div className="fwk-wp-kolommen">
         <div className="fwk-wp-stapel">
           <div className="fwk-aa-keuzes">
-            <Keuzekaart titel="Algemeen projectplan" accent testid="aa-kaart-algemeen">
-              <p>Een plan dat bij elk fonds bruikbaar is. U hoeft nog geen fonds te kiezen. Het wordt één keer per project geschreven; daarna werkt u het zelf verder bij. Daarom schrijven we het pas als de informatie compleet is.</p>
-              <div className="fwk-aa-klein">Opbouw: aanleiding, doelgroep, aanpak, resultaat, planning, organisatie, financiering en borging.</div>
+            <Keuzekaart titel="Projectplan" accent testid="aa-kaart-algemeen">
+              <p>Eén plan per project, geschreven door de AI.</p>
 
               {!planGeschreven && gereedheid && (
                 <div data-testid="aa-meter" style={css('margin-top: 12px;')}>
@@ -163,14 +162,13 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                   </div>
                   {!gereedheid.klaar && (
                     <>
-                      <div className="fwk-aa-klein" style={css('margin-bottom: 6px;')}>Nog nodig om het plan te kunnen schrijven:</div>
+                      <div className="fwk-aa-klein" style={css('margin-bottom: 6px;')}>Nog nodig:</div>
                       <ul className="fwk-aa-lijst" data-testid="aa-meter-mist" style={css('padding: 0;')}>
                         {gereedheid.onderdelen
                           .filter((o) => !o.gevuld)
                           .map((o) => (
                             <li key={o.id} style={css('display: block; padding: 6px 0; border: none; font-size: 14.5px;')}>
                               <b>{o.label}</b> <span className="fwk-aa-klein">({o.waar})</span>
-                              <div className="fwk-aa-klein">{o.vraag}</div>
                             </li>
                           ))}
                       </ul>
@@ -186,20 +184,20 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
 
               {planGeschreven && (
                 <div className="fwk-aa-klein" data-testid="aa-plan-klaar" style={css('margin-top: 10px;')}>
-                  Het projectplan van dit project is geschreven. Kopieer of download het en werk het zelf verder bij; opnieuw laten schrijven kan niet.
+                  Plan geschreven. Opnieuw schrijven kan niet.
                 </div>
               )}
 
               {limietBereikt && (
                 <Melding toon="info" testid="aa-plan-limiet">
-                  {isPro ? 'Met Pro laat u voor één project een projectplan schrijven, en dat is al gebeurd. Voor meer projecten heeft u Premium nodig.' : 'U heeft het maximum aantal projecten met een geschreven plan bereikt.'}
+                  {isPro ? 'Pro: één project met een plan. Meer projecten kan met Premium.' : 'Maximum aantal projecten met een plan bereikt.'}
                 </Melding>
               )}
 
               {bevestig && (
                 <Melding toon="waarschuwing" testid="aa-bevestig-plan">
                   <span>
-                    Het plan wordt één keer voor dit project geschreven; opnieuw laten schrijven kan niet. Staat alles erin wat u wilt?
+                    Het plan wordt één keer geschreven. Doorgaan?
                     <span style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;')}>
                       <Button size="s" variant="dark" onClick={schrijf}>
                         Ja, schrijf het plan
@@ -227,8 +225,8 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
               {bezig && <Bezig>{bezig}</Bezig>}
             </Keuzekaart>
 
-            <Keuzekaart titel="Toegespitst op een fonds" testid="aa-kaart-fonds">
-              <p>Het plan volgt de vragen en criteria van één fonds. We beginnen met de criteria van dat fonds op een rij te zetten.</p>
+            <Keuzekaart titel="Fondsbeoordeling" testid="aa-kaart-fonds">
+              <p>Beoordeel uw aanvraag voor een fonds.</p>
               <div>
                 <label htmlFor="aa-fonds-plan" className="fwk-aa-label">
                   Welk fonds?
@@ -237,7 +235,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
               </div>
               <div className="fwk-aa-onder">
                 <Button variant="dark" onClick={naarFonds} disabled={fonds.trim().length < 2 || !projectId} ariaLabel="Kies fonds en maak criteria">
-                  Kies fonds en maak criteria →
+                  Kies fonds →
                 </Button>
               </div>
             </Keuzekaart>
@@ -262,12 +260,12 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
           <Blok titel="Uw plannen" testid="aa-plannen">
             {lijst === null && <Bezig>Uw plannen worden opgehaald.</Bezig>}
             {lijstFout && <Melding toon="waarschuwing">{lijstFout}</Melding>}
-            {lijst !== null && !lijstFout && !algemeen?.heeftPlan && !metPlan.length && <Leeg testid="aa-plannen-leeg">Nog geen plannen voor dit project.</Leeg>}
+            {lijst !== null && !lijstFout && !algemeen?.heeftPlan && !metPlan.length && <Leeg testid="aa-plannen-leeg">Nog geen plannen.</Leeg>}
             <Rijen label="Plannen">
               {algemeen && algemeen.heeftPlan && (
                 <Rij
                   testid="aa-rij-algemeen"
-                  titel="Algemeen projectplan"
+                  titel="Projectplan"
                   sub={`Bijgewerkt op ${datumTekst(algemeen.planBijgewerkt) || 'onbekende datum'}`}
                   onOpen={openAlgemeen}
                   eind={<Chip toon="blauw">Concept</Chip>}
@@ -278,7 +276,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                   key={a.id}
                   testid="aa-rij-fondsplan"
                   titel={a.fondsLabel || 'Fonds'}
-                  sub="Toegespitst op dit fonds. Staat ook onder Aanvragen."
+                  sub="Fondsversie"
                   onOpen={() => onOpenAanvraag(a.id)}
                   eind={<Chip toon="blauw">Concept</Chip>}
                 />
