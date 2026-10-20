@@ -74,10 +74,10 @@ const wacht = async (fn, ms = 4000) => {
 
   return false;
 };
-async function toon(server) {
+async function toon(server, extraStore = {}) {
   client.__reset();
   client.__zetSupabase(server.supabase);
-  await act(async () => { root.render(<Harnas store={{ orgProfile: { name: 'Stichting Samen Spelen' } }} />); });
+  await act(async () => { root.render(<Harnas store={{ orgProfile: { name: 'Stichting Samen Spelen' }, ...extraStore }} />); });
   await wacht(() => $('[data-testid="aa-projectplan"]') || $('[data-testid="geen-assistent"]'));
 }
 async function opruimen() { await act(async () => { root.render(<div />); }); }
@@ -237,12 +237,20 @@ sectie('8. Fouten worden eerlijk getoond');
   await opruimen();
 
   const weinig = maakServer({ planBron: { project: { naam: 'Samen Spelen' }, info: {}, organisatie: {} } });
-  await toon(weinig);
+  const bewaard = [];
+  await toon(weinig, { saveProject: async (p) => { bewaard.push(p); weinig.s.opties.planBron = { ...weinig.s.opties.planBron, project: { ...weinig.s.opties.planBron.project, doelstellingen: p.doelstellingen || '' } }; return PROJECT; } });
   check('voortgangsmeter bij weinig informatie: onder 100%, de lijst zegt wat nog mist en waar je het invult', await wacht(() => $('[data-testid="aa-meter-mist"]')) && parseInt($('[data-testid="aa-meter-percentage"]').textContent, 10) < 100 && /Doelgroep/.test($('[data-testid="aa-meter-mist"]').textContent) && /Projectgegevens/.test($('[data-testid="aa-meter-mist"]').textContent));
   check('de schrijfknop is uit tot 100% en er is niets verbruikt', knop('Start algemeen plan').disabled === true && /Beschikbaar bij 100%/.test(tekst()) && weinig.s.gebruik.length === 0);
-  check('ontbrekende projectgegevens linken naar het projectformulier, het organisatieprofiel naar zijn pagina', $('[data-testid="aa-meter-mist"] a[href*="/kompas/projecten/33333333-3333-4333-8333-333333333333?bewerk=1"]') !== null && $('[data-testid="aa-meter-mist"] a[href="#/kompas/organisatie"]') !== null);
-  await klik(Array.from(document.querySelectorAll('[data-testid="aa-meter-mist"] button')).find((b) => /Aanleiding/.test(b.textContent)));
-  check('een ontbrekend onderdeel uit de Projectdocumentatie brengt u naar de projectinhoud', !!$('[data-testid="inhoud"]'));
+  check('een ontbrekend onderdeel schuift open om het meteen in te vullen (geen link naar een ander scherm)', $('[data-testid="aa-meter-mist"] a') === null && !!$('[data-testid="aa-mist-doelstelling"]') && !$('[data-testid="aa-invul-doelstelling-form"]'));
+  await klik($('[data-testid="aa-mist-doelstelling"]'));
+  check('klik opent een invulvak met de vraag en Opslaan staat uit zolang het leeg is', !!$('[data-testid="aa-invul-doelstelling"]') && $('[data-testid="aa-invul-doelstelling-form"] button[type="submit"]').disabled === true);
+  const voor = parseInt($('[data-testid="aa-meter-percentage"]').textContent, 10);
+  await typ($('[data-testid="aa-invul-doelstelling"]'), 'Kinderen bewegen meer.');
+  await klik($('[data-testid="aa-invul-doelstelling-form"] button[type="submit"]'));
+  check('opslaan schrijft het veld via het bestaande project-opslaan en sluit het vak', await wacht(() => !$('[data-testid="aa-invul-doelstelling-form"]')) && bewaard.length === 1 && bewaard[0].doelstellingen === 'Kinderen bewegen meer.');
+  check('de meter springt bij en het onderdeel staat niet meer in de lijst', await wacht(() => parseInt($('[data-testid="aa-meter-percentage"]').textContent, 10) > voor) && !$('[data-testid="aa-mist-doelstelling"]'));
+  await klik($('[data-testid="aa-mist-aanleiding"]'));
+  check('ook een veld uit de projectdocumentatie wordt hier ingevuld', !!$('[data-testid="aa-invul-aanleiding"]'));
   await opruimen();
 }
 

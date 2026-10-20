@@ -132,7 +132,7 @@ sectie('6. Fondssleutel');
 sectie('Voortgangsmeter (planGereedheid)');
 {
   const leeg = planGereedheid(bouwFeiten({ project: {}, info: {}, organisatie: {} }));
-  gelijk('niets ingevuld: 0%, niet klaar, 12 kernvelden', [leeg.percentage, leeg.klaar, leeg.totaal, leeg.gevuld], [0, false, 12, 0]);
+  gelijk('niets ingevuld: 0%, niet klaar, 11 kernvelden', [leeg.percentage, leeg.klaar, leeg.totaal, leeg.gevuld], [0, false, 11, 0]);
 
   const deels = planGereedheid(bouwFeiten(BRON));
   check('gedeeltelijk: tussen 0 en 100, borging (alleen spaties) en organisatie (plaatshouder) tellen niet mee', deels.percentage > 0 && deels.percentage < 100 && !deels.klaar && deels.onderdelen.find((o) => o.id === 'borging').gevuld === false && deels.onderdelen.find((o) => o.id === 'organisatie').gevuld === false);
@@ -143,10 +143,10 @@ sectie('Voortgangsmeter (planGereedheid)');
     info: { aanleiding: 'Weinig plekken', borging: 'Gemeente neemt over' },
     organisatie: { name: 'Stichting X', mission: 'Spelen voor iedereen' },
   }));
-  gelijk('alles ingevuld: 100% en klaar', [vol.percentage, vol.klaar, vol.gevuld], [100, true, 12]);
+  gelijk('alles ingevuld: 100% en klaar', [vol.percentage, vol.klaar, vol.gevuld], [100, true, 11]);
 
   const bijna = planGereedheid(bouwFeiten({ project: { doelgroep: 'K', regio: 'R', doelstellingen: 'B', activiteiten: 'S', impact: 'G', planning: '2027', begroting: 40000, gevraagd: 25000 }, info: { aanleiding: 'x', borging: 'y' }, organisatie: { name: 'S' } }));
-  check('één veld mist (missie): 91% en niet klaar (nooit afgerond naar 100)', bijna.percentage === 91 && bijna.klaar === false);
+  check('één veld mist (missie): 90% en niet klaar (nooit afgerond naar 100)', bijna.percentage === 90 && bijna.klaar === false);
   check('een alternatief veld telt mee (output i.p.v. impact)', planGereedheid(bouwFeiten({ project: {}, info: { output: '50 kinderen' }, organisatie: {} })).onderdelen.find((o) => o.id === 'resultaat').gevuld === true);
 }
 

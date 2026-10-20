@@ -448,7 +448,7 @@ sectie('4c. Plan schrijven');
   // Voortgangsmeter
   e = omgeving();
   r = await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
-  check('voortgangsmeter bij gedeeltelijke informatie: percentage onder 100, lijst met wat mist, geen modelaanroep', r.status === 200 && r.body.gereedheid.percentage > 0 && r.body.gereedheid.percentage < 100 && r.body.gereedheid.klaar === false && r.body.gereedheid.onderdelen.length === 12 && e.log.modelAanroepen === 0);
+  check('voortgangsmeter bij gedeeltelijke informatie: percentage onder 100, lijst met wat mist, geen modelaanroep', r.status === 200 && r.body.gereedheid.percentage > 0 && r.body.gereedheid.percentage < 100 && r.body.gereedheid.klaar === false && r.body.gereedheid.onderdelen.length === 11 && e.log.modelAanroepen === 0);
   e = omgeving({ planBron: PLANBRON_VOL });
   r = await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
   check('voortgangsmeter volledig: 100% en klaar', r.body.gereedheid.percentage === 100 && r.body.gereedheid.klaar === true && r.body.projectKlaar === false && r.body.plannen.limiet === 1 && r.body.plannen.resterend === 1);

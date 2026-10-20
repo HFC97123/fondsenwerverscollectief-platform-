@@ -9,6 +9,7 @@ import { Button } from '../../../shared/ui/index.js';
 import { Blok, Chip, Leeg, Melding, Rij, Rijen } from '../../../shared/ui/werkplek.jsx';
 import { haalAanvraag, haalAanvragen, haalPlanGereedheid, schrijfProjectplan } from '../../../data/services/aanvraagAssistent.js';
 import { AanvraagStijl, Bezig, Keuzekaart, ProjectKeuze, RuimteBlok } from './Bouwstenen.jsx';
+import MeterInvullen, { kanInvullen } from './MeterInvullen.jsx';
 import PlanEditor from './PlanEditor.jsx';
 import { datumTekst, splitsAanvragen } from './aanvraagModel.js';
 
@@ -21,6 +22,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
   const [bezig, setBezig] = useState('');
   const [fout, setFout] = useState(null); // { melding, reden }
   const [bevestig, setBevestig] = useState(false);
+  const [invulId, setInvulId] = useState(null); // meteronderdeel dat nu openstaat om in te vullen
   const [stand, setStand] = useState(null); // { gereedheid, projectKlaar, plannen } van de server; null = nog niet bekend
   const huidig = useRef('');
 
@@ -58,6 +60,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
     setOpen(null);
     setFout(null);
     setBevestig(false);
+    setInvulId(null);
     laad();
     laadStand();
   }, [laad, laadStand]);
@@ -167,16 +170,39 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                           .filter((o) => !o.gevuld)
                           .map((o) => (
                             <li key={o.id} style={css('display: block; padding: 6px 0; border: none; font-size: 14.5px;')}>
-                              {o.waar === 'Projectdocumentatie' && onNaarProjectinhoud ? (
-                                <button type="button" className="fwk-wp-link" onClick={onNaarProjectinhoud}>
-                                  {o.label} →
-                                </button>
+                              {kanInvullen(o.id) && project ? (
+                                <>
+                                  <button type="button" className="fwk-wp-link" aria-expanded={invulId === o.id} data-testid={`aa-mist-${o.id}`} onClick={() => setInvulId(invulId === o.id ? null : o.id)}>
+                                    {o.label} {invulId === o.id ? '↑' : '↓'}
+                                  </button>{' '}
+                                  <span className="fwk-aa-klein">({o.waar})</span>
+                                  {invulId === o.id && (
+                                    <MeterInvullen
+                                      onderdeel={o}
+                                      project={project}
+                                      store={store}
+                                      onAnnuleer={() => setInvulId(null)}
+                                      onOpgeslagen={() => {
+                                        setInvulId(null);
+                                        laadStand();
+                                      }}
+                                    />
+                                  )}
+                                </>
                               ) : (
-                                <a className="fwk-wp-link" href={o.waar === 'Organisatieprofiel' ? '#/kompas/organisatie' : `#/kompas/projecten/${projectId}?bewerk=1`}>
-                                  {o.label} →
-                                </a>
-                              )}{' '}
-                              <span className="fwk-aa-klein">({o.waar})</span>
+                                <>
+                                  {o.waar === 'Projectdocumentatie' && onNaarProjectinhoud ? (
+                                    <button type="button" className="fwk-wp-link" onClick={onNaarProjectinhoud}>
+                                      {o.label} →
+                                    </button>
+                                  ) : (
+                                    <a className="fwk-wp-link" href={o.waar === 'Organisatieprofiel' ? '#/kompas/organisatie' : `#/kompas/projecten/${projectId}?bewerk=1`}>
+                                      {o.label} →
+                                    </a>
+                                  )}{' '}
+                                  <span className="fwk-aa-klein">({o.waar})</span>
+                                </>
+                              )}
                             </li>
                           ))}
                       </ul>

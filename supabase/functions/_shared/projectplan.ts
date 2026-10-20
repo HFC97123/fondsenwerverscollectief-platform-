@@ -153,7 +153,6 @@ const KERNVELDEN: ReadonlyArray<{ id: string; label: string; vraag: string; waar
   { id: 'organisatie', label: 'Naam van uw organisatie', vraag: 'Hoe heet uw organisatie?', waar: 'Organisatieprofiel', sleutels: ['organisatie.name'] },
   { id: 'missie', label: 'Missie van uw organisatie', vraag: 'Wat is de missie van uw organisatie?', waar: 'Organisatieprofiel', sleutels: ['organisatie.mission'] },
   { id: 'begroting', label: 'Totale projectkosten', vraag: 'Wat kost het project in totaal?', waar: 'Projectgegevens', sleutels: ['project.begroting'] },
-  { id: 'gevraagd', label: 'Gevraagd bedrag', vraag: 'Welk bedrag vraagt u aan?', waar: 'Projectgegevens', sleutels: ['project.gevraagd'] },
   { id: 'borging', label: 'Borging na afloop', vraag: 'Wat gebeurt er met het project na afloop van de financiering?', waar: 'Projectdocumentatie', sleutels: ['info.borging'] },
 ];
 
