@@ -286,15 +286,16 @@ await scenario('N cancel: intent blijft en opnieuw proberen werkt', async (page,
 await scenario('O looptijdschakelaar en vooruitbetalen', async (page, c) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(ORIGIN + '/#/hoe-het-werkt'); await page.waitForLoadState('networkidle'); await sleep(500);
-  ok(await page.getByRole('radio', { name: 'Per jaar' }).getAttribute('aria-checked') === 'true', 'standaard staat de schakelaar op jaar');
+  ok(await page.getByRole('radio', { name: 'Maandelijks' }).getAttribute('aria-checked') === 'true', 'de pagina begint altijd op maandelijks');
+  await page.getByRole('radio', { name: 'Per jaar' }).click(); await sleep(150);
   let t = await page.locator('body').innerText();
-  ok(t.includes('€30') && t.includes('€55'), 'jaar: Pro €30 en Premium €55 per maand');
-  ok(t.includes('€360 per jaar vooruit betaald') && t.includes('€660 per jaar vooruit betaald') && t.includes('Daarna €40 per maand') && t.includes('Daarna €75 per maand'), 'jaar: totalen en vervolgprijs per kaart');
-  ok(await page.getByRole('button', { name: 'Kies Pro per jaar' }).count() === 1 && await page.getByRole('button', { name: 'Kies Premium per jaar' }).count() === 1, 'jaar: knoppen "Kies … per jaar"');
+  ok(t.includes('€32') && t.includes('€60'), 'jaar: Pro €32 en Premium €60 per maand');
+  ok(t.includes('Bespaar 20%') && !t.includes('vooruit betaald') && !t.includes('Daarna €40 per maand'), 'jaar: alleen "Bespaar 20%" per kaart');
+  ok(await page.getByRole('button', { name: 'Kies Pro' }).count() === 1 && await page.getByRole('button', { name: 'Kies Premium' }).count() === 1, 'jaar: knoppen "Kies Pro" en "Kies Premium"');
   ok(await page.getByRole('button', { name: 'Start 7 dagen gratis' }).count() === 0, 'jaar: geen proefknop');
   await page.getByRole('radio', { name: 'Per half jaar' }).click(); await sleep(150);
   t = await page.locator('body').innerText();
-  ok(t.includes('€32') && t.includes('€60') && t.includes('€192 per half jaar vooruit betaald') && t.includes('€360 per half jaar vooruit betaald'), 'half jaar: €32 / €60 en totalen');
+  ok(t.includes('€35') && t.includes('€65') && t.includes('Bespaar 12%') && t.includes('Bespaar 13%'), 'half jaar: €35 / €65 en besparing');
   await page.getByRole('radio', { name: 'Maandelijks' }).click(); await sleep(150);
   t = await page.locator('body').innerText();
   ok(t.includes('€40') && t.includes('€75') && !t.includes('vooruit betaald') && t.includes('7 dagen gratis proberen'), 'maand: €40 / €75, geen vooruitregel, proef zichtbaar');
@@ -305,7 +306,7 @@ await scenario('O looptijdschakelaar en vooruitbetalen', async (page, c) => {
   ok(await page.getByRole('radio', { name: 'Per half jaar' }).getAttribute('aria-checked') === 'true', 'pijltje rechts kiest half jaar');
   // Premium per half jaar -> bevestigingsstap met de gekozen looptijd (inloggen eerst)
   await page.getByRole('radio', { name: 'Per half jaar' }).click(); await sleep(150);
-  await page.getByRole('button', { name: 'Kies Premium per half jaar' }).click(); await sleep(400);
+  await page.getByRole('button', { name: 'Kies Premium' }).click(); await sleep(400);
   ok((await hashOf(page)) === '#/kompas/abonneren?intent=PREMIUM&looptijd=HALFJAAR', 'URL bevat intent en looptijd');
   t = await page.locator('body').innerText();
   ok(t.includes('€360 nu betalen') && t.includes('6 maanden') && t.includes('Daarna €75 per maand') && !t.includes('24 uur gratis'), 'bevestigingsstap: €360 nu, 6 maanden, daarna €75, geen proef');

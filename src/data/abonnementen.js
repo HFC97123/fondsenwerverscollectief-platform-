@@ -35,8 +35,8 @@ export const LOOPTIJD_INFO = {
 
 // Prijs PER MAAND in centen, per tier en looptijd.
 const PRIJS_PER_MAAND_CENT = {
-  pro: { MAAND: 4000, HALFJAAR: 3200, JAAR: 3000 },
-  premium: { MAAND: 7500, HALFJAAR: 6000, JAAR: 5500 },
+  pro: { MAAND: 4000, HALFJAAR: 3500, JAAR: 3200 },
+  premium: { MAAND: 7500, HALFJAAR: 6500, JAAR: 6000 },
 };
 
 export function isGeldigeLooptijd(code) {

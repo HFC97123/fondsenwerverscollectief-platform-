@@ -5,7 +5,7 @@ import { useApp } from '../kompas-app/useKompasApp.js';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { abonnerenHash, bewaarIntentie, bewaarLooptijd, intentieVoorTier } from '../../data/services/koopintentie.js';
-import { ABONNEMENTEN, LOOPTIJD_INFO, STANDAARD_LOOPTIJD, prijsInfo } from '../../data/abonnementen.js';
+import { ABONNEMENTEN, STANDAARD_LOOPTIJD, prijsInfo } from '../../data/abonnementen.js';
 import LooptijdSchakelaar from './LooptijdSchakelaar.jsx';
 import KompasAchtergrond from './KompasAchtergrond.jsx';
 import { naar } from '../../app/routes.js';
@@ -368,7 +368,7 @@ export default function HoeHetWerktPage() {
           const enterprise = plan.tier === 'enterprise';
           const prijs = plan.tier === 'free' || enterprise ? null : prijsInfo(plan.tier, looptijd);
           const vooruit = Boolean(prijs && prijs.vooruit);
-          const ctaTekst = !plan.ctaTekst || !prijs ? plan.ctaTekst : prijs.vooruit ? `Kies ${plan.naam} ${LOOPTIJD_INFO[looptijd].periode}` : plan.ctaTekst;
+          const ctaTekst = !plan.ctaTekst || !prijs ? plan.ctaTekst : prijs.vooruit ? `Kies ${plan.naam}` : plan.ctaTekst;
 
           return (
             <div
@@ -402,14 +402,7 @@ export default function HoeHetWerktPage() {
                 {!enterprise && <span style={css('font-size: 14px; color: #6B7B77;')}>per maand</span>}
               </div>
               <div style={css('min-height: 42px; font-size: 13.5px; line-height: 1.5; color: #4B5C58; margin-bottom: 6px;')} data-testid={`prijsregel-${plan.tier}`}>
-                {vooruit ? (
-                  <>
-                    {prijs.totaal} {prijs.periode} vooruit betaald
-                    {prijs.besparingPercentage > 0 ? ` · bespaar ${prijs.besparingPercentage}%` : ''}
-                    <br />
-                    Daarna {prijs.maandPrijs} per maand
-                  </>
-                ) : null}
+                {vooruit && prijs.besparingPercentage > 0 ? `Bespaar ${prijs.besparingPercentage}%` : null}
               </div>
               <div style={css('min-height: 22px; font-size: 14px; font-weight: 800; color: #4E9A6C; margin-bottom: 12px;')}>
                 {huidig || vooruit || enterprise ? '' : plan.proefperiode}
