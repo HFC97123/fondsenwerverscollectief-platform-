@@ -8,6 +8,7 @@ import {
   buildDeadlineDisplayOrder,
   fetchDeadlines,
   fetchFunderDeadlines,
+  fetchOntgrendeld,
   getDeadlineAccess,
   getDeadlineClickAction,
   haalBronDetails,
@@ -212,6 +213,8 @@ export default function DeadlinesPage() {
   // toegangsregel op basis van de Funder zelf, maar door elkaar getoond met
   // supaRows hierboven (zie de rows-samenvoeging verderop).
   const [supaFunderRows, setSupaFunderRows] = useState([]);
+  // Vrij zichtbare regelingen binnen het huidige filter (door de database bepaald; alleen voor Free en Pro).
+  const [ontgrendeldRows, setOntgrendeldRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
@@ -299,11 +302,45 @@ export default function DeadlinesPage() {
   const rows = useMemo(() => {
     const basis = store.deadlines || [];
     const alBekend = (id) => basis.some((d) => String(d.id) === String(id)) || supaRows.some((d) => String(d.id) === String(id));
+    // De door de database vrijgegeven rijen (eerste vrije plekken na het filter) vervangen hun vergrendelde
+    // versie; een rij die er nog niet tussen zit wordt toegevoegd.
+    const vrij = new Map(ontgrendeldRows.map((r) => [String(r.id), r]));
+    const supa = supaRows.map((r) => vrij.get(String(r.id)) || r);
+    const extra = ontgrendeldRows.filter((r) => !supaRows.some((d) => String(d.id) === String(r.id)));
 
     return basis
-      .concat(supaRows.filter((r) => !basis.some((d) => String(d.id) === String(r.id))))
+      .concat(supa.filter((r) => !basis.some((d) => String(d.id) === String(r.id))))
+      .concat(extra.filter((r) => !alBekend(r.id)))
       .concat(supaFunderRows.filter((r) => !alBekend(r.id)));
-  }, [store.deadlines, supaRows, supaFunderRows]);
+  }, [store.deadlines, supaRows, supaFunderRows, ontgrendeldRows]);
+
+  // Staat er een filter aan, dan bepaalt de database de eerste vrije plekken binnen dat filter (niet erbuiten).
+  // Zonder filter geldt de gewone standaardlijst. Premium ziet alles en heeft dit niet nodig.
+  const serverFilterActief =
+    !premium &&
+    (thema !== 'alle' || regio !== 'alle' || type !== 'alle' || statuses.length > 0 || (deadline !== 'alle' && deadline !== 'heel_jaar') || archief);
+
+  useEffect(() => {
+    if (!serverFilterActief) {
+      setOntgrendeldRows([]);
+
+      return undefined;
+    }
+
+    let vervallen = false;
+    const timer = setTimeout(async () => {
+      const res = await fetchOntgrendeld({ statuses, thema, regio, type, deadline, archief });
+
+      if (!vervallen && !res.error) {
+        setOntgrendeldRows(res.rows || []);
+      }
+    }, 250);
+
+    return () => {
+      vervallen = true;
+      clearTimeout(timer);
+    };
+  }, [serverFilterActief, statuses, thema, regio, type, deadline, archief]);
 
   const matches = useCallback(
     (row, skip) => {

@@ -79,9 +79,15 @@ export function normalize(row) {
   };
 }
 
-export async function fetchDeadlines({ archief = false, limit = 200 } = {}) {
+export async function fetchDeadlines({ archief = false, limit = 1000 } = {}) {
   const res = await query((sb) => {
-    let q = sb.from('subsidieregelingen_deadlines').select(SELECT).limit(limit);
+    // Eerst de volledig zichtbare regelingen: ook als er ooit meer rijen zijn dan de limiet, vallen de
+    // vrij zichtbare nooit buiten de selectie.
+    let q = sb
+      .from('subsidieregelingen_deadlines')
+      .select(SELECT)
+      .order('volledig_zichtbaar', { ascending: false })
+      .limit(limit);
 
     if (!archief) {
       q = q.neq('status', 'Gesloten');
@@ -95,6 +101,26 @@ export async function fetchDeadlines({ archief = false, limit = 200 } = {}) {
     error: res.error,
     offline: res.offline,
   };
+}
+
+// De eerste vrij zichtbare regelingen NA het filteren. De database bepaalt dit (de pagina kan zelf niets
+// ontgrendelen): de functie `deadlines_ontgrendeld` geeft uitsluitend rijen terug die voor de ingelogde
+// gebruiker volledig zichtbaar zijn, gerekend binnen de gefilterde set. Niet bedoeld voor Premium (die ziet alles).
+export async function fetchOntgrendeld({ statuses = [], thema = 'alle', regio = 'alle', type = 'alle', deadline = 'alle', archief = false } = {}) {
+  const res = await query(
+    (sb) =>
+      sb.rpc('deadlines_ontgrendeld', {
+        p_status: statuses && statuses.length ? statuses : null,
+        p_thema: thema === 'alle' ? null : thema,
+        p_regio: regio === 'alle' ? null : regio,
+        p_type: type === 'alle' ? null : type,
+        p_deadline: deadline || 'alle',
+        p_archief: Boolean(archief),
+      }),
+    [],
+  );
+
+  return { rows: (res.data || []).map(normalize), error: res.error, offline: res.offline };
 }
 
 // Funder-brede datamomenten (geen regelingkoppeling — de deadline geldt voor
@@ -289,12 +315,12 @@ export async function haalBronDetails({ schemeIds = [], funderIds = [] } = {}) {
 export const PAGE_SIZE = 12;
 
 // Hoeveel van de eerste plekken van elke pagina gereserveerd zijn voor
-// volledig zichtbare (gratis) regelingen. Op expliciet verzoek verhoogd van
-// 3 naar 5 (2026-09-11) — uitsluitend deze waarde wijzigt; het
-// windowing-mechanisme in buildDeadlineDisplayOrder() hieronder (en dus de
+// volledig zichtbare (gratis) regelingen. Gelijk aan het aantal dat de database
+// vrij geeft per categorie (zie deadlines_vrije_plekken() in de database: nu 3).
+// Het windowing-mechanisme in buildDeadlineDisplayOrder() hieronder (en dus de
 // bestaande Free/Pro/Premium-toegangsregels, sortering en architectuur)
 // blijft ongewijzigd.
-export const FREE_SLOTS_PER_PAGE = 5;
+export const FREE_SLOTS_PER_PAGE = 3;
 
 // 'free' als de huidige gebruiker deze regeling volledig mag zien (de view
 // heeft de velden al gevuld), anders 'premium'. Eén plek die dit onderscheid
