@@ -236,7 +236,9 @@ function Voorbeeld({ soort }) {
 
 export default function HoeHetWerktPage() {
   const app = useApp();
-  const tier = app.subscriptionTier || 'free';
+  // Alleen wie is ingelogd heeft een huidig abonnement; een bezoeker zonder account ziet bij Free de knop Gratis starten.
+  const ingelogd = Boolean(app.isLoggedIn);
+  const tier = ingelogd ? app.subscriptionTier || 'free' : null;
   // Looptijd voor de prijsweergave: de pagina begint altijd op maandelijks. Alleen weergave.
   const [looptijd, setLooptijd] = useState(STANDAARD_LOOPTIJD);
   const kiesLooptijd = (code) => {
@@ -424,6 +426,15 @@ export default function HoeHetWerktPage() {
                 >
                   Huidig abonnement
                 </div>
+              ) : plan.tier === 'free' ? (
+                <a
+                  href="#/subsidie-kompas"
+                  style={css(
+                    "box-sizing: border-box; min-height: 56px; margin-bottom: 24px; padding: 16px 20px; border: 1.5px solid #2C4A5E; border-radius: 14px; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 15px; font-weight: 800; text-align: center; display: flex; align-items: center; justify-content: center;",
+                  )}
+                >
+                  Gratis starten
+                </a>
               ) : enterprise ? (
                 <a
                   href={ENTERPRISE_MAIL}
