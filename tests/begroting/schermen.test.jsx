@@ -68,52 +68,73 @@ async function toon(project, { funding = FUNDING } = {}) {
 }
 async function opruimen() { await act(async () => { root.render(<div />); }); }
 
-const BASIS = { id: PROJECT, naam: 'Samen Spelen', begroting: '', eigenBijdrage: 2000, budgetRegels: [] };
-
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
-sectie('1. Lege begroting en een eerste regel');
+const BASIS = { id: PROJECT, naam: 'Samen Spelen', begroting: '', eigenBijdrage: 2000, budgetRegels: [] };
+const kopje = (id) => $(`[data-testid="bg-kopje-${id}"]`);
+const openDetail = async (regel) => { if (!$('[data-testid="bg-detail"]', regel)) await klik($('[data-testid="bg-meer"]', regel)); };
+
+sectie('1. Leeg beginnen: alleen kopjes om uit te kiezen');
 let s;
 {
   s = await toon(BASIS);
-  check('leeg: uitnodiging om met een kopje te beginnen, totaal 0', !!$('[data-testid="bg-leeg"]') && /Totaal € 0/.test($('[data-testid="bg-totaal"]').textContent));
-  check('Opslaan staat uit zolang er niets is gewijzigd', knop('Begroting opslaan').disabled === true);
+  check('helemaal leeg: geen regels, geen opslaan, geen Excel, totaal 0', $$('[data-testid="bg-regel"]').length === 0 && !knop('Begroting opslaan') && /Totaal € 0/.test($('[data-testid="bg-totaal"]').textContent));
+  check('de drie kopjes van Aisya en Overig staan klaar om te kiezen', ['uitvoering', 'activa', 'organisatie', 'overig'].every((k) => $(`[data-testid="bg-kopje-kies-${k}"]`)));
   check('dekkingsplan zegt: vul eerst de begroting in', /Vul eerst de begroting in/.test(tekst()));
 
-  await typ($('[data-testid="bg-kopje-kies"]'), 'personeel');
-  check('een kopje kiezen opent het met één lege regel', !!$('[data-testid="bg-kopje-personeel"]') && $$('[data-testid="bg-regel"]').length === 1);
-  check('suggesties staan bij het kopje, zonder bedragen', $$('[data-testid="bg-suggestie"]').some((b) => /Projectleider/.test(b.textContent)));
+  await klik($('[data-testid="bg-kopje-kies-uitvoering"]'));
+  check('kopje gekozen: het staat er, de keuze verdwijnt uit de lijst, suggesties staan open', !!kopje('uitvoering') && !$('[data-testid="bg-kopje-kies-uitvoering"]') && !!$('[data-testid="bg-suggesties-uitvoering"]'));
+  check('suggesties zijn alleen omschrijvingen: personeel en vrijwilligers horen hier', $$('[data-testid="bg-suggestie"]').some((b) => /Projectleider/.test(b.textContent)) && $$('[data-testid="bg-suggestie"]').some((b) => /Vrijwilligersvergoeding/.test(b.textContent)));
 
   await klik($$('[data-testid="bg-suggestie"]').find((b) => /Projectleider/.test(b.textContent)));
   const regel = regelMet('Projectleider');
-  check('een suggestie vult omschrijving en eenheid, geen bedrag', $('[data-testid="bg-omschrijving"]', regel).value === 'Projectleider' && $('[data-testid="bg-eenheid"]', regel).value === 'uur' && $('[data-testid="bg-tarief"]', regel).value === '');
-  check('de gebruikte suggestie verdwijnt uit de lijst', !$$('[data-testid="bg-suggestie"]').some((b) => /Projectleider/.test(b.textContent)));
-  check('Opslaan wordt actief en er staat dat het nog niet is opgeslagen', knop('Begroting opslaan').disabled === false && !!$('[data-testid="bg-niet-opgeslagen"]'));
+  check('suggestie kiezen geeft één schone regel: omschrijving en bedragveld, geen kolommen', !!regel && $('[data-testid="bg-bedrag"]', regel).value === '' && !$('[data-testid="bg-detail"]', regel) && !$('[data-testid="bg-suggesties-uitvoering"]') && !!$('[data-testid="bg-plus-uitvoering"]'));
+  check('Opslaan verschijnt zodra er iets staat', !!knop('Begroting opslaan') && !!$('[data-testid="bg-niet-opgeslagen"]'));
+
+  await klik($('[data-testid="bg-plus-uitvoering"]'));
+  check('+ Regel opent de suggesties weer, zonder de al gebruikte', !$$('[data-testid="bg-suggestie"]').some((b) => /Projectleider/.test(b.textContent)) && !!$('[data-testid="bg-eigen-regel"]'));
+  await klik($('[data-testid="bg-eigen-regel"]'));
+  check('eigen regel: lege regel met de cursor erin', document.activeElement && document.activeElement.getAttribute('data-testid') === 'bg-omschrijving' && document.activeElement.value === '');
+  await klik($('[data-testid="bg-weg"]', regelMet('')));
+
+  await klik($('[data-testid="bg-plus-kopje"]'));
+  await klik($('[data-testid="bg-kopje-kies-activa"]'));
+  await klik($$('[data-testid="bg-suggestie"]').find((b) => /Voedselpakketten/.test(b.textContent)));
+  check('Voedselpakketten staat onder Activa en uitrusting', !!regelMet('Voedselpakketten', kopje('activa')));
 }
 
-sectie('2. Aantal x tarief, losse bedragen, in natura');
+sectie('2. Bedrag, aantal x tarief en in natura achter ⋯');
 {
-  const regel = regelMet('Projectleider');
+  await typ($('[data-testid="bg-bedrag"]', regelMet('Voedselpakketten')), '2.500');
+  check('los bedrag telt mee', /Totaal € 2\.500/.test($('[data-testid="bg-totaal"]').textContent) && /Nog geen bedrag bij: Projectleider/.test(tekst()));
 
-  await typ($('[data-testid="bg-aantal"]', regel), '100');
-  await typ($('[data-testid="bg-tarief"]', regel), '50');
-  check('aantal x tarief wordt uitgerekend en getoond', /€ 5\.000/.test($('[data-testid="bg-bedrag-berekend"]', regel).textContent) && /Totaal € 5\.000/.test($('[data-testid="bg-totaal"]').textContent));
-  check('subtotaal van het kopje klopt', /€ 5\.000/.test($('[data-testid="bg-sub-personeel"]').textContent));
+  const pl = regelMet('Projectleider');
 
-  await typ($('[data-testid="bg-kopje-kies"]'), 'uitvoering');
-  await klik($$('[data-testid="bg-suggestie"]').find((b) => /Voedselpakketten/.test(b.textContent)));
+  await klik($('[data-testid="bg-meer"]', pl));
+  check('⋯ toont aantal, eenheid, tarief en In natura', !!$('[data-testid="bg-aantal"]', pl) && !!$('[data-testid="bg-eenheid"]', pl) && !!$('[data-testid="bg-tarief"]', pl) && !!$('[data-testid="bg-natura"]', pl) && $('[data-testid="bg-eenheid"]', pl).value === 'uur');
+  await typ($('[data-testid="bg-aantal"]', pl), '100');
+  await typ($('[data-testid="bg-tarief"]', pl), '50');
+  check('aantal x tarief wordt uitgerekend, het losse bedragveld maakt plaats voor het resultaat', /€ 5\.000/.test($('[data-testid="bg-bedrag-berekend"]', pl).textContent) && !$('[data-testid="bg-bedrag"]', pl) && /Totaal € 7\.500/.test($('[data-testid="bg-totaal"]').textContent));
+  await klik($('[data-testid="bg-meer"]', pl));
+  check('⋯ weer dicht: de regel is weer schoon', !$('[data-testid="bg-detail"]', pl));
+  check('subtotaal per kopje klopt', /€ 5\.000/.test($('[data-testid="bg-sub-uitvoering"]').textContent) && /€ 2\.500/.test($('[data-testid="bg-sub-activa"]').textContent));
+
   const pak = regelMet('Voedselpakketten');
 
-  check('regel zonder bedrag: melding dat hij nog niet meetelt, totaal onveranderd', /Nog geen bedrag bij: Voedselpakketten/.test(tekst()) && /Totaal € 5\.000/.test($('[data-testid="bg-totaal"]').textContent));
-  await typ($('[data-testid="bg-bedrag"]', pak), '2.500');
-  check('los bedrag telt mee', /Totaal € 7\.500/.test($('[data-testid="bg-totaal"]').textContent));
-
+  await openDetail(pak);
   await klik($('[data-testid="bg-natura"]', pak));
-  check('in natura: telt niet mee in het totaal, staat er apart', /Totaal € 5\.000/.test($('[data-testid="bg-totaal"]').textContent) && /In natura \(telt niet mee in het totaal\): € 2\.500/.test(tekst()));
+  check('in natura: telt niet mee, staat er apart', /Totaal € 5\.000/.test($('[data-testid="bg-totaal"]').textContent) && /In natura \(telt niet mee in het totaal\): € 2\.500/.test(tekst()));
+  await klik($('[data-testid="bg-meer"]', pak));
+  check('met ⋯ dicht blijft in natura zichtbaar als klein label', !!$('[data-testid="bg-natura-label"]', pak));
+  await klik($('[data-testid="bg-meer"]', pak));
   await klik($('[data-testid="bg-natura"]', pak));
+  check('weer als gewone kostenregel: telt weer mee', /Totaal € 7\.500/.test($('[data-testid="bg-totaal"]').textContent));
 
-  await klik($('[data-testid="bg-eigen-regel"]', $('[data-testid="bg-kopje-uitvoering"]')));
-  const rommel = regelMet('', $('[data-testid="bg-kopje-uitvoering"]'));
+  await klik($('[data-testid="bg-plus-organisatie"]') || $('[data-testid="bg-plus-kopje"]'));
+  if ($('[data-testid="bg-kopje-kies-organisatie"]')) await klik($('[data-testid="bg-kopje-kies-organisatie"]'));
+  await klik($('[data-testid="bg-eigen-regel"]'));
+  const rommel = regelMet('', kopje('organisatie'));
 
+  check('communicatie en huisvesting horen bij Organisatiekosten', !!kopje('organisatie'));
   await typ($('[data-testid="bg-omschrijving"]', rommel), 'Kopieerkosten');
   await typ($('[data-testid="bg-bedrag"]', rommel), 'twintig');
   await klik(knop('Begroting opslaan'));
@@ -128,26 +149,27 @@ sectie('3. Opslaan: de regels en het totaal gaan via het bestaande projectopslaa
   const p = s.bewaard[0];
 
   check('de projectbegroting is het totaal (hele euro\'s) en het te financieren bedrag volgt', p.begroting === 7520 && p.gevraagd === 5520);
-  check('de regels staan als getallen op het project', Array.isArray(p.budgetRegels) && p.budgetRegels.length === 3 && p.budgetRegels.every((r) => typeof r.categorie === 'string') && p.budgetRegels.some((r) => r.aantal === 100 && r.tarief === 50));
+  check('de regels staan als getallen op het project', Array.isArray(p.budgetRegels) && p.budgetRegels.length === 3 && p.budgetRegels.some((r) => r.categorie === 'activa') && p.budgetRegels.some((r) => r.aantal === 100 && r.tarief === 50));
   check('overige projectvelden blijven ongemoeid', p.naam === 'Samen Spelen' && p.eigenBijdrage === 2000);
   check('na opslaan: bevestiging met het nieuwe totaal en Opslaan weer uit', await wacht(() => $('[data-testid="bg-melding"]')) && /projectbegroting is nu € 7\.520/.test($('[data-testid="bg-melding"]').textContent) && knop('Begroting opslaan').disabled === true);
 }
 
-sectie('4. Dekkingsplan onder de begroting');
+sectie('4. Dekkingsplan: toegekend, uitstaand, in planning, totaal, nog te dekken');
 {
-  check('te dekken is de begroting', await wacht(() => /€ 7\.520/.test(($('[data-testid="bg-dek-begroting"]') || { textContent: '' }).textContent)));
+  check('geen regel "te dekken": de begroting staat al erboven', await wacht(() => /Toegekend/.test($('[data-testid="bg-dekking"]').textContent)) && !/Te dekken|Gegeven/.test($('[data-testid="bg-dekking"]').textContent));
   const d = $('[data-testid="bg-dekking"]').textContent.replace(/\s+/g, ' ');
 
-  check('gegeven: eigen bijdrage en het toegekende fonds met het toegekende bedrag', /Eigen bijdrage\s*€ 2\.000/.test(d) && /Fonds Toegekend/.test(d) && /€ 7\.000/.test(d));
-  check('uitstaand: het aangevraagde fonds', /Uitstaand\s*Fonds Uitstaand/.test(d) && /€ 5\.000/.test(d));
-  check('nog aan te vragen: gepland, en een fonds zonder bedrag zegt "bedrag volgt"', /Fonds Gepland/.test(d) && /Fonds Zonder Bedrag/.test(d) && /bedrag volgt/.test(d) && /Bij 1 geplande financier staat nog geen bedrag/.test(d));
-  check('het dekkingsplan sluit: 2.000 + 7.000 + 5.000 + 3.000 is meer dan 7.520', !!$('[data-testid="bg-sluit"]') && /meer dan nodig/.test($('[data-testid="bg-sluit"]').textContent));
+  check('begint met Toegekend: eigen bijdrage, dan het toegekende fonds met het toegekende bedrag', /Toegekend\s*Eigen bijdrage\s*€ 2\.000\s*Fonds Toegekend\s*€ 7\.000/.test(d));
+  check('dan Uitstaand met het aangevraagde fonds', /Uitstaand\s*Fonds Uitstaand\s*€ 5\.000/.test(d));
+  check('dan In planning, en een fonds zonder bedrag zegt "bedrag volgt"', /In planning\s*Fonds Gepland\s*€ 3\.000/.test(d) && /Fonds Zonder Bedrag\s*bedrag volgt/.test(d) && /Bij 1 financier in planning staat nog geen bedrag/.test(d));
+  check('onderaan: Totaal en daaronder Nog te dekken', d.search(/Totaal\s*€/) > d.indexOf('In planning') && d.indexOf('Nog te dekken') > d.search(/Totaal\s*€/));
+  check('totaal 17.000 = 2.000 + 7.000 + 5.000 + 3.000; nog te dekken € 0; sluitend met het meerdere genoemd', /€ 17\.000/.test($('[data-testid="bg-dek-totaal"]').textContent) && /€ 0/.test($('[data-testid="bg-nog-te-plannen"]').textContent) && /meer dan de begroting/.test($('[data-testid="bg-sluit"]').textContent) && /€ 9\.480/.test($('[data-testid="bg-sluit"]').textContent));
   check('de plek om het aan te passen is Projectfinanciering', $('[data-testid="bg-dekking"] a').getAttribute('href').includes(`/kompas/projecten/${PROJECT}?tab=projectfinanciering`));
   await opruimen();
 
   s = await toon({ ...BASIS, eigenBijdrage: 0, begroting: 20000 }, { funding: [FUNDING[0]] });
-  check('nog niet sluitend: het ontbrekende bedrag wordt genoemd', /Nog te dekken/.test(tekst()) && /€ 13\.000/.test($('[data-testid="bg-nog-te-plannen"]').textContent) && !$('[data-testid="bg-sluit"]'));
-  check('een bestaande begroting bij Projecten zonder regels wordt genoemd', /Bij Projecten staat nu € 20\.000/.test($('[data-testid="bg-leeg"]').textContent));
+  check('niet sluitend: totaal van de dekking en het nog te dekken bedrag, geen Sluitend', /€ 7\.000/.test($('[data-testid="bg-dek-totaal"]').textContent) && /€ 13\.000/.test($('[data-testid="bg-nog-te-plannen"]').textContent) && !$('[data-testid="bg-sluit"]'));
+  check('een bestaande begroting bij Projecten zonder regels wordt kort genoemd', /Bij Projecten staat nu € 20\.000/.test($('[data-testid="bg-leeg"]').textContent));
   await opruimen();
 }
 
@@ -156,16 +178,12 @@ sectie('5. Bestaande regels, wisselen en weg');
   const regels = [{ id: 'a1', categorie: 'activa', omschrijving: 'Laptop', aantal: 2, eenheid: 'stuk', tarief: 800, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' }];
 
   s = await toon({ ...BASIS, begroting: 1600, budgetRegels: regels });
-  check('opgeslagen regels staan er weer, met totaal', $('[data-testid="bg-omschrijving"]').value === 'Laptop' && /Totaal € 1\.600/.test($('[data-testid="bg-totaal"]').textContent) && knop('Begroting opslaan').disabled === true);
+  check('opgeslagen regels staan er weer, schoon: alleen omschrijving en bedrag, details dicht', $('[data-testid="bg-omschrijving"]').value === 'Laptop' && /€ 1\.600/.test($('[data-testid="bg-bedrag-berekend"]').textContent) && /Totaal € 1\.600/.test($('[data-testid="bg-totaal"]').textContent) && knop('Begroting opslaan').disabled === true && !$('[data-testid="bg-detail"]'));
+  check('met regels staat de kopjeskeuze achter + Kopje', !$('[data-testid="bg-kopjes"]') && !!$('[data-testid="bg-plus-kopje"]'));
   await klik($('[data-testid="bg-weg"]'));
   check('regel verwijderen werkt en het totaal volgt', $$('[data-testid="bg-regel"]').length === 0 && /Totaal € 0/.test($('[data-testid="bg-totaal"]').textContent));
   await klik(knop('Begroting opslaan'));
   check('een lege begroting bewaart de regels maar laat de projectbegroting staan', await wacht(() => s.bewaard.length === 1) && s.bewaard[0].begroting === 1600 && s.bewaard[0].budgetRegels.length === 0);
-  await opruimen();
-
-  s = await toon(BASIS, { funding: [] });
-  await typ($('[data-testid="bg-kopje-kies"]'), 'btw');
-  check('bij een kopje zonder suggesties of met één: eigen regel kan altijd', !!$('[data-testid="bg-eigen-regel"]'));
   await opruimen();
 }
 

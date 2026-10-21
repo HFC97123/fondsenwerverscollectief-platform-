@@ -10,11 +10,11 @@ const q = new URLSearchParams(location.search);
 const regels = q.get('leeg')
   ? []
   : [
-      { id: 'a', categorie: 'personeel', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
-      { id: 'b', categorie: 'uitvoering', omschrijving: 'Voedselpakketten', aantal: 400, eenheid: 'pakket', tarief: 25, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
-      { id: 'c', categorie: 'uitvoering', omschrijving: 'Educatiemateriaal', aantal: null, eenheid: 'set', tarief: null, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
-      { id: 'd', categorie: 'vrijwilligers', omschrijving: 'Training van vrijwilligers', aantal: 12, eenheid: 'vrijwilliger', tarief: 60, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
-      { id: 'e', categorie: 'locatie', omschrijving: 'Gratis zaal van de buurtvereniging', aantal: null, eenheid: '', tarief: null, bedrag: 2400, soort: 'natura', toelichting: '', bron: 'handmatig' },
+      { id: 'a', categorie: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
+      { id: 'b', categorie: 'activa', omschrijving: 'Voedselpakketten', aantal: 400, eenheid: 'pakket', tarief: 25, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
+      { id: 'c', categorie: 'activa', omschrijving: 'Educatiemateriaal', aantal: null, eenheid: 'set', tarief: null, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
+      { id: 'd', categorie: 'uitvoering', omschrijving: 'Training van vrijwilligers', aantal: 12, eenheid: 'vrijwilliger', tarief: 60, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
+      { id: 'e', categorie: 'organisatie', omschrijving: 'Gratis zaal van de buurtvereniging', aantal: null, eenheid: '', tarief: null, bedrag: 2400, soort: 'natura', toelichting: '', bron: 'handmatig' },
     ];
 const project = { id: PROJECT, naam: 'Samen Spelen', begroting: 15920, eigenBijdrage: 2000, budgetRegels: regels };
 

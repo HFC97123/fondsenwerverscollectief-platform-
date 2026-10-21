@@ -9,22 +9,13 @@ export const MAX_REGELS = 200;
 const MAX_TEKST = 200;
 const MAX_TOELICHTING = 500;
 
-// Kopjes (categorieën) met suggesties voor regels. De suggesties zijn alleen een omschrijving en een eenheid, nooit een bedrag.
+// Kopjes (tussenregels) met suggesties voor regels. Bewust weinig kopjes: het lid begint leeg en voegt zelf toe. De suggesties zijn
+// alleen een omschrijving en een eenheid, nooit een bedrag.
 export const CATEGORIEEN = [
-  { id: 'uitvoering', label: 'Projectuitvoering', suggesties: [['Activiteiten en bijeenkomsten', 'bijeenkomst'], ['Educatiemateriaal', 'set'], ['Voedselpakketten', 'pakket'], ['Materialen en benodigdheden', 'stuk'], ['Workshops of trainingen', 'sessie']] },
-  { id: 'personeel', label: 'Personeel en projectleiding', suggesties: [['Projectleider', 'uur'], ['Coördinator', 'uur'], ['Uitvoerend medewerker', 'uur'], ['Administratie', 'uur']] },
-  { id: 'inhuur', label: 'Inhuur en externe deskundigen', suggesties: [['Trainer of docent', 'dag'], ['Adviseur', 'dag'], ['Zzp-uitvoerder', 'uur'], ['Vormgever of tekstschrijver', 'opdracht']] },
-  { id: 'vrijwilligers', label: 'Vrijwilligers', suggesties: [['Vrijwilligersvergoeding', 'vrijwilliger'], ['Training van vrijwilligers', 'vrijwilliger'], ['Verzekering vrijwilligers', 'vrijwilliger'], ['Bedankje of waardering', 'vrijwilliger']] },
-  { id: 'activa', label: 'Activa en uitrusting', suggesties: [['Apparatuur', 'stuk'], ['Meubilair of inrichting', 'stuk'], ['Gereedschap of uitrusting', 'stuk'], ['Software en licenties', 'licentie']] },
-  { id: 'locatie', label: 'Locatie en huisvesting', suggesties: [['Zaalhuur of ruimtehuur', 'maand'], ['Energie en onderhoud', 'maand']] },
-  { id: 'reiskosten', label: 'Reiskosten', suggesties: [['Reiskosten medewerkers', 'kilometer'], ['Vervoer van deelnemers', 'rit']] },
-  { id: 'communicatie', label: 'Communicatie en werving', suggesties: [['Drukwerk en flyers', 'stuk'], ['Website en online campagne', 'post'], ['Werving van deelnemers', 'post']] },
-  { id: 'monitoring', label: 'Monitoring, evaluatie en verantwoording', suggesties: [['Impactmeting of evaluatie', 'post'], ['Verantwoording en rapportage', 'post'], ['Accountantsverklaring', 'post']] },
-  { id: 'organisatie', label: 'Organisatiekosten', suggesties: [['Aandeel organisatiekosten', 'maand'], ['Verzekeringen', 'jaar'], ['Boekhouding', 'jaar']] },
-  { id: 'overhead', label: 'Overhead (indirecte kosten)', suggesties: [['Overhead', 'post']] },
-  { id: 'btw', label: 'Niet-verrekenbare btw', suggesties: [['Niet-verrekenbare btw', 'post']] },
-  { id: 'onvoorzien', label: 'Onvoorzien', suggesties: [['Onvoorzien', 'post']] },
-  { id: 'overig', label: 'Overig', suggesties: [] },
+  { id: 'uitvoering', label: 'Projectuitvoering', suggesties: [['Projectleider', 'uur'], ['Coördinator', 'uur'], ['Uitvoerend medewerker', 'uur'], ['Trainer of docent', 'dag'], ['Zzp-uitvoerder', 'uur'], ['Vrijwilligersvergoeding', 'vrijwilliger'], ['Training van vrijwilligers', 'vrijwilliger'], ['Activiteiten en bijeenkomsten', 'bijeenkomst'], ['Reiskosten', 'kilometer']] },
+  { id: 'activa', label: 'Activa en uitrusting', suggesties: [['Voedselpakketten', 'pakket'], ['Educatiemateriaal', 'set'], ['Materialen en benodigdheden', 'stuk'], ['Apparatuur', 'stuk'], ['Meubilair of inrichting', 'stuk'], ['Software en licenties', 'licentie']] },
+  { id: 'organisatie', label: 'Organisatiekosten', suggesties: [['Zaalhuur of ruimtehuur', 'maand'], ['Communicatie en werving', 'post'], ['Drukwerk en flyers', 'stuk'], ['Verzekeringen', 'jaar'], ['Boekhouding', 'jaar'], ['Overhead (indirecte kosten)', 'post']] },
+  { id: 'overig', label: 'Overig', suggesties: [['Monitoring en evaluatie', 'post'], ['Verantwoording en rapportage', 'post'], ['Accountantsverklaring', 'post'], ['Niet-verrekenbare btw', 'post'], ['Onvoorzien', 'post']] },
 ];
 
 export const CATEGORIE_IDS = CATEGORIEEN.map((c) => c.id);
