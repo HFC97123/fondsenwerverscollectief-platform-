@@ -27,13 +27,21 @@ export async function haalFinancieringVoorExport(project) {
 // begrotings-Excel verwacht: { naam, bedrag, status }. Toegekend telt het toegekende bedrag (terugval: het
 // aangevraagde), Aangevraagd het aangevraagde bedrag; dit zijn dezelfde regels als berekenDekking(), zodat
 // de zichtbare rijen optellen tot het totaal. Regels in andere statussen tellen niet mee en staan er niet in.
-export function cofinanciersVoorBegroting(regels, statusLabel) {
+// Met opties.metPlanning (de begrotingstab in Documenten) staan ook de financiers in planning (Interessant of In voorbereiding) erbij, met
+// hun aangevraagde bedrag en de status "In planning", in de volgorde van het dekkingsplan: toegekend, aangevraagd, in planning.
+export function cofinanciersVoorBegroting(regels, statusLabel, opties = {}) {
+  const metPlanning = opties && opties.metPlanning === true;
+  const plan = (r) => r.status === 'interesting' || r.status === 'preparing';
+  const rang = (r) => (r.status === 'awarded' ? 0 : r.status === 'submitted' ? 1 : 2);
+
   return (regels || [])
-    .filter((r) => r && (r.status === 'awarded' || r.status === 'submitted'))
-    .map((r) => ({
+    .filter((r) => r && (r.status === 'awarded' || r.status === 'submitted' || (metPlanning && plan(r))))
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => (metPlanning ? rang(a.r) - rang(b.r) || a.i - b.i : 0))
+    .map(({ r }) => ({
       naam: r.naam,
       bedrag: r.status === 'awarded' ? (r.awarded != null ? r.awarded : r.requested) : r.requested,
-      status: (statusLabel && statusLabel[r.status]) || '',
+      status: plan(r) ? 'In planning' : (statusLabel && statusLabel[r.status]) || '',
     }))
     .filter((r) => r.bedrag != null);
 }

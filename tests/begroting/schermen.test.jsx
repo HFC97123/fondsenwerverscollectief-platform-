@@ -200,6 +200,17 @@ sectie('6. Excel: dezelfde berekening als de begroting in de chat');
   check('totaal kosten in de Excel-berekening = totaal in het scherm', budget.totals.totaalKosten === berekenBegroting(regels).totaalGeld && budget.totals.totaalKosten === 7000);
   check('geen afwijkingen of onbekende regels', budget.waarschuwingen.afwijkendeRegels.length === 0 && budget.waarschuwingen.aantalOnbekendeRegels === 0);
 
+  // Alle financiers uit het dekkingsplan (Projectfinanciering) komen in de Excel: toegekend, aangevraagd en in planning, met eigen bijdrage.
+  const { regelUitRpc, dekkingVanProject } = await import('../../src/features/kompas-app/financiering/dekkingsplan.js');
+  const fregels = FUNDING.map(regelUitRpc);
+  const pr = { ...BASIS, begroting: 7000, eigenBijdrage: 2000 };
+  const zonder = berekenBudget(expenseLinesVoorExcel(regels), pr, {}, { regels: fregels, dekking: dekkingVanProject(pr, fregels) });
+  const met = berekenBudget(expenseLinesVoorExcel(regels), pr, {}, { regels: fregels, dekking: dekkingVanProject(pr, fregels), metPlanning: true });
+
+  check('zonder planning (chat en andere exports) verandert er niets: alleen toegekend en aangevraagd', zonder.projectFinanciering.cofinanciers.map((c) => c.naam).join() === 'Fonds Toegekend,Fonds Uitstaand' && zonder.totals.totaalDekking === 14000);
+  check('met planning (begrotingstab): toegekend, uitstaand, in planning, in die volgorde, status In planning', met.projectFinanciering.cofinanciers.map((c) => `${c.naam}:${c.bedrag}:${c.status}`).join() === 'Fonds Toegekend:7000:Toegekend,Fonds Uitstaand:5000:Aangevraagd,Fonds Gepland:3000:In planning');
+  check('het totaal van de dekking in de Excel is gelijk aan het totaal op het scherm (eigen bijdrage + alle financiers met bedrag)', met.totals.totaalDekking === 17000 && met.totals.totaalDekking === dekkingVanProject(pr, fregels).gedektMetPlan);
+
   try {
     const { generateExcelDocument } = await import('../../src/shared/budget/generateExcelDocument.js');
     const blob = await generateExcelDocument({ budget, project: { ...BASIS, begroting: 7000 }, organizationName: 'Stichting Samen Spelen' });

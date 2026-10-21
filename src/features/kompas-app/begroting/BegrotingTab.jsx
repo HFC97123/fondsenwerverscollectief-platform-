@@ -442,7 +442,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       const [{ berekenBudget }, { generateExcelDocument, bepaalExcelBestandsnaam }] = await Promise.all([import('../../../shared/budget/berekenBudget.js'), import('../../../shared/budget/generateExcelDocument.js')]);
       const naam = (store && store.orgProfile && store.orgProfile.name) || null;
       const p = { ...project, begroting: begrotingVoorDekking };
-      const budget = berekenBudget(expenseLinesVoorExcel(regels), p, {}, fin && fin.beschikbaar ? { regels: fin.regels, dekking: dekkingVanProject(p, fin.regels) } : undefined);
+      const budget = berekenBudget(expenseLinesVoorExcel(regels), p, {}, fin && fin.beschikbaar ? { regels: fin.regels, dekking: dekkingVanProject(p, fin.regels), metPlanning: true } : undefined);
       const blob = await generateExcelDocument({ budget, project: p, organizationName: naam });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

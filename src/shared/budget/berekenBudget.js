@@ -160,7 +160,9 @@ export function berekenBudget(expenseLines, project, budgetMeta, financiering) {
   const fin = financiering || {};
   const bronRegels = Array.isArray(fin.regels) ? fin.regels : [];
   const dekking = fin.dekking || dekkingVanProject(project || {}, bronRegels);
-  const totaalDekking = rond((dekking?.toegekend || 0) + (dekking?.aangevraagd || 0) + (dekking?.overige || 0));
+  // Met fin.metPlanning (alleen de begrotingstab) telt wat in planning staat ook mee, net als in het dekkingsplan op het scherm.
+  const metPlanning = fin.metPlanning === true;
+  const totaalDekking = rond((dekking?.toegekend || 0) + (dekking?.aangevraagd || 0) + (dekking?.overige || 0) + (metPlanning ? dekking?.gepland || 0 : 0));
 
   const meta = budgetMeta || {};
   const gevraagdUitGesprek = parseEuroDutch(meta.requestedAmountStated);
@@ -180,7 +182,7 @@ export function berekenBudget(expenseLines, project, budgetMeta, financiering) {
     projectFinanciering: {
       begroting: parseEuroDutch(project?.begroting),
       eigenBijdrage: parseEuroDutch(project?.eigenBijdrage),
-      cofinanciers: cofinanciersVoorBegroting(bronRegels, STATUS_LABEL),
+      cofinanciers: cofinanciersVoorBegroting(bronRegels, STATUS_LABEL, { metPlanning }),
       dekking,
     },
     totals: {
