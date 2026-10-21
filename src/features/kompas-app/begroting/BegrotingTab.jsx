@@ -518,6 +518,9 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                         {c.label}
                       </h3>
                     </Toelichting>
+                    <button type="button" className="fwk-bg-icoon" aria-label={`Kopje ${c.label} weghalen`} title="Kopje weghalen (de regels blijven staan)" data-testid={`bg-kopje-weg-${slug}`} onClick={() => haalKopjeWeg(c.id)}>
+                      ✕
+                    </button>
                   </div>
                   <div className="fwk-bg-kopkant">
                     {kopjeNr !== -1 && (
@@ -534,9 +537,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                       {deel ? euro(deel.subtotaal) : euro(0)}
                       {deel && deel.natura > 0 ? ` + ${euro(deel.natura)} in natura` : ''}
                     </span>
-                    <button type="button" className="fwk-bg-icoon" aria-label={`Kopje ${c.label} weghalen`} title="Kopje weghalen (de regels blijven staan)" data-testid={`bg-kopje-weg-${slug}`} onClick={() => haalKopjeWeg(c.id)}>
-                      ✕
-                    </button>
                   </div>
                 </div>
               )}
