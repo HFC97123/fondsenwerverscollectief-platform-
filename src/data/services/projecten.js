@@ -20,6 +20,7 @@
 import { supabase } from '../client.js';
 import { teFinancieren } from '../../features/kompas-app/financiering/dekkingsplan.js';
 import { leesWerkgebied, werkgebiedVoorOpslag } from '../../shared/werkgebied/werkgebied.js';
+import { budgetKolom, leesOpgeslagenRegels } from '../../features/kompas-app/begroting/begrotingModel.js';
 
 // Doelgroep is voorheen een los tekstveld geweest (target_groups, plain
 // text in de database). Om meervoudige selectie mogelijk te maken zonder
@@ -124,6 +125,8 @@ function naarProjectVeld(rij, docs) {
     impact: rij.impact_description || '',
     planning: rij.planning || '',
     schrijfvoorkeur: rij.writing_preferences || '',
+    // Begrotingsregels (Documenten › Begroting). undefined = de kolom bestaat (nog) niet in de database; dan blijft het tabblad verborgen en wordt er niets geschreven.
+    budgetRegels: 'budget_lines' in rij ? leesOpgeslagenRegels(rij.budget_lines) : undefined,
     bronnen: rij.field_sources && typeof rij.field_sources === 'object' ? rij.field_sources : {},
     gearchiveerd: !!rij.archived_at,
     docs: docs || [],
@@ -181,6 +184,8 @@ export function naarKolomPatch(project) {
     planning: project.planning || null,
     writing_preferences: project.schrijfvoorkeur || null,
     field_sources: project.bronnen && typeof project.bronnen === 'object' ? project.bronnen : {},
+    // Alleen schrijven als de regels uit de database kwamen (kolom bestaat); een project zonder dat veld laat de kolom ongemoeid.
+    ...(Array.isArray(project.budgetRegels) ? { budget_lines: budgetKolom(project.budgetRegels) } : {}),
   };
 }
 

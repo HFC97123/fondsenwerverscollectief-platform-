@@ -52,6 +52,7 @@ import { opgeslagenDocumentExport } from './exportBronnen.js';
 import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
 import ProjectplanTab from './aanvraag/ProjectplanTab.jsx';
 import AanvragenTab from './aanvraag/AanvragenTab.jsx';
+import BegrotingTab from './begroting/BegrotingTab.jsx';
 
 // Tot er een tweede documentgenerator bestaat (Excel/PDF, een latere stap) is
 // elk echt document hier altijd een .docx - geen verzonnen Excel/PDF-variant.
@@ -71,7 +72,7 @@ function leesProjectUitUrl() {
 // projectinhoud van dat project, en de pagina zelf de bestanden.
 function leesTabUitUrl() {
   const h = window.location.hash || '';
-  const m = /[?&]tab=(inhoud|bestanden|plan|aanvragen)(&|$)/.exec(h);
+  const m = /[?&]tab=(inhoud|bestanden|plan|aanvragen|begroting)(&|$)/.exec(h);
 
   if (m) return m[1];
 
@@ -106,8 +107,10 @@ export default function DocumentatiePage() {
   const projectId = projecten.some((p) => p.id === gekozen) ? gekozen : projecten.length ? projecten[0].id : '';
 
   // Een link naar Projectplan of Aanvragen toont, zolang de functie er niet is (of nog laadt), gewoon de bestanden.
+  // Het tabblad Begroting bestaat alleen als de database de kolom voor begrotingsregels heeft (budgetRegels is dan een lijst, ook een lege).
+  const begrotingBeschikbaar = projecten.some((p) => Array.isArray(p.budgetRegels));
   const vraagtAssistent = tab === 'plan' || tab === 'aanvragen';
-  const tabActief = vraagtAssistent && assistent.klaar && !assistent.beschikbaar ? 'bestanden' : tab;
+  const tabActief = (vraagtAssistent && assistent.klaar && !assistent.beschikbaar) || (tab === 'begroting' && !begrotingBeschikbaar) ? 'bestanden' : tab;
 
   const kiesProject = useCallback((id) => {
     setGekozen(id);
@@ -176,6 +179,7 @@ export default function DocumentatiePage() {
         tabs={[
           { id: 'bestanden', label: 'Bestanden', aantal: alle.length },
           { id: 'inhoud', label: 'Projectinhoud' },
+          ...(begrotingBeschikbaar ? [{ id: 'begroting', label: 'Begroting' }] : []),
           ...(assistent.beschikbaar
             ? [
                 { id: 'plan', label: 'Projectplan' },
@@ -227,6 +231,10 @@ export default function DocumentatiePage() {
           </a>
         </Leeg>
       ))}
+
+      {tabActief === 'begroting' && (
+        <BegrotingTab key={projectId} project={projecten.find((p) => p.id === projectId) || null} projecten={projecten} onKiesProject={kiesProject} store={store} />
+      )}
 
       {tab === 'inhoud' &&
         (projecten.length > 0 ? (
