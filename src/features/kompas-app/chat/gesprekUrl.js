@@ -40,6 +40,28 @@ export function chatHref({ conversationId = null, projectId = null, fundingId = 
   return `#${CHAT_PAD}${q.length ? `?${q.join('&')}` : ''}`;
 }
 
+// Een vaste startcode voor een nieuw gesprek: #/kompas?project=<uuid>&start=begroting. Alleen codes uit deze lijst tellen; er gaat nooit vrije
+// tekst in een adres. De chat zet dan de modus en vult een vaste openingsvraag in (het lid verstuurt die zelf).
+export const CHAT_STARTS = ['begroting'];
+
+export function leesChatStart(hash) {
+  const h = String(hash || '').replace(/^#/, '');
+  const [pad, query = ''] = h.split('?');
+
+  if (pad.replace(/\/+$/, '') !== CHAT_PAD) return null;
+
+  const start = new URLSearchParams(query).get('start');
+
+  return CHAT_STARTS.includes(start) ? start : null;
+}
+
+// -> '#/kompas?project=<uuid>&start=begroting'; zonder geldig project of onbekende code: gewoon '#/kompas'.
+export function chatStartHref({ projectId, start }) {
+  const project = schoon(projectId);
+
+  return project && CHAT_STARTS.includes(start) ? `#${CHAT_PAD}?project=${project}&start=${start}` : `#${CHAT_PAD}`;
+}
+
 // Houdt de adresbalk in sync met het actieve gesprek zonder een extra geschiedenisstap (replaceState) en zonder
 // hashchange-gebeurtenis. Alleen op de chatroute zelf; elders doet dit niets.
 export function zetChatUrl(conversationId, win = typeof window === 'undefined' ? null : window) {

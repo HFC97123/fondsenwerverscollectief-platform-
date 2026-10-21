@@ -11,6 +11,7 @@ import { AanvraagStijl, ProjectKeuze } from '../aanvraag/Bouwstenen.jsx';
 import { dekkingVanProject, formatEuro } from '../financiering/dekkingsplan.js';
 import { haalFinancieringVoorExport } from '../financiering/exportFinanciering.js';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
+import { chatStartHref } from '../chat/gesprekUrl.js';
 import { valideerEnBereidOp } from '../projectOpslaan.js';
 import { CATEGORIEEN, GEEN_KOPJE, berekenBegroting, categorieLabel, eigenKopjeSleutel, expenseLinesVoorExcel, kopjeDef, kopjeSlug, kopjeVolgorde, leesBudgetRegels, nieuweRegel, regelBedrag, regelsVoorOpslag, schuifKopje, schuifRegel, verplaatsKopje, verplaatsRegel, verwijderKopje } from './begrotingModel.js';
 
@@ -42,6 +43,8 @@ function BegrotingStijl() {
 .fwk-bg-tip { position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 6px; width: 300px; max-width: 78vw; box-sizing: border-box; padding: 10px 14px 10px 12px; border: 1px solid ${color.lijn}; border-radius: 12px; background: ${color.wit}; box-shadow: 0 8px 24px rgba(44,74,94,0.14); font-size: 13.5px; line-height: 1.5; font-weight: 600; color: ${color.tekst}; text-align: left; }
 .fwk-bg-tip ul { margin: 0; padding-left: 18px; }
 .fwk-bg-tip li + li { margin-top: 4px; }
+.fwk-bg-schat { cursor: pointer; border: 1px solid #E8C98A; background: #FFF6E3; color: #8A5A00; border-radius: 999px; padding: 3px 9px; font-family: inherit; font-size: 11.5px; font-weight: 800; }
+.fwk-bg-schat:hover { background: #FFEFC9; }
 .fwk-bg-sub { text-align: right; font-weight: 800; color: ${color.donkerblauw}; font-size: 15px; white-space: nowrap; padding-right: 4px; }
 .fwk-bg-veld { width: 100%; box-sizing: border-box; min-height: 40px; padding: 8px 10px; border: 1px solid ${color.lijnInput}; border-radius: 10px; background: ${color.wit}; font-family: inherit; font-size: 14.5px; color: ${color.tekst}; }
 .fwk-bg-veld:focus { outline: 2px solid ${color.groen}; outline-offset: 1px; }
@@ -132,6 +135,11 @@ function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEi
           <input className="fwk-bg-veld" aria-label="Bedrag in euro" data-testid="bg-bedrag" inputMode="decimal" value={r.bedrag} onChange={(e) => onWijzig({ bedrag: e.target.value })} placeholder="€" style={css('text-align: right;')} />
         )}
         <div className="fwk-bg-acties">
+          {r.schatting && (
+            <button type="button" className="fwk-bg-schat" data-testid="bg-schatting" title="Dit bedrag is een schatting. Klik als u het hebt gecontroleerd." aria-label="Schatting bevestigen" onClick={() => onWijzig({ schatting: false })}>
+              schatting
+            </button>
+          )}
           {r.soort === 'natura' && !meer && (
             <span className="fwk-aa-klein" data-testid="bg-natura-label">
               natura
@@ -259,7 +267,10 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const kopjesMetRegels = kopjeVolgorde(regels);
 
   const wijzig = (id, wijz) => {
-    setRegels((cur) => cur.map((r) => (r.id === id ? { ...r, ...wijz } : r)));
+    // Past het lid zelf een bedrag, aantal of tarief aan, dan is het geen schatting van de AI meer.
+    const eigenBedrag = 'bedrag' in wijz || 'aantal' in wijz || 'tarief' in wijz;
+
+    setRegels((cur) => cur.map((r) => (r.id === id ? { ...r, ...wijz, ...(eigenBedrag && !('schatting' in wijz) ? { schatting: false } : {}) } : r)));
     setMelding('');
     setFout('');
   };
@@ -481,6 +492,13 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
           </span>
         }
       >
+        <div className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
+          {regels.length === 0 ? 'Weet u niet waar u moet beginnen? ' : 'Iets vergeten? '}
+          <a className="fwk-wp-link" data-testid="bg-chat" href={chatStartHref({ projectId, start: 'begroting' })}>
+            Laat Subsidie Kompas de vragen stellen →
+          </a>
+        </div>
+
         {regels.length === 0 && project.begroting ? (
           <div className="fwk-aa-klein" data-testid="bg-leeg" style={css('margin-bottom: 8px;')}>
             Bij Projecten staat nu {formatEuro(project.begroting)}.
@@ -631,6 +649,11 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
         {totalen.zonderBedrag.length > 0 && (
           <div className="fwk-aa-klein" data-testid="bg-zonder-bedrag" style={css('margin: 10px 0;')}>
             Nog geen bedrag bij: {totalen.zonderBedrag.map((r) => r.omschrijving || categorieLabel(r.categorie)).join(', ')}. Deze regels tellen nog niet mee.
+          </div>
+        )}
+        {totalen.aantalSchattingen > 0 && (
+          <div className="fwk-aa-klein" data-testid="bg-schatting-totaal" style={css('margin: 10px 0;')}>
+            Waarvan {euro(totalen.totaalSchatting)} nog een schatting ({totalen.aantalSchattingen} {totalen.aantalSchattingen === 1 ? 'regel' : 'regels'}). Klik op schatting bij een regel als u het bedrag hebt gecontroleerd.
           </div>
         )}
         {totalen.totaalNatura > 0 && (

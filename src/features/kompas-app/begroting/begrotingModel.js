@@ -104,6 +104,7 @@ export function nieuweRegel(categorie, basis = {}) {
     tarief: '',
     bedrag: '',
     soort: 'geld',
+    schatting: false, // een bedrag dat de AI als richtbedrag noemde en het lid nog niet heeft bevestigd
     toelichting: '',
     bron: 'handmatig',
     ...basis,
@@ -129,6 +130,7 @@ export function leesBudgetRegels(waarde) {
       tarief: getalTekst(r.tarief),
       bedrag: getalTekst(r.bedrag),
       soort: r.soort === 'natura' ? 'natura' : 'geld',
+      schatting: r.schatting === true,
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
     }));
@@ -244,6 +246,8 @@ export function berekenBegroting(regels) {
   const perCategorie = [];
   let totaalGeld = 0;
   let totaalNatura = 0;
+  let totaalSchatting = 0; // het deel van het totaal in geld dat nog een schatting is
+  let aantalSchattingen = 0;
   const zonderBedrag = [];
   const ongeldig = [];
 
@@ -266,7 +270,14 @@ export function berekenBegroting(regels) {
         if (String(r.omschrijving || '').trim()) zonderBedrag.push(r);
       }
       else if (r.soort === 'natura') natura += b.bedrag;
-      else subtotaal += b.bedrag;
+      else {
+        subtotaal += b.bedrag;
+
+        if (r.schatting === true) {
+          totaalSchatting += b.bedrag;
+          aantalSchattingen += 1;
+        }
+      }
 
       return { regel: r, ...b };
     });
@@ -276,7 +287,7 @@ export function berekenBegroting(regels) {
     perCategorie.push({ id: c.id, label: c.label, subtotaal: rond(subtotaal), natura: rond(natura), rijen });
   });
 
-  return { perCategorie, totaalGeld: rond(totaalGeld), totaalNatura: rond(totaalNatura), zonderBedrag, ongeldig };
+  return { perCategorie, totaalGeld: rond(totaalGeld), totaalNatura: rond(totaalNatura), totaalSchatting: rond(totaalSchatting), aantalSchattingen, zonderBedrag, ongeldig };
 }
 
 // Schermregels -> te bewaren regels (getallen). Een regel zonder omschrijving én zonder bedragen wordt overgeslagen.
@@ -309,6 +320,7 @@ export function regelsVoorOpslag(regels) {
       tarief,
       bedrag: aantal != null && tarief != null ? null : vast,
       soort: r.soort === 'natura' ? 'natura' : 'geld',
+      schatting: r.schatting === true && (tarief != null || vast != null),
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
     });
@@ -344,9 +356,26 @@ export function leesOpgeslagenRegels(waarde) {
       tarief: getalOfNull(r.tarief),
       bedrag: getalOfNull(r.bedrag),
       soort: r.soort === 'natura' ? 'natura' : 'geld',
+      schatting: r.schatting === true,
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
     }));
+}
+
+// Regels uit het AI-voorstel (de server geeft ze al gecontroleerd terug) -> opslagregels met een eigen id en bron 'ai'.
+export function voorstelNaarRegels(voorstel) {
+  return leesOpgeslagenRegels((Array.isArray(voorstel) ? voorstel : []).map((r) => ({ ...r, id: nieuwRegelId(), bron: 'ai' })));
+}
+
+// Het voorstel bij de bestaande opslagregels voegen. 'toevoegen' laat alles staan en slaat regels over die er al precies zo staan;
+// 'vervangen' neemt alleen het voorstel. Nooit meer dan MAX_REGELS.
+export function samenvoegVoorstel(bestaand, nieuw, modus = 'toevoegen') {
+  const huidig = modus === 'vervangen' ? [] : Array.isArray(bestaand) ? bestaand : [];
+  const sleutel = (r) => `${r.categorie}|${String(r.omschrijving).toLowerCase()}|${r.aantal}|${r.tarief}|${r.bedrag}`;
+  const gezien = new Set(huidig.map(sleutel));
+  const erbij = (Array.isArray(nieuw) ? nieuw : []).filter((r) => !gezien.has(sleutel(r)));
+
+  return [...huidig, ...erbij].slice(0, MAX_REGELS);
 }
 
 export const budgetKolom = (regels) => ({ versie: BUDGET_VERSIE, regels });
@@ -363,7 +392,7 @@ export function expenseLinesVoorExcel(regels) {
 
       return {
         category: categorieLabel(r.categorie).toLowerCase(),
-        description: naam,
+        description: r.schatting === true ? `${naam} (schatting)` : naam,
         notes: tekst(r.toelichting, MAX_TOELICHTING) || null,
         quantity: aantal != null && tarief != null ? aantal : null,
         unitPrice: aantal != null && tarief != null ? tarief : null,

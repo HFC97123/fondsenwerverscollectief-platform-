@@ -94,6 +94,12 @@ export function schrijfProjectplan({ projectId, aanvraagId = '' }) {
   return isTekst(projectId) ? roep({ mode: 'plan-schrijven', projectId, ...(isTekst(aanvraagId) ? { aanvraagId } : {}) }) : ongeldig();
 }
 
+// Het antwoord van de chat over de begroting omzetten in begrotingsregels (telt als één beoordeling van de maandruimte). Er wordt niets bewaard:
+// de regels komen terug en het lid zet ze zelf in de begroting.
+export function maakBegrotingVoorstel({ projectId, tekst }) {
+  return isTekst(projectId) && isTekst(tekst) ? roep({ mode: 'begroting-voorstel', projectId, tekst: String(tekst) }) : ongeldig();
+}
+
 // Voortgangsmeter voor het algemene projectplan: hoeveel van de kerninformatie staat erin, wat mist er, en is dit project al geschreven?
 export function haalPlanGereedheid(projectId) {
   return isTekst(projectId) ? roep({ mode: 'plan-gereedheid', projectId }) : ongeldig();

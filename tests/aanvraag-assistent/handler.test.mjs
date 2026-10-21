@@ -88,6 +88,19 @@ function omgeving(opties = {}) {
     haalPagina: async (url) => { log.paginas.push(url); return o.pagina; },
     roep: async (systeem, gebruiker) => {
       log.modelAanroepen += 1;
+      if (/Je zet een gesprek over de begroting/.test(systeem)) {
+        if (o.modelBegroting === 'kapot') return null;
+        o.gezienBegrotingTekst = gebruiker;
+        if (o.modelBegroting === 'leeg') return { inhoud: JSON.stringify({ regels: [] }), usage: { prompt_tokens: 500, completion_tokens: 10 } };
+        return { inhoud: JSON.stringify({ regels: [
+          { kopje: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: 9999, natura: false, schatting: false, toelichting: '' },
+          { kopje: 'activa', omschrijving: 'Voedselpakketten', aantal: null, eenheid: 'pakket', tarief: null, bedrag: '2.500,50', natura: false, schatting: true, toelichting: 'richtbedrag' },
+          { kopje: 'eigen', eigenKopje: 'Locatie en huisvesting', omschrijving: 'Zaalhuur', aantal: 10, eenheid: 'maand', tarief: null, bedrag: 1200, natura: true, schatting: false },
+          { kopje: 'onzin', omschrijving: 'Onbekend kopje', bedrag: 100 },
+          { kopje: 'organisatie', omschrijving: '', bedrag: 100 },
+          { kopje: 'communicatie', omschrijving: 'Flyers', bedrag: -5 },
+        ] }), usage: { prompt_tokens: 900, completion_tokens: 200 } };
+      }
       if (/Je schrijft één onderdeel/.test(systeem)) {
         if (o.modelPlan === 'kapot') return null;
         const inv = JSON.parse(gebruiker);
@@ -580,6 +593,64 @@ sectie('6. Atomaire maandgrens: gelijktijdig, mislukt, storing');
   e = omgeving({ tellingBeoordelingen: 2 });
   r = await verwerk(vraag(beoordeelBody()), e.deps);
   gelijk('resterend na de derde beoordeling bij limiet 6: 3', r.body.resterend, 3);
+}
+
+
+sectie('10. Begrotingsvoorstel uit de chat');
+{
+  const CHAT = 'Hier is een voorstel voor uw begroting. Projectleider: 120 uur x 45 euro. Voedselpakketten ongeveer 2.500 euro (schatting). Zaalhuur is gratis van de buurtvereniging, 10 maanden. Het totaal komt op ruim 8.000 euro.';
+  const body = (extra = {}) => ({ mode: 'begroting-voorstel', projectId: PROJECT, tekst: CHAT, ...extra });
+  let e = omgeving({ tier: 'pro', tellingBeoordelingen: 2 });
+  let r = await verwerk(vraag(body()), e.deps);
+
+  check('Pro krijgt een voorstel en het telt als één beoordeling (3 van 6 gebruikt, 3 resterend)', r.status === 200 && r.body.ok === true && r.body.resterend === 3 && r.body.limiet === 6 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen');
+  const rg = r.body.regels || [];
+  check('een regel zonder omschrijving valt weg; een onbekend kopje wordt: geen kopje; een negatief bedrag wordt genegeerd (regel blijft, zonder bedrag)', rg.map((x) => x.omschrijving).join() === 'Projectleider,Voedselpakketten,Zaalhuur,Onbekend kopje,Flyers' && rg.find((x) => x.omschrijving === 'Onbekend kopje').categorie === '' && rg.find((x) => x.omschrijving === 'Flyers').bedrag === null);
+  check('aantal x tarief: het bedrag blijft leeg (het scherm rekent), het model rekende niets mee', rg[0].aantal === 120 && rg[0].tarief === 45 && rg[0].bedrag === null);
+  check('bedrag in Nederlandse notatie wordt gelezen; schatting blijft gemarkeerd', rg[1].bedrag === 2500.5 && rg[1].schatting === true && rg[1].categorie === 'activa');
+  check('eigen kopje met naam; in natura; aantal zonder tarief wordt weggelaten', rg[2].categorie === 'eigen:Locatie en huisvesting' && rg[2].soort === 'natura' && rg[2].aantal === null && rg[2].tarief === null && rg[2].bedrag === 1200);
+  check('het gesprek wordt aan het model aangeboden als tekst tussen aanhalingstekens', /TEKST UIT DE CHAT/.test(e.o.gezienBegrotingTekst || '') && (e.o.gezienBegrotingTekst || '').includes('Projectleider: 120 uur'));
+  check('gebruik gelogd als aanvraag_begroting zonder inhoud', e.log.gebruik.length === 1 && e.log.gebruik[0].actie === 'aanvraag_begroting' && e.log.gebruik[0].succes === true && !JSON.stringify(e.log.gebruik).includes('Voedselpakketten'));
+  check('afgerond als gelukt', e.log.afgerond.length === 1 && e.log.afgerond[0].succes === true);
+
+  e = omgeving({ tier: 'premium', tellingBeoordelingen: 29 });
+  r = await verwerk(vraag(body()), e.deps);
+  check('Premium: de dertigste mag', r.status === 200 && r.body.resterend === 0);
+  e = omgeving({ tier: 'premium', tellingBeoordelingen: 30 });
+  r = await verwerk(vraag(body()), e.deps);
+  check('Premium: de eenendertigste: 429, geen modelaanroep, geen reservering', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
+  e = omgeving({ tier: 'pro', tellingBeoordelingen: 6 });
+  r = await verwerk(vraag(body()), e.deps);
+  check('Pro: maand op: 429 met verwijzing naar Premium, zonder prijs', r.status === 429 && /Premium/.test(r.body.error) && !/€/.test(r.body.error) && e.log.modelAanroepen === 0);
+  e = omgeving({ tier: 'free', actief: false });
+  r = await verwerk(vraag(body()), e.deps);
+  check('Free: geen toegang', r.status === 403 && e.log.modelAanroepen === 0);
+
+  e = omgeving({ projectVan: ANDER });
+  r = await verwerk(vraag(body()), e.deps);
+  check('project van een ander: 404, geen modelaanroep, niets gereserveerd', r.status === 404 && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
+  e = omgeving();
+  check('zonder geldig project: 400', (await verwerk(vraag(body({ projectId: 'x' })), e.deps)).status === 400);
+  e = omgeving();
+  r = await verwerk(vraag(body({ tekst: 'te kort' })), e.deps);
+  check('te korte tekst: 400, niets gereserveerd', r.status === 400 && r.body.reden === 'geen-tekst' && e.log.reserveringen.length === 0);
+  e = omgeving();
+  r = await verwerk(vraag(body({ tekst: 'a'.repeat(40_001) })), e.deps);
+  check('te lange tekst: 413, niets gereserveerd', r.status === 413 && e.log.reserveringen.length === 0);
+
+  e = omgeving({ modelBegroting: 'leeg' });
+  r = await verwerk(vraag(body()), e.deps);
+  check('antwoord zonder kostenposten: 422, telt niet mee', r.status === 422 && r.body.reden === 'geen-regels' && e.log.afgerond[0].succes === false && e.log.gebruik[0].succes === false);
+  e = omgeving({ modelBegroting: 'kapot' });
+  r = await verwerk(vraag(body()), e.deps);
+  check('modelstoring: 502, telt niet mee', r.status === 502 && e.log.afgerond[0].succes === false);
+  e = omgeving();
+  e.deps.roep = async () => { throw new Error('boem'); };
+  let gegooidB = false;
+  try { await verwerk(vraag(body()), e.deps); } catch (_e) { gegooidB = true; }
+  check('gegooide modelfout: reservering wordt als mislukt afgerond', gegooidB && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
+  e = omgeving({ reserveerStoring: true });
+  check('reserveren faalt: 503, geen modelaanroep (fail closed)', (await verwerk(vraag(body()), e.deps)).status === 503 && e.log.modelAanroepen === 0);
 }
 
 klaar('aanvraag-handler');

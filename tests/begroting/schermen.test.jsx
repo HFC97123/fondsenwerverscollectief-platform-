@@ -14,6 +14,9 @@ const { createRoot } = await import('react-dom/client');
 const client = await import('../checkout-frontend/fake-client.js');
 const { default: BegrotingTab } = await import('../../src/features/kompas-app/begroting/BegrotingTab.jsx');
 const { berekenBegroting, expenseLinesVoorExcel, leesBudgetRegels } = await import('../../src/features/kompas-app/begroting/begrotingModel.js');
+const { default: BegrotingVoorstelDialoog } = await import('../../src/features/kompas-app/begroting/BegrotingVoorstelDialoog.jsx');
+const { leesChatStart, chatStartHref, leesChatUrl } = await import('../../src/features/kompas-app/chat/gesprekUrl.js');
+const { maakServer } = await import('../aanvraag-frontend/nepserver.mjs');
 
 const stand = { ok: 0, fout: 0 };
 const check = (naam, waar, detail = '') => { if (waar) stand.ok += 1; else { stand.fout += 1; console.log(`  FAIL: ${naam} ${detail}`); } };
@@ -332,6 +335,84 @@ sectie('7. Uitleg per kopje, verslepen, kopje weghalen en eigen kopje');
   check('en het totaal telt gewoon mee', /Totaal € 900/.test($('[data-testid="bg-totaal"]').textContent));
   await klik(knop('Begroting opslaan'));
   check('bewaard zonder kopje', await wacht(() => s.bewaard.length === 1) && s.bewaard[0].begroting === 900 && s.bewaard[0].budgetRegels[0].categorie === '');
+  await opruimen();
+}
+
+sectie('8. Schatting, doorklik naar de chat en het voorstel uit de chat');
+{
+  const R = (id, categorie, omschrijving, extra = {}) => ({ id, categorie, omschrijving, aantal: null, eenheid: '', tarief: null, bedrag: null, soort: 'geld', schatting: false, toelichting: '', bron: 'handmatig', ...extra });
+
+  // De tab: schatting zichtbaar, bevestigen, en zelf een bedrag invullen haalt de markering weg.
+  s = await toon({ ...BASIS, begroting: 3500, budgetRegels: [R('a', 'activa', 'Voedselpakketten', { bedrag: 2500, schatting: true, bron: 'ai' }), R('b', 'activa', 'Laptop', { bedrag: 1000 })] });
+  check('een regel met een schatting toont het label en onder de regels staat het deel dat nog schatting is', $$('[data-testid="bg-schatting"]').length === 1 && /Waarvan € 2\.500 nog een schatting \(1 regel\)/.test($('[data-testid="bg-schatting-totaal"]').textContent) && /Totaal € 3\.500/.test($('[data-testid="bg-totaal"]').textContent));
+  await typ($('[data-testid="bg-bedrag"]', regelMet('Voedselpakketten')), '2.700');
+  check('zelf het bedrag aanpassen haalt de schatting weg en het totaal volgt', !$('[data-testid="bg-schatting"]') && !$('[data-testid="bg-schatting-totaal"]') && /Totaal € 3\.700/.test($('[data-testid="bg-totaal"]').textContent));
+  await klik(knop('Begroting opslaan'));
+  check('opgeslagen zonder schatting', await wacht(() => s.bewaard.length === 1) && s.bewaard[0].budgetRegels.every((r) => r.schatting === false));
+  await opruimen();
+
+  s = await toon({ ...BASIS, begroting: 2500, budgetRegels: [R('a', 'activa', 'Voedselpakketten', { bedrag: 2500, schatting: true, bron: 'ai' })] });
+  await klik($('[data-testid="bg-schatting"]'));
+  check('Klikken op schatting bevestigt het bedrag; het totaal blijft', !$('[data-testid="bg-schatting"]') && /Totaal € 2\.500/.test($('[data-testid="bg-totaal"]').textContent));
+  check('de Excel krijgt (schatting) achter een regel die nog schatting is', expenseLinesVoorExcel([R('a', 'activa', 'Voedselpakketten', { bedrag: 2500, schatting: true })])[0].description === 'Voedselpakketten (schatting)');
+  check('de knop naar de chat staat in de tab en gaat naar een nieuw gesprek voor dit project met de vaste code', $('[data-testid="bg-chat"]').getAttribute('href') === `#/kompas?project=${PROJECT}&start=begroting`);
+  await opruimen();
+
+  // Het adres: alleen een vaste code en een geldig project.
+  check('adressen voor de chat: alleen codes uit de lijst en geldige uuid\'s', chatStartHref({ projectId: PROJECT, start: 'begroting' }) === `#/kompas?project=${PROJECT}&start=begroting` && chatStartHref({ projectId: PROJECT, start: '<script>' }) === '#/kompas' && chatStartHref({ projectId: 'x', start: 'begroting' }) === '#/kompas');
+  check('de chat leest de code terug, en onbekende codes of andere paden niet; het gewone gespreksadres is ongewijzigd', leesChatStart(`#/kompas?project=${PROJECT}&start=begroting`) === 'begroting' && leesChatStart(`#/kompas?project=${PROJECT}&start=iets`) === null && leesChatStart(`#/kompas/projecten?start=begroting`) === null && JSON.stringify(leesChatUrl(`#/kompas?project=${PROJECT}&start=begroting`)) === JSON.stringify({ conversation: null, project: PROJECT, focus: null }));
+
+  // Het voorstel uit de chat, tegen de echte serverregels met een nagebootst model.
+  const CHAT = 'Hier is een voorstel voor uw begroting. Projectleider: 120 uur x 45 euro. Voedselpakketten ongeveer 2.500 euro (schatting). Zaalhuur is gratis van de buurtvereniging. Flyers: bedrag nog onbekend.';
+  const toonDialoog = async (project, serverOpties = {}) => {
+    const srv = maakServer(serverOpties);
+    const bewaard = [];
+    let gesloten = 0;
+    const store = { saveProject: async (p) => { bewaard.push(p); return PROJECT; } };
+
+    client.__zetSupabase(srv.supabase);
+    await act(async () => { root.render(<BegrotingVoorstelDialoog project={project} tekst={CHAT} store={store} onSluit={() => { gesloten += 1; }} />); });
+
+    return { srv, bewaard, gesloten: () => gesloten };
+  };
+
+  let d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', begroting: 0, budgetRegels: [] });
+  check('eerst uitleg en bevestiging; er is nog niets naar de server gegaan en het telt als één beoordeling', /telt als één beoordeling/.test($('[data-testid="bv-uitleg"]').textContent) && d.srv.s.aanroepen.length === 0);
+  await klik(knop('Maak het voorbeeld van de begroting'));
+  check('het voorbeeld verschijnt', await wacht(() => $('[data-testid="bv-voorbeeld"]')));
+  const regelsTekst = $$('[data-testid="bv-regel"]').map((r) => r.textContent.replace(/\s+/g, ' '));
+  check('vier regels, aantal x tarief is door het scherm uitgerekend (120 x 45 = 5.400), een regel zonder bedrag zegt bedrag volgt', regelsTekst.length === 4 && regelsTekst.some((t) => /Projectleider\s*€ 5\.400/.test(t)) && regelsTekst.some((t) => /Flyers\s*bedrag volgt/.test(t)));
+  check('schatting en in natura zijn herkenbaar', $$('[data-testid="bv-schatting"]').length === 1 && regelsTekst.some((t) => /Voedselpakketten\s*schatting\s*€ 2\.500/.test(t)) && regelsTekst.some((t) => /Zaalhuur\s*in natura/.test(t) || /Zaalhuur.*in natura/.test(t)));
+  check('totaal 5.400 + 2.500 = 7.900 (natura telt niet mee), waarvan 2.500 schatting', /Totaal € 7\.900/.test($('[data-testid="bv-totaal"]').textContent) && /waarvan € 2\.500 nog een schatting/.test($('[data-testid="bv-totaal"]').textContent));
+  check('zonder bestaande begroting geen keuze toevoegen of vervangen; resterende ruimte zichtbaar', !$('[data-testid="bv-toevoegen"]') && /Nog 5 beoordelingen over/.test($('[data-testid="bv-resterend"]').textContent));
+  check('de server heeft het voorstel gemeld met de maandruimte (niets bewaard)', d.srv.s.aanroepen.some((a) => a[1] === 'begroting-voorstel') && d.bewaard.length === 0);
+  await klik(knop('Zet de regels in mijn begroting'));
+  check('opgeslagen via de bestaande opslag: bron ai, schatting bewaard, kopjes en totaal', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].begroting === 7900 && d.bewaard[0].budgetRegels.length === 4 && d.bewaard[0].budgetRegels.every((r) => r.bron === 'ai') && d.bewaard[0].budgetRegels.filter((r) => r.schatting).length === 1 && d.bewaard[0].budgetRegels.some((r) => r.categorie === 'eigen:Locatie en huisvesting' && r.soort === 'natura'));
+  check('daarna: bevestiging met link naar de begroting van dit project', await wacht(() => $('[data-testid="bv-klaar"]')) && $('[data-testid="bv-naar-begroting"]').getAttribute('href') === `#/kompas/documentatie?project=${PROJECT}&tab=begroting` && /€ 7\.900/.test($('[data-testid="bv-klaar"]').textContent));
+  await opruimen();
+
+  const bestaand = [{ id: 'z1', categorie: 'activa', omschrijving: 'Laptop', aantal: null, eenheid: '', tarief: null, bedrag: 1000, soort: 'geld', schatting: false, toelichting: '', bron: 'handmatig' }];
+
+  d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', begroting: 1000, budgetRegels: bestaand });
+  await klik(knop('Maak het voorbeeld van de begroting'));
+  await wacht(() => $('[data-testid="bv-voorbeeld"]'));
+  check('met een bestaande begroting kiest het lid: toevoegen (standaard) of vervangen', $('[data-testid="bv-toevoegen"]').checked === true && !!$('[data-testid="bv-vervangen"]'));
+  await klik(knop('Zet de regels in mijn begroting'));
+  check('toevoegen: de laptop blijft en het voorstel komt erbij (5 regels, totaal 8.900)', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].budgetRegels.length === 5 && d.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop' && r.bron === 'handmatig') && d.bewaard[0].begroting === 8900);
+  await opruimen();
+
+  d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', begroting: 1000, budgetRegels: bestaand });
+  await klik(knop('Maak het voorbeeld van de begroting'));
+  await wacht(() => $('[data-testid="bv-voorbeeld"]'));
+  await klik($('[data-testid="bv-vervangen"]'));
+  await klik(knop('Zet de regels in mijn begroting'));
+  check('vervangen: alleen het voorstel (4 regels), de laptop is weg', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].budgetRegels.length === 4 && !d.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop'));
+  await opruimen();
+
+  d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', budgetRegels: [] }, {});
+  for (let i = 0; i < 6; i += 1) d.srv.s.beoordelingen.set(`b${i}`, { id: `b${i}` });
+  await klik(knop('Maak het voorbeeld van de begroting'));
+  check('maand op: duidelijke melding, terug naar het begin, niets bewaard', await wacht(() => $('[data-testid="bv-fout"]')) && /deze maand al 6/.test($('[data-testid="bv-fout"]').textContent) && !!knop('Maak het voorbeeld van de begroting') && d.bewaard.length === 0);
   await opruimen();
 }
 

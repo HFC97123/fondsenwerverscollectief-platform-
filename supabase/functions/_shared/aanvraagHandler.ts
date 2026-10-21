@@ -28,6 +28,7 @@ import {
   type EisenBronLabel,
   type ModelAanroep,
 } from './aanvraagAssistent.ts';
+import { maakBegrotingVoorstel, MAX_TEKENS_VOORSTEL } from './begrotingVoorstel.ts';
 import { tierConfigVoor } from './tierConfig.ts';
 import { bouwFeiten, fondsSleutel, MIN_FEITEN, planGereedheid, schrijfPlan, sectiesUitCriteria, STANDAARD_SECTIES, type PlanBron } from './projectplan.ts';
 
@@ -37,9 +38,9 @@ export const MAX_FONDSLABEL = 200;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag';
+export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag' | 'begroting-voorstel';
 
-const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag'];
+const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag', 'begroting-voorstel'];
 
 // Het algemene projectplan telt per rollend jaar (aantal verschillende projecten); een verwijderd project geeft zijn plek niet terug.
 export const PLAN_VENSTER_MAANDEN = 12;
@@ -95,7 +96,7 @@ export interface ProfielRij {
 export interface GebruikMelding {
   userId: string;
   tier: string;
-  actie: 'aanvraag_eisen' | 'aanvraag_beoordeling' | 'aanvraag_plan';
+  actie: 'aanvraag_eisen' | 'aanvraag_beoordeling' | 'aanvraag_plan' | 'aanvraag_begroting';
   projectId?: string | null;
   model: string;
   inputTokens: number;
@@ -641,6 +642,77 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     return {
       status: 200,
       body: { ok: true, aanvraagId: opgeslagenId ?? rij?.id ?? null, opgeslagen: opgeslagenId !== null, projectKlaar: !fondsVersie, plan, resterend: Math.max(0, (fondsVersie ? config.beoordelingenPerMaand : config.projectplannen) - plekPlan.gebruikt - 1), limiet: fondsVersie ? config.beoordelingenPerMaand : config.projectplannen },
+    };
+  }
+
+  // ── begroting-voorstel (het chatantwoord over de begroting omzetten in regels; telt als één beoordeling) ───────────────────────────────────────
+  if (modus === 'begroting-voorstel') {
+    const pid = typeof body.projectId === 'string' && UUID_RE.test(body.projectId) ? body.projectId.toLowerCase() : '';
+
+    if (!pid) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+    const tekst = tekstVeld(body.tekst, MAX_TEKENS_VOORSTEL + 1);
+
+    if (tekst.length > MAX_TEKENS_VOORSTEL) return fout(413, 'te-lang', 'Dit antwoord is te lang om in één keer om te zetten. Vraag de chat om de begroting korter samen te vatten.');
+    if (tekst.trim().length < 40) return fout(400, 'geen-tekst', 'In dit antwoord staat nog geen begroting. Vraag de chat om de begroting eerst op te stellen.');
+
+    const projectBegroting = await deps.projectIsVanGebruiker(pid, userId);
+
+    if (projectBegroting === null) return fout(503, 'project', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+    if (projectBegroting !== true) return fout(404, 'project', 'Dit project is niet gevonden.');
+
+    const gebruiktBegroting = await deps.telRijen(userId, 'beoordelingen', sinds);
+
+    if (gebruiktBegroting === null) return fout(503, 'telling', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+
+    const ruimteBegroting = maandRuimte(config, 'beoordeling', gebruiktBegroting);
+    const begrotingMaandOp = () =>
+      fout(
+        429,
+        'maand-op',
+        tier === 'pro' && !isAdmin
+          ? `U heeft deze maand al ${ruimteBegroting.limiet} keer een aanvraag of begroting laten maken. Volgende maand is er weer ruimte; met Premium kunt u er meer per maand doen.`
+          : `U heeft deze maand al ${ruimteBegroting.limiet} keer een aanvraag of begroting laten maken. Volgende maand is er weer ruimte.`,
+        { limiet: ruimteBegroting.limiet, resterend: 0 },
+      );
+
+    if (!ruimteBegroting.toegestaan) return begrotingMaandOp();
+
+    const plekBegroting = await deps.reserveer(userId, 'beoordelingen', config.beoordelingenPerMaand, sinds);
+
+    if (!plekBegroting.ok) return plekBegroting.reden === 'maand-op' ? begrotingMaandOp() : reserveerWeigering(plekBegroting.reden);
+
+    let voorstel: Awaited<ReturnType<typeof maakBegrotingVoorstel>>;
+
+    try {
+      voorstel = await maakBegrotingVoorstel({ tekst, roep: deps.roep });
+    } catch (e) {
+      await deps.rondAf(plekBegroting.id, userId, false).catch(() => undefined);
+      throw e;
+    }
+
+    const bruikbaar = voorstel.gelukt && voorstel.regels.length > 0;
+
+    await deps.rondAf(plekBegroting.id, userId, bruikbaar).catch(() => undefined);
+
+    await deps.meldGebruik({
+      userId,
+      tier: tierLabel,
+      actie: 'aanvraag_begroting',
+      projectId: pid,
+      model: deps.modelNaam,
+      inputTokens: voorstel.usage.prompt_tokens,
+      outputTokens: voorstel.usage.completion_tokens,
+      duurMs: Date.now() - start,
+      succes: bruikbaar,
+    });
+
+    if (!voorstel.gelukt) return fout(502, 'ai-mislukt', 'Het omzetten lukte nu niet. Probeer het later opnieuw; er is niets verbruikt van uw maandruimte.');
+    if (!bruikbaar) return fout(422, 'geen-regels', 'In dit antwoord staan geen kostenposten om in de begroting te zetten. Er is niets verbruikt van uw maandruimte.');
+
+    return {
+      status: 200,
+      body: { ok: true, regels: voorstel.regels, statistiek: voorstel.stat, resterend: Math.max(0, ruimteBegroting.limiet - plekBegroting.gebruikt - 1), limiet: ruimteBegroting.limiet },
     };
   }
 

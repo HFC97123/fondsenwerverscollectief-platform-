@@ -54,6 +54,14 @@ export function maakServer(o = {}) {
         const inv = JSON.parse(gebruiker);
         return { inhoud: JSON.stringify({ tekst: `${inv.feiten[0].tekst} Daarmee bereiken we 4500 kinderen. [aanvullen: het aantal deelnemers]`, gebruikt: inv.feiten.map((f) => f.id), vragen: ['Hoeveel kinderen doen mee?'] }), usage: { prompt_tokens: 10, completion_tokens: 5 } };
       }
+      if (/Je zet een gesprek over de begroting/.test(systeem)) {
+        return { inhoud: JSON.stringify({ regels: [
+          { kopje: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: null, natura: false, schatting: false },
+          { kopje: 'activa', omschrijving: 'Voedselpakketten', aantal: null, eenheid: 'pakket', tarief: null, bedrag: 2500, natura: false, schatting: true },
+          { kopje: 'eigen', eigenKopje: 'Locatie en huisvesting', omschrijving: 'Zaalhuur', aantal: null, eenheid: '', tarief: null, bedrag: 1200, natura: true, schatting: false },
+          { kopje: 'communicatie', omschrijving: 'Flyers', aantal: null, tarief: null, bedrag: null },
+        ] }), usage: { prompt_tokens: 900, completion_tokens: 200 } };
+      }
       if (/Je haalt de eisen/.test(systeem)) {
         const bronnen = JSON.parse(gebruiker).bronnen;
         const waar = bronnen.find((b) => b.tekst.includes('moet een projectbegroting bevatten'))?.nummer ?? '1';

@@ -57,7 +57,8 @@ import FondsMatchKaart from './chat/FondsMatchKaart.jsx';
 import ChatZoekprofielKaart from './chat/ChatZoekprofielKaart.jsx';
 import { voorstelGeneratieBeschikbaar } from './financiering/voorstelFlow.js';
 import { kaartVoorBericht } from './chat/fondsMatches.js';
-import { leesChatUrl, wisChatUrl, zetChatUrl } from './chat/gesprekUrl.js';
+import BegrotingVoorstelDialoog from './begroting/BegrotingVoorstelDialoog.jsx';
+import { leesChatStart, leesChatUrl, wisChatUrl, zetChatUrl } from './chat/gesprekUrl.js';
 import { haalDekkingsplan } from '../../data/services/projectFinanciering.js';
 import { regelUitRpc } from './financiering/dekkingsplan.js';
 // FASE5-END
@@ -159,6 +160,9 @@ function detecteerBegrotingIntentie(tekst) {
   return BEGROTING_WOORD_PATROON.test(tekst) && BEGROTING_ACTIECUE_PATROON.test(tekst);
 }
 
+// Vaste openingsvraag voor het gesprek dat vanuit Documenten › Begroting start (code start=begroting). Geen tekst uit de adresbalk.
+const BEGROTING_OPENING = 'Help me met de begroting van dit project. Stel me alle vragen die je daarvoor nodig hebt, een voor een, en zet het daarna op een rij.';
+
 const STARTERS = [
   'Ik zoek financiering voor een nieuw project',
   'Welke fondsen passen bij mijn organisatie?',
@@ -236,6 +240,8 @@ export default function KompasToolPage() {
   // starterchip hieronder zet dit expliciet op 'projectplan'; voor elk ander
   // gesprek blijft dit 'algemeen', exact het bestaande gedrag.
   const [kompasMode, setKompasMode] = useState('algemeen');
+  // Het chatantwoord dat het lid in de begroting wil zetten (dialoog BegrotingVoorstelDialoog); leeg = dialoog dicht.
+  const [begrotingTekst, setBegrotingTekst] = useState('');
   // Verstevigen Projectplan-runtime, punten 1 + 2/3: kompasMode hierboven
   // leefde tot nu toe alleen in het geheugen van deze paginasessie - bij het
   // heropenen van een eerder gesprek (openGesprek() hieronder) werd hij nooit
@@ -881,7 +887,8 @@ export default function KompasToolPage() {
       }
     }
 
-    const sleutel = `${url.conversation || ''}|${url.project || ''}|${url.focus || ''}`;
+    const start = url.project && !url.conversation ? leesChatStart(window.location.hash) : null;
+    const sleutel = `${url.conversation || ''}|${url.project || ''}|${url.focus || ''}${start ? `|${start}` : ''}`;
 
     if (sleutel === '||' || urlBezigRef.current === sleutel) {
       return undefined;
@@ -920,6 +927,12 @@ export default function KompasToolPage() {
 
         await koppelProject(p.id);
         nieuweFocusProject = p.id;
+
+        // Vanuit Documenten › Begroting: het gesprek begint in de begrotingsmodus met een vaste openingsvraag. Het lid verstuurt die zelf.
+        if (start === 'begroting' && gemountRef.current) {
+          setKompasMode('begroting');
+          setDraft(BEGROTING_OPENING);
+        }
       }
 
       // Focus: alleen een regel die in het dekkingsplan van HET actieve project van dit gesprek staat (zelfde RPC als de UI).
@@ -1055,6 +1068,8 @@ export default function KompasToolPage() {
   const actiefProjectNaam = actiefProject ? actiefProject.naam || 'Naamloos project' : '';
   const kiesbareProjecten = (store.projects || []).filter((p) => !p.gearchiveerd);
   const modusLabel = { projectplan: 'Projectplan', begroting: 'Begroting' }[kompasMode] || '';
+  // De knop "Zet in mijn begroting" bestaat alleen met een eigen project waarvan de begrotingskolom beschikbaar is (anders is de begrotingstab er ook niet).
+  const begrotingBeschikbaar = Boolean(hasPlanTools && actiefProject && isEchtId(actiefProject.id) && Array.isArray(actiefProject.budgetRegels));
 
   // Op desktop >= 1200 px staat Gesprekken als vaste kolom (en Projectoverzicht zodra er een actief project is);
   // dan bestaat de lade niet. Zonder actief project bestaat het paneel 'project' niet.
@@ -1439,6 +1454,11 @@ export default function KompasToolPage() {
                             alsBegroting: kompasMode === 'begroting',
                           })}
                         />
+                        {kompasMode === 'begroting' && begrotingBeschikbaar && (
+                          <button type="button" data-testid="chat-zet-in-begroting" onClick={() => setBegrotingTekst(m.content)} style={{ ...actieKnopStijl, background: '#2C4A5E', color: '#FFFFFF', borderColor: '#2C4A5E' }}>
+                            Zet in mijn begroting
+                          </button>
+                        )}
                         <button type="button" onClick={() => bewerkVerder(resultaatSoort[i] || DOC_SOORTEN[0])} style={actieKnopStijl}>
                           Later verder bewerken
                         </button>
@@ -1935,6 +1955,10 @@ export default function KompasToolPage() {
             ...(actiefProject ? { project: { label: 'Project', content: <ProjectContextPanel projectId={actiefProject.id} versie={fundingVersie} /> } } : {}),
           }}
         />
+      )}
+
+      {begrotingTekst && actiefProject && begrotingBeschikbaar && (
+        <BegrotingVoorstelDialoog project={actiefProject} tekst={begrotingTekst} store={store} onSluit={() => setBegrotingTekst('')} />
       )}
 
       {upgradeOpen && upgradeModal}
