@@ -214,7 +214,7 @@ Deno.serve(async (req) => {
     },
 
     // Wat het plan van dit lid weet: het project (alleen eigen, niet gearchiveerd), de Projectdocumentatie en het organisatieprofiel.
-    leesPlanBron: async (userId: string, projectId: string) => {
+    leesPlanBron: async (userId: string, projectId: string, token?: string) => {
       const { data: p, error: pe } = await admin.from('subsidie_kompas_programs').select('*').eq('id', projectId).eq('user_id', userId).is('archived_at', null).maybeSingle();
 
       if (pe || !p) return null;
@@ -229,7 +229,25 @@ Deno.serve(async (req) => {
       const planning = String(p.planning || '').trim() || [p.period_start ? `vanaf ${p.period_start}` : '', p.period_end ? `tot ${p.period_end}` : ''].filter(Boolean).join(' ');
       const info = p.project_info && typeof p.project_info === 'object' && p.project_info.velden && typeof p.project_info.velden === 'object' ? p.project_info.velden : {};
 
+      // Het actuele dekkingsplan, precies zoals het lid het ziet (zelfde functie, zelfde zichtbaarheid per abonnement): alleen met het eigen token van het lid.
+      // Lukt dit niet, dan blijft het dekkingsplan weg uit de feiten; de tekst wordt er niet door geblokkeerd.
+      let financiering: unknown[] | null = null;
+      const anon = Deno.env.get('SUPABASE_ANON_KEY');
+
+      if (token && anon) {
+        try {
+          const alsLid: any = createClient(url, anon, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } });
+          const { data: rijen, error: fe } = await alsLid.rpc('kompas_dekkingsplan', { p_program_id: projectId });
+
+          if (!fe && Array.isArray(rijen)) financiering = rijen;
+        } catch (_e) {
+          financiering = null;
+        }
+      }
+
       return {
+        begroting: p.budget_lines ?? null,
+        financiering,
         project: {
           naam: p.name,
           omschrijving: p.description,

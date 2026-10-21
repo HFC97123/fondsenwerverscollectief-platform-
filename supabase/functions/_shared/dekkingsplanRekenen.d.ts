@@ -7,3 +7,4 @@ export interface Dekking {
   [sleutel: string]: unknown;
 }
 export function berekenDekking(inv: { begroting: unknown; regels: unknown[]; overige: unknown }): Dekking;
+export function regelUitRpc(rij: unknown): Record<string, unknown>;

@@ -83,7 +83,7 @@ function omgeving(opties = {}) {
       tabel.set(id, { created_at: '2026-10-19T10:00:00Z', updated_at: '2026-10-19T12:00:00Z', criteria: [], criteria_bron: null, bronnen: [], plan: null, plan_bijgewerkt_op: null, laatste_beoordeling_id: null, laatste_uitkomst: null, ...(bestaand ?? {}), ...rij, id });
       return id;
     },
-    leesPlanBron: async (u, p) => (o.planBronNull ? null : o.planBron ?? PLANBRON),
+    leesPlanBron: async (u, p, token) => { (log.planBronTokens ??= []).push(token); return o.planBronNull ? null : o.planBron ?? PLANBRON; },
     slaBeoordelingOp: async (rij) => { log.opgeslagen.push(rij); return o.opslaan ? 'bb000000-0000-4000-8000-000000000001' : null; },
     haalPagina: async (url) => { log.paginas.push(url); return o.pagina; },
     roep: async (systeem, gebruiker) => {
@@ -456,6 +456,25 @@ sectie('4c. Plan schrijven');
     e = omgeving({ aanvragen: [rijF], tellingBeoordelingen: 6 });
     r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT, aanvraagId: AIDX }), e.deps);
     check('fondsversie als de beoordelingen op zijn: 429 maand-op, geen modelaanroep', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0);
+  }
+
+  // De actuele begroting en het actuele dekkingsplan gaan bij elke tekst per fonds mee
+  {
+    const AIDX = 'aa000001-0000-4000-8000-000000000001';
+    const planBron = {
+      ...PLANBRON_VOL,
+      begroting: { versie: 1, regels: [{ categorie: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: null, soort: 'geld', schatting: false }] },
+      financiering: [{ id: 'x1', program_id: PROJECT, bron_type: 'financier', bron_status: 'zichtbaar', bron_naam: 'Fonds A', requested_amount: 10000, awarded_amount: 8000, status: 'awarded' }],
+    };
+    e = omgeving({ aanvragen: [formulierAanvraag()], planBron });
+    r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT, aanvraagId: AIDX }), e.deps);
+    const feiten = (e.o.gezienPlanBerichten ?? []).flatMap((b) => b.feiten);
+    check('de tekst per fonds krijgt de begroting als feit', r.status === 200 && feiten.some((f) => f.bron === 'Begroting' && /120 uur × € 45 = € 5\.400/.test(f.tekst)));
+    check('en het dekkingsplan met het toegekende bedrag', feiten.some((f) => f.bron === 'Dekkingsplan' && /Fonds A € 8\.000/.test(f.tekst)));
+    check('het token van het lid gaat mee naar het lezen van het dekkingsplan', e.log.planBronTokens.includes('goed-token'));
+    e = omgeving({ planBron: PLANBRON_VOL });
+    await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
+    check('de voortgangsmeter leest geen dekkingsplan (geen token)', e.log.planBronTokens.every((x) => x === undefined));
   }
 
   // Voortgangsmeter

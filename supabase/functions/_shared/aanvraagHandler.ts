@@ -149,7 +149,7 @@ export interface HandlerDeps {
   lijstAanvragen(userId: string, projectId: string): Promise<AanvraagRij[] | null>; // null = storing
   leesAanvraag(userId: string, id: string): Promise<AanvraagRij | null | 'storing'>; // null = niet gevonden (of van iemand anders)
   bewaarAanvraag(rij: AanvraagSchrijf): Promise<string | null>; // id, of null bij mislukken
-  leesPlanBron(userId: string, projectId: string): Promise<PlanBron | null>; // null = niet te lezen
+  leesPlanBron(userId: string, projectId: string, token?: string): Promise<PlanBron | null>; // null = niet te lezen
   slaBeoordelingOp(rij: BeoordelingRij): Promise<string | null>; // id van de nieuwe rij, of null bij mislukken
   haalPagina(url: string): Promise<PaginaUitkomst>;
   roep: ModelAanroep;
@@ -562,7 +562,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
       rij = gelezen;
     }
 
-    const bron = await deps.leesPlanBron(userId, pid);
+    const bron = await deps.leesPlanBron(userId, pid, token);
 
     if (!bron) return fout(503, 'project', 'Uw projectgegevens konden nu niet worden gelezen. Probeer het later opnieuw.');
 

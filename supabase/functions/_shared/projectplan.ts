@@ -10,14 +10,17 @@
 //   - Alle teksten (feiten, vragen van het fonds) zijn DATA: instructies erin worden genegeerd.
 //   - Het lid beslist en bewerkt zelf: dit is een aanzet, geen eindversie.
 import type { Eis } from './aanvraagAssistent.ts';
+import { begrotingEnDekkingFeiten } from './begrotingFeiten.ts';
 import { normaliseer } from './werkgebied.ts';
 
-export type FeitBron = 'projectgegevens' | 'projectdocumentatie' | 'organisatieprofiel';
+export type FeitBron = 'projectgegevens' | 'projectdocumentatie' | 'organisatieprofiel' | 'begroting' | 'dekkingsplan';
 
 export const BRON_LABEL: Readonly<Record<FeitBron, string>> = Object.freeze({
   projectgegevens: 'Projectgegevens',
   projectdocumentatie: 'Projectdocumentatie',
   organisatieprofiel: 'Organisatieprofiel',
+  begroting: 'Begroting',
+  dekkingsplan: 'Dekkingsplan',
 });
 
 export interface Feit {
@@ -32,6 +35,8 @@ export interface PlanBron {
   project: Record<string, unknown>; // naam, omschrijving, doelgroep, regio, doelstellingen, activiteiten, planning, impact, partners, resultaten, begroting, gevraagd, eigenBijdrage
   info: Record<string, unknown>; // project_info.velden (Projectdocumentatie)
   organisatie: Record<string, unknown>; // name, rechtsvorm, opgericht, anbi, mission, visie, regio, gemeente, provincie, medewerkers, vrijwilligers
+  begroting?: unknown; // budget_lines van het project ({versie, regels}); de actuele begrotingsregels uit Documenten > Begroting
+  financiering?: unknown; // rijen uit kompas_dekkingsplan (zoals het lid ze ziet): het actuele dekkingsplan met de toekenningen tot nu toe
 }
 
 export const MAX_FEIT_TEKENS = 2_000;
@@ -117,6 +122,11 @@ export function bouwFeiten(bron: PlanBron): Feit[] {
     feiten.push({ id: `f${feiten.length + 1}`, sleutel: sleutelVan(d), bron: d.bron, label: d.label, tekst });
   }
 
+  // De actuele begroting en het actuele dekkingsplan: elke keer vers gelezen, dus met de toekenningen tot nu toe.
+  for (const b of begrotingEnDekkingFeiten(bron)) {
+    feiten.push({ id: `f${feiten.length + 1}`, sleutel: b.sleutel, bron: b.bron, label: b.label, tekst: schoon(b.tekst).slice(0, MAX_FEIT_TEKENS) });
+  }
+
   return feiten;
 }
 
@@ -152,7 +162,7 @@ const KERNVELDEN: ReadonlyArray<{ id: string; label: string; vraag: string; waar
   { id: 'planning', label: 'Planning', vraag: 'Wanneer start en eindigt het project, en wat gebeurt wanneer?', waar: 'Projectgegevens', sleutels: ['project.planning'] },
   { id: 'organisatie', label: 'Naam van uw organisatie', vraag: 'Hoe heet uw organisatie?', waar: 'Organisatieprofiel', sleutels: ['organisatie.name'] },
   { id: 'missie', label: 'Missie van uw organisatie', vraag: 'Wat is de missie van uw organisatie?', waar: 'Organisatieprofiel', sleutels: ['organisatie.mission'] },
-  { id: 'begroting', label: 'Totale projectkosten', vraag: 'Wat kost het project in totaal?', waar: 'Projectgegevens', sleutels: ['project.begroting'] },
+  { id: 'begroting', label: 'Totale projectkosten', vraag: 'Wat kost het project in totaal?', waar: 'Projectgegevens', sleutels: ['project.begroting', 'begroting.totaal'] },
   { id: 'borging', label: 'Borging na afloop', vraag: 'Wat gebeurt er met het project na afloop van de financiering?', waar: 'Projectdocumentatie', sleutels: ['info.borging'] },
 ];
 
@@ -185,7 +195,7 @@ export const STANDAARD_SECTIES: readonly SectieDef[] = [
   s('resultaat', 'Resultaat en impact', 'Welke resultaten en welk verschil levert het project op, en hoe wordt dat gemeten?', ['info.output', 'info.outcome', 'project.impact', 'project.resultaten', 'info.monitoring_evaluatie'], 'Welke resultaten verwacht u en hoe meet u die?'),
   s('planning', 'Planning en uitvoering', 'Wanneer wordt wat gedaan, wie voert het uit en welke risico’s zijn er?', ['project.planning', 'info.organisatie_uitvoerbaarheid', 'info.risicos'], 'Wat is de planning en wie voert het project uit?'),
   s('organisatie', 'Organisatie en samenwerking', 'Wie is de organisatie, waarom is zij geschikt en met wie wordt samengewerkt?', ['organisatie.name', 'organisatie.rechtsvorm', 'organisatie.opgericht', 'organisatie.anbi', 'organisatie.mission', 'organisatie.visie', 'organisatie.regio', 'organisatie.gemeente', 'project.partners', 'info.toegevoegde_waarde'], 'Wat maakt uw organisatie geschikt voor dit project en wie zijn de partners?'),
-  s('financiering', 'Begroting en financiering', 'Wat kost het project, welk bedrag wordt gevraagd en hoe is de rest gedekt?', ['project.begroting', 'project.gevraagd', 'project.eigenBijdrage', 'info.financieringsbehoefte', 'info.begrotingstoelichting'], 'Wat zijn de totale kosten en hoe wordt de rest gedekt?'),
+  s('financiering', 'Begroting en financiering', 'Wat kost het project, welk bedrag wordt gevraagd en hoe is de rest gedekt?', ['project.begroting', 'project.gevraagd', 'project.eigenBijdrage', 'begroting.*', 'dekking.*', 'info.financieringsbehoefte', 'info.begrotingstoelichting'], 'Wat zijn de totale kosten en hoe wordt de rest gedekt?'),
   s('borging', 'Borging en duurzaamheid', 'Wat gebeurt er na afloop van de financiering?', ['info.borging'], 'Wat gebeurt er met het project na afloop van de financiering?'),
 ];
 
@@ -220,7 +230,8 @@ export function sectiesUitCriteria(criteria: Eis[]): { secties: SectieDef[]; aan
 
 // Welke feiten horen bij dit onderdeel? 'alle' neemt alles (gesneden op het totaalmaximum).
 export function feitenVoorSectie(def: SectieDef, feiten: Feit[]): Feit[] {
-  const gekozen = def.feitSleutels === 'alle' ? feiten : feiten.filter((f) => (def.feitSleutels as string[]).includes(f.sleutel));
+  const past = (f: Feit) => (def.feitSleutels as string[]).some((k) => (k.endsWith('.*') ? f.sleutel.startsWith(k.slice(0, -1)) : k === f.sleutel));
+  const gekozen = def.feitSleutels === 'alle' ? feiten : feiten.filter(past);
   const uit: Feit[] = [];
   let totaal = 0;
 
@@ -249,7 +260,8 @@ Regels:
 - "vragen": maximaal 4 korte vragen aan de aanvrager voor alles wat je als [aanvullen] hebt gemarkeerd. Leeg als er niets ontbreekt.
 - Noem getallen alleen als ze letterlijk in de gebruikte feiten staan.
 - Aandachtspunten van het fonds mogen bepalen waar je de nadruk op legt, maar nooit wat je beweert.
-- Respecteer "maxTekens" als dat is opgegeven.`;
+- Respecteer "maxTekens" als dat is opgegeven.
+- Staat bij een bedrag in de feiten "schatting", noem het dan ook een schatting. Een bijdrage in natura is geen geldbedrag en telt niet mee in de totale begroting. Rond bedragen niet af en reken niet zelf: neem de bedragen uit de feiten over.`;
 
 export interface PlanSectie {
   id: string;

@@ -1,6 +1,7 @@
 // Projectplan schrijven: de zuivere regels (feiten, onderdelen, controle van het modelantwoord).
 //   node tests/aanvraag-assistent/run.mjs   (vanuit de repo-root)
 import { bouwFeiten, planGereedheid, sectiesUitCriteria, STANDAARD_SECTIES, verwijderOngedekteZinnen, valideerSectie, schrijfPlan, fondsSleutel, feitenVoorSectie, sectieZonderFeiten, aantalAanvullen, MIN_FEITEN, MAX_FEITEN_TEKENS } from '../../supabase/functions/_shared/projectplan.ts';
+import { begrotingEnDekkingFeiten, bedragTekst } from '../../supabase/functions/_shared/begrotingFeiten.ts';
 import { check, gelijk, sectie, klaar, stand } from '../verificatie/hulp.mjs';
 
 stand.naam = 'projectplan';
@@ -148,6 +149,59 @@ sectie('Voortgangsmeter (planGereedheid)');
   const bijna = planGereedheid(bouwFeiten({ project: { doelgroep: 'K', regio: 'R', doelstellingen: 'B', activiteiten: 'S', impact: 'G', planning: '2027', begroting: 40000, gevraagd: 25000 }, info: { aanleiding: 'x', borging: 'y' }, organisatie: { name: 'S' } }));
   check('één veld mist (missie): 90% en niet klaar (nooit afgerond naar 100)', bijna.percentage === 90 && bijna.klaar === false);
   check('een alternatief veld telt mee (output i.p.v. impact)', planGereedheid(bouwFeiten({ project: {}, info: { output: '50 kinderen' }, organisatie: {} })).onderdelen.find((o) => o.id === 'resultaat').gevuld === true);
+}
+
+sectie('Begroting en dekkingsplan als feiten (de actuele stand bij elke tekst)');
+{
+  const BEGROTING = { versie: 1, regels: [
+    { categorie: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: 999, soort: 'geld', schatting: false },
+    { categorie: 'uitvoering', omschrijving: 'Training vrijwilligers', aantal: null, tarief: null, bedrag: 2500, soort: 'geld', schatting: true },
+    { categorie: 'activa', omschrijving: 'Voedselpakketten', aantal: 10, eenheid: 'pakket', tarief: 250, bedrag: null, soort: 'geld', schatting: false },
+    { categorie: 'eigen:Locatie en huisvesting', omschrijving: 'Huur ruimte', aantal: null, tarief: null, bedrag: 3000, soort: 'geld', schatting: false },
+    { categorie: 'eigen:Locatie en huisvesting', omschrijving: 'Zaal gratis', aantal: null, tarief: null, bedrag: 1200, soort: 'natura', schatting: false },
+    { categorie: '', omschrijving: 'Verzekering', aantal: null, tarief: null, bedrag: null, soort: 'geld', schatting: false },
+  ] };
+  const rij = (naam, status, requested, awarded = null, extra = {}) => ({ id: naam, program_id: 'p', bron_type: 'financier', bron_status: 'zichtbaar', bron_naam: naam, requested_amount: requested, awarded_amount: awarded, status, ...extra });
+  const FIN = [
+    rij('Fonds A', 'awarded', 10000, 8000),
+    rij('Fonds B', 'submitted', 5000),
+    rij('Fonds C', 'interesting', 3000),
+    rij('Fonds D', 'rejected', 9999),
+    rij('Geheim', 'preparing', 2000, null, { bron_status: 'verborgen', bron_naam: null }),
+  ];
+  const bron = { project: { naam: 'X', begroting: 40000, eigenBijdrage: 7500 }, info: {}, organisatie: {}, begroting: BEGROTING, financiering: FIN };
+  const feiten = bouwFeiten(bron);
+  const tekst = (s) => feiten.find((f) => f.sleutel === s)?.tekst ?? '';
+
+  check('begrotingsregels worden feiten per kopje, met eigen kopjes en "Overige kosten"', feiten.some((f) => f.label === 'Begroting: Projectuitvoering') && feiten.some((f) => f.label === 'Begroting: Locatie en huisvesting') && feiten.some((f) => f.label === 'Begroting: Overige kosten'));
+  check('aantal x tarief gaat voor een los bedrag: 120 uur x 45 = 5.400', /120 uur × € 45 = € 5\.400/.test(tekst('begroting.kopje.1')) && !/999/.test(tekst('begroting.kopje.1')));
+  check('een schatting blijft een schatting', /Training vrijwilligers: € 2\.500 \(schatting\)/.test(tekst('begroting.kopje.1')));
+  check('een regel zonder bedrag zegt dat het bedrag nog niet is ingevuld', /Verzekering: bedrag nog niet ingevuld/.test(tekst('begroting.kopje.4')));
+  check('subtotaal per kopje: 5.400 + 2.500 = 7.900', /Subtotaal Projectuitvoering: € 7\.900/.test(tekst('begroting.kopje.1')));
+  check('in natura staat apart en telt niet mee', /Zaal gratis: € 1\.200/.test(tekst('begroting.natura')) && /tellen niet mee/.test(tekst('begroting.natura')) && !/Zaal gratis/.test(tekst('begroting.kopje.3')));
+  check('totaal van de regels 13.400, waarvan 2.500 schatting', /€ 13\.400, waarvan € 2\.500 nog een schatting/.test(tekst('begroting.totaal')));
+  check('toegekend: eigen bijdrage en toegekend bedrag (8.000, niet 10.000)', /Eigen bijdrage € 7\.500; Fonds A € 8\.000/.test(tekst('dekking.toegekend')));
+  check('aangevraagd en in planning staan apart; afgewezen staat er niet in', /Fonds B € 5\.000/.test(tekst('dekking.aangevraagd')) && /Fonds C € 3\.000/.test(tekst('dekking.planning')) && !feiten.some((f) => /Fonds D|9\.999/.test(f.tekst)));
+  check('een financier die het abonnement niet laat zien, krijgt geen naam', /niet zichtbaar is in uw abonnement/.test(tekst('dekking.planning')) && !feiten.some((f) => /Geheim/.test(f.tekst)));
+  check('stand: begroting 40.000, gedekt 20.500, nog 19.500; met planning nog 14.500', /Totale begroting € 40\.000/.test(tekst('dekking.stand')) && /gedekt met toegekend, aangevraagd en eigen bijdrage: € 20\.500/i.test(tekst('dekking.stand')) && /Nog te dekken: € 19\.500/.test(tekst('dekking.stand')) && /blijft € 14\.500 over/.test(tekst('dekking.stand')));
+  check('ids lopen door en de bron van de feiten is Begroting of Dekkingsplan', feiten.every((f, i) => f.id === `f${i + 1}`) && feiten.filter((f) => f.sleutel.startsWith('begroting.')).every((f) => f.bron === 'begroting') && feiten.filter((f) => f.sleutel.startsWith('dekking.')).every((f) => f.bron === 'dekkingsplan'));
+
+  const leeg = bouwFeiten({ project: { naam: 'X' }, info: {}, organisatie: {}, begroting: null, financiering: null });
+  check('zonder begroting en zonder dekkingsplan komen er geen extra feiten bij', leeg.length === 1);
+  const kapot = bouwFeiten({ project: { naam: 'X' }, info: {}, organisatie: {}, begroting: 'rommel', financiering: [null, 5, { status: 'awarded' }] });
+  check('rommel blokkeert niets', Array.isArray(kapot) && kapot.some((f) => f.sleutel === 'project.naam'));
+  check('bedragTekst: 12500 -> 12.500 en 12,5 -> 12,50', bedragTekst(12500) === '12.500' && bedragTekst(12.5) === '12,50' && bedragTekst(0) === '0');
+
+  const fin = STANDAARD_SECTIES.find((s) => s.id === 'financiering');
+  check('het onderdeel Begroting en financiering krijgt de begroting en het dekkingsplan', feitenVoorSectie(fin, feiten).some((f) => f.sleutel === 'begroting.totaal') && feitenVoorSectie(fin, feiten).some((f) => f.sleutel === 'dekking.stand'));
+  const aanpak = STANDAARD_SECTIES.find((s) => s.id === 'aanpak');
+  check('andere onderdelen krijgen ze niet', !feitenVoorSectie(aanpak, feiten).some((f) => /^(begroting|dekking)\./.test(f.sleutel)));
+  check('een tekst met een bedrag uit de feiten blijft staan, een verzonnen bedrag niet', (() => {
+    const gebruikt = feitenVoorSectie(fin, feiten);
+    const r = valideerSectie({ tekst: 'De totale begroting is € 40.000. Daarvan is € 20.500 gedekt. Verder vragen wij € 77.777 aan.', gebruikt: gebruikt.map((f) => f.id) }, fin, gebruikt);
+    return /40\.000/.test(r.tekst) && /20\.500/.test(r.tekst) && !/77\.777/.test(r.tekst);
+  })());
+  check('de voortgangsmeter kent het totaal van de begrotingsregels als totale projectkosten', planGereedheid(bouwFeiten({ project: {}, info: {}, organisatie: {}, begroting: BEGROTING })).onderdelen.find((o) => o.id === 'begroting').gevuld === true);
 }
 
 klaar('projectplan');
