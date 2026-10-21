@@ -225,6 +225,8 @@ export default function DeadlinesPage() {
   const [supaFunderRows, setSupaFunderRows] = useState([]);
   // Vrij zichtbare regelingen binnen het huidige filter (door de database bepaald; alleen voor Free en Pro).
   const [ontgrendeldRows, setOntgrendeldRows] = useState([]);
+  // null = (nog) geen antwoord van de database voor het huidige filter; dan geldt de standaardlijst.
+  const [ontgrendeldGeladen, setOntgrendeldGeladen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
@@ -315,14 +317,16 @@ export default function DeadlinesPage() {
     // De door de database vrijgegeven rijen (eerste vrije plekken na het filter) vervangen hun vergrendelde
     // versie; een rij die er nog niet tussen zit wordt toegevoegd.
     const vrij = new Map(ontgrendeldRows.map((r) => [String(r.id), r]));
-    const supa = supaRows.map((r) => vrij.get(String(r.id)) || r);
+    // Na een filter bepaalt alleen de database wat vrij is (precies 3 per filter, plus wat het abonnement toont):
+    // een regeling die zonder filter vrij was maar nu niet is teruggegeven, wordt weer vergrendeld.
+    const supa = supaRows.map((r) => vrij.get(String(r.id)) || (ontgrendeldGeladen && r.volledigZichtbaar ? { ...r, volledigZichtbaar: false } : r));
     const extra = ontgrendeldRows.filter((r) => !supaRows.some((d) => String(d.id) === String(r.id)));
 
     return basis
       .concat(supa.filter((r) => !basis.some((d) => String(d.id) === String(r.id))))
       .concat(extra.filter((r) => !alBekend(r.id)))
       .concat(supaFunderRows.filter((r) => !alBekend(r.id)));
-  }, [store.deadlines, supaRows, supaFunderRows, ontgrendeldRows]);
+  }, [store.deadlines, supaRows, supaFunderRows, ontgrendeldRows, ontgrendeldGeladen]);
 
   // Staat er een filter aan, dan bepaalt de database de eerste vrije plekken binnen dat filter (niet erbuiten).
   // Zonder filter geldt de gewone standaardlijst. Premium ziet alles en heeft dit niet nodig.
@@ -333,6 +337,7 @@ export default function DeadlinesPage() {
   useEffect(() => {
     if (!serverFilterActief) {
       setOntgrendeldRows([]);
+      setOntgrendeldGeladen(false);
 
       return undefined;
     }
@@ -341,8 +346,9 @@ export default function DeadlinesPage() {
     const timer = setTimeout(async () => {
       const res = await fetchOntgrendeld({ statuses, thema, regio, type, deadline, archief });
 
-      if (!vervallen && !res.error) {
+      if (!vervallen && !res.error && !res.offline) {
         setOntgrendeldRows(res.rows || []);
+        setOntgrendeldGeladen(true);
       }
     }, 250);
 
