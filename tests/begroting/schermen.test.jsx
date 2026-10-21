@@ -78,7 +78,7 @@ let s;
 {
   s = await toon(BASIS);
   check('helemaal leeg: geen regels, geen opslaan, geen Excel, totaal 0', $$('[data-testid="bg-regel"]').length === 0 && !knop('Begroting opslaan') && /Totaal € 0/.test($('[data-testid="bg-totaal"]').textContent));
-  check('de drie kopjes van Aisya en Overig staan klaar om te kiezen', ['uitvoering', 'activa', 'organisatie', 'overig'].every((k) => $(`[data-testid="bg-kopje-kies-${k}"]`)));
+  check('de vier vaste kopjes staan klaar om te kiezen, plus eigen kopje en zonder kopje', ['uitvoering', 'activa', 'communicatie', 'organisatie'].every((k) => $(`[data-testid="bg-kopje-kies-${k}"]`)) && !!$('[data-testid="bg-kopje-eigen"]') && !!$('[data-testid="bg-kopje-geen"]'));
   check('dekkingsplan zegt: vul eerst de begroting in', /Vul eerst de begroting in/.test(tekst()));
 
   await klik($('[data-testid="bg-kopje-kies-uitvoering"]'));
@@ -208,6 +208,122 @@ sectie('6. Excel: dezelfde berekening als de begroting in de chat');
   } catch (e) {
     check('het Excel-bestand wordt gemaakt', false, String(e && e.message));
   }
+}
+
+sectie('7. Uitleg per kopje, verslepen, kopje weghalen en eigen kopje');
+{
+  const R = (id, categorie, omschrijving, bedrag) => ({ id, categorie, omschrijving, aantal: null, eenheid: '', tarief: null, bedrag, soort: 'geld', toelichting: '', bron: 'handmatig' });
+  const volgorde = () => $$('section.fwk-bg-sec').map((x) => x.getAttribute('data-testid').replace('bg-kopje-', ''));
+  const namen = (van = document) => $$('[data-testid="bg-omschrijving"]', van).map((i) => i.value);
+  const openKopjes = async () => { if (!$('[data-testid="bg-kopje-eigen"]')) await klik($('[data-testid="bg-plus-kopje"]')); };
+  const sleepGebeurtenis = async (el, type, { y = 0, top = 0, hoogte = 40 } = {}) => {
+    const ev = new window.Event(type, { bubbles: true, cancelable: true });
+
+    ev.dataTransfer = { effectAllowed: '', setData() {}, setDragImage() {} };
+    Object.defineProperty(ev, 'clientY', { value: y });
+    el.getBoundingClientRect = () => ({ top, height: hoogte, bottom: top + hoogte, left: 0, right: 100, width: 100 });
+    await act(async () => { el.dispatchEvent(ev); });
+  };
+  const sleep = async (greep, doel, plek = 'voor') => {
+    await sleepGebeurtenis(greep, 'dragstart');
+    await sleepGebeurtenis(doel, 'dragover', { y: plek === 'voor' ? 5 : 35 });
+    await sleepGebeurtenis(doel, 'drop', { y: plek === 'voor' ? 5 : 35 });
+    await sleepGebeurtenis(greep, 'dragend');
+  };
+
+  s = await toon({ ...BASIS, begroting: 1000, budgetRegels: [R('a1', 'uitvoering', 'Projectleider', 100), R('a2', 'uitvoering', 'Coördinator', 200), R('b1', 'activa', 'Laptop', 300), R('c1', 'communicatie', 'Flyers', 400)] });
+
+  check('vier kopjes in de volgorde van de lijst, communicatie is een apart kopje', volgorde().join() === 'uitvoering,activa,communicatie');
+
+  const tip = $('[data-testid="bg-toelichting-organisatie"]');
+  await klik($('[data-testid="bg-plus-kopje"]'));
+  const wrap = $('[data-testid="bg-kopje-kies-organisatie"]').parentElement;
+
+  check('geen uitleg zolang je er niet overheen gaat', !$('[data-testid="bg-tip-uitvoering"]') && !tip);
+  await act(async () => { $('[data-testid="bg-toelichting-uitvoering"]').dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+  check('overheen gaan toont een paar bullets bij Projectuitvoering', !!$('[data-testid="bg-tip-uitvoering"]') && $$('[data-testid="bg-tip-uitvoering"] li').length === 2 && /mankracht/.test($('[data-testid="bg-tip-uitvoering"]').textContent) && /trainen/.test($('[data-testid="bg-tip-uitvoering"]').textContent));
+  await act(async () => { $('[data-testid="bg-toelichting-uitvoering"]').dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true })); });
+  check('weg met de muis: uitleg verdwijnt', !$('[data-testid="bg-tip-uitvoering"]'));
+  await klik($('[data-testid="bg-info-activa"]'));
+  check('klikken op ⓘ (aanraking) toont de uitleg van Activa en uitrusting en klikken sluit weer', /uitrusting/.test(($('[data-testid="bg-tip-activa"]') || { textContent: '' }).textContent) && /materialen/.test($('[data-testid="bg-tip-activa"]').textContent));
+  await klik($('[data-testid="bg-info-activa"]'));
+  check('tweede klik sluit de uitleg', !$('[data-testid="bg-tip-activa"]'));
+  await act(async () => { wrap.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+  check('ook de keuzeknop voor een nog niet gekozen kopje legt uit: fondsenwerving en 6% tot 12,5%', /fondsenwerving/.test(($('[data-testid="bg-tip-organisatie"]') || { textContent: '' }).textContent) && /6% en 12,5%/.test($('[data-testid="bg-tip-organisatie"]').textContent));
+  await act(async () => { wrap.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true })); });
+  await klik($('[data-testid="bg-kopje-kies-organisatie"]')); // organisatie kiezen sluit de keuze
+  check('Organisatiekosten gekozen: staat er nu als kopje', !!kopje('organisatie') && volgorde().join() === 'uitvoering,activa,communicatie,organisatie');
+  await klik($('[data-testid="bg-kopje-weg-organisatie"]'));
+  check('leeg kopje weghalen kan, het is meteen weg', !kopje('organisatie'));
+
+  // pijltjes (aanraking en toetsenbord)
+  await klik($('[data-testid="bg-kopje-omlaag-uitvoering"]'));
+  check('kopje ▼: Projectuitvoering staat nu onder Activa', volgorde().join() === 'activa,uitvoering,communicatie');
+  await klik($('[data-testid="bg-kopje-omhoog-uitvoering"]'));
+  check('kopje ▲ zet het terug; bovenste kopje kan niet omhoog', volgorde().join() === 'uitvoering,activa,communicatie' && $('[data-testid="bg-kopje-omhoog-uitvoering"]').disabled === true);
+  const ca = regelMet('Coördinator');
+  await openDetail(ca);
+  await klik($('[data-testid="bg-regel-omhoog"]', ca));
+  check('regel ↑ binnen het kopje', namen(kopje('uitvoering')).join() === 'Coördinator,Projectleider');
+
+  // verslepen
+  await sleep($('[data-testid="bg-greep"]', regelMet('Laptop')), regelMet('Coördinator'), 'voor');
+  check('regel slepen naar een ander kopje: Laptop staat nu onder Projectuitvoering, vóór Coördinator', namen(kopje('uitvoering')).join() === 'Laptop,Coördinator,Projectleider' && !kopje('activa'));
+  check('het subtotaal en het totaal volgen', /€ 600/.test($('[data-testid="bg-sub-uitvoering"]').textContent) && /Totaal € 1\.000/.test($('[data-testid="bg-totaal"]').textContent));
+  await sleep($('[data-testid="bg-greep"]', regelMet('Projectleider')), regelMet('Flyers'), 'na');
+  check('regel slepen naar achter een regel in een ander kopje', namen(kopje('communicatie')).join() === 'Flyers,Projectleider');
+  await sleep($('[data-testid="bg-greep"]', regelMet('Flyers')), kopje('uitvoering'), 'voor');
+  check('regel loslaten op een kopje zet hem onderaan dat kopje', namen(kopje('uitvoering')).join() === 'Laptop,Coördinator,Flyers');
+  await sleep($('[data-testid="bg-kopje-greep-communicatie"]'), kopje('uitvoering'), 'voor');
+  check('heel kopje slepen: Communicatiekosten komt vóór Projectuitvoering', volgorde().join() === 'communicatie,uitvoering');
+  await sleep($('[data-testid="bg-kopje-greep-communicatie"]'), kopje('uitvoering'), 'na');
+  check('en weer erachter', volgorde().join() === 'uitvoering,communicatie');
+  await sleepGebeurtenis($('[data-testid="bg-greep"]', regelMet('Laptop')), 'dragstart');
+  await sleepGebeurtenis($('[data-testid="bg-greep"]', regelMet('Laptop')), 'dragend');
+  check('slepen afbreken verandert niets', namen().join() === 'Laptop,Coördinator,Flyers,Projectleider');
+
+  // kopje weghalen: de regels blijven
+  await klik($('[data-testid="bg-kopje-weg-communicatie"]'));
+  check('✕ bij een kopje: kopje weg, de regel blijft staan zonder kopje, het totaal blijft gelijk', !kopje('communicatie') && !!kopje('zonder') && namen(kopje('zonder')).join() === 'Projectleider' && /Totaal € 1\.000/.test($('[data-testid="bg-totaal"]').textContent));
+  check('de regels zonder kopje hebben geen kopregel, wel een + Regel', !$('[data-testid="bg-kop-zonder"]') && !!$('[data-testid="bg-plus-zonder"]'));
+  await klik($('[data-testid="bg-plus-zonder"]'));
+  check('+ Regel bij regels zonder kopje geeft meteen een lege regel (geen suggesties)', namen(kopje('zonder')).length === 2 && !$('[data-testid="bg-suggesties-zonder"]'));
+  await klik($('[data-testid="bg-weg"]', regelMet('', kopje('zonder'))));
+
+  // eigen kopje
+  await openKopjes();
+  await klik($('[data-testid="bg-kopje-eigen"]'));
+  check('Toevoegen is uit zolang er geen naam is', knop('Kopje toevoegen').disabled === true);
+  await typ($('[data-testid="bg-eigen-naam"]'), 'Locatie en huisvesting');
+  await klik(knop('Kopje toevoegen')); await wacht(() => true);
+  check('eigen kopje staat er met de eigen naam, zonder uitleg-knop, met algemene suggesties', !!kopje('eigen-locatie-en-huisvesting') && $('[data-testid="bg-kop-eigen-locatie-en-huisvesting"]').textContent === 'Locatie en huisvesting' && !$('[data-testid="bg-info-eigen-locatie-en-huisvesting"]') && $$('[data-testid="bg-suggestie"]').some((b) => /Onvoorzien/.test(b.textContent)));
+  await klik($('[data-testid="bg-eigen-regel"]'));
+  await typ($('[data-testid="bg-omschrijving"]', regelMet('', kopje('eigen-locatie-en-huisvesting'))), 'Zaalhuur');
+  await typ($('[data-testid="bg-bedrag"]', regelMet('Zaalhuur')), '250');
+  check('regel onder het eigen kopje telt mee', /Totaal € 1\.250/.test($('[data-testid="bg-totaal"]').textContent) && /€ 250/.test($('[data-testid="bg-sub-eigen-locatie-en-huisvesting"]').textContent));
+  await openKopjes();
+  await klik($('[data-testid="bg-kopje-eigen"]'));
+  await typ($('[data-testid="bg-eigen-naam"]'), 'locatie en huisvesting');
+  await klik(knop('Kopje toevoegen')); await wacht(() => true);
+  check('dezelfde naam nog eens geeft geen tweede kopje', volgorde().filter((v) => v.startsWith('eigen')).length === 1);
+
+  // opslaan: volgorde, zonder kopje en eigen kopje blijven bewaard
+  await klik(knop('Begroting opslaan'));
+  check('opgeslagen', await wacht(() => s.bewaard.length === 1));
+  const o = s.bewaard[0].budgetRegels;
+  check('de volgorde en de kopjes zijn bewaard: eigen kopje en zonder kopje inbegrepen', o.map((x) => `${x.omschrijving}:${x.categorie}`).join() === 'Laptop:uitvoering,Coördinator:uitvoering,Flyers:uitvoering,Projectleider:,Zaalhuur:eigen:Locatie en huisvesting');
+  await opruimen();
+
+  // helemaal zonder kopjes beginnen
+  s = await toon(BASIS);
+  await klik($('[data-testid="bg-kopje-geen"]'));
+  check('Zonder kopje: alleen een rij regels, geen enkel kopje', !!kopje('zonder') && volgorde().join() === 'zonder' && !$('h3'));
+  await typ($('[data-testid="bg-omschrijving"]'), 'Alles samen');
+  await typ($('[data-testid="bg-bedrag"]'), '900');
+  check('en het totaal telt gewoon mee', /Totaal € 900/.test($('[data-testid="bg-totaal"]').textContent));
+  await klik(knop('Begroting opslaan'));
+  check('bewaard zonder kopje', await wacht(() => s.bewaard.length === 1) && s.bewaard[0].begroting === 900 && s.bewaard[0].budgetRegels[0].categorie === '');
+  await opruimen();
 }
 
 console.log(`\nbegroting-schermen: ${stand.ok} OK, ${stand.fout} FAIL`);

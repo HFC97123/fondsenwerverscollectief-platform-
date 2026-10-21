@@ -7,13 +7,18 @@ import BegrotingTab from '../../../src/features/kompas-app/begroting/BegrotingTa
 
 const PROJECT = '33333333-3333-4333-8333-333333333333';
 const q = new URLSearchParams(location.search);
+const R0 = (id, categorie, omschrijving, bedrag) => ({ id, categorie, omschrijving, aantal: null, eenheid: '', tarief: null, bedrag, soort: 'geld', toelichting: '', bron: 'handmatig' });
 const regels = q.get('leeg')
   ? []
-  : [
+  : q.get('kaal')
+    ? [R0('k1', '', 'Coördinator', 8000), R0('k2', '', 'Materiaal', 3500), R0('k3', '', 'Drukwerk', 600)]
+    : [
       { id: 'a', categorie: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
       { id: 'b', categorie: 'activa', omschrijving: 'Voedselpakketten', aantal: 400, eenheid: 'pakket', tarief: 25, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
       { id: 'c', categorie: 'activa', omschrijving: 'Educatiemateriaal', aantal: null, eenheid: 'set', tarief: null, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
       { id: 'd', categorie: 'uitvoering', omschrijving: 'Training van vrijwilligers', aantal: 12, eenheid: 'vrijwilliger', tarief: 60, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
+      { id: 'f', categorie: 'communicatie', omschrijving: 'Flyers en drukwerk', aantal: null, eenheid: '', tarief: null, bedrag: 750, soort: 'geld', toelichting: '', bron: 'handmatig' },
+      { id: 'g', categorie: 'eigen:Locatie en huisvesting', omschrijving: 'Zaalhuur', aantal: 10, eenheid: 'maand', tarief: 120, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
       { id: 'e', categorie: 'organisatie', omschrijving: 'Gratis zaal van de buurtvereniging', aantal: null, eenheid: '', tarief: null, bedrag: 2400, soort: 'natura', toelichting: '', bron: 'handmatig' },
     ];
 const project = { id: PROJECT, naam: 'Samen Spelen', begroting: 15920, eigenBijdrage: 2000, budgetRegels: regels };

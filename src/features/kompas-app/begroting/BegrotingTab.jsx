@@ -12,14 +12,36 @@ import { dekkingVanProject, formatEuro } from '../financiering/dekkingsplan.js';
 import { haalFinancieringVoorExport } from '../financiering/exportFinanciering.js';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
 import { valideerEnBereidOp } from '../projectOpslaan.js';
-import { CATEGORIEEN, berekenBegroting, categorieLabel, expenseLinesVoorExcel, leesBudgetRegels, nieuweRegel, regelBedrag, regelsVoorOpslag } from './begrotingModel.js';
+import { CATEGORIEEN, GEEN_KOPJE, berekenBegroting, categorieLabel, eigenKopjeSleutel, expenseLinesVoorExcel, kopjeDef, kopjeSlug, kopjeVolgorde, leesBudgetRegels, nieuweRegel, regelBedrag, regelsVoorOpslag, schuifKopje, schuifRegel, verplaatsKopje, verplaatsRegel, verwijderKopje } from './begrotingModel.js';
 
 const euro = (n) => `€ ${Number(n || 0).toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
 function BegrotingStijl() {
   return (
     <style>{`
-.fwk-bg-rij { display: grid; grid-template-columns: minmax(0, 1fr) 132px auto; gap: 8px; align-items: center; margin: 0 0 8px; }
+.fwk-bg-rij { display: grid; grid-template-columns: 18px minmax(0, 1fr) 132px auto; gap: 8px; align-items: center; margin: 0 0 8px; }
+.fwk-bg-greep { cursor: grab; text-align: center; font-size: 15px; line-height: 1; color: ${color.tekstLicht}; user-select: none; }
+.fwk-bg-greep:active { cursor: grabbing; }
+.fwk-bg-blok[data-sleep="ja"] { opacity: 0.45; }
+.fwk-bg-blok[data-over="voor"] { box-shadow: 0 -2px 0 0 ${color.groen}; }
+.fwk-bg-blok[data-over="na"] { box-shadow: 0 2px 0 0 ${color.groen}; }
+.fwk-bg-sec[data-over="voor"] { box-shadow: 0 -3px 0 0 ${color.groen}; }
+.fwk-bg-sec[data-over="na"] { box-shadow: 0 3px 0 0 ${color.groen}; }
+.fwk-bg-sec[data-sleep="ja"] { opacity: 0.5; }
+.fwk-bg-sec[data-doel="ja"] { box-shadow: inset 0 0 0 2px ${color.groen}; border-radius: 12px; }
+.fwk-bg-kophoofd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 14px 0 8px; }
+.fwk-bg-kopkant { display: flex; align-items: center; gap: 4px; min-width: 0; position: relative; }
+.fwk-bg-schuif { display: inline-flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.fwk-bg-kophoofd:hover .fwk-bg-schuif, .fwk-bg-kophoofd:focus-within .fwk-bg-schuif { opacity: 1; }
+@media (hover: none) { .fwk-bg-schuif { opacity: 1; } }
+.fwk-bg-wrap { position: relative; display: inline-flex; align-items: center; gap: 2px; }
+.fwk-bg-eigen { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 6px; }
+.fwk-bg-eigen .fwk-bg-veld { width: 240px; max-width: 100%; }
+.fwk-bg-info { cursor: pointer; border: none; background: none; width: 26px; height: 26px; border-radius: 999px; font-size: 15px; line-height: 1; color: ${color.tekstLicht}; }
+.fwk-bg-info:hover, .fwk-bg-info[aria-expanded="true"] { color: ${color.groen}; }
+.fwk-bg-tip { position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 6px; width: 300px; max-width: 78vw; box-sizing: border-box; padding: 10px 14px 10px 12px; border: 1px solid ${color.lijn}; border-radius: 12px; background: ${color.wit}; box-shadow: 0 8px 24px rgba(44,74,94,0.14); font-size: 13.5px; line-height: 1.5; font-weight: 600; color: ${color.tekst}; text-align: left; }
+.fwk-bg-tip ul { margin: 0; padding-left: 18px; }
+.fwk-bg-tip li + li { margin-top: 4px; }
 .fwk-bg-sub { text-align: right; font-weight: 800; color: ${color.donkerblauw}; font-size: 15px; white-space: nowrap; padding-right: 4px; }
 .fwk-bg-veld { width: 100%; box-sizing: border-box; min-height: 40px; padding: 8px 10px; border: 1px solid ${color.lijnInput}; border-radius: 10px; background: ${color.wit}; font-family: inherit; font-size: 14.5px; color: ${color.tekst}; }
 .fwk-bg-veld:focus { outline: 2px solid ${color.groen}; outline-offset: 1px; }
@@ -38,19 +60,64 @@ function BegrotingStijl() {
 .fwk-bg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
 .fwk-bg-natura { cursor: pointer; border: 1px solid ${color.lijnInput}; background: ${color.wit}; border-radius: 999px; padding: 6px 12px; font-family: inherit; font-size: 12.5px; font-weight: 800; color: ${color.tekstGrijs}; }
 .fwk-bg-natura[aria-pressed="true"] { background: ${color.vlakGroen}; border-color: ${color.lijnGroen}; color: ${color.succes}; }
-@media (max-width: 560px) { .fwk-bg-rij { grid-template-columns: minmax(0, 1fr) 104px auto; } }
+@media (max-width: 560px) { .fwk-bg-rij { grid-template-columns: 14px minmax(0, 1fr) 104px auto; } }
 `}</style>
   );
 }
 
-function Regel({ r, focus, onWijzig, onWeg }) {
+// Toelichting bij een kopje: een paar bullets bij overheen gaan (muis), focus of klikken op ⓘ; Escape sluit.
+function Toelichting({ kopje, children, knop = true }) {
+  const [hover, setHover] = useState(false);
+  const [vast, setVast] = useState(false);
+  const open = (hover || vast) && kopje.toelichting.length > 0;
+
+  if (kopje.toelichting.length === 0) return <span className="fwk-bg-wrap">{children}</span>;
+
+  return (
+    <span
+      className="fwk-bg-wrap"
+      data-testid={`bg-toelichting-${kopjeSlug(kopje.id)}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onFocus={() => setHover(true)}
+      onBlur={() => setHover(false)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          setHover(false);
+          setVast(false);
+        }
+      }}
+    >
+      {children}
+      {knop && (
+        <button type="button" className="fwk-bg-info" aria-label={`Toelichting bij ${kopje.label}`} aria-expanded={open} data-testid={`bg-info-${kopjeSlug(kopje.id)}`} onClick={() => setVast((v) => !v)}>
+          ⓘ
+        </button>
+      )}
+      {open && (
+        <div className="fwk-bg-tip" role="tooltip" data-testid={`bg-tip-${kopjeSlug(kopje.id)}`}>
+          <ul>
+            {kopje.toelichting.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </span>
+  );
+}
+
+function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEinde, onSleepOver, onDrop, onSchuif, kanOmhoog, kanOmlaag }) {
   const b = regelBedrag(r);
   const berekend = b.bron === 'berekend';
   const [meer, setMeer] = useState(false); // aantal, tarief en in natura staan achter ⋯, zodat de regel zelf schoon blijft
 
   return (
-    <div data-testid="bg-regel">
+    <div data-testid="bg-regel" className="fwk-bg-blok" data-sleep={sleep ? 'ja' : undefined} data-over={over || undefined} onDragOver={onSleepOver} onDrop={onDrop}>
       <div className="fwk-bg-rij">
+        <span className="fwk-bg-greep" data-testid="bg-greep" draggable aria-hidden="true" title="Verslepen" onDragStart={onSleepStart} onDragEnd={onSleepEinde}>
+          ⠿
+        </span>
         <input className="fwk-bg-veld" aria-label="Omschrijving" data-testid="bg-omschrijving" value={r.omschrijving} maxLength={200} autoFocus={focus} onChange={(e) => onWijzig({ omschrijving: e.target.value })} placeholder="Omschrijving" />
         {berekend ? (
           <div className="fwk-bg-sub" data-testid="bg-bedrag-berekend">
@@ -90,6 +157,14 @@ function Regel({ r, focus, onWijzig, onWeg }) {
           <button type="button" className="fwk-bg-natura" aria-pressed={r.soort === 'natura'} data-testid="bg-natura" onClick={() => onWijzig({ soort: r.soort === 'natura' ? 'geld' : 'natura' })}>
             In natura
           </button>
+          <span style={css('display: inline-flex; gap: 4px; margin-left: auto;')}>
+            <button type="button" className="fwk-bg-icoon" aria-label="Regel omhoog" data-testid="bg-regel-omhoog" disabled={!kanOmhoog} onClick={() => onSchuif('omhoog')}>
+              ↑
+            </button>
+            <button type="button" className="fwk-bg-icoon" aria-label="Regel omlaag" data-testid="bg-regel-omlaag" disabled={!kanOmlaag} onClick={() => onSchuif('omlaag')}>
+              ↓
+            </button>
+          </span>
         </div>
       )}
     </div>
@@ -115,11 +190,15 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const [extra, setExtra] = useState([]); // kopjes zonder regels die het lid zelf heeft toegevoegd
   const [plusOpen, setPlusOpen] = useState(null); // kopje-id waarbij de suggesties openstaan
   const [kopjeOpen, setKopjeOpen] = useState(beginRegels.length === 0);
+  const [eigenOpen, setEigenOpen] = useState(false); // het lid bedenkt zelf een kopje
+  const [eigenNaam, setEigenNaam] = useState('');
   const [focusId, setFocusId] = useState('');
   const [fout, setFout] = useState('');
   const [melding, setMelding] = useState('');
   const [bezig, setBezig] = useState(false);
   const [fin, setFin] = useState(null); // { regels, dekking, beschikbaar }
+  const [drag, setDrag] = useState(null); // { soort: 'regel' | 'kopje', id } terwijl er versleept wordt
+  const [over, setOver] = useState(null); // { soort: 'regel' | 'kopje' | 'doel', id, plek: 'voor' | 'na' }
 
   // Een ander project: de regels van dat project laden.
   useEffect(() => {
@@ -130,6 +209,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setExtra([]);
     setPlusOpen(null);
     setKopjeOpen(r.length === 0);
+    setEigenOpen(false);
+    setEigenNaam('');
     setFout('');
     setMelding('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,8 +249,9 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const begrotingVoorDekking = totaal > 0 ? Math.round(totaal) : project ? project.begroting : 0;
   const dek = useMemo(() => dekkingVanProject({ ...(project || {}), begroting: begrotingVoorDekking }, fin ? fin.regels : []), [project, begrotingVoorDekking, fin]);
 
-  const zichtbaar = CATEGORIEEN.filter((c) => regels.some((r) => r.categorie === c.id) || extra.includes(c.id));
+  const zichtbaar = kopjeVolgorde(regels, extra).map(kopjeDef);
   const nietZichtbaar = CATEGORIEEN.filter((c) => !zichtbaar.some((z) => z.id === c.id));
+  const kopjesMetRegels = kopjeVolgorde(regels);
 
   const wijzig = (id, wijz) => {
     setRegels((cur) => cur.map((r) => (r.id === id ? { ...r, ...wijz } : r)));
@@ -191,7 +273,122 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const kiesKopje = (id) => {
     setExtra((cur) => (cur.includes(id) ? cur : [...cur, id]));
     setKopjeOpen(false);
+    setEigenOpen(false);
     setPlusOpen(id);
+  };
+  const voegEigenKopjeToe = () => {
+    const gekozen = eigenKopjeSleutel(eigenNaam);
+
+    if (!gekozen) return;
+
+    // Dezelfde naam (ook met andere hoofdletters) als een kopje dat er al staat: geen tweede kopje, maar dat kopje.
+    const bestaand = zichtbaar.find((c) => c.id !== GEEN_KOPJE && c.label.toLowerCase() === categorieLabel(gekozen).toLowerCase());
+
+    kiesKopje(bestaand ? bestaand.id : gekozen);
+    setEigenNaam('');
+  };
+  // Kopje weghalen: de regels erin blijven staan, zonder kopje.
+  const haalKopjeWeg = (id) => {
+    setRegels((cur) => verwijderKopje(cur, id));
+    setExtra((cur) => cur.filter((x) => x !== id));
+    setPlusOpen(null);
+    setMelding('');
+  };
+
+  // Verslepen: de greep start het slepen, de rij of het kopje waar je overheen gaat toont een groene lijn, loslaten zet de regel of het kopje neer.
+  // Voor aanraking en toetsenbord zijn er pijltjes (hieronder), zodat verplaatsen niet van een muis afhangt.
+  const plekIn = (ev) => {
+    const rect = ev.currentTarget.getBoundingClientRect();
+
+    return ev.clientY < rect.top + rect.height / 2 ? 'voor' : 'na';
+  };
+  const startSleep = (soort, id) => (ev) => {
+    if (ev.dataTransfer) {
+      ev.dataTransfer.effectAllowed = 'move';
+
+      try {
+        ev.dataTransfer.setData('text/plain', id);
+        const blok = ev.currentTarget.closest(soort === 'regel' ? '.fwk-bg-blok' : '.fwk-bg-sec');
+
+        if (blok && ev.dataTransfer.setDragImage) ev.dataTransfer.setDragImage(blok, 12, 12);
+      } catch (e) {
+        // sommige browsers laten dit niet toe; slepen werkt dan zonder het mooie plaatje
+      }
+    }
+
+    setDrag({ soort, id });
+  };
+  const eindeSleep = () => {
+    setDrag(null);
+    setOver(null);
+  };
+  const zetRegelNeer = (doelRegel, plek) => {
+    if (!drag || drag.soort !== 'regel' || drag.id === doelRegel.id) return;
+
+    const broers = regels.filter((x) => x.categorie === doelRegel.categorie && x.id !== drag.id);
+    const i = broers.findIndex((x) => x.id === doelRegel.id);
+    const voor = plek === 'voor' ? doelRegel.id : (broers[i + 1] || {}).id || null;
+
+    setRegels((cur) => verplaatsRegel(cur, drag.id, doelRegel.categorie, voor));
+    setMelding('');
+  };
+  const zetKopjeNeer = (doelId, plek) => {
+    if (!drag || drag.soort !== 'kopje' || drag.id === doelId) return;
+
+    const rest = kopjesMetRegels.filter((id) => id !== drag.id);
+    const i = rest.indexOf(doelId);
+    const voor = plek === 'voor' ? doelId : rest[i + 1] || null;
+
+    setRegels((cur) => verplaatsKopje(cur, drag.id, voor));
+    setMelding('');
+  };
+  const regelOver = (r) => (ev) => {
+    if (!drag || drag.soort !== 'regel' || drag.id === r.id) return;
+
+    ev.preventDefault();
+    ev.stopPropagation();
+    setOver({ soort: 'regel', id: r.id, plek: plekIn(ev) });
+  };
+  const regelDrop = (r) => (ev) => {
+    if (!drag || drag.soort !== 'regel') return;
+
+    ev.preventDefault();
+    ev.stopPropagation();
+    zetRegelNeer(r, over && over.soort === 'regel' && over.id === r.id ? over.plek : plekIn(ev));
+    eindeSleep();
+  };
+  const kopjeOver = (c) => (ev) => {
+    if (!drag) return;
+
+    if (drag.soort === 'regel') {
+      ev.preventDefault();
+      setOver({ soort: 'doel', id: c.id });
+    } else if (drag.id !== c.id && kopjesMetRegels.includes(c.id)) {
+      ev.preventDefault();
+      setOver({ soort: 'kopje', id: c.id, plek: plekIn(ev) });
+    }
+  };
+  const kopjeDrop = (c) => (ev) => {
+    if (!drag) return;
+
+    ev.preventDefault();
+
+    if (drag.soort === 'regel') {
+      setRegels((cur) => verplaatsRegel(cur, drag.id, c.id, null));
+      setMelding('');
+    } else {
+      zetKopjeNeer(c.id, over && over.soort === 'kopje' && over.id === c.id ? over.plek : plekIn(ev));
+    }
+
+    eindeSleep();
+  };
+  const schuifRegelKnop = (id, richting) => {
+    setRegels((cur) => schuifRegel(cur, id, richting));
+    setMelding('');
+  };
+  const schuifKopjeKnop = (id, richting) => {
+    setRegels((cur) => schuifKopje(cur, id, richting));
+    setMelding('');
   };
 
   const opslaan = async () => {
@@ -290,24 +487,81 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
           const rijen = regels.filter((r) => r.categorie === c.id);
           const deel = totalen.perCategorie.find((x) => x.id === c.id);
           const gebruikt = new Set(rijen.map((r) => r.omschrijving.trim().toLowerCase()));
-          const open = plusOpen === c.id;
+          const open = plusOpen === c.id && c.id !== GEEN_KOPJE;
+          const slug = kopjeSlug(c.id);
+          const kopjeNr = kopjesMetRegels.indexOf(c.id);
+          const kopOver = over && over.id === c.id && over.soort === 'kopje' ? over.plek : undefined;
+          const isDoel = over && over.soort === 'doel' && over.id === c.id;
 
           return (
-            <section key={c.id} data-testid={`bg-kopje-${c.id}`} style={css('margin: 0 0 16px;')}>
-              <div className="fwk-wp-blokkop" style={css('margin: 14px 0 8px;')}>
-                <h3 style={css(`margin: 0; font-size: 15.5px; font-weight: 800; color: ${color.donkerblauw};`)}>{c.label}</h3>
-                <span className="fwk-aa-klein" data-testid={`bg-sub-${c.id}`}>
-                  {deel ? euro(deel.subtotaal) : euro(0)}
-                  {deel && deel.natura > 0 ? ` + ${euro(deel.natura)} in natura` : ''}
-                </span>
-              </div>
+            <section
+              key={c.id}
+              className="fwk-bg-sec"
+              data-testid={`bg-kopje-${slug}`}
+              data-sleep={drag && drag.soort === 'kopje' && drag.id === c.id ? 'ja' : undefined}
+              data-over={kopOver}
+              data-doel={isDoel ? 'ja' : undefined}
+              onDragOver={kopjeOver(c)}
+              onDrop={kopjeDrop(c)}
+              style={css('margin: 0 0 16px;')}
+            >
+              {c.id !== GEEN_KOPJE && (
+                <div className="fwk-bg-kophoofd">
+                  <div className="fwk-bg-kopkant">
+                    {kopjeNr !== -1 && (
+                      <span className="fwk-bg-greep" data-testid={`bg-kopje-greep-${slug}`} draggable aria-hidden="true" title="Kopje verslepen" onDragStart={startSleep('kopje', c.id)} onDragEnd={eindeSleep}>
+                        ⠿
+                      </span>
+                    )}
+                    <Toelichting kopje={c}>
+                      <h3 data-testid={`bg-kop-${slug}`} style={css(`margin: 0; font-size: 15.5px; font-weight: 800; color: ${color.donkerblauw};`)}>
+                        {c.label}
+                      </h3>
+                    </Toelichting>
+                  </div>
+                  <div className="fwk-bg-kopkant">
+                    {kopjeNr !== -1 && (
+                      <span className="fwk-bg-schuif">
+                        <button type="button" className="fwk-bg-icoon" aria-label={`Kopje ${c.label} omhoog`} data-testid={`bg-kopje-omhoog-${slug}`} disabled={kopjeNr === 0} onClick={() => schuifKopjeKnop(c.id, 'omhoog')}>
+                          ▲
+                        </button>
+                        <button type="button" className="fwk-bg-icoon" aria-label={`Kopje ${c.label} omlaag`} data-testid={`bg-kopje-omlaag-${slug}`} disabled={kopjeNr === kopjesMetRegels.length - 1} onClick={() => schuifKopjeKnop(c.id, 'omlaag')}>
+                          ▼
+                        </button>
+                      </span>
+                    )}
+                    <span className="fwk-aa-klein" data-testid={`bg-sub-${slug}`}>
+                      {deel ? euro(deel.subtotaal) : euro(0)}
+                      {deel && deel.natura > 0 ? ` + ${euro(deel.natura)} in natura` : ''}
+                    </span>
+                    <button type="button" className="fwk-bg-icoon" aria-label={`Kopje ${c.label} weghalen`} title="Kopje weghalen (de regels blijven staan)" data-testid={`bg-kopje-weg-${slug}`} onClick={() => haalKopjeWeg(c.id)}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
 
-              {rijen.map((r) => (
-                <Regel key={r.id} r={r} focus={focusId === r.id} onWijzig={(w) => wijzig(r.id, w)} onWeg={() => weg(r.id)} />
+              {rijen.map((r, i) => (
+                <Regel
+                  key={r.id}
+                  r={r}
+                  focus={focusId === r.id}
+                  sleep={!!drag && drag.soort === 'regel' && drag.id === r.id}
+                  over={over && over.soort === 'regel' && over.id === r.id ? over.plek : undefined}
+                  onWijzig={(w) => wijzig(r.id, w)}
+                  onWeg={() => weg(r.id)}
+                  onSleepStart={startSleep('regel', r.id)}
+                  onSleepEinde={eindeSleep}
+                  onSleepOver={regelOver(r)}
+                  onDrop={regelDrop(r)}
+                  onSchuif={(richting) => schuifRegelKnop(r.id, richting)}
+                  kanOmhoog={i > 0}
+                  kanOmlaag={i < rijen.length - 1}
+                />
               ))}
 
               {open ? (
-                <div className="fwk-bg-chips" data-testid={`bg-suggesties-${c.id}`}>
+                <div className="fwk-bg-chips" data-testid={`bg-suggesties-${slug}`}>
                   {c.suggesties
                     .filter(([naam]) => !gebruikt.has(naam.toLowerCase()))
                     .map(([naam, eenheid]) => (
@@ -321,7 +575,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 </div>
               ) : (
                 <div className="fwk-bg-lijn">
-                  <button type="button" className="fwk-bg-plus" data-testid={`bg-plus-${c.id}`} onClick={() => setPlusOpen(c.id)}>
+                  <button type="button" className="fwk-bg-plus" data-testid={`bg-plus-${slug}`} onClick={() => (c.id === GEEN_KOPJE ? voegToe(GEEN_KOPJE) : setPlusOpen(c.id))}>
                     + Regel
                   </button>
                 </div>
@@ -330,25 +584,55 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
           );
         })}
 
-        {nietZichtbaar.length > 0 && (
-          <div style={css('margin: 6px 0 4px;')}>
-            {kopjeOpen ? (
-              <div className="fwk-bg-chips" data-testid="bg-kopjes">
+        <div style={css('margin: 6px 0 4px;')}>
+          {kopjeOpen ? (
+            <div data-testid="bg-kopjes">
+              <div className="fwk-bg-chips">
                 {nietZichtbaar.map((c) => (
-                  <button key={c.id} type="button" className="fwk-bg-chip" data-testid={`bg-kopje-kies-${c.id}`} onClick={() => kiesKopje(c.id)}>
-                    {c.label}
-                  </button>
+                  <Toelichting key={c.id} kopje={c} knop={false}>
+                    <button type="button" className="fwk-bg-chip" data-testid={`bg-kopje-kies-${c.id}`} onClick={() => kiesKopje(c.id)}>
+                      {c.label}
+                    </button>
+                  </Toelichting>
                 ))}
-              </div>
-            ) : (
-              <div className="fwk-bg-lijn">
-                <button type="button" className="fwk-bg-plus" data-testid="bg-plus-kopje" onClick={() => setKopjeOpen(true)}>
-                  + Kopje
+                <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-eigen" onClick={() => setEigenOpen(true)}>
+                  Eigen kopje
                 </button>
+                {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
+                  <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-geen" onClick={() => { setKopjeOpen(false); voegToe(GEEN_KOPJE); }}>
+                    Zonder kopje
+                  </button>
+                )}
               </div>
-            )}
-          </div>
-        )}
+              {eigenOpen && (
+                <form
+                  className="fwk-bg-eigen"
+                  data-testid="bg-eigen-form"
+                  onSubmit={(ev) => {
+                    ev.preventDefault();
+                    voegEigenKopjeToe();
+                  }}
+                >
+                  <input className="fwk-bg-veld" aria-label="Naam van het kopje" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van het kopje" onChange={(e) => setEigenNaam(e.target.value)} />
+                  <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Kopje toevoegen">
+                    Toevoegen
+                  </Button>
+                </form>
+              )}
+            </div>
+          ) : (
+            <div className="fwk-bg-lijn">
+              <button type="button" className="fwk-bg-plus" data-testid="bg-plus-kopje" onClick={() => setKopjeOpen(true)}>
+                + Kopje
+              </button>
+              {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
+                <button type="button" className="fwk-bg-plus" data-testid="bg-plus-zonder-kopje" onClick={() => voegToe(GEEN_KOPJE)}>
+                  + Regel zonder kopje
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {totalen.zonderBedrag.length > 0 && (
           <div className="fwk-aa-klein" data-testid="bg-zonder-bedrag" style={css('margin: 10px 0;')}>
