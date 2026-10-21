@@ -168,7 +168,7 @@ function begrotingFeiten(ruw: unknown): BegrotingFeit[] {
   return feiten;
 }
 
-interface Financiering {
+export interface Financiering {
   naam: string;
   status: string;
   requested: number | null;
@@ -176,7 +176,7 @@ interface Financiering {
   zichtbaar: boolean;
 }
 
-function financieringen(ruw: unknown): Financiering[] {
+export function financieringen(ruw: unknown): Financiering[] {
   const lijst = Array.isArray(ruw) ? ruw.slice(0, 200) : [];
   const uit: Financiering[] = [];
 

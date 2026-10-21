@@ -20,6 +20,7 @@ export function maakServer(o = {}) {
   const deps = {
     modelNaam: 'test', nu: () => NU, vlagAan: () => s.opties.vlag,
     userUitToken: async (t) => (t === 'goed' ? { id: USER } : null),
+    leesBegrotingStand: async () => ({ regels: s.opties.standRegels ?? null, eigenBijdrage: 2000, financiering: s.opties.financieringNull ? null : [{ id: 'a', program_id: 'p', bron_type: 'financier', bron_status: 'zichtbaar', bron_naam: 'Fonds A', requested_amount: 5000, awarded_amount: 5000, status: 'awarded' }, { id: 'b', program_id: 'p', bron_type: 'financier', bron_status: 'zichtbaar', bron_naam: 'Fonds B', requested_amount: 4000, awarded_amount: null, status: 'submitted' }, { id: 'c', program_id: 'p', bron_type: 'financier', bron_status: 'zichtbaar', bron_naam: 'Fonds C', requested_amount: 3000, awarded_amount: null, status: 'preparing' }] }),
     leesProfiel: async () => ({ profiel: { subscription_tier: s.opties.tier, subscription_active: s.opties.tier !== 'free', trial_ends_at: null, role: 'user' }, storing: false }),
     rateLimitOk: async () => true,
     projectIsVanGebruiker: async (p, u) => p === PROJECT && u === USER,

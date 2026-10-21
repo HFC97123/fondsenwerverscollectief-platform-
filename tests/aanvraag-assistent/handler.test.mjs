@@ -84,6 +84,7 @@ function omgeving(opties = {}) {
       return id;
     },
     leesPlanBron: async (u, p, token) => { (log.planBronTokens ??= []).push(token); return o.planBronNull ? null : o.planBron ?? PLANBRON; },
+    leesBegrotingStand: async () => (o.standNull ? null : o.stand ?? { regels: null, eigenBijdrage: 2000, financiering: [rijF('Fonds A', 'awarded', 5000, 5000), rijF('Fonds B', 'submitted', 4000), rijF('Fonds C', 'preparing', 3000)] }),
     slaBeoordelingOp: async (rij) => { log.opgeslagen.push(rij); return o.opslaan ? 'bb000000-0000-4000-8000-000000000001' : null; },
     haalPagina: async (url) => { log.paginas.push(url); return o.pagina; },
     roep: async (systeem, gebruiker) => {
@@ -161,6 +162,7 @@ const PLANBRON_VOL = {
   info: { aanleiding: 'In de wijk zijn weinig plekken om veilig te spelen.', borging: 'De gemeente neemt de lessen na twee jaar over.' },
   organisatie: { ...PLANBRON.organisatie, mission: 'Elk kind verdient een plek om te spelen.' },
 };
+const rijF = (naam, status, requested, awarded = null) => ({ id: naam, program_id: 'p', bron_type: 'financier', bron_status: 'zichtbaar', bron_naam: naam, requested_amount: requested, awarded_amount: awarded, status });
 const vraag = (body, extra = {}) => ({ method: 'POST', authorization: 'Bearer goed-token', bodyText: typeof body === 'string' ? body : JSON.stringify(body), ...extra });
 const beoordeelBody = (extra = {}) => ({ mode: 'beoordelen', projectId: PROJECT, aanvraagTekst: AANVRAAG, eisen: EISEN, fondsLabel: 'Fonds Testlaan', ...extra });
 
@@ -733,6 +735,51 @@ sectie('11. Begroting uit een geüpload bestand');
   e = omgeving({ modelUpload: 'kapot' });
   r = await verwerk(vraag(body()), e.deps);
   check('model kapot: 502 en niets verbruikt', r.status === 502 && e.log.afgerond[0].succes === false);
+}
+
+
+sectie('12. Sluit de begroting met het dekkingsplan? (na een upload of een voorstel uit de chat)');
+{
+  const BESTAND = 'Begroting 2027\nUitvoering\nProjectleider | 100 | uur | 50 | 5.000\nTraining vrijwilligers | 2.000\nActiva\nMateriaal | 10 | stuk | 25 | 300\nTotaal | 9.000';
+  const upload = (extra = {}) => ({ mode: 'begroting-upload', projectId: PROJECT, tekst: BESTAND, ...extra });
+  let e = omgeving();
+  let r = await verwerk(vraag(upload()), e.deps);
+  let s = r.body.sluit?.toevoegen;
+
+  check('de regels (7.300) tegen eigen bijdrage 2.000 + toegekend 5.000 + aangevraagd 4.000 + planning 3.000: te veel gedekt, 6.700', r.status === 200 && s?.uitkomst === 'te-veel-gedekt' && s.begroting === 7300 && s.teVeel === 6700 && /€ 6\.700 hoger dan de begroting van € 7\.300/.test(s.tekst));
+  check('de bedragen waarmee gerekend is staan erbij', s.eigenBijdrage === 2000 && s.toegekend === 5000 && s.aangevraagd === 4000 && s.inPlanning === 3000);
+  check('zonder bestaande begroting is er geen aparte stand voor vervangen', r.body.sluit.vervangen === null);
+
+  e = omgeving({ stand: { regels: null, eigenBijdrage: 2000, financiering: [rijF('Fonds A', 'awarded', 5300)] } });
+  s = (await verwerk(vraag(upload()), e.deps)).body.sluit.toevoegen;
+  check('2.000 + 5.300 = 7.300: de begroting sluit', s.uitkomst === 'sluitend' && s.nogTeDekken === 0 && /sluit met het dekkingsplan/.test(s.tekst));
+
+  e = omgeving({ stand: { regels: null, eigenBijdrage: 2000, financiering: [rijF('Fonds A', 'awarded', 1000), rijF('Fonds C', 'preparing', 1000)] } });
+  s = (await verwerk(vraag(upload()), e.deps)).body.sluit.toevoegen;
+  check('nog te dekken: 7.300 min 2.000 min 1.000 min 1.000 in planning = 3.300; zonder planning 4.300', s.uitkomst === 'nog-te-dekken' && s.nogTeDekken === 3300 && s.nogTeDekkenZonderPlanning === 4300 && /Nog te dekken: € 3\.300/.test(s.tekst) && /€ 1\.000 staat in planning/.test(s.tekst));
+
+  e = omgeving({ stand: { regels: null, eigenBijdrage: 0, financiering: [] } });
+  s = (await verwerk(vraag(upload()), e.deps)).body.sluit.toevoegen;
+  check('geen dekking en geen eigen bijdrage: zegt dat er nog geen dekking staat', s.uitkomst === 'geen-dekking' && /nog geen dekking/.test(s.tekst) && /€ 7\.300/.test(s.tekst));
+
+  e = omgeving({ stand: { regels: { versie: 1, regels: [{ categorie: 'activa', omschrijving: 'Laptop', aantal: null, tarief: null, bedrag: 1000, soort: 'geld' }] }, eigenBijdrage: 2000, financiering: [rijF('Fonds A', 'awarded', 5300)] } });
+  r = await verwerk(vraag(upload()), e.deps);
+  check('met een bestaande begroting (laptop 1.000): toevoegen is 8.300 (nog 1.000 te dekken) en vervangen 7.300 (sluitend), allebei berekend', r.body.sluit.toevoegen.begroting === 8300 && r.body.sluit.toevoegen.uitkomst === 'nog-te-dekken' && r.body.sluit.toevoegen.nogTeDekken === 1000 && r.body.sluit.vervangen.begroting === 7300 && r.body.sluit.vervangen.uitkomst === 'sluitend');
+
+  e = omgeving({ stand: { regels: { versie: 1, regels: [{ categorie: 'uitvoering', omschrijving: 'Projectleider', aantal: 100, tarief: 50, bedrag: null, soort: 'geld' }] }, eigenBijdrage: 0, financiering: [] } });
+  r = await verwerk(vraag(upload()), e.deps);
+  check('een regel die er al precies zo stond wordt niet dubbel geteld (5.000 + 2.000 + 300 + niets extra voor de projectleider)', r.body.sluit.toevoegen.begroting === 7300);
+
+  e = omgeving({ standNull: true });
+  r = await verwerk(vraag(upload()), e.deps);
+  check('stand niet te lezen: toch gewoon een resultaat, zonder sluitcontrole', r.status === 200 && r.body.sluit === null && r.body.regels.length === 5);
+  e = omgeving({ stand: { regels: null, eigenBijdrage: 0, financiering: null } });
+  r = await verwerk(vraag(upload()), e.deps);
+  check('dekkingsplan niet te lezen: geen sluitcontrole (niet "geen dekking" beweren)', r.status === 200 && r.body.sluit === null);
+
+  e = omgeving();
+  r = await verwerk(vraag({ mode: 'begroting-voorstel', projectId: PROJECT, tekst: 'Hier is een voorstel voor uw begroting. Projectleider: 120 uur x 45 euro. Voedselpakketten ongeveer 2.500 euro (schatting).' }), e.deps);
+  check('ook het voorstel uit de chat krijgt de controle (5.400 + 2.500 + 1.000 vervangen niet nodig)', r.status === 200 && r.body.sluit?.toevoegen?.uitkomst === 'te-veel-gedekt' && r.body.sluit.toevoegen.begroting > 7000);
 }
 
 klaar('aanvraag-handler');

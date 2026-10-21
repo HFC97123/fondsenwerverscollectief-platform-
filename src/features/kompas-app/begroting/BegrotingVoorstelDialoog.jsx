@@ -20,6 +20,7 @@ export default function BegrotingVoorstelDialoog({ project, tekst, store, onSlui
   const [regels, setRegels] = useState([]); // schermregels van het voorstel
   const [fout, setFout] = useState('');
   const [resterend, setResterend] = useState(null);
+  const [sluit, setSluit] = useState(null); // de controle van de server: sluit de begroting met het dekkingsplan? { toevoegen, vervangen }
   const [modus, setModus] = useState('toevoegen');
   const [bezigOpslaan, setBezigOpslaan] = useState(false);
   const [totaalNa, setTotaalNa] = useState(0); // de projectbegroting na het opslaan
@@ -40,6 +41,7 @@ export default function BegrotingVoorstelDialoog({ project, tekst, store, onSlui
 
     setRegels(leesBudgetRegels(voorstelNaarRegels(res.antwoord.regels)));
     setResterend(typeof res.antwoord.resterend === 'number' ? res.antwoord.resterend : null);
+    setSluit(res.antwoord.sluit && res.antwoord.sluit.toevoegen ? res.antwoord.sluit : null);
     setFase('voorbeeld');
   };
 
@@ -159,6 +161,16 @@ export default function BegrotingVoorstelDialoog({ project, tekst, store, onSlui
                 </div>
               )}
             </div>
+
+            {sluit && (() => {
+              const s = modus === 'vervangen' && sluit.vervangen ? sluit.vervangen : sluit.toevoegen;
+
+              return (
+                <div data-testid="bv-sluit" data-uitkomst={s.uitkomst} style={css('margin-top: 10px; font-size: 13.5px; line-height: 1.5;')}>
+                  <b>{s.uitkomst === 'sluitend' ? 'Begroting en dekkingsplan sluiten.' : 'Begroting en dekkingsplan:'}</b> {s.tekst}
+                </div>
+              );
+            })()}
 
             {bestaand.length > 0 && (
               <fieldset style={css('border: 0; margin: 14px 0 0; padding: 0; font-size: 14.5px;')}>

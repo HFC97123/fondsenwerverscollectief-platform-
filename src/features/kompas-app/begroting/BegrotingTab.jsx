@@ -543,6 +543,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       bestand: bestand.name,
       aantal: Array.isArray(res.antwoord.regels) ? res.antwoord.regels.length : 0,
       waarschuwingen: Array.isArray(controle.waarschuwingen) ? controle.waarschuwingen : [],
+      sluit: res.antwoord.sluit && res.antwoord.sluit.toevoegen ? res.antwoord.sluit.toevoegen : null, // de controle van de server: sluit de begroting met het dekkingsplan?
       vorigeRegels: vorig.regels,
       vorigeBegroting: project.begroting,
       resterend: typeof res.antwoord.resterend === 'number' ? res.antwoord.resterend : null,
@@ -667,6 +668,11 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
             {upload.waarschuwingen.length === 0 && (
               <div data-testid="bg-upload-klopt" style={css('margin-top: 6px;')}>
                 De sommen in het bestand kloppen met de regels.
+              </div>
+            )}
+            {upload.sluit && (
+              <div data-testid="bg-upload-sluit" data-uitkomst={upload.sluit.uitkomst} style={css('margin-top: 8px;')}>
+                <b>{upload.sluit.uitkomst === 'sluitend' ? 'Begroting en dekkingsplan sluiten.' : 'Begroting en dekkingsplan:'}</b> {upload.sluit.tekst}
               </div>
             )}
             <div style={css('margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;')}>

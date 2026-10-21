@@ -385,6 +385,7 @@ sectie('8. Schatting, doorklik naar de chat en het voorstel uit de chat');
   check('vier regels, aantal x tarief is door het scherm uitgerekend (120 x 45 = 5.400), een regel zonder bedrag zegt bedrag volgt', regelsTekst.length === 4 && regelsTekst.some((t) => /Projectleider\s*€ 5\.400/.test(t)) && regelsTekst.some((t) => /Flyers\s*bedrag volgt/.test(t)));
   check('schatting en in natura zijn herkenbaar', $$('[data-testid="bv-schatting"]').length === 1 && regelsTekst.some((t) => /Voedselpakketten\s*schatting\s*€ 2\.500/.test(t)) && regelsTekst.some((t) => /Zaalhuur\s*in natura/.test(t) || /Zaalhuur.*in natura/.test(t)));
   check('totaal 5.400 + 2.500 = 7.900 (natura telt niet mee), waarvan 2.500 schatting', /Totaal € 7\.900/.test($('[data-testid="bv-totaal"]').textContent) && /waarvan € 2\.500 nog een schatting/.test($('[data-testid="bv-totaal"]').textContent));
+  check('het voorbeeld meldt of de begroting met het dekkingsplan sluit: 7.900 tegen een dekking van 14.000', /€ 6\.100 hoger dan de begroting van € 7\.900/.test($('[data-testid="bv-sluit"]')?.textContent || ''), $('[data-testid="bv-sluit"]')?.textContent);
   check('zonder bestaande begroting geen keuze toevoegen of vervangen; resterende ruimte zichtbaar', !$('[data-testid="bv-toevoegen"]') && /Nog 5 beoordelingen over/.test($('[data-testid="bv-resterend"]').textContent));
   check('de server heeft het voorstel gemeld met de maandruimte (niets bewaard)', d.srv.s.aanroepen.some((a) => a[1] === 'begroting-voorstel') && d.bewaard.length === 0);
   await klik(knop('Zet de regels in mijn begroting'));
@@ -394,15 +395,17 @@ sectie('8. Schatting, doorklik naar de chat en het voorstel uit de chat');
 
   const bestaand = [{ id: 'z1', categorie: 'activa', omschrijving: 'Laptop', aantal: null, eenheid: '', tarief: null, bedrag: 1000, soort: 'geld', schatting: false, toelichting: '', bron: 'handmatig' }];
 
-  d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', begroting: 1000, budgetRegels: bestaand });
+  d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', begroting: 1000, budgetRegels: bestaand }, { standRegels: bestaand });
   await klik(knop('Maak het voorbeeld van de begroting'));
   await wacht(() => $('[data-testid="bv-voorbeeld"]'));
+  check('de controle volgt de keuze: toevoegen 8.900 (5.100 te veel), vervangen 7.900 (6.100 te veel)', /begroting van € 8\.900/.test($('[data-testid="bv-sluit"]').textContent) && (await klik($('[data-testid="bv-vervangen"]')), /begroting van € 7\.900/.test($('[data-testid="bv-sluit"]').textContent)));
+  await klik($('[data-testid="bv-toevoegen"]'));
   check('met een bestaande begroting kiest het lid: toevoegen (standaard) of vervangen', $('[data-testid="bv-toevoegen"]').checked === true && !!$('[data-testid="bv-vervangen"]'));
   await klik(knop('Zet de regels in mijn begroting'));
   check('toevoegen: de laptop blijft en het voorstel komt erbij (5 regels, totaal 8.900)', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].budgetRegels.length === 5 && d.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop' && r.bron === 'handmatig') && d.bewaard[0].begroting === 8900);
   await opruimen();
 
-  d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', begroting: 1000, budgetRegels: bestaand });
+  d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', begroting: 1000, budgetRegels: bestaand }, { standRegels: bestaand });
   await klik(knop('Maak het voorbeeld van de begroting'));
   await wacht(() => $('[data-testid="bv-voorbeeld"]'));
   await klik($('[data-testid="bv-vervangen"]'));
@@ -463,6 +466,7 @@ sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkin
   check('de regel die niet klopt houdt het bedrag uit het bestand en een Let op', u.bewaard[0].budgetRegels.find((r) => r.omschrijving === 'Materiaal').bedrag === 300 && /Let op/.test(u.bewaard[0].budgetRegels.find((r) => r.omschrijving === 'Materiaal').toelichting));
   check('resterende ruimte: nog 5 van 6', /Nog 5 beoordelingen over/.test($('[data-testid="bg-upload-resterend"]').textContent));
   check('de server heeft het bestand gemeld als begroting-upload', u.srv.s.aanroepen.some((a) => a[1] === 'begroting-upload'));
+  check('het groene blok meldt ook of de begroting met het dekkingsplan sluit (de server vergeleek 7.300 met de dekking)', !!$('[data-testid="bg-upload-sluit"]') && /Begroting en dekkingsplan/.test($('[data-testid="bg-upload-sluit"]').textContent) && /€ 7\.300/.test($('[data-testid="bg-upload-sluit"]').textContent), $('[data-testid="bg-upload-sluit"]')?.textContent);
 
   await klik(knop('Upload ongedaan maken'));
   check('ongedaan maken: de vorige (lege) stand wordt weer opgeslagen en de regels zijn weg', await wacht(() => u.bewaard.length === 2) && u.bewaard[1].budgetRegels.length === 0 && $$('[data-testid="bg-regel"]').length === 0 && !$('[data-testid="bg-upload-resultaat"]'));

@@ -29,6 +29,7 @@ import {
   type ModelAanroep,
 } from './aanvraagAssistent.ts';
 import { maakBegrotingVoorstel, MAX_TEKENS_VOORSTEL } from './begrotingVoorstel.ts';
+import { sluitNaToevoegen } from './begrotingSluit.ts';
 import { leesBegrotingUpload, MAX_TEKENS_UPLOAD, MIN_TEKENS_UPLOAD } from './begrotingUpload.ts';
 import { tierConfigVoor } from './tierConfig.ts';
 import { bouwFeiten, fondsSleutel, MIN_FEITEN, planGereedheid, schrijfPlan, sectiesUitCriteria, STANDAARD_SECTIES, type PlanBron } from './projectplan.ts';
@@ -151,6 +152,8 @@ export interface HandlerDeps {
   leesAanvraag(userId: string, id: string): Promise<AanvraagRij | null | 'storing'>; // null = niet gevonden (of van iemand anders)
   bewaarAanvraag(rij: AanvraagSchrijf): Promise<string | null>; // id, of null bij mislukken
   leesPlanBron(userId: string, projectId: string, token?: string): Promise<PlanBron | null>; // null = niet te lezen
+  // De begroting die er al staat, de eigen bijdrage en het dekkingsplan zoals het lid het ziet (zelfde functie als het scherm). null = niet te lezen: dan blijft de sluitcontrole weg.
+  leesBegrotingStand?(userId: string, projectId: string, token: string): Promise<{ regels: unknown; eigenBijdrage: unknown; financiering: unknown[] | null } | null>;
   slaBeoordelingOp(rij: BeoordelingRij): Promise<string | null>; // id van de nieuwe rij, of null bij mislukken
   haalPagina(url: string): Promise<PaginaUitkomst>;
   roep: ModelAanroep;
@@ -736,17 +739,28 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
     const resterendBegroting = Math.max(0, ruimteBegroting.limiet - plekBegroting.gebruikt - 1);
 
+    // Sluit de begroting met het dekkingsplan? Alleen een melding; het lukt of het blijft weg (nooit een fout voor het lid).
+    let sluit: ReturnType<typeof sluitNaToevoegen> | null = null;
+
+    try {
+      const stand = deps.leesBegrotingStand ? await deps.leesBegrotingStand(userId, pid, token) : null;
+
+      if (stand && stand.financiering) sluit = sluitNaToevoegen({ bestaand: stand.regels, nieuw: voorstel.regels, eigenBijdrage: stand.eigenBijdrage, financiering: stand.financiering });
+    } catch (_e) {
+      sluit = null;
+    }
+
     // Bij een upload gaat de controle (sommen, afwijkingen) mee; het kopje uit het bestand blijft op de server.
     if (upload) {
       return {
         status: 200,
-        body: { ok: true, regels: voorstel.regels.map(({ sectie: _sectie, ...rest }: any) => rest), controle: voorstel.controle, resterend: resterendBegroting, limiet: ruimteBegroting.limiet },
+        body: { ok: true, regels: voorstel.regels.map(({ sectie: _sectie, ...rest }: any) => rest), controle: voorstel.controle, sluit, resterend: resterendBegroting, limiet: ruimteBegroting.limiet },
       };
     }
 
     return {
       status: 200,
-      body: { ok: true, regels: voorstel.regels, statistiek: voorstel.stat, resterend: resterendBegroting, limiet: ruimteBegroting.limiet },
+      body: { ok: true, regels: voorstel.regels, statistiek: voorstel.stat, sluit, resterend: resterendBegroting, limiet: ruimteBegroting.limiet },
     };
   }
 

@@ -39,6 +39,7 @@ const UPLOAD_ANTWOORD = {
     'Het totaal in het bestand is € 9.000, de regels tellen op tot € 7.300 (verschil € 1.700). Controleer welke regel ontbreekt of niet klopt.',
     '1 regel heeft geen bedrag in het bestand. Die telt nog niet mee; vul het bedrag in.',
   ] },
+  sluit: { toevoegen: { uitkomst: 'te-veel-gedekt', begroting: 7300, tekst: 'De dekking is € 6.700 hoger dan de begroting van € 7.300 (toegekend, aangevraagd en in planning samen). Kijk of een financier of een regel in de begroting niet klopt.' }, vervangen: null },
   resterend: 5,
   limiet: 6,
 };
