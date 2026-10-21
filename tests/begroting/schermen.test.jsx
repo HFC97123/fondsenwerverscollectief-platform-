@@ -5,7 +5,7 @@ const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></
 const g = globalThis;
 g.window = dom.window; g.document = dom.window.document;
 Object.defineProperty(g, 'navigator', { value: dom.window.navigator, configurable: true });
-g.HTMLElement = dom.window.HTMLElement; g.Event = dom.window.Event; g.MouseEvent = dom.window.MouseEvent;
+g.DOMParser = dom.window.DOMParser; g.HTMLElement = dom.window.HTMLElement; g.Event = dom.window.Event; g.MouseEvent = dom.window.MouseEvent;
 g.IS_REACT_ACT_ENVIRONMENT = true;
 
 const React = (await import('react')).default;
@@ -17,6 +17,7 @@ const { berekenBegroting, expenseLinesVoorExcel, leesBudgetRegels } = await impo
 const { default: BegrotingVoorstelDialoog } = await import('../../src/features/kompas-app/begroting/BegrotingVoorstelDialoog.jsx');
 const { leesChatStart, chatStartHref, leesChatUrl } = await import('../../src/features/kompas-app/chat/gesprekUrl.js');
 const { maakServer } = await import('../aanvraag-frontend/nepserver.mjs');
+const { leesBegrotingBestand } = await import('../../src/features/kompas-app/begroting/begrotingBestand.js');
 
 const stand = { ok: 0, fout: 0 };
 const check = (naam, waar, detail = '') => { if (waar) stand.ok += 1; else { stand.fout += 1; console.log(`  FAIL: ${naam} ${detail}`); } };
@@ -414,6 +415,103 @@ sectie('8. Schatting, doorklik naar de chat en het voorstel uit de chat');
   await klik(knop('Maak het voorbeeld van de begroting'));
   check('maand op: duidelijke melding, terug naar het begin, niets bewaard', await wacht(() => $('[data-testid="bv-fout"]')) && /deze maand al 6/.test($('[data-testid="bv-fout"]').textContent) && !!knop('Maak het voorbeeld van de begroting') && d.bewaard.length === 0);
   await opruimen();
+}
+
+sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkingen gemeld, ongedaan maken');
+{
+  const { default: ExcelJS } = await import('exceljs');
+  const R = (id, categorie, omschrijving, extra = {}) => ({ id, categorie, omschrijving, aantal: null, eenheid: '', tarief: null, bedrag: null, soort: 'geld', schatting: false, toelichting: '', bron: 'handmatig', ...extra });
+
+  const wb = new ExcelJS.Workbook();
+  const blad = wb.addWorksheet('Begroting 2027');
+
+  [['Begroting 2027'], ['Uitvoering'], ['Projectleider', 100, 'uur', 50, 5000], ['Training vrijwilligers', 2000], ['Activa'], ['Materiaal', 10, 'stuk', 25, 300], ['Totaal', 9000]].forEach((r) => blad.addRow(r));
+  blad.addRow(['Formule', { formula: 'A1', result: 42 }]);
+  wb.addWorksheet('Verborgen').state = 'hidden';
+  wb.getWorksheet('Verborgen').addRow(['Geheim blad dat niet meegaat', 1]);
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const bestand = (naam = 'begroting.xlsx', inhoud = buffer) => ({ name: naam, size: inhoud.byteLength ?? 10, arrayBuffer: async () => inhoud });
+  const kiesBestand = async (f) => {
+    const input = $('[data-testid="bg-upload-bestand"]');
+
+    Object.defineProperty(input, 'files', { value: [f], configurable: true });
+    await act(async () => { input.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  };
+  const toonUpload = async (project, serverOpties = {}) => {
+    const srv = maakServer(serverOpties);
+    const bewaard = [];
+    const store = { orgProfile: { name: 'Stichting Samen Spelen' }, saveProject: async (p) => { bewaard.push(p); return PROJECT; } };
+
+    client.__reset();
+    client.__zetSupabase({ ...srv.supabase, rpc: async () => ({ data: FUNDING, error: null }) });
+    await act(async () => { root.render(<BegrotingTab project={project} projecten={[project]} onKiesProject={() => {}} store={store} />); });
+    await wacht(() => $('[data-testid="bg-tab"]'));
+
+    return { srv, bewaard };
+  };
+
+  let u = await toonUpload({ ...BASIS, begroting: 0, budgetRegels: [] });
+  check('de uploadknop staat er en zegt dat het één beoordeling kost', !!$('[data-testid="bg-upload-knop"]') && /telt als één beoordeling/.test(tekst()) && u.srv.s.aanroepen.length === 0);
+  await kiesBestand(bestand());
+  check('na het kiezen staat het resultaat er, direct opgeslagen (geen tussenstap)', await wacht(() => $('[data-testid="bg-upload-resultaat"]')) && u.bewaard.length === 1);
+  check('de tekst die naar de server ging houdt rijen en cellen (" | "), formules als uitkomst, geen verborgen blad', /Projectleider \| 100 \| uur \| 50 \| 5000\nTraining vrijwilligers \| 2000/.test(u.srv.s.laatsteUpload || '') && /Formule \| 42/.test(u.srv.s.laatsteUpload) && !/Geheim blad/.test(u.srv.s.laatsteUpload));
+  check('vijf regels, elke met het label uit upload, en in de opslag bron upload', $$('[data-testid="bg-regel"]').length === 5 && $$('[data-testid="bg-upload-label"]').length === 5 && u.bewaard[0].budgetRegels.length === 5 && u.bewaard[0].budgetRegels.every((r) => r.bron === 'upload'));
+  check('het projecttotaal volgt: 5.000 + 2.000 + 300 = 7.300 (natura telt niet mee)', u.bewaard[0].begroting === 7300 && /Totaal € 7\.300/.test($('[data-testid="bg-totaal"]').textContent));
+  const meld = $$('[data-testid="bg-upload-waarschuwing"]').map((x) => x.textContent);
+  check('afwijkingen staan er: regel die niet klopt, subtotaal, totaal en regel zonder bedrag', meld.length === 4 && meld.some((m) => /aantal × tarief is € 250/.test(m)) && meld.some((m) => /subtotaal van “Activa”/.test(m)) && meld.some((m) => /totaal in het bestand is € 9\.000/.test(m)) && meld.some((m) => /geen bedrag/.test(m)));
+  check('de regel die niet klopt houdt het bedrag uit het bestand en een Let op', u.bewaard[0].budgetRegels.find((r) => r.omschrijving === 'Materiaal').bedrag === 300 && /Let op/.test(u.bewaard[0].budgetRegels.find((r) => r.omschrijving === 'Materiaal').toelichting));
+  check('resterende ruimte: nog 5 van 6', /Nog 5 beoordelingen over/.test($('[data-testid="bg-upload-resterend"]').textContent));
+  check('de server heeft het bestand gemeld als begroting-upload', u.srv.s.aanroepen.some((a) => a[1] === 'begroting-upload'));
+
+  await klik(knop('Upload ongedaan maken'));
+  check('ongedaan maken: de vorige (lege) stand wordt weer opgeslagen en de regels zijn weg', await wacht(() => u.bewaard.length === 2) && u.bewaard[1].budgetRegels.length === 0 && $$('[data-testid="bg-regel"]').length === 0 && !$('[data-testid="bg-upload-resultaat"]'));
+  await opruimen();
+
+  // Met een bestaande begroting wordt toegevoegd en blijft wat er stond.
+  u = await toonUpload({ ...BASIS, begroting: 1000, budgetRegels: [R('z1', 'activa', 'Laptop', { bedrag: 1000 })] });
+  await kiesBestand(bestand());
+  await wacht(() => $('[data-testid="bg-upload-resultaat"]'));
+  check('toegevoegd aan wat er stond: laptop blijft (6 regels), totaal 8.300, alleen de nieuwe hebben het label', u.bewaard[0].budgetRegels.length === 6 && u.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop' && r.bron === 'handmatig') && u.bewaard[0].begroting === 8300 && $$('[data-testid="bg-upload-label"]').length === 5);
+  await klik(knop('Upload ongedaan maken'));
+  check('ongedaan maken zet de laptop-stand en de oude projectbegroting terug', await wacht(() => u.bewaard.length === 2) && u.bewaard[1].budgetRegels.length === 1 && u.bewaard[1].begroting === 1000);
+  await opruimen();
+
+  // Fouten
+  u = await toonUpload({ ...BASIS, budgetRegels: [] });
+  await kiesBestand(bestand('begroting.pdf'));
+  check('een pdf wordt vriendelijk geweigerd, zonder servercontact', /Excel-bestand \(\.xlsx\) of een Word-bestand/.test($('[data-testid="bg-fout"]')?.textContent || '') && u.srv.s.aanroepen.length === 0 && u.bewaard.length === 0);
+  await kiesBestand(bestand('oud.xls'));
+  check('een oud .xls zegt: opslaan als .xlsx', /ouder bestandstype/.test($('[data-testid="bg-fout"]')?.textContent || ''));
+  await kiesBestand(bestand('kapot.xlsx', new ArrayBuffer(20)));
+  check('een kapot bestand geeft een duidelijke melding, niets bewaard', await wacht(() => /kon niet worden gelezen/.test($('[data-testid="bg-fout"]')?.textContent || '')) && u.bewaard.length === 0);
+  await kiesBestand({ name: 'groot.xlsx', size: 6 * 1024 * 1024, arrayBuffer: async () => buffer });
+  check('een te groot bestand wordt geweigerd', /te groot \(maximaal 5 MB\)/.test($('[data-testid="bg-fout"]')?.textContent || ''));
+  await opruimen();
+
+  u = await toonUpload({ ...BASIS, budgetRegels: [] });
+  for (let i = 0; i < 6; i += 1) u.srv.s.beoordelingen.set(`b${i}`, { id: `b${i}` });
+  await kiesBestand(bestand());
+  check('maand op: duidelijke melding, niets bewaard, knop weer beschikbaar', await wacht(() => /deze maand al 6/.test($('[data-testid="bg-fout"]')?.textContent || '')) && u.bewaard.length === 0 && !$('[data-testid="bg-upload-knop"]').disabled);
+  await opruimen();
+}
+
+sectie('9b. Een Word-bestand lezen: tabellen blijven rijen');
+{
+  const { Document, Packer, Paragraph, Table, TableRow, TableCell } = await import('docx');
+  const cel = (x) => new TableCell({ children: [new Paragraph(String(x))] });
+  const doc = new Document({ sections: [{ children: [
+    new Paragraph('Begroting Samen Spelen 2027'),
+    new Table({ rows: [['Post', 'Aantal', 'Tarief', 'Bedrag'], ['Projectleider', '100 uur', '50', '5.000'], ['Materiaal', '10', '25', '250']].map((r) => new TableRow({ children: r.map(cel) })) }),
+    new Paragraph('Totaal 5.250'),
+  ] }] });
+  const buf = await Packer.toBuffer(doc);
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const res = await leesBegrotingBestand({ name: 'begroting.docx', size: ab.byteLength, arrayBuffer: async () => ab });
+
+  check('een Word-bestand wordt gelezen; elke tabelrij is één regel met " | " tussen de cellen', res.ok && /Begroting Samen Spelen 2027\nPost \| Aantal \| Tarief \| Bedrag\nProjectleider \| 100 uur \| 50 \| 5\.000\nMateriaal \| 10 \| 25 \| 250\nTotaal 5\.250/.test(res.tekst), JSON.stringify(res).slice(0, 300));
+  const leeg = await leesBegrotingBestand({ name: 'leeg.docx', size: 10, arrayBuffer: async () => ab.slice(0, 10) });
+  check('een kapot Word-bestand geeft een melding, geen fout', leeg.ok === false && /kon niet worden gelezen/.test(leeg.melding));
 }
 
 console.log(`\nbegroting-schermen: ${stand.ok} OK, ${stand.fout} FAIL`);

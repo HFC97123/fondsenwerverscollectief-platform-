@@ -100,6 +100,12 @@ export function maakBegrotingVoorstel({ projectId, tekst }) {
   return isTekst(projectId) && isTekst(tekst) ? roep({ mode: 'begroting-voorstel', projectId, tekst: String(tekst) }) : ongeldig();
 }
 
+// Een geüpload begrotingsbestand (de tekst die de browser eruit haalde) omzetten in begrotingsregels, met een controle van de sommen. Telt als één beoordeling
+// van de maandruimte. Er wordt hier niets bewaard: het scherm slaat de regels op in de begroting van het project.
+export function leesBegrotingUpload({ projectId, tekst }) {
+  return isTekst(projectId) && isTekst(tekst) ? roep({ mode: 'begroting-upload', projectId, tekst: String(tekst) }) : ongeldig();
+}
+
 // Voortgangsmeter voor het algemene projectplan: hoeveel van de kerninformatie staat erin, wat mist er, en is dit project al geschreven?
 export function haalPlanGereedheid(projectId) {
   return isTekst(projectId) ? roep({ mode: 'plan-gereedheid', projectId }) : ongeldig();

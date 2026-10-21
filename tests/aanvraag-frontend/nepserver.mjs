@@ -54,6 +54,16 @@ export function maakServer(o = {}) {
         const inv = JSON.parse(gebruiker);
         return { inhoud: JSON.stringify({ tekst: `${inv.feiten[0].tekst} Daarmee bereiken we 4500 kinderen. [aanvullen: het aantal deelnemers]`, gebruikt: inv.feiten.map((f) => f.id), vragen: ['Hoeveel kinderen doen mee?'] }), usage: { prompt_tokens: 10, completion_tokens: 5 } };
       }
+      if (/Je zet de tekst van een bestaande projectbegroting om/.test(systeem)) {
+        s.laatsteUpload = gebruiker;
+        return { inhoud: JSON.stringify({ regels: [
+          { sectie: 'Uitvoering', kopje: 'uitvoering', omschrijving: 'Projectleider', aantal: 100, eenheid: 'uur', tarief: 50, bedrag: 5000, natura: false, schatting: false },
+          { sectie: 'Uitvoering', kopje: 'uitvoering', omschrijving: 'Training vrijwilligers', aantal: null, tarief: null, bedrag: 2000, natura: false, schatting: false },
+          { sectie: 'Activa', kopje: 'activa', omschrijving: 'Materiaal', aantal: 10, eenheid: 'stuk', tarief: 25, bedrag: 300, natura: false, schatting: false },
+          { sectie: 'Locatie', kopje: 'eigen', eigenKopje: 'Locatie', omschrijving: 'Zaal', aantal: null, tarief: null, bedrag: 1200, natura: true, schatting: false },
+          { sectie: 'Locatie', kopje: 'eigen', eigenKopje: 'Locatie', omschrijving: 'Verzekering', aantal: null, tarief: null, bedrag: null, natura: false, schatting: false },
+        ], totalen: [{ soort: 'subtotaal', sectie: 'Uitvoering', bedrag: 7000 }, { soort: 'subtotaal', sectie: 'Activa', bedrag: 250 }, { soort: 'totaal', sectie: '', bedrag: 9000 }] }), usage: { prompt_tokens: 1500, completion_tokens: 300 } };
+      }
       if (/Je zet een gesprek over de begroting/.test(systeem)) {
         return { inhoud: JSON.stringify({ regels: [
           { kopje: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: null, natura: false, schatting: false },

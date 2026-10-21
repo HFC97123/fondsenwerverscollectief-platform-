@@ -101,6 +101,23 @@ function omgeving(opties = {}) {
           { kopje: 'communicatie', omschrijving: 'Flyers', bedrag: -5 },
         ] }), usage: { prompt_tokens: 900, completion_tokens: 200 } };
       }
+      if (/Je zet de tekst van een bestaande projectbegroting om/.test(systeem)) {
+        if (o.modelUpload === 'kapot') return null;
+        o.gezienUploadTekst = gebruiker;
+        if (o.modelUpload === 'leeg') return { inhoud: JSON.stringify({ regels: [], totalen: [] }), usage: { prompt_tokens: 400, completion_tokens: 10 } };
+        return { inhoud: JSON.stringify({ regels: [
+          { sectie: 'Uitvoering', kopje: 'uitvoering', omschrijving: 'Projectleider', aantal: 100, eenheid: 'uur', tarief: 50, bedrag: 5000, natura: false, schatting: false },
+          { sectie: 'Uitvoering', kopje: 'uitvoering', omschrijving: 'Training vrijwilligers', aantal: null, tarief: null, bedrag: 2000, natura: false, schatting: false },
+          { sectie: 'Uitvoering', kopje: 'uitvoering', omschrijving: 'Training vrijwilligers', aantal: null, tarief: null, bedrag: 2000, natura: false, schatting: false },
+          { sectie: 'Activa', kopje: 'activa', omschrijving: 'Materiaal', aantal: 10, eenheid: 'stuk', tarief: 25, bedrag: 300, natura: false, schatting: false },
+          { sectie: 'Locatie', kopje: 'eigen', eigenKopje: 'Locatie', omschrijving: 'Zaal', aantal: null, tarief: null, bedrag: 1200, natura: true, schatting: false },
+          { sectie: 'Locatie', kopje: 'eigen', eigenKopje: 'Locatie', omschrijving: 'Verzekering', aantal: null, tarief: null, bedrag: null, natura: false, schatting: false },
+        ], totalen: [
+          { soort: 'subtotaal', sectie: 'Uitvoering', bedrag: 7000 },
+          { soort: 'subtotaal', sectie: 'Activa', bedrag: 250 },
+          { soort: 'totaal', sectie: '', bedrag: 9000 },
+        ] }), usage: { prompt_tokens: 1500, completion_tokens: 300 } };
+      }
       if (/Je schrijft één onderdeel/.test(systeem)) {
         if (o.modelPlan === 'kapot') return null;
         const inv = JSON.parse(gebruiker);
@@ -670,6 +687,52 @@ sectie('10. Begrotingsvoorstel uit de chat');
   check('gegooide modelfout: reservering wordt als mislukt afgerond', gegooidB && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
   e = omgeving({ reserveerStoring: true });
   check('reserveren faalt: 503, geen modelaanroep (fail closed)', (await verwerk(vraag(body()), e.deps)).status === 503 && e.log.modelAanroepen === 0);
+}
+
+
+sectie('11. Begroting uit een geüpload bestand');
+{
+  const BESTAND = 'Begroting 2027\nUitvoering\nProjectleider | 100 | uur | 50 | 5.000\nTraining vrijwilligers | 2.000\nActiva\nMateriaal | 10 | stuk | 25 | 300\nTotaal | 9.000';
+  const body = (extra = {}) => ({ mode: 'begroting-upload', projectId: PROJECT, tekst: BESTAND, ...extra });
+  let e = omgeving({ tier: 'pro', tellingBeoordelingen: 2 });
+  let r = await verwerk(vraag(body()), e.deps);
+  const rg = r.body.regels || [];
+  const c = r.body.controle || {};
+
+  check('Pro: een bestand wordt gelezen en telt als één beoordeling van de maandruimte (3 van 6, 3 resterend)', r.status === 200 && r.body.ok === true && r.body.resterend === 3 && r.body.limiet === 6 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen');
+  check('een dubbele regel onder dezelfde kop wordt niet dubbel geteld; de rest blijft', rg.map((x) => x.omschrijving).join() === 'Projectleider,Training vrijwilligers,Materiaal,Zaal,Verzekering');
+  check('het kopje uit het bestand blijft op de server (geen veld sectie in het antwoord)', rg.every((x) => !('sectie' in x)));
+  check('aantal x tarief dat klopt: aantal en tarief blijven, het scherm rekent', rg[0].aantal === 100 && rg[0].tarief === 50 && rg[0].bedrag === null);
+  check('aantal x tarief dat niet klopt: het bedrag uit het bestand blijft staan en de regel krijgt een Let op', rg[2].aantal === null && rg[2].tarief === null && rg[2].bedrag === 300 && /Let op/.test(rg[2].toelichting));
+  check('een bedrag van het lid is geen schatting; in natura blijft in natura; een eigen kopje houdt zijn naam', rg.every((x) => x.schatting === false) && rg[3].soort === 'natura' && rg[3].categorie === 'eigen:Locatie');
+  check('de som van de regels (zonder natura): 5.000 + 2.000 + 300 = 7.300; het totaal in het bestand is 9.000', c.somRegels === 7300 && c.totaalInBestand === 9000 && c.opgenomen === 5);
+  const w = (c.waarschuwingen || []).join(' | ');
+  check('afwijkingen worden gemeld: regel, subtotaal, totaal en regel zonder bedrag', /aantal × tarief is € 250/.test(w) && /subtotaal van “Activa”/.test(w) && /totaal in het bestand is € 9\.000/.test(w) && /1 regel heeft geen bedrag/.test(w));
+  check('een kloppend subtotaal geeft geen melding', !/subtotaal van “Uitvoering”/.test(w));
+  check('de regelindeling van het bestand gaat naar het model', (e.o.gezienUploadTekst || '').includes('Projectleider | 100 | uur | 50 | 5.000\nTraining vrijwilligers') && /TEKST UIT HET BESTAND/.test(e.o.gezienUploadTekst || ''));
+  check('gebruik gelogd als aanvraag_begroting_upload zonder inhoud', e.log.gebruik.length === 1 && e.log.gebruik[0].actie === 'aanvraag_begroting_upload' && !JSON.stringify(e.log.gebruik).includes('Projectleider'));
+  check('afgerond als gelukt', e.log.afgerond.length === 1 && e.log.afgerond[0].succes === true);
+
+  e = omgeving({ tier: 'premium', tellingBeoordelingen: 30 });
+  r = await verwerk(vraag(body()), e.deps);
+  check('Premium: maand op (30): 429, geen modelaanroep', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
+  e = omgeving({ tier: 'free', actief: false });
+  check('Free: geen toegang', (await verwerk(vraag(body()), e.deps)).status === 403);
+  e = omgeving({ projectVan: ANDER });
+  r = await verwerk(vraag(body()), e.deps);
+  check('project van een ander: 404, niets gereserveerd', r.status === 404 && e.log.reserveringen.length === 0 && e.log.modelAanroepen === 0);
+  e = omgeving();
+  r = await verwerk(vraag(body({ tekst: 'leeg' })), e.deps);
+  check('bijna lege tekst: 400, niets gereserveerd', r.status === 400 && r.body.reden === 'geen-tekst' && e.log.reserveringen.length === 0);
+  e = omgeving();
+  r = await verwerk(vraag(body({ tekst: 'a'.repeat(60_001) })), e.deps);
+  check('te groot bestand: 413, niets gereserveerd', r.status === 413 && e.log.reserveringen.length === 0);
+  e = omgeving({ modelUpload: 'leeg' });
+  r = await verwerk(vraag(body()), e.deps);
+  check('geen kostenposten gevonden: 422 en niets verbruikt', r.status === 422 && r.body.reden === 'geen-regels' && e.log.afgerond[0].succes === false);
+  e = omgeving({ modelUpload: 'kapot' });
+  r = await verwerk(vraag(body()), e.deps);
+  check('model kapot: 502 en niets verbruikt', r.status === 502 && e.log.afgerond[0].succes === false);
 }
 
 klaar('aanvraag-handler');

@@ -29,6 +29,7 @@ import {
   type ModelAanroep,
 } from './aanvraagAssistent.ts';
 import { maakBegrotingVoorstel, MAX_TEKENS_VOORSTEL } from './begrotingVoorstel.ts';
+import { leesBegrotingUpload, MAX_TEKENS_UPLOAD, MIN_TEKENS_UPLOAD } from './begrotingUpload.ts';
 import { tierConfigVoor } from './tierConfig.ts';
 import { bouwFeiten, fondsSleutel, MIN_FEITEN, planGereedheid, schrijfPlan, sectiesUitCriteria, STANDAARD_SECTIES, type PlanBron } from './projectplan.ts';
 
@@ -38,9 +39,9 @@ export const MAX_FONDSLABEL = 200;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag' | 'begroting-voorstel';
+export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag' | 'begroting-voorstel' | 'begroting-upload';
 
-const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag', 'begroting-voorstel'];
+const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag', 'begroting-voorstel', 'begroting-upload'];
 
 // Het algemene projectplan telt per rollend jaar (aantal verschillende projecten); een verwijderd project geeft zijn plek niet terug.
 export const PLAN_VENSTER_MAANDEN = 12;
@@ -646,15 +647,32 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
   }
 
   // ── begroting-voorstel (het chatantwoord over de begroting omzetten in regels; telt als één beoordeling) ───────────────────────────────────────
-  if (modus === 'begroting-voorstel') {
+  if (modus === 'begroting-voorstel' || modus === 'begroting-upload') {
+    const upload = modus === 'begroting-upload';
     const pid = typeof body.projectId === 'string' && UUID_RE.test(body.projectId) ? body.projectId.toLowerCase() : '';
 
     if (!pid) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
 
-    const tekst = tekstVeld(body.tekst, MAX_TEKENS_VOORSTEL + 1);
+    const maxTekens = upload ? MAX_TEKENS_UPLOAD : MAX_TEKENS_VOORSTEL;
+    const tekst = tekstVeld(body.tekst, maxTekens + 1);
 
-    if (tekst.length > MAX_TEKENS_VOORSTEL) return fout(413, 'te-lang', 'Dit antwoord is te lang om in één keer om te zetten. Vraag de chat om de begroting korter samen te vatten.');
-    if (tekst.trim().length < 40) return fout(400, 'geen-tekst', 'In dit antwoord staat nog geen begroting. Vraag de chat om de begroting eerst op te stellen.');
+    if (tekst.length > maxTekens) {
+      return fout(
+        413,
+        'te-lang',
+        upload
+          ? 'Dit bestand is te groot om in één keer te lezen. Bewaar alleen het blad of het deel met de begroting in een nieuw bestand.'
+          : 'Dit antwoord is te lang om in één keer om te zetten. Vraag de chat om de begroting korter samen te vatten.',
+      );
+    }
+
+    if (tekst.trim().length < (upload ? MIN_TEKENS_UPLOAD : 40)) {
+      return fout(
+        400,
+        'geen-tekst',
+        upload ? 'In dit bestand staat geen tekst die we kunnen lezen. Staat de begroting in een afbeelding? Upload dan een Excel- of Word-bestand met de begroting als tekst.' : 'In dit antwoord staat nog geen begroting. Vraag de chat om de begroting eerst op te stellen.',
+      );
+    }
 
     const projectBegroting = await deps.projectIsVanGebruiker(pid, userId);
 
@@ -682,10 +700,10 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
     if (!plekBegroting.ok) return plekBegroting.reden === 'maand-op' ? begrotingMaandOp() : reserveerWeigering(plekBegroting.reden);
 
-    let voorstel: Awaited<ReturnType<typeof maakBegrotingVoorstel>>;
+    let voorstel: { regels: any[]; stat?: unknown; controle?: unknown; usage: { prompt_tokens: number; completion_tokens: number }; gelukt: boolean };
 
     try {
-      voorstel = await maakBegrotingVoorstel({ tekst, roep: deps.roep });
+      voorstel = upload ? await leesBegrotingUpload({ tekst, roep: deps.roep }) : await maakBegrotingVoorstel({ tekst, roep: deps.roep });
     } catch (e) {
       await deps.rondAf(plekBegroting.id, userId, false).catch(() => undefined);
       throw e;
@@ -698,7 +716,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     await deps.meldGebruik({
       userId,
       tier: tierLabel,
-      actie: 'aanvraag_begroting',
+      actie: upload ? 'aanvraag_begroting_upload' : 'aanvraag_begroting',
       projectId: pid,
       model: deps.modelNaam,
       inputTokens: voorstel.usage.prompt_tokens,
@@ -707,12 +725,28 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
       succes: bruikbaar,
     });
 
-    if (!voorstel.gelukt) return fout(502, 'ai-mislukt', 'Het omzetten lukte nu niet. Probeer het later opnieuw; er is niets verbruikt van uw maandruimte.');
-    if (!bruikbaar) return fout(422, 'geen-regels', 'In dit antwoord staan geen kostenposten om in de begroting te zetten. Er is niets verbruikt van uw maandruimte.');
+    if (!voorstel.gelukt) return fout(502, 'ai-mislukt', `${upload ? 'Het lezen van het bestand' : 'Het omzetten'} lukte nu niet. Probeer het later opnieuw; er is niets verbruikt van uw maandruimte.`);
+    if (!bruikbaar) {
+      return fout(
+        422,
+        'geen-regels',
+        `${upload ? 'In dit bestand staan geen kostenposten om in de begroting te zetten.' : 'In dit antwoord staan geen kostenposten om in de begroting te zetten.'} Er is niets verbruikt van uw maandruimte.`,
+      );
+    }
+
+    const resterendBegroting = Math.max(0, ruimteBegroting.limiet - plekBegroting.gebruikt - 1);
+
+    // Bij een upload gaat de controle (sommen, afwijkingen) mee; het kopje uit het bestand blijft op de server.
+    if (upload) {
+      return {
+        status: 200,
+        body: { ok: true, regels: voorstel.regels.map(({ sectie: _sectie, ...rest }: any) => rest), controle: voorstel.controle, resterend: resterendBegroting, limiet: ruimteBegroting.limiet },
+      };
+    }
 
     return {
       status: 200,
-      body: { ok: true, regels: voorstel.regels, statistiek: voorstel.stat, resterend: Math.max(0, ruimteBegroting.limiet - plekBegroting.gebruikt - 1), limiet: ruimteBegroting.limiet },
+      body: { ok: true, regels: voorstel.regels, statistiek: voorstel.stat, resterend: resterendBegroting, limiet: ruimteBegroting.limiet },
     };
   }
 

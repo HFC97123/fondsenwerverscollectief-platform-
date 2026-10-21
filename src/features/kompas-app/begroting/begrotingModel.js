@@ -362,9 +362,9 @@ export function leesOpgeslagenRegels(waarde) {
     }));
 }
 
-// Regels uit het AI-voorstel (de server geeft ze al gecontroleerd terug) -> opslagregels met een eigen id en bron 'ai'.
-export function voorstelNaarRegels(voorstel) {
-  return leesOpgeslagenRegels((Array.isArray(voorstel) ? voorstel : []).map((r) => ({ ...r, id: nieuwRegelId(), bron: 'ai' })));
+// Regels uit het AI-voorstel of uit een geüpload bestand (de server geeft ze al gecontroleerd terug) -> opslagregels met een eigen id en bron 'ai' (of 'upload').
+export function voorstelNaarRegels(voorstel, bron = 'ai') {
+  return leesOpgeslagenRegels((Array.isArray(voorstel) ? voorstel : []).map((r) => ({ ...r, id: nieuwRegelId(), bron: BRONNEN.includes(bron) ? bron : 'ai' })));
 }
 
 // Het voorstel bij de bestaande opslagregels voegen. 'toevoegen' laat alles staan en slaat regels over die er al precies zo staan;

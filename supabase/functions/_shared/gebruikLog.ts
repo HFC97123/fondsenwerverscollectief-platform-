@@ -26,6 +26,7 @@ export const ACTIE_TYPES = [
   'aanvraag_beoordeling', // aanvraag-assistent: aanvraag beoordelen tegen de eisen
   'aanvraag_plan', // aanvraag-assistent: projectplan schrijven uit projectgegevens en documentatie
   'aanvraag_begroting', // aanvraag-assistent: het chatantwoord over de begroting omzetten in begrotingsregels
+  'aanvraag_begroting_upload', // aanvraag-assistent: een geüpload begrotingsbestand omzetten in begrotingsregels
 ] as const;
 
 export type ActieType = (typeof ACTIE_TYPES)[number];

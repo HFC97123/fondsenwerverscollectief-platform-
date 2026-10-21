@@ -23,7 +23,28 @@ const regels = q.get('leeg')
     ];
 const project = { id: PROJECT, naam: 'Samen Spelen', begroting: 15920, eigenBijdrage: 2000, budgetRegels: regels };
 
+// ?upload=1: de uploadknop werkt tegen een nagebootste server (zelfde antwoordvorm als de echte).
+const UPLOAD_ANTWOORD = {
+  ok: true,
+  regels: [
+    { categorie: 'uitvoering', omschrijving: 'Projectleider', aantal: 100, eenheid: 'uur', tarief: 50, bedrag: null, soort: 'geld', schatting: false, toelichting: '' },
+    { categorie: 'uitvoering', omschrijving: 'Training vrijwilligers', aantal: null, eenheid: '', tarief: null, bedrag: 2000, soort: 'geld', schatting: false, toelichting: '' },
+    { categorie: 'activa', omschrijving: 'Materiaal', aantal: null, eenheid: '', tarief: null, bedrag: 300, soort: 'geld', schatting: false, toelichting: 'Let op: in het bestand staat 10 × € 25 = € 250, maar het bestand noemt € 300. Het bedrag uit het bestand is overgenomen.' },
+    { categorie: 'eigen:Locatie', omschrijving: 'Zaal', aantal: null, eenheid: '', tarief: null, bedrag: 1200, soort: 'natura', schatting: false, toelichting: '' },
+    { categorie: 'eigen:Locatie', omschrijving: 'Verzekering', aantal: null, eenheid: '', tarief: null, bedrag: null, soort: 'geld', schatting: false, toelichting: '' },
+  ],
+  controle: { waarschuwingen: [
+    '“Materiaal”: aantal × tarief is € 250, het bestand noemt € 300. Het bedrag uit het bestand staat in de begroting.',
+    'Het subtotaal van “Activa” in het bestand is € 250, de regels daaronder tellen op tot € 300 (verschil € 50).',
+    'Het totaal in het bestand is € 9.000, de regels tellen op tot € 7.300 (verschil € 1.700). Controleer welke regel ontbreekt of niet klopt.',
+    '1 regel heeft geen bedrag in het bestand. Die telt nog niet mee; vul het bedrag in.',
+  ] },
+  resterend: 5,
+  limiet: 6,
+};
+
 client.__zetSupabase({
+  functions: { invoke: async (_naam, { body }) => (body && body.mode === 'begroting-upload' ? { data: UPLOAD_ANTWOORD, error: null } : { data: null, error: new Error('niet nagebootst') }) },
   rpc: async () => ({
     data: [
       { id: 'f1', program_id: PROJECT, bron_naam: 'Stichting Voorbeeldfonds', status: 'awarded', requested_amount: 6000, awarded_amount: 5000 },

@@ -2,7 +2,7 @@
 // regels: omschrijving en bedrag, eventueel met aantal x tarief of als bijdrage in natura. Daaronder staat het dekkingsplan: toegekend,
 // uitstaand en in planning, het totaal (dat gelijk moet zijn aan de begroting) en wat nog te dekken is. Het totaal van de kosten wordt de
 // projectbegroting (project.begroting), waarmee de rest van Subsidie Kompas al rekent. Bedragen verzint niemand: een lege regel telt niet mee.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { color } from '../../../shared/tokens.js';
 import { Button } from '../../../shared/ui/index.js';
@@ -12,8 +12,10 @@ import { dekkingVanProject, formatEuro } from '../financiering/dekkingsplan.js';
 import { haalFinancieringVoorExport } from '../financiering/exportFinanciering.js';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
 import { chatStartHref } from '../chat/gesprekUrl.js';
+import { leesBegrotingUpload } from '../../../data/services/aanvraagAssistent.js';
+import { leesBegrotingBestand } from './begrotingBestand.js';
 import { valideerEnBereidOp } from '../projectOpslaan.js';
-import { CATEGORIEEN, GEEN_KOPJE, berekenBegroting, categorieLabel, eigenKopjeSleutel, expenseLinesVoorExcel, kopjeDef, kopjeSlug, kopjeVolgorde, leesBudgetRegels, nieuweRegel, regelBedrag, regelsVoorOpslag, schuifKopje, schuifRegel, verplaatsKopje, verplaatsRegel, verwijderKopje } from './begrotingModel.js';
+import { CATEGORIEEN, GEEN_KOPJE, berekenBegroting, categorieLabel, eigenKopjeSleutel, expenseLinesVoorExcel, kopjeDef, kopjeSlug, kopjeVolgorde, leesBudgetRegels, nieuweRegel, regelBedrag, regelsVoorOpslag, samenvoegVoorstel, schuifKopje, schuifRegel, verplaatsKopje, verplaatsRegel, verwijderKopje, voorstelNaarRegels } from './begrotingModel.js';
 
 const euro = (n) => `€ ${Number(n || 0).toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
@@ -45,6 +47,7 @@ function BegrotingStijl() {
 .fwk-bg-tip li + li { margin-top: 4px; }
 .fwk-bg-schat { cursor: pointer; border: 1px solid #E8C98A; background: #FFF6E3; color: #8A5A00; border-radius: 999px; padding: 3px 9px; font-family: inherit; font-size: 11.5px; font-weight: 800; }
 .fwk-bg-schat:hover { background: #FFEFC9; }
+.fwk-bg-upl { border: 1px solid #C9D8E2; background: #EEF4F8; color: #2C4A5E; border-radius: 999px; padding: 3px 9px; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
 .fwk-bg-sub { text-align: right; font-weight: 800; color: ${color.donkerblauw}; font-size: 15px; white-space: nowrap; padding-right: 4px; }
 .fwk-bg-veld { width: 100%; box-sizing: border-box; min-height: 40px; padding: 8px 10px; border: 1px solid ${color.lijnInput}; border-radius: 10px; background: ${color.wit}; font-family: inherit; font-size: 14.5px; color: ${color.tekst}; }
 .fwk-bg-veld:focus { outline: 2px solid ${color.groen}; outline-offset: 1px; }
@@ -140,6 +143,11 @@ function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEi
               schatting
             </button>
           )}
+          {r.bron === 'upload' && (
+            <span className="fwk-bg-upl" data-testid="bg-upload-label" title="Deze regel komt uit het geüploade bestand. Controleer of het klopt.">
+              uit upload
+            </span>
+          )}
           {r.soort === 'natura' && !meer && (
             <span className="fwk-aa-klein" data-testid="bg-natura-label">
               natura
@@ -212,6 +220,9 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const [fin, setFin] = useState(null); // { regels, dekking, beschikbaar }
   const [drag, setDrag] = useState(null); // { soort: 'regel' | 'kopje', id } terwijl er versleept wordt
   const [over, setOver] = useState(null); // { soort: 'regel' | 'kopje' | 'doel', id, plek: 'voor' | 'na' }
+  const [uploadBezig, setUploadBezig] = useState(false);
+  const [upload, setUpload] = useState(null); // { bestand, aantal, waarschuwingen, vorigeRegels, vorigeBegroting, resterend } na een geslaagde upload
+  const bestandRef = useRef(null);
 
   // Een ander project: de regels van dat project laden.
   useEffect(() => {
@@ -226,6 +237,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setEigenNaam('');
     setFout('');
     setMelding('');
+    setUpload(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -446,6 +458,132 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     laadFin();
   };
 
+  // Een bestaande begroting uploaden: de browser haalt de tekst eruit, de server zet haar om in regels en rekent de sommen na; de regels worden direct
+  // bij de begroting gezet en opgeslagen (met bron "upload"). Afwijkingen komen als melding terug; "Ongedaan maken" zet de vorige stand terug.
+  const kiesBestand = () => {
+    if (bestandRef.current) bestandRef.current.click();
+  };
+
+  const uploadBestand = async (ev) => {
+    const bestand = ev.target.files && ev.target.files[0];
+
+    ev.target.value = '';
+
+    if (!bestand || uploadBezig) return;
+
+    setFout('');
+    setMelding('');
+    setUpload(null);
+
+    const vorig = regelsVoorOpslag(regels);
+
+    if (!vorig.ok) {
+      setFout(`Los eerst dit op voordat u een bestand uploadt: ${vorig.fout}`);
+
+      return;
+    }
+
+    setUploadBezig(true);
+
+    const gelezen = await leesBegrotingBestand(bestand);
+
+    if (!gelezen.ok) {
+      setFout(gelezen.melding);
+      setUploadBezig(false);
+
+      return;
+    }
+
+    const res = await leesBegrotingUpload({ projectId, tekst: gelezen.tekst });
+
+    if (!res.ok) {
+      setFout(res.melding);
+      setUploadBezig(false);
+
+      return;
+    }
+
+    const nieuw = voorstelNaarRegels(res.antwoord.regels, 'upload');
+    const samen = leesBudgetRegels(samenvoegVoorstel(vorig.regels, nieuw, 'toevoegen'));
+    const klaar = regelsVoorOpslag(samen);
+
+    if (!klaar.ok) {
+      setFout(klaar.fout);
+      setUploadBezig(false);
+
+      return;
+    }
+
+    const totaalNa = berekenBegroting(samen).totaalGeld;
+    const check = valideerEnBereidOp({ ...project, budgetRegels: klaar.regels, begroting: totaalNa > 0 ? Math.round(totaalNa) : project.begroting });
+
+    if (!check.ok) {
+      setFout(check.fout);
+      setUploadBezig(false);
+
+      return;
+    }
+
+    const id = await Promise.resolve(store.saveProject(check.project));
+
+    setUploadBezig(false);
+
+    if (id === null) {
+      setFout('Opslaan lukte niet. Probeer het opnieuw.');
+
+      return;
+    }
+
+    const opgeslagen = leesBudgetRegels(klaar.regels);
+    const controle = res.antwoord.controle || {};
+
+    setRegels(opgeslagen);
+    setBasis(JSON.stringify(opgeslagen));
+    setUpload({
+      bestand: bestand.name,
+      aantal: Array.isArray(res.antwoord.regels) ? res.antwoord.regels.length : 0,
+      waarschuwingen: Array.isArray(controle.waarschuwingen) ? controle.waarschuwingen : [],
+      vorigeRegels: vorig.regels,
+      vorigeBegroting: project.begroting,
+      resterend: typeof res.antwoord.resterend === 'number' ? res.antwoord.resterend : null,
+    });
+    laadFin();
+  };
+
+  const maakUploadOngedaan = async () => {
+    if (!upload || uploadBezig) return;
+
+    setUploadBezig(true);
+    setFout('');
+
+    const terug = leesBudgetRegels(upload.vorigeRegels);
+    const totaalTerug = berekenBegroting(terug).totaalGeld;
+    const check = valideerEnBereidOp({ ...project, budgetRegels: upload.vorigeRegels, begroting: totaalTerug > 0 ? Math.round(totaalTerug) : upload.vorigeBegroting });
+
+    if (!check.ok) {
+      setFout(check.fout);
+      setUploadBezig(false);
+
+      return;
+    }
+
+    const id = await Promise.resolve(store.saveProject(check.project));
+
+    setUploadBezig(false);
+
+    if (id === null) {
+      setFout('Terugzetten lukte niet. Probeer het opnieuw.');
+
+      return;
+    }
+
+    setRegels(terug);
+    setBasis(JSON.stringify(terug));
+    setUpload(null);
+    setMelding('De begroting staat weer zoals voor de upload.');
+    laadFin();
+  };
+
   const downloadExcel = async () => {
     setFout('');
 
@@ -498,6 +636,52 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
             Laat Subsidie Kompas de vragen stellen →
           </a>
         </div>
+        <div className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
+          Heeft u al een begroting?{' '}
+          <button type="button" className="fwk-wp-link" data-testid="bg-upload-knop" disabled={uploadBezig} onClick={kiesBestand} style={css('background: none; border: 0; padding: 0; font: inherit; cursor: pointer;')}>
+            {uploadBezig ? 'Bezig met lezen…' : 'Upload een Excel- of Word-bestand →'}
+          </button>
+          <input ref={bestandRef} type="file" accept=".xlsx,.docx" data-testid="bg-upload-bestand" aria-label="Begroting uploaden" style={css('display: none;')} onChange={uploadBestand} />
+          <span style={css('display: block; margin-top: 2px; color: #52606A;')}>Subsidie Kompas zet de regels direct in uw begroting en meldt wat niet klopt. Dit telt als één beoordeling van uw maand.</span>
+        </div>
+
+        {upload && (
+          <Melding toon="succes" testid="bg-upload-resultaat">
+            <div style={css('min-width: 0; flex: 1;')}>
+            <b>
+              {upload.aantal} {upload.aantal === 1 ? 'regel' : 'regels'} uit {upload.bestand} staan in uw begroting en zijn opgeslagen.
+            </b>{' '}
+            Ze hebben het label uit upload.
+            {upload.waarschuwingen.length > 0 && (
+              <div data-testid="bg-upload-let-op" style={css('margin-top: 8px;')}>
+                <b>Let op, dit klopt niet helemaal:</b>
+                <ul style={css('margin: 4px 0 0; padding-left: 18px;')}>
+                  {upload.waarschuwingen.map((w, i) => (
+                    <li key={i} data-testid="bg-upload-waarschuwing">
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {upload.waarschuwingen.length === 0 && (
+              <div data-testid="bg-upload-klopt" style={css('margin-top: 6px;')}>
+                De sommen in het bestand kloppen met de regels.
+              </div>
+            )}
+            <div style={css('margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;')}>
+              <Button variant="outline" onClick={maakUploadOngedaan} disabled={uploadBezig} ariaLabel="Upload ongedaan maken">
+                Ongedaan maken
+              </Button>
+              {upload.resterend !== null && (
+                <span className="fwk-aa-klein" data-testid="bg-upload-resterend">
+                  Nog {upload.resterend} {upload.resterend === 1 ? 'beoordeling' : 'beoordelingen'} over deze maand.
+                </span>
+              )}
+            </div>
+            </div>
+          </Melding>
+        )}
 
         {regels.length === 0 && project.begroting ? (
           <div className="fwk-aa-klein" data-testid="bg-leeg" style={css('margin-bottom: 8px;')}>
