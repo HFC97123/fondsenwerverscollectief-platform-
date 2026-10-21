@@ -157,7 +157,7 @@ sectie('1. Toegang: wie, vlag, abonnement');
 
   ({ deps } = omgeving({ tier: 'free', actief: false, role: 'admin' }));
   const admin = await verwerk(vraag({ mode: 'status' }), deps);
-  check('admin krijgt de Premium-regels', admin.status === 200 && admin.body.beoordelingen.limiet === 10 && admin.body.tier === 'admin');
+  check('admin krijgt de Premium-regels', admin.status === 200 && admin.body.beoordelingen.limiet === 30 && admin.body.tier === 'admin');
 
   ({ deps } = omgeving({ geenProfiel: true }));
   gelijk('geen profiel: 403', (await verwerk(vraag({ mode: 'status' }), deps)).status, 403);
@@ -184,9 +184,9 @@ sectie('2. Status');
   check('Pro: 6 beoordelingen, 1 gebruikt, 5 over; 1 project met een plan', s.body.beoordelingen.limiet === 6 && s.body.beoordelingen.gebruikt === 1 && s.body.beoordelingen.resterend === 5 && s.body.plannen.limiet === 1 && s.body.plannen.resterend === 1 && s.body.plannen.periodeMaanden === 12);
   check('uitbreidingen staan uit', Object.values(s.body.uitbreidingen).every((x) => x === false));
 
-  const p = omgeving({ tier: 'premium', tellingBeoordelingen: 9 });
+  const p = omgeving({ tier: 'premium', tellingBeoordelingen: 29 });
   const sp = await verwerk(vraag({ mode: 'status' }), p.deps);
-  check('Premium: 10 beoordelingen en 3 plannen', sp.body.beoordelingen.limiet === 10 && sp.body.beoordelingen.resterend === 1 && sp.body.plannen.limiet === 3);
+  check('Premium: 30 beoordelingen (10 per project, 3 projecten) en 3 plannen', sp.body.beoordelingen.limiet === 30 && sp.body.beoordelingen.resterend === 1 && sp.body.plannen.limiet === 3);
   check('de maandtelling begint op de eerste van de maand (UTC)', p.log.tellingen.every((t) => t.sinds === '2026-10-01T00:00:00.000Z'));
   check('de telling gebruikt de gebruiker uit het token', p.log.tellingen.every((t) => t.u === USER));
 
@@ -269,12 +269,12 @@ sectie('4. Beoordelen');
   check('Pro: zevende beoordeling deze maand: 429, geen modelaanroep, niets opgeslagen', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0 && e.log.opgeslagen.length === 0);
   check('de melding bij Pro noemt Premium; er staat geen verzonnen prijs in', /Premium/.test(r.body.error) && !/€/.test(r.body.error));
 
-  e = omgeving({ tier: 'premium', tellingBeoordelingen: 9 });
+  e = omgeving({ tier: 'premium', tellingBeoordelingen: 29 });
   r = await verwerk(vraag(beoordeelBody()), e.deps);
-  check('Premium: de tiende mag, daarna is de maand op', r.status === 200 && r.body.resterend === 0);
+  check('Premium: de dertigste mag, daarna is de maand op', r.status === 200 && r.body.resterend === 0);
 
-  e = omgeving({ tier: 'premium', tellingBeoordelingen: 10 });
-  gelijk('Premium: de elfde wordt geweigerd', (await verwerk(vraag(beoordeelBody()), e.deps)).status, 429);
+  e = omgeving({ tier: 'premium', tellingBeoordelingen: 30 });
+  gelijk('Premium: de eenendertigste wordt geweigerd', (await verwerk(vraag(beoordeelBody()), e.deps)).status, 429);
 
   e = omgeving({ telNull: true });
   r = await verwerk(vraag(beoordeelBody()), e.deps);

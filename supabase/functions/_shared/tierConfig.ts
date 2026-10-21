@@ -151,10 +151,11 @@ const PREMIUM: TierConfig = {
   premiumHint: false,
   beoordeling: { maxKandidaten: 40, dekkingsdoelLijst: 1.4, maxFactorLijst: 1.4, netNietLijst: true },
   maandBudgetObservatieEur: 14,
-  // Voor nu hetzelfde als Pro, met meer beoordelingen en plannen. De uitbreidingen (rijke editor, AI-paneel, dekkingsoverzicht, commissieblik) staan
+  // Beoordelingen per maand = per project x aantal projecten: 10 per project, 3 projecten met een plan, dus 30 (Aisya, 21 oktober 2026). Elke aanvraag per fonds
+  // krijgt de actuele begroting en het actuele dekkingsplan mee. Voor nu verder hetzelfde als Pro. De uitbreidingen (rijke editor, AI-paneel, dekkingsoverzicht, commissieblik) staan
   // uit tot ze gebouwd zijn.
   aanvraagAssistent: {
-    beoordelingenPerMaand: 10,
+    beoordelingenPerMaand: 30,
     projectplannen: 3,
     eisenOphalenPerMaand: 40,
     maxEisen: 40,
