@@ -57,6 +57,11 @@ function BegrotingStijl() {
 .fwk-bg-lijn::after { content: ''; flex: 1; height: 1px; background: ${color.lijn}; }
 .fwk-bg-chip { cursor: pointer; border: 1px dashed ${color.lijnInput}; background: ${color.wit}; border-radius: 999px; padding: 5px 12px; font-family: inherit; font-size: 13px; font-weight: 700; color: ${color.donkerblauw}; }
 .fwk-bg-chip:hover { border-color: ${color.groen}; }
+.fwk-bg-chipgroep { display: inline-flex; align-items: center; border: 1px dashed ${color.lijnInput}; background: ${color.wit}; border-radius: 999px; }
+.fwk-bg-chipgroep:hover { border-color: ${color.groen}; }
+.fwk-bg-chipgroep .fwk-bg-chip { border: none; background: none; padding-right: 6px; }
+.fwk-bg-chipx { cursor: pointer; border: none; background: none; padding: 5px 10px 5px 2px; font-size: 12px; line-height: 1; color: ${color.tekstLicht}; border-radius: 999px; }
+.fwk-bg-chipx:hover { color: ${color.donkerblauw}; }
 .fwk-bg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
 .fwk-bg-natura { cursor: pointer; border: 1px solid ${color.lijnInput}; background: ${color.wit}; border-radius: 999px; padding: 6px 12px; font-family: inherit; font-size: 12.5px; font-weight: 800; color: ${color.tekstGrijs}; }
 .fwk-bg-natura[aria-pressed="true"] { background: ${color.vlakGroen}; border-color: ${color.lijnGroen}; color: ${color.succes}; }
@@ -189,7 +194,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const [basis, setBasis] = useState(() => JSON.stringify(beginRegels));
   const [extra, setExtra] = useState([]); // kopjes zonder regels die het lid zelf heeft toegevoegd
   const [plusOpen, setPlusOpen] = useState(null); // kopje-id waarbij de suggesties openstaan
-  const [kopjeOpen, setKopjeOpen] = useState(beginRegels.length === 0);
+  const [afgewezen, setAfgewezen] = useState([]); // voorgestelde kopjes die het lid met het kruisje heeft weggeklikt
   const [eigenOpen, setEigenOpen] = useState(false); // het lid bedenkt zelf een kopje
   const [eigenNaam, setEigenNaam] = useState('');
   const [focusId, setFocusId] = useState('');
@@ -208,7 +213,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setBasis(JSON.stringify(r));
     setExtra([]);
     setPlusOpen(null);
-    setKopjeOpen(r.length === 0);
+    setAfgewezen([]);
     setEigenOpen(false);
     setEigenNaam('');
     setFout('');
@@ -250,7 +255,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const dek = useMemo(() => dekkingVanProject({ ...(project || {}), begroting: begrotingVoorDekking }, fin ? fin.regels : []), [project, begrotingVoorDekking, fin]);
 
   const zichtbaar = kopjeVolgorde(regels, extra).map(kopjeDef);
-  const nietZichtbaar = CATEGORIEEN.filter((c) => !zichtbaar.some((z) => z.id === c.id));
+  const nietZichtbaar = CATEGORIEEN.filter((c) => !zichtbaar.some((z) => z.id === c.id) && !afgewezen.includes(c.id));
   const kopjesMetRegels = kopjeVolgorde(regels);
 
   const wijzig = (id, wijz) => {
@@ -272,7 +277,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   };
   const kiesKopje = (id) => {
     setExtra((cur) => (cur.includes(id) ? cur : [...cur, id]));
-    setKopjeOpen(false);
     setEigenOpen(false);
     setPlusOpen(id);
   };
@@ -584,53 +588,43 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
           );
         })}
 
-        <div style={css('margin: 6px 0 4px;')}>
-          {kopjeOpen ? (
-            <div data-testid="bg-kopjes">
-              <div className="fwk-bg-chips">
-                {nietZichtbaar.map((c) => (
-                  <Toelichting key={c.id} kopje={c} knop={false}>
-                    <button type="button" className="fwk-bg-chip" data-testid={`bg-kopje-kies-${c.id}`} onClick={() => kiesKopje(c.id)}>
-                      {c.label}
-                    </button>
-                  </Toelichting>
-                ))}
-                <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-eigen" onClick={() => setEigenOpen(true)}>
-                  Eigen kopje
-                </button>
-                {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
-                  <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-geen" onClick={() => { setKopjeOpen(false); voegToe(GEEN_KOPJE); }}>
-                    Zonder kopje
+        <div style={css('margin: 6px 0 4px;')} data-testid="bg-kopjes">
+          <div className="fwk-bg-chips">
+            {nietZichtbaar.map((c) => (
+              <Toelichting key={c.id} kopje={c} knop={false}>
+                <span className="fwk-bg-chipgroep">
+                  <button type="button" className="fwk-bg-chip" data-testid={`bg-kopje-kies-${c.id}`} onClick={() => kiesKopje(c.id)}>
+                    {c.label}
                   </button>
-                )}
-              </div>
-              {eigenOpen && (
-                <form
-                  className="fwk-bg-eigen"
-                  data-testid="bg-eigen-form"
-                  onSubmit={(ev) => {
-                    ev.preventDefault();
-                    voegEigenKopjeToe();
-                  }}
-                >
-                  <input className="fwk-bg-veld" aria-label="Naam van het kopje" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van het kopje" onChange={(e) => setEigenNaam(e.target.value)} />
-                  <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Kopje toevoegen">
-                    Toevoegen
-                  </Button>
-                </form>
-              )}
-            </div>
-          ) : (
-            <div className="fwk-bg-lijn">
-              <button type="button" className="fwk-bg-plus" data-testid="bg-plus-kopje" onClick={() => setKopjeOpen(true)}>
-                + Kopje
+                  <button type="button" className="fwk-bg-chipx" aria-label={`Suggestie ${c.label} weghalen`} title="Deze suggestie weghalen" data-testid={`bg-kopje-sug-weg-${c.id}`} onClick={() => setAfgewezen((cur) => [...cur, c.id])}>
+                    ✕
+                  </button>
+                </span>
+              </Toelichting>
+            ))}
+            <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-eigen" onClick={() => setEigenOpen(true)}>
+              + Eigen kopje
+            </button>
+            {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
+              <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-geen" onClick={() => voegToe(GEEN_KOPJE)}>
+                + Regel zonder kopje
               </button>
-              {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
-                <button type="button" className="fwk-bg-plus" data-testid="bg-plus-zonder-kopje" onClick={() => voegToe(GEEN_KOPJE)}>
-                  + Regel zonder kopje
-                </button>
-              )}
-            </div>
+            )}
+          </div>
+          {eigenOpen && (
+            <form
+              className="fwk-bg-eigen"
+              data-testid="bg-eigen-form"
+              onSubmit={(ev) => {
+                ev.preventDefault();
+                voegEigenKopjeToe();
+              }}
+            >
+              <input className="fwk-bg-veld" aria-label="Naam van het kopje" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van het kopje" onChange={(e) => setEigenNaam(e.target.value)} />
+              <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Kopje toevoegen">
+                Toevoegen
+              </Button>
+            </form>
           )}
         </div>
 

@@ -96,7 +96,6 @@ let s;
   check('eigen regel: lege regel met de cursor erin', document.activeElement && document.activeElement.getAttribute('data-testid') === 'bg-omschrijving' && document.activeElement.value === '');
   await klik($('[data-testid="bg-weg"]', regelMet('')));
 
-  await klik($('[data-testid="bg-plus-kopje"]'));
   await klik($('[data-testid="bg-kopje-kies-activa"]'));
   await klik($$('[data-testid="bg-suggestie"]').find((b) => /Voedselpakketten/.test(b.textContent)));
   check('Voedselpakketten staat onder Activa en uitrusting', !!regelMet('Voedselpakketten', kopje('activa')));
@@ -129,8 +128,7 @@ sectie('2. Bedrag, aantal x tarief en in natura achter ⋯');
   await klik($('[data-testid="bg-natura"]', pak));
   check('weer als gewone kostenregel: telt weer mee', /Totaal € 7\.500/.test($('[data-testid="bg-totaal"]').textContent));
 
-  await klik($('[data-testid="bg-plus-organisatie"]') || $('[data-testid="bg-plus-kopje"]'));
-  if ($('[data-testid="bg-kopje-kies-organisatie"]')) await klik($('[data-testid="bg-kopje-kies-organisatie"]'));
+  await klik($('[data-testid="bg-kopje-kies-organisatie"]'));
   await klik($('[data-testid="bg-eigen-regel"]'));
   const rommel = regelMet('', kopje('organisatie'));
 
@@ -179,7 +177,9 @@ sectie('5. Bestaande regels, wisselen en weg');
 
   s = await toon({ ...BASIS, begroting: 1600, budgetRegels: regels });
   check('opgeslagen regels staan er weer, schoon: alleen omschrijving en bedrag, details dicht', $('[data-testid="bg-omschrijving"]').value === 'Laptop' && /€ 1\.600/.test($('[data-testid="bg-bedrag-berekend"]').textContent) && /Totaal € 1\.600/.test($('[data-testid="bg-totaal"]').textContent) && knop('Begroting opslaan').disabled === true && !$('[data-testid="bg-detail"]'));
-  check('met regels staat de kopjeskeuze achter + Kopje', !$('[data-testid="bg-kopjes"]') && !!$('[data-testid="bg-plus-kopje"]'));
+  check('met regels blijven de voorgestelde kopjes altijd zichtbaar als suggesties, met een kruisje erachter', !!$('[data-testid="bg-kopje-kies-uitvoering"]') && !$('[data-testid="bg-kopje-kies-activa"]') && !!$('[data-testid="bg-kopje-sug-weg-uitvoering"]'));
+  await klik($('[data-testid="bg-kopje-sug-weg-uitvoering"]'));
+  check('suggestie met het kruisje weggeklikt: weg uit de lijst, er komt geen kopje bij', !$('[data-testid="bg-kopje-kies-uitvoering"]') && !kopje('uitvoering'));
   await klik($('[data-testid="bg-weg"]'));
   check('regel verwijderen werkt en het totaal volgt', $$('[data-testid="bg-regel"]').length === 0 && /Totaal € 0/.test($('[data-testid="bg-totaal"]').textContent));
   await klik(knop('Begroting opslaan'));
@@ -215,7 +215,7 @@ sectie('7. Uitleg per kopje, verslepen, kopje weghalen en eigen kopje');
   const R = (id, categorie, omschrijving, bedrag) => ({ id, categorie, omschrijving, aantal: null, eenheid: '', tarief: null, bedrag, soort: 'geld', toelichting: '', bron: 'handmatig' });
   const volgorde = () => $$('section.fwk-bg-sec').map((x) => x.getAttribute('data-testid').replace('bg-kopje-', ''));
   const namen = (van = document) => $$('[data-testid="bg-omschrijving"]', van).map((i) => i.value);
-  const openKopjes = async () => { if (!$('[data-testid="bg-kopje-eigen"]')) await klik($('[data-testid="bg-plus-kopje"]')); };
+  const openKopjes = async () => {};
   const sleepGebeurtenis = async (el, type, { y = 0, top = 0, hoogte = 40 } = {}) => {
     const ev = new window.Event(type, { bubbles: true, cancelable: true });
 
@@ -235,11 +235,9 @@ sectie('7. Uitleg per kopje, verslepen, kopje weghalen en eigen kopje');
 
   check('vier kopjes in de volgorde van de lijst, communicatie is een apart kopje', volgorde().join() === 'uitvoering,activa,communicatie');
 
-  const tip = $('[data-testid="bg-toelichting-organisatie"]');
-  await klik($('[data-testid="bg-plus-kopje"]'));
   const wrap = $('[data-testid="bg-kopje-kies-organisatie"]').parentElement;
 
-  check('geen uitleg zolang je er niet overheen gaat', !$('[data-testid="bg-tip-uitvoering"]') && !tip);
+  check('geen uitleg zolang je er niet overheen gaat', !$('[data-testid="bg-tip-uitvoering"]') && !$('[data-testid="bg-tip-organisatie"]'));
   await act(async () => { $('[data-testid="bg-toelichting-uitvoering"]').dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
   check('overheen gaan toont een paar bullets bij Projectuitvoering', !!$('[data-testid="bg-tip-uitvoering"]') && $$('[data-testid="bg-tip-uitvoering"] li').length === 2 && /mankracht/.test($('[data-testid="bg-tip-uitvoering"]').textContent) && /trainen/.test($('[data-testid="bg-tip-uitvoering"]').textContent));
   await act(async () => { $('[data-testid="bg-toelichting-uitvoering"]').dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true })); });
@@ -251,7 +249,7 @@ sectie('7. Uitleg per kopje, verslepen, kopje weghalen en eigen kopje');
   await act(async () => { wrap.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
   check('ook de keuzeknop voor een nog niet gekozen kopje legt uit: fondsenwerving en 6% tot 12,5%', /fondsenwerving/.test(($('[data-testid="bg-tip-organisatie"]') || { textContent: '' }).textContent) && /6% en 12,5%/.test($('[data-testid="bg-tip-organisatie"]').textContent));
   await act(async () => { wrap.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true })); });
-  await klik($('[data-testid="bg-kopje-kies-organisatie"]')); // organisatie kiezen sluit de keuze
+  await klik($('[data-testid="bg-kopje-kies-organisatie"]'));
   check('Organisatiekosten gekozen: staat er nu als kopje', !!kopje('organisatie') && volgorde().join() === 'uitvoering,activa,communicatie,organisatie');
   await klik($('[data-testid="bg-kopje-weg-organisatie"]'));
   check('leeg kopje weghalen kan, het is meteen weg', !kopje('organisatie'));
