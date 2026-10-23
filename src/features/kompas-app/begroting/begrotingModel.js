@@ -84,6 +84,7 @@ export function kopjeDef(k) {
 // Een korte, veilige naam voor test- en elementnamen.
 export const kopjeSlug = (k) => (k === GEEN_KOPJE ? 'zonder' : isEigenKopje(k) ? `eigen-${categorieLabel(k).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}` : k);
 export const BRONNEN = ['handmatig', 'ai', 'upload'];
+const MAX_BRONNAAM = 120;
 
 let teller = 0;
 
@@ -107,6 +108,7 @@ export function nieuweRegel(categorie, basis = {}) {
     schatting: false, // een bedrag dat de AI als richtbedrag noemde en het lid nog niet heeft bevestigd
     toelichting: '',
     bron: 'handmatig',
+    bronNaam: '', // bij een upload: de naam van het bestand
     ...basis,
   };
 }
@@ -133,6 +135,7 @@ export function leesBudgetRegels(waarde) {
       schatting: r.schatting === true,
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
+      bronNaam: BRONNEN.includes(r.bron) && r.bron !== 'handmatig' ? tekst(r.bronNaam, MAX_BRONNAAM) : '',
     }));
 }
 
@@ -323,6 +326,7 @@ export function regelsVoorOpslag(regels) {
       schatting: r.schatting === true && (tarief != null || vast != null),
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
+      bronNaam: BRONNEN.includes(r.bron) && r.bron !== 'handmatig' ? tekst(r.bronNaam, MAX_BRONNAAM) : '',
     });
   }
 
@@ -359,12 +363,54 @@ export function leesOpgeslagenRegels(waarde) {
       schatting: r.schatting === true,
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
+      bronNaam: BRONNEN.includes(r.bron) && r.bron !== 'handmatig' ? tekst(r.bronNaam, MAX_BRONNAAM) : '',
     }));
 }
 
-// Regels uit het AI-voorstel of uit een geüpload bestand (de server geeft ze al gecontroleerd terug) -> opslagregels met een eigen id en bron 'ai' (of 'upload').
-export function voorstelNaarRegels(voorstel, bron = 'ai') {
-  return leesOpgeslagenRegels((Array.isArray(voorstel) ? voorstel : []).map((r) => ({ ...r, id: nieuwRegelId(), bron: BRONNEN.includes(bron) ? bron : 'ai' })));
+// Regels uit het AI-voorstel of uit een geüpload bestand (de server geeft ze al gecontroleerd terug) -> opslagregels met een eigen id, bron 'ai' (of 'upload') en,
+// bij een upload, de naam van het bestand.
+export function voorstelNaarRegels(voorstel, bron = 'ai', bronNaam = '') {
+  const b = BRONNEN.includes(bron) && bron !== 'handmatig' ? bron : 'ai';
+
+  return leesOpgeslagenRegels((Array.isArray(voorstel) ? voorstel : []).map((r) => ({ ...r, id: nieuwRegelId(), bron: b, bronNaam: b === 'upload' ? bronNaam : '' })));
+}
+
+const euroTekst = (n) => `€ ${Number(n || 0).toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+const getalNL = (v) => Number(v).toLocaleString('nl-NL', { maximumFractionDigits: 2 });
+
+// Waar komt het bedrag van deze regel vandaan? Gestructureerd voor de pop-up bij het bedrag: rijen met een label en een waarde.
+// Alleen regels met iets te vertellen (upload, chat, schatting, toelichting) krijgen een pop-up; wat het lid zelf typte niet.
+export function regelHerkomst(regel) {
+  const r = regel && typeof regel === 'object' ? regel : {};
+  const rijen = [];
+  const bron = BRONNEN.includes(r.bron) ? r.bron : 'handmatig';
+  const naam = tekst(r.bronNaam, MAX_BRONNAAM);
+
+  if (bron === 'upload') rijen.push({ label: 'Herkomst', waarde: naam ? `Geüpload bestand: ${naam}` : 'Geüpload bestand' });
+  else if (bron === 'ai') rijen.push({ label: 'Herkomst', waarde: 'Voorstel uit de chat met Subsidie Kompas' });
+
+  const toelichting = tekst(r.toelichting, MAX_TOELICHTING);
+  const heeft = bron !== 'handmatig' || r.schatting === true || toelichting !== '';
+
+  if (!heeft) return { heeft: false, rijen: [] };
+
+  if (bron === 'handmatig') rijen.push({ label: 'Herkomst', waarde: 'Zelf ingevoerd' });
+
+  const b = regelBedrag(r);
+  const aantal = lees(r.aantal).waarde;
+  const tarief = lees(r.tarief).waarde;
+
+  if (b.bron === 'berekend') rijen.push({ label: 'Berekening', waarde: `${getalNL(aantal)}${tekst(r.eenheid, 40) ? ` ${tekst(r.eenheid, 40)}` : ''} × ${euroTekst(tarief)} = ${euroTekst(b.bedrag)}` });
+  else if (b.bron === 'vast') rijen.push({ label: 'Berekening', waarde: `Vast bedrag: ${euroTekst(b.bedrag)}` });
+  else if (b.bron === 'onbekend') rijen.push({ label: 'Berekening', waarde: 'Nog geen bedrag ingevuld' });
+
+  if (r.schatting === true) rijen.push({ label: 'Status', waarde: 'Schatting, nog niet bevestigd' });
+
+  if (r.soort === 'natura') rijen.push({ label: 'Soort', waarde: 'In natura, telt niet mee in het totaal' });
+
+  if (toelichting) rijen.push({ label: 'Toelichting', waarde: toelichting });
+
+  return { heeft: true, schatting: r.schatting === true, rijen };
 }
 
 // Het voorstel bij de bestaande opslagregels voegen. 'toevoegen' laat alles staan en slaat regels over die er al precies zo staan;

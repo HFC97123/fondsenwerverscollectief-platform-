@@ -139,4 +139,25 @@ sectie('7. Kopjes zijn optioneel: weghalen, zonder kopje, eigen kopje');
   gelijk('een nieuwe regel zonder kopje', M.nieuweRegel('').categorie, '');
 }
 
+sectie('8. Herkomst van een bedrag (pop-up bij het bedrag)');
+{
+  const up = r('uitvoering', { aantal: '100', eenheid: 'uur', tarief: '50', bron: 'upload', bronNaam: 'begroting.xlsx' });
+  const h = M.regelHerkomst(up);
+
+  gelijk('upload met aantal x tarief: rijen Herkomst en Berekening', h.rijen.map((x) => x.label), ['Herkomst', 'Berekening']);
+  gelijk('de herkomst noemt het bestand', h.rijen[0].waarde, 'Geüpload bestand: begroting.xlsx');
+  gelijk('de berekening laat zien hoe het bedrag ontstaat', h.rijen[1].waarde, '100 uur × € 50 = € 5.000');
+  gelijk('vast bedrag uit de chat', M.regelHerkomst(r('activa', { bedrag: '1250', bron: 'ai' })).rijen.map((x) => x.waarde), ['Voorstel uit de chat met Subsidie Kompas', 'Vast bedrag: € 1.250']);
+  gelijk('schatting krijgt een rij Status en markeert de pop-up', [M.regelHerkomst(r('activa', { bedrag: '900', bron: 'ai', schatting: true })).rijen.map((x) => x.label), M.regelHerkomst(r('activa', { bedrag: '900', bron: 'ai', schatting: true })).schatting], [['Herkomst', 'Berekening', 'Status'], true]);
+  gelijk('natura en toelichting staan er ook bij, toelichting laatst', M.regelHerkomst(r('activa', { bedrag: '300', bron: 'upload', soort: 'natura', toelichting: 'Let op: x' })).rijen.map((x) => x.label), ['Herkomst', 'Berekening', 'Soort', 'Toelichting']);
+  gelijk('zelf getypt zonder bijzonderheden: geen pop-up', M.regelHerkomst(r('activa', { bedrag: '100' })), { heeft: false, rijen: [] });
+  gelijk('zelf getypt met een toelichting: wel, met Zelf ingevoerd', M.regelHerkomst(r('activa', { bedrag: '100', toelichting: 'offerte' })).rijen.map((x) => x.waarde), ['Zelf ingevoerd', 'Vast bedrag: € 100', 'offerte']);
+  gelijk('upload zonder bestandsnaam', M.regelHerkomst(r('activa', { bedrag: '5', bron: 'upload' })).rijen[0].waarde, 'Geüpload bestand');
+  gelijk('rare invoer geeft geen fout', [M.regelHerkomst(null).heeft, M.regelHerkomst(undefined).heeft, M.regelHerkomst('x').heeft], [false, false, false]);
+  gelijk('bestandsnaam wordt bewaard en teruggelezen, ook via opslag', M.leesBudgetRegels(M.budgetKolom(M.regelsVoorOpslag([{ ...up, omschrijving: 'Projectleider', bedrag: '' }]).regels))[0].bronNaam, 'begroting.xlsx');
+  gelijk('een zelf getypte regel houdt geen bestandsnaam, ook niet als die er per ongeluk staat', M.leesOpgeslagenRegels([{ omschrijving: 'x', bron: 'handmatig', bronNaam: 'a.xlsx' }])[0].bronNaam, '');
+  gelijk('bestandsnaam wordt afgekapt op 120 tekens', M.leesOpgeslagenRegels([{ omschrijving: 'x', bron: 'upload', bronNaam: 'a'.repeat(300) }])[0].bronNaam.length, 120);
+  gelijk('voorstelNaarRegels zet bron en bestandsnaam (alleen bij upload)', [M.voorstelNaarRegels([{ omschrijving: 'x', bedrag: 5 }], 'upload', 'b.docx').map((x) => [x.bron, x.bronNaam])[0], M.voorstelNaarRegels([{ omschrijving: 'x', bedrag: 5 }], 'ai', 'b.docx').map((x) => [x.bron, x.bronNaam])[0]], [['upload', 'b.docx'], ['ai', '']]);
+}
+
 klaar('begroting-model');

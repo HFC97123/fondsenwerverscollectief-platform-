@@ -15,7 +15,7 @@ import { chatStartHref } from '../chat/gesprekUrl.js';
 import { leesBegrotingUpload } from '../../../data/services/aanvraagAssistent.js';
 import { leesBegrotingBestand } from './begrotingBestand.js';
 import { valideerEnBereidOp } from '../projectOpslaan.js';
-import { CATEGORIEEN, GEEN_KOPJE, berekenBegroting, categorieLabel, eigenKopjeSleutel, expenseLinesVoorExcel, kopjeDef, kopjeSlug, kopjeVolgorde, leesBudgetRegels, nieuweRegel, regelBedrag, regelsVoorOpslag, samenvoegVoorstel, schuifKopje, schuifRegel, verplaatsKopje, verplaatsRegel, verwijderKopje, voorstelNaarRegels } from './begrotingModel.js';
+import { CATEGORIEEN, GEEN_KOPJE, berekenBegroting, categorieLabel, eigenKopjeSleutel, expenseLinesVoorExcel, kopjeDef, kopjeSlug, kopjeVolgorde, leesBudgetRegels, nieuweRegel, regelBedrag, regelHerkomst, regelsVoorOpslag, samenvoegVoorstel, schuifKopje, schuifRegel, verplaatsKopje, verplaatsRegel, verwijderKopje, voorstelNaarRegels } from './begrotingModel.js';
 
 const euro = (n) => `€ ${Number(n || 0).toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
@@ -47,7 +47,15 @@ function BegrotingStijl() {
 .fwk-bg-tip li + li { margin-top: 4px; }
 .fwk-bg-schat { cursor: pointer; border: 1px solid #E8C98A; background: #FFF6E3; color: #8A5A00; border-radius: 999px; padding: 3px 9px; font-family: inherit; font-size: 11.5px; font-weight: 800; }
 .fwk-bg-schat:hover { background: #FFEFC9; }
-.fwk-bg-upl { border: 1px solid #C9D8E2; background: #EEF4F8; color: #2C4A5E; border-radius: 999px; padding: 3px 9px; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
+.fwk-bg-bedragcel { position: relative; min-width: 0; }
+.fwk-bg-stip { position: absolute; z-index: 2; left: 2px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; border-radius: 999px; }
+.fwk-bg-stip::before { content: ''; position: absolute; left: 6px; top: 6px; width: 8px; height: 8px; border-radius: 999px; background: #7C9BB0; }
+.fwk-bg-stip[data-schatting="ja"]::before { background: #D9A441; }
+.fwk-bg-stip:hover::before, .fwk-bg-stip:focus-visible::before { background: ${color.groen}; }
+.fwk-bg-herkomst { position: absolute; z-index: 20; top: 100%; right: 0; margin-top: 6px; width: 290px; max-width: 78vw; box-sizing: border-box; padding: 10px 14px; border: 1px solid ${color.lijn}; border-radius: 12px; background: ${color.wit}; box-shadow: 0 8px 24px rgba(44,74,94,0.14); font-size: 13px; line-height: 1.45; color: ${color.tekst}; text-align: left; }
+.fwk-bg-herkomst dl { margin: 0; display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 6px 10px; }
+.fwk-bg-herkomst dt { font-weight: 800; color: ${color.tekstLicht}; }
+.fwk-bg-herkomst dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .fwk-bg-sub { text-align: right; font-weight: 800; color: ${color.donkerblauw}; font-size: 15px; white-space: nowrap; padding-right: 4px; }
 .fwk-bg-veld { width: 100%; box-sizing: border-box; min-height: 40px; padding: 8px 10px; border: 1px solid ${color.lijnInput}; border-radius: 10px; background: ${color.wit}; font-family: inherit; font-size: 14.5px; color: ${color.tekst}; }
 .fwk-bg-veld:focus { outline: 2px solid ${color.groen}; outline-offset: 1px; }
@@ -118,9 +126,61 @@ function Toelichting({ kopje, children, knop = true }) {
   );
 }
 
+// Het bedrag van een regel met, als er iets over de herkomst te zeggen valt (upload, chat, schatting, toelichting), een klein stipje.
+// Met de muis erover (of focus op het stipje, of tikken) komt een pop-up met de herkomst in vaste rijen; Escape sluit.
+function BedragCel({ herkomst, children }) {
+  const [hover, setHover] = useState(false);
+  const [vast, setVast] = useState(false);
+
+  if (!herkomst.heeft) return <div className="fwk-bg-bedragcel">{children}</div>;
+
+  const open = hover || vast;
+
+  return (
+    <div
+      className="fwk-bg-bedragcel"
+      data-testid="bg-bedragcel"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          setHover(false);
+          setVast(false);
+        }
+      }}
+    >
+      {children}
+      <button
+        type="button"
+        className="fwk-bg-stip"
+        data-testid="bg-herkomst-stip"
+        data-schatting={herkomst.schatting ? 'ja' : undefined}
+        aria-label="Waar komt dit bedrag vandaan?"
+        aria-expanded={open}
+        onFocus={() => setHover(true)}
+        onBlur={() => setHover(false)}
+        onClick={() => setVast((v) => !v)}
+      />
+      {open && (
+        <div className="fwk-bg-herkomst" role="tooltip" data-testid="bg-herkomst">
+          <dl>
+            {herkomst.rijen.map((x) => (
+              <React.Fragment key={x.label}>
+                <dt>{x.label}</dt>
+                <dd>{x.waarde}</dd>
+              </React.Fragment>
+            ))}
+          </dl>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEinde, onSleepOver, onDrop, onSchuif, kanOmhoog, kanOmlaag }) {
   const b = regelBedrag(r);
   const berekend = b.bron === 'berekend';
+  const herkomst = regelHerkomst(r);
   const [meer, setMeer] = useState(false); // aantal, tarief en in natura staan achter ⋯, zodat de regel zelf schoon blijft
 
   return (
@@ -130,23 +190,20 @@ function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEi
           ⠿
         </span>
         <input className="fwk-bg-veld" aria-label="Omschrijving" data-testid="bg-omschrijving" value={r.omschrijving} maxLength={200} autoFocus={focus} onChange={(e) => onWijzig({ omschrijving: e.target.value })} placeholder="Omschrijving" />
-        {berekend ? (
-          <div className="fwk-bg-sub" data-testid="bg-bedrag-berekend">
-            {euro(b.bedrag)}
-          </div>
-        ) : (
-          <input className="fwk-bg-veld" aria-label="Bedrag in euro" data-testid="bg-bedrag" inputMode="decimal" value={r.bedrag} onChange={(e) => onWijzig({ bedrag: e.target.value })} placeholder="€" style={css('text-align: right;')} />
-        )}
+        <BedragCel herkomst={herkomst}>
+          {berekend ? (
+            <div className="fwk-bg-sub" data-testid="bg-bedrag-berekend">
+              {euro(b.bedrag)}
+            </div>
+          ) : (
+            <input className="fwk-bg-veld" aria-label="Bedrag in euro" data-testid="bg-bedrag" inputMode="decimal" value={r.bedrag} onChange={(e) => onWijzig({ bedrag: e.target.value })} placeholder="€" style={css('text-align: right;')} />
+          )}
+        </BedragCel>
         <div className="fwk-bg-acties">
           {r.schatting && (
             <button type="button" className="fwk-bg-schat" data-testid="bg-schatting" title="Dit bedrag is een schatting. Klik als u het hebt gecontroleerd." aria-label="Schatting bevestigen" onClick={() => onWijzig({ schatting: false })}>
               schatting
             </button>
-          )}
-          {r.bron === 'upload' && (
-            <span className="fwk-bg-upl" data-testid="bg-upload-label" title="Deze regel komt uit het geüploade bestand. Controleer of het klopt.">
-              uit upload
-            </span>
           )}
           {r.soort === 'natura' && !meer && (
             <span className="fwk-aa-klein" data-testid="bg-natura-label">
@@ -503,7 +560,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       return;
     }
 
-    const nieuw = voorstelNaarRegels(res.antwoord.regels, 'upload');
+    const nieuw = voorstelNaarRegels(res.antwoord.regels, 'upload', bestand.name);
     const samen = leesBudgetRegels(samenvoegVoorstel(vorig.regels, nieuw, 'toevoegen'));
     const klaar = regelsVoorOpslag(samen);
 
@@ -652,7 +709,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
             <b>
               {upload.aantal} {upload.aantal === 1 ? 'regel' : 'regels'} uit {upload.bestand} staan in uw begroting en zijn opgeslagen.
             </b>{' '}
-            Ze hebben het label uit upload.
+            Wijs met de muis naar het stipje bij een bedrag om te zien waar het vandaan komt.
             {upload.waarschuwingen.length > 0 && (
               <div data-testid="bg-upload-let-op" style={css('margin-top: 8px;')}>
                 <b>Let op, dit klopt niet helemaal:</b>
