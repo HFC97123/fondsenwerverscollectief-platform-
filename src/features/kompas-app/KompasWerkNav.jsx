@@ -1,11 +1,11 @@
 // Hoofdnavigatie van de Pro/Premium-werkruimte van Subsidie Kompas:
 //
-//   Dashboard · Chat · Subsidieadvies · Mijn Subsidie Kompas          <organisatienaam> ▾
+//   Dashboard · Chat · Subsidieadvies · Mijn Subsidie Kompas          Mijn Subsidie Kompas ▾
 //
 // Eén balk voor het hele werkgebied. De Free-ervaring en de publieke
 // Kompas-pagina's houden de bestaande KompasSubnav (zie KompasApp.jsx en
-// werkNavContext.js). Rechts staat het Organisatiemenu met het
-// organisatieprofiel, het account, de abonnementen en uitloggen.
+// werkNavContext.js). Rechts staat het menu 'Mijn Subsidie Kompas' (van de persoon, niet van de organisatie: ook zzp'ers werken in
+// hetzelfde systeem) met de organisatie, het account, het abonnement en uitloggen.
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
@@ -177,7 +177,7 @@ export default function KompasWerkNav({ pad }) {
               `cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; box-sizing: border-box; padding: 6px 14px; border-radius: 999px; border: 1px solid ${orgMenuActief || open ? '#A8D5BA' : '#CFE0D6'}; background: ${orgMenuActief || open ? '#EAF4EE' : '#FFFFFF'}; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E;`,
             )}
           >
-            <span style={css('overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;')}>{orgNaam}</span>
+            <span style={css('overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;')}>Mijn Subsidie Kompas</span>
             <span aria-hidden="true" style={css('font-size: 11px;')}>▾</span>
           </button>
 
@@ -192,6 +192,10 @@ export default function KompasWerkNav({ pad }) {
               <div style={css("padding: 8px 14px 10px; border-bottom: 1px solid #E9EFEB; margin-bottom: 6px; font-family: 'Mulish', sans-serif; font-size: 12.5px; font-weight: 700; color: #7B8985;")}>
                 {app.naam || 'Mijn account'} · {tierLabel}
               </div>
+              <a href="#/kompas/organisatie" style={menuItemStijl}>
+                Organisatie
+                {orgNaam !== 'Organisatie' && <span style={css('display: block; font-size: 12.5px; font-weight: 600; color: #7B8985; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;')}>{orgNaam}</span>}
+              </a>
               <a href="#/kompas/account" style={menuItemStijl}>Account</a>
               <a href="#/hoe-het-werkt" style={menuItemStijl}>Abonnement</a>
               <button type="button" onClick={uitloggen} style={menuItemStijl}>Uitloggen</button>
