@@ -700,7 +700,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
             {uploadBezig ? 'Bezig met lezen…' : 'Upload een Excel- of Word-bestand →'}
           </button>
           <input ref={bestandRef} type="file" accept=".xlsx,.docx" data-testid="bg-upload-bestand" aria-label="Begroting uploaden" style={css('display: none;')} onChange={uploadBestand} />
-          <span style={css('display: block; margin-top: 2px; color: #52606A;')}>Subsidie Kompas zet de regels direct in uw begroting en meldt wat niet klopt. Dit telt als één beoordeling van uw maand.</span>
         </div>
 
         {upload && (

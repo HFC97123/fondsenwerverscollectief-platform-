@@ -455,7 +455,7 @@ sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkin
   };
 
   let u = await toonUpload({ ...BASIS, begroting: 0, budgetRegels: [] });
-  check('de uploadknop staat er en zegt dat het één beoordeling kost', !!$('[data-testid="bg-upload-knop"]') && /telt als één beoordeling/.test(tekst()) && u.srv.s.aanroepen.length === 0);
+  check('de uploadknop staat er, zonder extra uitleg eronder', !!$('[data-testid="bg-upload-knop"]') && !/meldt wat niet klopt/.test(tekst()) && u.srv.s.aanroepen.length === 0);
   await kiesBestand(bestand());
   check('na het kiezen staat het resultaat er, direct opgeslagen (geen tussenstap)', await wacht(() => $('[data-testid="bg-upload-resultaat"]')) && u.bewaard.length === 1);
   check('de tekst die naar de server ging houdt rijen en cellen (" | "), formules als uitkomst, geen verborgen blad', /Projectleider \| 100 \| uur \| 50 \| 5000\nTraining vrijwilligers \| 2000/.test(u.srv.s.laatsteUpload || '') && /Formule \| 42/.test(u.srv.s.laatsteUpload) && !/Geheim blad/.test(u.srv.s.laatsteUpload));
