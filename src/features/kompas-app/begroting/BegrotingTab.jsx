@@ -61,6 +61,7 @@ function BegrotingStijl() {
 .fwk-bg-klaar { display: flex; justify-content: flex-end; margin: 12px 0 0; }
 .fwk-bg-volgende { cursor: pointer; border: 1px solid ${color.groen}; background: ${color.wit}; color: ${color.groen}; border-radius: 999px; padding: 8px 18px; font-family: inherit; font-size: 13.5px; font-weight: 800; }
 .fwk-bg-volgende:hover { background: ${color.vlakGroen}; }
+.fwk-bg-volgendekeuze { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: #F3F8F5; border: 1px dashed #CFDDD5; }
 .fwk-bg-chip-plus { padding-left: 14px; padding-right: 14px; font-size: 16px; line-height: 1; }
 .fwk-bg-bedragcel { position: relative; min-width: 0; }
 .fwk-bg-stip { position: absolute; z-index: 2; left: 2px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; border-radius: 999px; }
@@ -320,6 +321,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const [extra, setExtra] = useState([]); // kopjes zonder regels die het lid zelf heeft toegevoegd
   const [plusOpen, setPlusOpen] = useState(null); // kopje-id waarbij de suggesties openstaan
   const [afgewezen, setAfgewezen] = useState([]); // voorgestelde kopjes die het lid met het kruisje heeft weggeklikt
+  const [volgendeOpen, setVolgendeOpen] = useState(false); // na Opslaan onder de laatste hoofdkop: kies de volgende
+  const [volgendeEigen, setVolgendeEigen] = useState(false);
   const [eigenOpen, setEigenOpen] = useState(false); // het lid bedenkt zelf een kopje
   const [eigenNaam, setEigenNaam] = useState('');
   const [focusId, setFocusId] = useState('');
@@ -409,9 +412,16 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setRegels((cur) => cur.filter((r) => r.id !== id));
     setMelding('');
   };
+  const naOpslaanVerder = async () => {
+    const gelukt = gewijzigd ? await opslaan() : true;
+
+    if (gelukt) setVolgendeOpen(true);
+  };
   const kiesKopje = (id) => {
     setExtra((cur) => (cur.includes(id) ? cur : [...cur, id]));
     setEigenOpen(false);
+    setVolgendeOpen(false);
+    setVolgendeEigen(false);
     setPlusOpen(id);
 
     // Het nieuwe kopje komt onderaan: breng het in beeld, zodat het lid meteen verder kan.
@@ -544,7 +554,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     if (!klaar.ok) {
       setFout(klaar.fout);
 
-      return;
+      return false;
     }
 
     setBezig(true);
@@ -557,7 +567,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       setFout(check.fout);
       setBezig(false);
 
-      return;
+      return false;
     }
 
     const id = await Promise.resolve(store.saveProject(check.project));
@@ -567,7 +577,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     if (id === null) {
       setFout('Opslaan lukte niet. Probeer het opnieuw.');
 
-      return;
+      return false;
     }
 
     const opgeslagen = leesBudgetRegels(klaar.regels);
@@ -576,6 +586,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setBasis(JSON.stringify(opgeslagen));
     setMelding(totaal > 0 ? `Opgeslagen. De projectbegroting is nu ${formatEuro(totaal)}.` : 'Opgeslagen.');
     laadFin();
+
+    return true;
   };
 
   // Een bestaande begroting uploaden: de browser haalt de tekst eruit, de server zet haar om in regels en rekent de sommen na; de regels worden direct
@@ -950,11 +962,41 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                   </button>
                 </div>
               )}
-              {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && rijen.length > 0 && (
+              {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && rijen.length > 0 && !volgendeOpen && (
                 <div className="fwk-bg-klaar">
-                  <button type="button" className="fwk-bg-volgende" data-testid="bg-volgende-kop" onClick={() => (nietZichtbaar.length ? kiesKopje(nietZichtbaar[0].id) : setEigenOpen(true))}>
-                    {nietZichtbaar.length ? `Klaar, door naar ${nietZichtbaar[0].label} →` : 'Klaar, nog een hoofdkop →'}
+                  <button type="button" className="fwk-bg-volgende" data-testid="bg-volgende-kop" disabled={bezig} onClick={naOpslaanVerder}>
+                    {bezig ? 'Opslaan…' : 'Opslaan en volgende hoofdkop'}
                   </button>
+                </div>
+              )}
+              {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && volgendeOpen && (
+                <div className="fwk-bg-volgendekeuze" data-testid="bg-volgende-keuze">
+                  <div className="fwk-bg-kopjes-label">Opgeslagen. Kies de volgende hoofdkop</div>
+                  <div className="fwk-bg-chips">
+                    {nietZichtbaar.map((k) => (
+                      <button key={k.id} type="button" className="fwk-bg-chip" data-testid={`bg-volgende-kies-${k.id}`} onClick={() => kiesKopje(k.id)}>
+                        {k.label}
+                      </button>
+                    ))}
+                    <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-volgende-eigen" aria-label="Eigen kopje toevoegen" title="Eigen kopje toevoegen" onClick={() => setVolgendeEigen(true)}>
+                      +
+                    </button>
+                  </div>
+                  {volgendeEigen && (
+                    <form
+                      className="fwk-bg-eigen"
+                      data-testid="bg-volgende-eigen-form"
+                      onSubmit={(ev) => {
+                        ev.preventDefault();
+                        voegEigenKopjeToe();
+                      }}
+                    >
+                      <input className="fwk-bg-veld" aria-label="Naam van het kopje" data-testid="bg-volgende-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van het kopje" onChange={(e) => setEigenNaam(e.target.value)} />
+                      <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Kopje toevoegen">
+                        Toevoegen
+                      </Button>
+                    </form>
+                  )}
                 </div>
               )}
             </section>

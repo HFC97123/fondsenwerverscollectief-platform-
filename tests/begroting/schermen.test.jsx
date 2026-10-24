@@ -97,10 +97,7 @@ let s;
   await act(async () => { $('[data-testid="bg-bedrag"]', regel).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
   check('Enter in het bedrag opent de suggesties voor de volgende regel van hetzelfde kopje', !!$('[data-testid="bg-suggesties-uitvoering"]'));
   check('de keuzes onder een kopje heten + Zelf invullen en boven staat Kies een hoofdkop met een kale + voor een eigen kopje', /\+ Zelf invullen/.test($('[data-testid="bg-eigen-regel"]').textContent) && /Kies een hoofdkop/.test($('[data-testid="bg-kopjes"]').textContent) && $('[data-testid="bg-kopje-eigen"]').textContent.trim() === '+');
-  check('onder het laatste kopje met regels staat een knop naar de volgende hoofdkop, met de naam erin', /Klaar, door naar Activa en uitrusting/.test(($('[data-testid="bg-volgende-kop"]') || { textContent: '' }).textContent));
-  await klik($('[data-testid="bg-volgende-kop"]'));
-  check('die knop voegt de volgende hoofdkop toe en opent meteen de suggesties daarvan', !!kopje('activa') && !!$('[data-testid="bg-suggesties-activa"]'));
-  await klik($('[data-testid="bg-kopje-weg-activa"]'));
+  check('onder het laatste kopje met regels staat Opslaan en volgende hoofdkop; er wordt niets automatisch gekozen', /Opslaan en volgende hoofdkop/.test(($('[data-testid="bg-volgende-kop"]') || { textContent: '' }).textContent) && !$('[data-testid="bg-volgende-keuze"]'));
   check('Opslaan verschijnt zodra er iets staat', !!knop('Begroting opslaan') && !!$('[data-testid="bg-niet-opgeslagen"]'));
 
   if ($('[data-testid="bg-plus-uitvoering"]')) await klik($('[data-testid="bg-plus-uitvoering"]'));
@@ -544,6 +541,20 @@ sectie('9b. Een Word-bestand lezen: tabellen blijven rijen');
   check('een Word-bestand wordt gelezen; elke tabelrij is één regel met " | " tussen de cellen', res.ok && /Begroting Samen Spelen 2027\nPost \| Aantal \| Tarief \| Bedrag\nProjectleider \| 100 uur \| 50 \| 5\.000\nMateriaal \| 10 \| 25 \| 250\nTotaal 5\.250/.test(res.tekst), JSON.stringify(res).slice(0, 300));
   const leeg = await leesBegrotingBestand({ name: 'leeg.docx', size: 10, arrayBuffer: async () => ab.slice(0, 10) });
   check('een kapot Word-bestand geeft een melding, geen fout', leeg.ok === false && /kon niet worden gelezen/.test(leeg.melding));
+}
+
+sectie('10. Opslaan en dan zelf de volgende hoofdkop kiezen');
+{
+  s = await toon({ ...BASIS, begroting: 0, budgetRegels: [] });
+  await klik($('[data-testid="bg-kopje-kies-uitvoering"]'));
+  await klik($$('[data-testid="bg-suggestie"]').find((b) => /Projectleider/.test(b.textContent)));
+  await typ($('[data-testid="bg-bedrag"]'), '5000');
+  await klik($('[data-testid="bg-volgende-kop"]'));
+  check('Opslaan en volgende hoofdkop slaat op en toont daarna de keuze, zonder zelf een hoofdkop te kiezen', await wacht(() => s.bewaard.length === 1) && !!(await wacht(() => $('[data-testid="bg-volgende-keuze"]'))) && !kopje('activa') && !$('[data-testid="bg-volgende-kop"]'));
+  check('de keuze toont de nog niet gebruikte hoofdkoppen en een + voor een eigen hoofdkop', ['activa', 'communicatie', 'organisatie'].every((k) => !!$(`[data-testid="bg-volgende-kies-${k}"]`)) && !$('[data-testid="bg-volgende-kies-uitvoering"]') && !!$('[data-testid="bg-volgende-eigen"]'));
+  await klik($('[data-testid="bg-volgende-kies-communicatie"]'));
+  check('de gekozen hoofdkop komt erbij met de suggesties open en de keuze verdwijnt', !!kopje('communicatie') && !!$('[data-testid="bg-suggesties-communicatie"]') && !$('[data-testid="bg-volgende-keuze"]'));
+  await opruimen();
 }
 
 console.log(`\nbegroting-schermen: ${stand.ok} OK, ${stand.fout} FAIL`);
