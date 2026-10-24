@@ -59,7 +59,7 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: P1, bron_type: 'regelin
   check('2: komend gesorteerd op eerstvolgende datum, bij gelijke datum op naam', ids(g.komend).join() === 'g,b,f,a', ids(g.komend).join());
   check('2: verstreken/afgehandeld: nieuwste eerst; afgehandelde status met toekomstdatum telt niet als komend', ids(g.eerder).join() === 'e,d', ids(g.eerder).join());
   check('6: regel zonder deadline staat in aparte groep onderaan', ids(g.zonder).join() === 'c');
-  check('22: verwijderde bron met eigen deadline blijft in komend, zonder brondata', g.komend.some((r) => r.regel.id === 'f' && r.regel.bronStatus === 'verwijderd' && r.regel.deadline === iso(7) && r.regel.naam === 'Bron niet meer beschikbaar'));
+  check('22: verwijderde bron met eigen deadline blijft in komend, zonder brondata', g.komend.some((r) => r.regel.id === 'f' && r.regel.bronStatus === 'verwijderd' && r.regel.deadline === iso(7) && r.regel.naam === 'Fonds'));
   check('20/21: lege invoer en project zonder regels geven lege groepen', mijnDeadlines([], {}, NU).totaal === 0 && mijnDeadlines([{ id: P2, naam: 'X' }], {}, NU).totaal === 0 && mijnDeadlines(null, null, NU).totaal === 0);
   check('20: alleen regels zonder deadline -> alles in "zonder"', (() => { const x = mijnDeadlines([{ id: P1, naam: 'X' }], { [P1]: [rpc('a', {}), rpc('b', {})] }, NU); return x.zonder.length === 2 && !x.komend.length && !x.eerder.length; })());
 }

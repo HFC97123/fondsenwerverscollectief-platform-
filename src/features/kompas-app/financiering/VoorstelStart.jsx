@@ -5,6 +5,7 @@
 import React, { useMemo } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { beoordeelProject } from './voorstel.js';
+import { formatEuro } from './dekkingsplan.js';
 import { ONTBREKEND_LABEL, voorstelGeneratieBeschikbaar } from './voorstelFlow.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
@@ -18,7 +19,8 @@ function lijstTekst(items) {
 
 // metProfielStap: de knop opent eerst het zoekprofiel (bekijken, aanvullen, bevestigen). Ontbrekende projectgegevens en een nog onbekende begroting zijn dan
 // geen reden om de knop te blokkeren: het lid vult ze in het profiel aan, of zoekt zonder bedrag.
-export default function VoorstelStart({ project, beschikbaar = voorstelGeneratieBeschikbaar(), opgeslagen = true, bezig = false, onStart, metProfielStap = false }) {
+export default function VoorstelStart({ project, beschikbaar = voorstelGeneratieBeschikbaar(), opgeslagen = true, bezig = false, onStart, metProfielStap = false, nogTePlannen = 0 }) {
+  const gat = Number.isFinite(nogTePlannen) && nogTePlannen > 0 ? Math.round(nogTePlannen) : 0;
   const oordeel = useMemo(() => beoordeelProject({ project }), [project]);
   const essentieel = oordeel.ontbrekend.filter((o) => o.soort === 'essentieel').map((o) => ONTBREKEND_LABEL[o.veld]).filter(Boolean);
   // Knop alleen aan als de flow werkt, het project is opgeslagen, de essentiële gegevens er zijn, er een begroting is (anders valt er niets te dekken) en er niet al iets bezig is.
@@ -34,6 +36,11 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
       <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;')}>
         <div style={css('min-width: 0; flex: 1 1 280px;')}>
           <h2 style={css(`${LABEL} margin: 0;`)}>Subsidie Kompas</h2>
+          {gat > 0 && (
+            <div data-testid="voorstel-gat" style={css(`${TEKST} margin-top: 4px; font-weight: 700; color: #2C4A5E;`)}>
+              Er is nog {formatEuro(gat)} te dekken. Subsidie Kompas zoekt er passende fondsen bij.
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -47,7 +54,7 @@ export default function VoorstelStart({ project, beschikbaar = voorstelGeneratie
             }`,
           )}
         >
-          Maak dekkingsplan en actieplan met Subsidie Kompas
+          {gat > 0 ? `Zoek fondsen voor de resterende ${formatEuro(gat)}` : 'Maak dekkingsplan en actieplan met Subsidie Kompas'}
         </button>
       </div>
 

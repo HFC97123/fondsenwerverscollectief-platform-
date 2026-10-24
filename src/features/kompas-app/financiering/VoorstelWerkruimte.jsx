@@ -212,6 +212,7 @@ export default function VoorstelWerkruimte({
   autoStart = false,
   profielRoute = 'project', // 'project' (Projectfinanciering) | 'chat' (het zoekprofiel uit het gesprek)
   profielBerichten = null, // chat: de berichten van het lid (alleen role 'user' wordt door de server gebruikt)
+  nogTePlannen = 0, // het deel van de begroting dat nog nergens in het dekkingsplan staat; de startknop zoekt dan fondsen voor dat bedrag
   metStartknop = null, // standaard: de startknop staat er, behalve bij een startpunt vanuit de chat
   opslag = undefined,
   directOpslaan = null, // standaard: bij Projectfinanciering zet Subsidie Kompas de fondsen direct in het dekkingsplan (geen tussenvoorbeeld)
@@ -680,7 +681,7 @@ export default function VoorstelWerkruimte({
 
   return (
     <div data-testid="voorstel-werkruimte" data-fase={fase} data-ingang={startpunt ? 'chat' : profielRoute} style={css('display: flex; flex-direction: column; gap: 18px;')}>
-      {toonStartknop && fase !== 'profiel' && <VoorstelStart project={project} beschikbaar={beschikbaar} opgeslagen={opgeslagen} metProfielStap={profielStap} bezig={fase === 'bezig' || fase === 'opslaan' || fase === 'profiel-laden'} onStart={start} />}
+      {toonStartknop && fase !== 'profiel' && <VoorstelStart project={project} nogTePlannen={nogTePlannen} beschikbaar={beschikbaar} opgeslagen={opgeslagen} metProfielStap={profielStap} bezig={fase === 'bezig' || fase === 'opslaan' || fase === 'profiel-laden'} onStart={start} />}
 
       {fase === 'profiel-laden' && <Voortgang stap={STAP.ONDERZOEKEN} />}
 
@@ -946,7 +947,7 @@ export default function VoorstelWerkruimte({
                     <strong>{s.gever}</strong>
                     {s.naam && s.naam !== s.gever ? ` – ${s.naam}` : ''}
                     {s.indicatiefBedrag != null ? ` · indicatie ongeveer ${formatEuro(s.indicatiefBedrag)} (schatting)` : ''}
-                    {s.deadline ? ` · deadline volgens de bron ${formatDatum(s.deadline)}` : ''}
+                    {s.deadline ? ` · deadline ${formatDatum(s.deadline)}` : ''}
                     {s.url && (
                       <>
                         {' · '}

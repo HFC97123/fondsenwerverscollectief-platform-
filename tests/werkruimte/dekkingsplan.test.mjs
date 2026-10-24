@@ -44,8 +44,8 @@ const rg = (status, requested, awarded = null, extra = {}) => ({ status, request
 // ---------- constanten ----------
 gelijk('vijf statussen', STATUSSEN, ['interesting', 'preparing', 'submitted', 'awarded', 'rejected']);
 gelijk('statuslabels Nederlands', STATUSSEN.map((s) => STATUS_LABEL[s]), ['Interessant', 'In voorbereiding', 'Aangevraagd', 'Toegekend', 'Afgewezen']);
-gelijk('label verborgen bron', LABEL_BRON_VERBORGEN, 'Premium-fonds, niet zichtbaar in uw abonnement');
-gelijk('label verwijderde bron', LABEL_BRON_VERWIJDERD, 'Bron niet meer beschikbaar');
+gelijk('label verborgen bron', LABEL_BRON_VERBORGEN, 'Premium-fonds');
+gelijk('label verwijderde bron', LABEL_BRON_VERWIJDERD, 'Fonds');
 
 // ---------- bedragen ----------
 gelijk('projectBedrag: getal/tekst/leeg/ongeldig', [projectBedrag(85000), projectBedrag('€ 85.000'), projectBedrag(''), projectBedrag(null), projectBedrag(-5), projectBedrag('abc'), projectBedrag(NaN)], [85000, 85000, 0, 0, 0, 0, 0]);
@@ -129,7 +129,7 @@ gelijk('formatEuro', formatEuro(12500), '€ 12.500');
 
   // Test 21: verwijderde bron
   const weg = regelUitRpc({ ...basis, bron_type: null, bron_status: 'verwijderd' });
-  check('21: verwijderde bron: label "Bron niet meer beschikbaar", eigen gegevens blijven', weg.naam === 'Bron niet meer beschikbaar' && weg.bronStatus === 'verwijderd' && weg.requested === 2000 && weg.notitie === 'Eigen notitie');
+  check('21: verwijderde bron: naam "Fonds", eigen gegevens blijven', weg.naam === 'Fonds' && weg.bronStatus === 'verwijderd' && weg.requested === 2000 && weg.notitie === 'Eigen notitie');
 
   // Test 20: eigen deadline overschrijft, geen snapshot
   const met = regelUitRpc({ ...basis, bron_status: 'zichtbaar', bron_naam: 'R', systeem_deadline: '2026-11-15', systeem_deadline_bron: 'regeling', eigen_deadline: '2026-11-12', effectieve_deadline: '2026-11-12' });

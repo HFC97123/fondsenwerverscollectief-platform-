@@ -42,8 +42,8 @@ export function deadlineVeldBij(status) {
 
 export const ACTIEVE_STATUSSEN = ['interesting', 'preparing'];
 
-export const LABEL_BRON_VERBORGEN = 'Premium-fonds, niet zichtbaar in uw abonnement';
-export const LABEL_BRON_VERWIJDERD = 'Bron niet meer beschikbaar';
+export const LABEL_BRON_VERBORGEN = 'Premium-fonds';
+export const LABEL_BRON_VERWIJDERD = 'Fonds';
 
 // ---------------------------------------------------------------------------
 // Bedragen
@@ -194,7 +194,7 @@ export function formatTijd(tijdstempel, nu) {
 export function regelUitRpc(rij) {
   const r = rij || {};
   const bronStatus = r.bron_status === 'verborgen' || r.bron_status === 'verwijderd' ? r.bron_status : 'zichtbaar';
-  const naam = bronStatus === 'verborgen' ? LABEL_BRON_VERBORGEN : bronStatus === 'verwijderd' ? LABEL_BRON_VERWIJDERD : r.bron_naam || 'Onbekende bron';
+  const naam = bronStatus === 'verborgen' ? LABEL_BRON_VERBORGEN : bronStatus === 'verwijderd' ? LABEL_BRON_VERWIJDERD : r.bron_naam || 'Fonds';
 
   return {
     id: r.id,

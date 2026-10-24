@@ -132,7 +132,7 @@ function RegelInfo({ regel, bron, details, kans, heeftBron }) {
   if (!heeftBron) {
     return (
       <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>
-        {regel.bronStatus === 'verborgen' ? 'Deze bron valt buiten uw abonnement; uw eigen gegevens hieronder blijven bewerkbaar.' : 'Deze bron bestaat niet meer; uw eigen gegevens hieronder blijven bewerkbaar.'}
+        {regel.bronStatus === 'verborgen' ? 'Dit fonds is alleen met Premium te bekijken. Uw eigen gegevens hieronder blijven bewerkbaar.' : 'Uw eigen gegevens hieronder blijven bewerkbaar.'}
       </div>
     );
   }
@@ -539,6 +539,7 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
 
       <VoorstelWerkruimte
         project={project}
+        nogTePlannen={dekking.heeftBegroting ? dekking.nogTePlannen : 0}
         opgeslagen={status !== 'geen-database' && Boolean(project && project.id)}
         onOpgeslagen={(uit) => {
           const ids = uit ? [...(uit.regels || []), ...(uit.suggesties || [])].filter((r) => r.status === 'opgeslagen' && r.fundingId).map((r) => r.fundingId) : [];
