@@ -9,6 +9,7 @@ import { Button } from '../../../shared/ui/index.js';
 import { Blok, Chip, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { AanvraagStijl, ProjectKeuze } from '../aanvraag/Bouwstenen.jsx';
 import { dekkingVanProject, formatEuro } from '../financiering/dekkingsplan.js';
+import { KLEUR, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { haalFinancieringVoorExport } from '../financiering/exportFinanciering.js';
 import { projectFinancieringHref } from '../financiering/deeplinks.js';
 import { chatStartHref } from '../chat/gesprekUrl.js';
@@ -47,6 +48,11 @@ function BegrotingStijl() {
 .fwk-bg-tip li + li { margin-top: 4px; }
 .fwk-bg-schat { cursor: pointer; border: 1px solid #E8C98A; background: #FFF6E3; color: #8A5A00; border-radius: 999px; padding: 3px 9px; font-family: inherit; font-size: 11.5px; font-weight: 800; }
 .fwk-bg-schat:hover { background: #FFEFC9; }
+.fwk-bg-balk { box-sizing: border-box; border: 1px solid ${color.lijn}; border-radius: 16px; background: ${color.vlakGrijs}; padding: 16px 20px 14px; margin-bottom: 18px; }
+.fwk-bg-balk-kop { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; font-size: 15px; font-weight: 800; color: ${color.donkerblauw}; }
+.fwk-bg-balk-leg { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 10px; font-size: 14px; color: ${color.tekst}; }
+.fwk-bg-balk-leg span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.fwk-bg-balk-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #CFDDD5; }
 .fwk-bg-bedragcel { position: relative; min-width: 0; }
 .fwk-bg-stip { position: absolute; z-index: 2; left: 2px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; border-radius: 999px; }
 .fwk-bg-stip::before { content: ''; position: absolute; left: 6px; top: 6px; width: 8px; height: 8px; border-radius: 999px; background: #7C9BB0; }
@@ -121,6 +127,53 @@ function Toelichting({ kopje, children, knop = true }) {
         </div>
       )}
     </span>
+  );
+}
+
+// De dekking van de begroting als balk bovenaan: toegekend, eigen bijdrage, uitstaand en in planning, en wat er nog te dekken is (of te veel gedekt).
+// Rekent met dezelfde dekkingsmodule als het Dekkingsplan hieronder en volgt de regels die nu op het scherm staan.
+function DekkingBalk({ dek, projectNaam }) {
+  if (!dek.heeftBegroting) return null;
+
+  const delen = [
+    [dek.toegekend, 'toegekend', KLEUR.toegekend, 'toegekend'],
+    [dek.overige, 'eigen bijdrage', KLEUR.overige, 'eigen'],
+    [dek.aangevraagd, 'uitstaand', KLEUR.aangevraagd, 'uitstaand'],
+    [dek.gepland, 'in planning', KLEUR.gepland, 'planning'],
+  ].filter(([n]) => n > 0);
+
+  return (
+    <div className="fwk-bg-balk" data-testid="bg-balk">
+      <div className="fwk-bg-balk-kop">
+        <span>Dekking van de begroting</span>
+        <span data-testid="bg-balk-begroting">{euro(dek.begroting)}</span>
+      </div>
+      <Voortgangsbalk dekking={dek} projectNaam={projectNaam || 'dit project'} hoogte={10} metPlan />
+      <div className="fwk-bg-balk-leg">
+        {delen.map(([n, naam, kleur, sleutel]) => (
+          <span key={sleutel} data-testid={`bg-balk-${sleutel}`}>
+            <i style={{ background: kleur }} />
+            {euro(n)} {naam}
+          </span>
+        ))}
+        {dek.overgedekt > 0 ? (
+          <span data-testid="bg-balk-over">
+            <i style={{ background: '#E9EFEB' }} />
+            {euro(dek.overgedekt)} overdekking
+          </span>
+        ) : dek.nogTePlannen > 0 ? (
+          <span data-testid="bg-balk-nog">
+            <i style={{ background: '#E9EFEB' }} />
+            {euro(dek.nogTePlannen)} nog te dekken
+          </span>
+        ) : (
+          <span data-testid="bg-balk-sluitend">
+            <i style={{ background: '#E9EFEB' }} />
+            volledig gedekt
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -668,6 +721,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       <AanvraagStijl />
       <BegrotingStijl />
       <ProjectKeuze projecten={projecten} projectId={projectId} onKies={onKiesProject} />
+
+      <DekkingBalk dek={dek} projectNaam={project && project.naam} />
 
       <Blok
         titel="Begroting"
