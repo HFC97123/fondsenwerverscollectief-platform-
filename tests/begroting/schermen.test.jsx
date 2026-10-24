@@ -97,6 +97,10 @@ let s;
   await act(async () => { $('[data-testid="bg-bedrag"]', regel).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
   check('Enter in het bedrag opent de suggesties voor de volgende regel van hetzelfde kopje', !!$('[data-testid="bg-suggesties-uitvoering"]'));
   check('de keuzes onder een kopje heten + Zelf invullen en boven staat Kies een hoofdkop met een kale + voor een eigen kopje', /\+ Zelf invullen/.test($('[data-testid="bg-eigen-regel"]').textContent) && /Kies een hoofdkop/.test($('[data-testid="bg-kopjes"]').textContent) && $('[data-testid="bg-kopje-eigen"]').textContent.trim() === '+');
+  check('onder het laatste kopje met regels staat een knop naar de volgende hoofdkop, met de naam erin', /Klaar, door naar Activa en uitrusting/.test(($('[data-testid="bg-volgende-kop"]') || { textContent: '' }).textContent));
+  await klik($('[data-testid="bg-volgende-kop"]'));
+  check('die knop voegt de volgende hoofdkop toe en opent meteen de suggesties daarvan', !!kopje('activa') && !!$('[data-testid="bg-suggesties-activa"]'));
+  await klik($('[data-testid="bg-kopje-weg-activa"]'));
   check('Opslaan verschijnt zodra er iets staat', !!knop('Begroting opslaan') && !!$('[data-testid="bg-niet-opgeslagen"]'));
 
   if ($('[data-testid="bg-plus-uitvoering"]')) await klik($('[data-testid="bg-plus-uitvoering"]'));

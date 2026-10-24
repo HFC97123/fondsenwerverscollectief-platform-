@@ -58,6 +58,9 @@ function BegrotingStijl() {
 .fwk-bg-balk-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #CFDDD5; }
 .fwk-bg-kopjesbalk { position: sticky; top: 8px; z-index: 6; margin: 6px 0 10px; padding: 8px 0 4px; background: ${color.wit}; }
 .fwk-bg-kopjes-label { margin-bottom: 6px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.04em; color: ${color.tekstLicht}; }
+.fwk-bg-klaar { display: flex; justify-content: flex-end; margin: 12px 0 0; }
+.fwk-bg-volgende { cursor: pointer; border: 1px solid ${color.groen}; background: ${color.wit}; color: ${color.groen}; border-radius: 999px; padding: 8px 18px; font-family: inherit; font-size: 13.5px; font-weight: 800; }
+.fwk-bg-volgende:hover { background: ${color.vlakGroen}; }
 .fwk-bg-chip-plus { padding-left: 14px; padding-right: 14px; font-size: 16px; line-height: 1; }
 .fwk-bg-bedragcel { position: relative; min-width: 0; }
 .fwk-bg-stip { position: absolute; z-index: 2; left: 2px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; border-radius: 999px; }
@@ -944,6 +947,13 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 <div className="fwk-bg-lijn">
                   <button type="button" className="fwk-bg-plus" data-testid={`bg-plus-${slug}`} aria-label="Regel toevoegen" title="Regel toevoegen" onClick={() => (c.id === GEEN_KOPJE ? voegToe(GEEN_KOPJE) : setPlusOpen(c.id))}>
                     +
+                  </button>
+                </div>
+              )}
+              {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && rijen.length > 0 && (
+                <div className="fwk-bg-klaar">
+                  <button type="button" className="fwk-bg-volgende" data-testid="bg-volgende-kop" onClick={() => (nietZichtbaar.length ? kiesKopje(nietZichtbaar[0].id) : setEigenOpen(true))}>
+                    {nietZichtbaar.length ? `Klaar, door naar ${nietZichtbaar[0].label} →` : 'Klaar, nog een hoofdkop →'}
                   </button>
                 </div>
               )}
