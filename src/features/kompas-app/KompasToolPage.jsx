@@ -14,6 +14,8 @@ import DenkKompas from './DenkKompas.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { useKompas, DOC_SOORTEN } from './KompasStore.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
+import { abonnerenHash } from '../../data/services/koopintentie.js';
+import { ABONNEMENTEN } from '../../data/abonnementen.js';
 import { askKompasStream, buildContext, buildMatchSignalen } from '../../data/services/chat.js';
 import { isEchtId } from '../../data/services/projecten.js';
 import {
@@ -1802,18 +1804,26 @@ export default function KompasToolPage() {
             {isFreePlan && (
               <div style={css('margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;')}>
                 <span style={css('flex: 1 1 300px; min-width: 0; color: #687974; font-size: 12px; font-weight: 700; text-wrap: pretty;')}>
-                  Pro levert uw projectplannen, begrotingen en aanvragen als afgeronde documenten in uw eigen huisstijl,
-                  en onthoudt uw organisatie. Premium zoekt daarnaast in <FundingDatabaseCount /> fondsen die online
-                  nauwelijks te vinden zijn.
+                  <strong>Pro:</strong> afgeronde projectplannen, begrotingen en aanvragen, uw deadlines helder in beeld en een
+                  geheugen voor uw organisatie. <strong>Premium:</strong> ook <FundingDatabaseCount /> fondsen die online
+                  nauwelijks te vinden zijn, en documenten in uw eigen huisstijl.
                 </span>
-                <a
-                  href="#/hoe-het-werkt"
-                  style={css(
-                    'flex-shrink: 0; padding: 8px 16px; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-size: 12px; font-weight: 800; white-space: nowrap;',
-                  )}
-                >
-                  Ontdek Pro en Premium →
-                </a>
+                <span style={css('display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0;')}>
+                  <a
+                    href={abonnerenHash('PRO')}
+                    data-testid="free-proef-pro"
+                    style={css('padding: 8px 16px; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-size: 12px; font-weight: 800; white-space: nowrap; text-decoration: none;')}
+                  >
+                    Pro: {ABONNEMENTEN.pro.proefDuur} gratis →
+                  </a>
+                  <a
+                    href={abonnerenHash('PREMIUM')}
+                    data-testid="free-proef-premium"
+                    style={css('padding: 8px 16px; border-radius: 999px; background: #4E9A6C; color: #FFFFFF; font-size: 12px; font-weight: 800; white-space: nowrap; text-decoration: none;')}
+                  >
+                    Premium: {ABONNEMENTEN.premium.proefDuur} gratis →
+                  </a>
+                </span>
               </div>
             )}
 
