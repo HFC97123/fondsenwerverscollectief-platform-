@@ -679,7 +679,7 @@ export default function NetwerkPage() {
             onClick={goKompas}
             style={css('padding: 15px 30px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px; white-space: nowrap;')}
           >
-            Probeer Subsidie Kompas →
+            Ontdek Subsidie Kompas →
           </a>
         </div>
       </div>

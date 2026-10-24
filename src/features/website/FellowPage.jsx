@@ -71,7 +71,7 @@ export default function FellowPage() {
             eigen vakkennis.
           </div>
           <a href="#" onClick={goKompas} style={css('font-weight: 700; color: #4E9A6C; font-size: 15px;')}>
-            Probeer Subsidie Kompas →
+            Ontdek Subsidie Kompas →
           </a>
         </div>
       </div>

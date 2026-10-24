@@ -263,7 +263,7 @@ export default function HomePage() {
                 'display: inline-block; padding: 15px 30px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px;',
               )}
             >
-              Probeer Subsidie Kompas →
+              Ontdek Subsidie Kompas →
             </a>
           </div>
 

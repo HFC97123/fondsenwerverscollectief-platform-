@@ -28,7 +28,7 @@ const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font
 // Uitgelogd heet de trigger "Login": een rustige, witte pil met een dunne
 // lichtblauw/grijsblauwe rand en donkerblauwe tekst (zelfde marine #2C4A5E als
 // de navigatielinks) in het sitelettertype (Mulish, vet), naast de solide
-// groene "Probeer Subsidie Kompas"-pil. Padding en font-size zijn zo gekozen dat
+// groene "Ontdek Subsidie Kompas"-pil. Padding en font-size zijn zo gekozen dat
 // beide knoppen exact even hoog zijn (de rand van 1.5px zit in de verticale
 // padding afgetrokken); de horizontale padding is ruimer. Hover: heel lichte
 // achtergrond en iets duidelijkere rand, zonder schaduw of animatie. De
@@ -277,7 +277,7 @@ export default function Header() {
             )}
             <div style={css('display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-right: -10px;')}>
               <a href="#" onClick={goKompas} style={navKnop}>
-                Probeer Subsidie Kompas
+                Ontdek Subsidie Kompas
               </a>
               <AccountMenu />
             </div>
@@ -358,7 +358,7 @@ export default function Header() {
                     'margin-top: 8px; padding: 14px 20px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-size: 15.5px; font-weight: 700; text-align: center;',
                   )}
                 >
-                  Probeer Subsidie Kompas
+                  Ontdek Subsidie Kompas
                 </a>
               </div>
             )}
