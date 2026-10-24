@@ -11,7 +11,11 @@ import DocumentatiePage from './DocumentatiePage.jsx';
 import AccountPage from './AccountPage.jsx';
 import DashboardPage from './dashboard/DashboardPage.jsx';
 import ProjectDetailPage from './projectdossier/ProjectDetailPage.jsx';
-import KompasWerkNav from './KompasWerkNav.jsx';
+import KompasWerkNav, { MIJN_PADEN } from './KompasWerkNav.jsx';
+import AdviesPage from './advies/AdviesPage.jsx';
+import AdviesSubnav from './advies/AdviesSubnav.jsx';
+import MijnSubnav from './advies/MijnSubnav.jsx';
+import { ADVIES_PADEN } from './advies/adviesLinks.js';
 import { WerkNavContext } from './werkNavContext.js';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 
@@ -19,6 +23,7 @@ const PAGINAS = {
   '/subsidie-kompas': KompasToolPage,
   '/kompas': KompasToolPage,
   '/kompas/dashboard': DashboardPage,
+  '/kompas/advies': AdviesPage,
   '/kompas/deadlines': DeadlinesPage,
   '/kompas/organisatie': OrganisatieprofielPage,
   '/kompas/projecten': ProjectenPage,
@@ -50,7 +55,9 @@ export default function KompasApp({ route, param }) {
       <WerkNavContext.Provider value={heeftWerkNav}>
         <div style={{ fontFamily: "'Mulish', sans-serif" }}>
           {heeftWerkNav ? <KompasWerkNav pad={route.pad} /> : KOP_VAN_KOMPASAPP.has(route.pad) && <KompasSubnav toonPlan />}
-          {projectId ? <ProjectDetailPage projectId={projectId} /> : <Pagina />}
+          {heeftWerkNav && MIJN_PADEN.includes(route.pad) && <MijnSubnav pad={route.pad} />}
+          {heeftWerkNav && ADVIES_PADEN.includes(route.pad) && <AdviesSubnav pad={route.pad} />}
+          {projectId ? <ProjectDetailPage projectId={projectId} /> : <Pagina param={param} />}
         </div>
       </WerkNavContext.Provider>
     </KompasProvider>

@@ -1062,7 +1062,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
         testid="bg-dekking"
         actie={
           <a className="fwk-wp-link" href={projectFinancieringHref(projectId)}>
-            Aanpassen in Projectfinanciering →
+            Aanpassen bij de fondsmatching →
           </a>
         }
       >

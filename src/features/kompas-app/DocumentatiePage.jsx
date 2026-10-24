@@ -33,7 +33,7 @@
 //   een document veilig uit project.docs verwijdert, is de knop hier
 //   weggelaten in plaats van een knop te tonen die niets uitvoert; zie het
 //   rapport (stap 3C) voor dit aandachtspunt.
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useHeeftWerkruimte } from './werkruimteRechten.js';
@@ -117,11 +117,36 @@ export default function DocumentatiePage() {
     zetProjectInUrl(id);
   }, []);
 
+  // De balk van Subsidieadvies verandert alleen de hash (stap of project): tabblad en project volgen de URL.
+  useEffect(() => {
+    const volg = () => {
+      const h = window.location.hash || '';
+
+      if (!/^#\/kompas\/documentatie/.test(h)) return;
+
+      setTab(leesTabUitUrl());
+
+      const p = leesProjectUitUrl();
+
+      if (p) {
+        setGekozen(p);
+        setProjectFilter(p);
+      }
+    };
+
+    window.addEventListener('hashchange', volg);
+
+    return () => window.removeEventListener('hashchange', volg);
+  }, []);
+
+  // Subsidieadvies: Begroting (stap 2) en Indienen (stap 4) zijn twee kanten van deze pagina.
+  const sectie = tabActief === 'begroting' ? 'begroting' : 'indienen';
+
   if (!paid) {
     return (
       <WerkPagina testid="documenten">
-        <PaginaKop titel="Documenten" />
-        <Melding toon="info">Documenten horen bij Pro en Premium.</Melding>
+        <PaginaKop titel="Indienen" />
+        <Melding toon="info">Indienen hoort bij Pro en Premium.</Melding>
         <div style={css('margin-top: 14px;')}>
           <Button variant="dark" onClick={app.goAbonnementen}>
             Bekijk de abonnementen
@@ -162,36 +187,39 @@ export default function DocumentatiePage() {
   return (
     <WerkPagina testid="documenten">
       <PaginaKop
-        titel="Documenten"
-        meta={`${alle.length} ${alle.length === 1 ? 'document' : 'documenten'}${aantalProjecten ? ` in ${aantalProjecten} ${aantalProjecten === 1 ? 'project' : 'projecten'}` : ''}`}
+        titel={sectie === 'begroting' ? 'Begroting' : 'Indienen'}
+        meta={sectie === 'begroting' ? null : tabActief === 'bestanden' ? `${alle.length} ${alle.length === 1 ? 'document' : 'documenten'}${aantalProjecten ? ` in ${aantalProjecten} ${aantalProjecten === 1 ? 'project' : 'projecten'}` : ''}` : null}
         help={
-          <>
-            <p>Bestanden zijn de documenten bij uw projecten: wat u uploadt en wat Subsidie Kompas voor u opmaakte. Klik op een naam om er in de chat mee verder te werken.</p>
-            <p>Projectinhoud is de inhoud waarmee Subsidie Kompas teksten en aanvragen voor een project schrijft. Wat daar niet staat, verzint Subsidie Kompas niet.</p>
-            {assistent.beschikbaar && (
-              <p>Onder Projectplan schrijft u een algemeen plan of een plan voor één fonds. Onder Aanvragen houdt u per fonds de criteria, uw versie en de beoordeling van uw eigen tekst bij elkaar.</p>
-            )}
-          </>
+          sectie === 'begroting' ? (
+            <p>Uw begroting per subcategorie, met de dekking door de financiers van dit project.</p>
+          ) : (
+            <>
+              <p>Het projectdossier is de inhoud waarmee Subsidie Kompas teksten en aanvragen voor een project schrijft. Wat daar niet staat, verzint Subsidie Kompas niet.</p>
+              {assistent.beschikbaar && <p>Onder Projectplan schrijft u een algemeen plan of een plan voor één fonds. Onder Aanvragen houdt u per fonds de criteria, uw versie en de beoordeling van uw eigen tekst bij elkaar.</p>}
+              <p>Bestanden zijn de documenten bij uw projecten: wat u uploadt en wat Subsidie Kompas voor u opmaakte.</p>
+            </>
+          )
         }
       />
 
-      <Tabs
-        tabs={[
-          { id: 'bestanden', label: 'Bestanden', aantal: alle.length },
-          { id: 'inhoud', label: 'Projectinhoud' },
-          ...(begrotingBeschikbaar ? [{ id: 'begroting', label: 'Begroting' }] : []),
-          ...(assistent.beschikbaar
-            ? [
-                { id: 'plan', label: 'Projectplan' },
-                { id: 'aanvragen', label: 'Aanvragen' },
-              ]
-            : []),
-        ]}
-        actief={tabActief}
-        onKies={setTab}
-        label="Documenten"
-        testidPrefix="documenten-tab-"
-      />
+      {sectie === 'indienen' && (
+        <Tabs
+          tabs={[
+            { id: 'inhoud', label: 'Projectdossier' },
+            ...(assistent.beschikbaar
+              ? [
+                  { id: 'plan', label: 'Projectplan' },
+                  { id: 'aanvragen', label: 'Aanvragen' },
+                ]
+              : []),
+            { id: 'bestanden', label: 'Bestanden', aantal: alle.length },
+          ]}
+          actief={tabActief}
+          onKies={setTab}
+          label="Indienen"
+          testidPrefix="documenten-tab-"
+        />
+      )}
 
       {(tabActief === 'plan' || tabActief === 'aanvragen') && !assistent.beschikbaar && <Leeg>Even laden…</Leeg>}
 

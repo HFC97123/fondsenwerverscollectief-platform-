@@ -3,11 +3,13 @@
 // Alleen een geldig project-id (uuid) komt in een pad; een ongeldig id valt terug op het projectenoverzicht.
 import { isEchtId } from '../../../data/services/projecten.js';
 import { chatHref } from '../chat/gesprekUrl.js';
+import { stapPad } from '../advies/adviesLinks.js';
 
 export const TAB_PROJECTFINANCIERING = 'projectfinanciering';
 
+// Sinds Subsidieadvies staat de projectfinanciering bij stap 1 (fondsmatching): /kompas/advies/fondsen?project=<id>.
 export function projectFinancieringPad(projectId) {
-  return isEchtId(projectId) ? `/kompas/projecten/${projectId}?tab=${TAB_PROJECTFINANCIERING}` : '/kompas/projecten';
+  return isEchtId(projectId) ? stapPad('fondsen', projectId) : '/kompas/projecten';
 }
 
 export function projectFinancieringHref(projectId) {

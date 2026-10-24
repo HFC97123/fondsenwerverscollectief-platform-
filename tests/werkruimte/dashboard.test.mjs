@@ -191,8 +191,8 @@ gelijk('actieve statussen', ACTIEVE_STATUSSEN, ['interesting', 'preparing']);
   const leeg = organisatieVolledigheid({});
   gelijk('organisatie: leeg profiel 0%', [leeg.pct, leeg.ingevuld, leeg.naam], [0, 0, '']);
   const deel = organisatieVolledigheid({ name: ' Stichting X ', mission: 'Missie', themas: ['Welzijn'], doelgroepen: [], website: '   ' });
-  gelijk('organisatie: gedeeltelijk (spaties en lege arrays tellen niet)', [deel.ingevuld, deel.pct, deel.naam], [3, 38, 'Stichting X']);
-  check('organisatie: ontbrekende velden benoemd', deel.ontbreekt.includes('Website') && deel.ontbreekt.includes('Doelgroepen'));
+  gelijk('organisatie: gedeeltelijk (spaties en lege arrays tellen niet)', [deel.ingevuld, deel.pct, deel.naam], [2, 40, 'Stichting X']);
+  check('organisatie: ontbrekende velden benoemd', deel.ontbreekt.includes('Website') && deel.ontbreekt.includes('Rechtsvorm') && !deel.ontbreekt.includes('Doelgroepen'));
   const vol = organisatieVolledigheid({ name: 'A', website: 'a.nl', rechtsvorm: 'Stichting', kvk: '1', mission: 'm', regio: 'r', themas: ['t'], doelgroepen: ['d'] });
   gelijk('organisatie: compleet 100%', vol.pct, 100);
   gelijk('organisatie: null-profiel crasht niet', organisatieVolledigheid(null).pct, 0);
@@ -241,8 +241,8 @@ const lees = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8')
 
   const nav = lees('src/features/kompas-app/KompasWerkNav.jsx');
   const volgorde = [...nav.matchAll(/key: '(\w+)', label: '([^']+)'/g)].map((m) => m[2]);
-  gelijk('werknav: definitieve volgorde', volgorde, ['Dashboard', 'Chat', 'Projecten', 'Deadlines', 'Documenten']);
-  check('werknav: Organisatiemenu met profiel, account, abonnement, uitloggen', ['Organisatieprofiel', 'Account', 'Abonnement', 'Uitloggen'].every((t) => nav.includes(`>${t}</`)));
+  gelijk('werknav: definitieve volgorde', volgorde, ['Dashboard', 'Chat', 'Subsidieadvies', 'Mijn Subsidie Kompas']);
+  check('werknav: accountmenu met account, abonnement, uitloggen (Organisatie staat onder Mijn Subsidie Kompas)', !nav.includes('>Organisatieprofiel</') && ['Account', 'Abonnement', 'Uitloggen'].every((t) => nav.includes(`>${t}</`)));
   check('werknav: projectdossier is geen hoofdmenu-item', !/label: 'Projectdossier'/.test(nav));
 
   const dash = lees('src/features/kompas-app/dashboard/DashboardPage.jsx');

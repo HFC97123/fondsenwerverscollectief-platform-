@@ -83,7 +83,7 @@ const rpc = (id, extra) => regelUitRpc({ id, program_id: P1, bron_type: 'regelin
 
 // ---- deeplink: één conventie
 {
-  check('18: deeplink-pad = /kompas/projecten/<id>?tab=projectfinanciering', projectFinancieringPad(P1) === `/kompas/projecten/${P1}?tab=projectfinanciering` && projectFinancieringHref(P1) === `#/kompas/projecten/${P1}?tab=projectfinanciering`);
+  check('18: deeplink-pad = /kompas/advies/fondsen?project=<id> (fondsmatching onder Subsidieadvies)', projectFinancieringPad(P1) === `/kompas/advies/fondsen?project=${P1}` && projectFinancieringHref(P1) === `#/kompas/advies/fondsen?project=${P1}`);
   check('18: ongeldig id (geen uuid, geen padinjectie) valt terug op het projectenoverzicht', projectFinancieringPad('../x?tab=1') === '/kompas/projecten' && projectFinancieringPad(null) === '/kompas/projecten' && projectFinancieringPad('abc') === '/kompas/projecten');
   const bronnen = ['src/features/kompas-app/dashboard/DashboardPage.jsx', 'src/features/kompas-app/ProjectenPage.jsx', 'src/features/kompas-app/deadlines/FundingDeadlineRow.jsx', 'src/features/kompas-app/deadlines/ProjectOpnemen.jsx'];
   check('18: Dashboard, Projecten, Mijn deadlines en dialoog gebruiken de helper, geen eigen ?tab=-string', bronnen.every((f) => /projectFinancieringHref/.test(lees(f)) && !/tab=projectfinanciering/.test(zonderCommentaar(lees(f)))));

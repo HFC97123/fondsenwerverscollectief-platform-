@@ -189,7 +189,7 @@ const loop = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); 
   check('19: Overzicht-tab gebruikt geen financieringsdata (geen hook/RPC/rekenmodule; alleen een verwijzing naar Projectfinanciering)', !/useProjectFinanciering|useDekkingsplannen|dekkingVanProject|berekenDekking|haalDekkingsplan|rpc\(/i.test(overzicht));
   check('19: Overzicht leest uit de projectprop (subsidie_kompas_programs via de store)', /project\.omschrijving/.test(overzicht));
   check('dossier: geen hoofdmenu-item en route valt onder Projecten', !/Projectdossier/.test(lees('src/features/kompas-app/KompasWerkNav.jsx')));
-  check('dossier: tabs Overzicht, Projectfinanciering, Documenten, Gesprekken', ['overzicht', 'projectfinanciering', 'documenten', 'gesprekken'].every((t) => detail.includes(`id: '${t}'`)));
+  check('dossier: tabs Overzicht, Documenten, Gesprekken (financiering staat onder Subsidieadvies)', ['overzicht', 'documenten', 'gesprekken'].every((t) => detail.includes(`id: '${t}'`)) && !detail.includes("id: 'projectfinanciering'"));
   check('dossier: Free ziet geen financiering (hook krijgt null zonder plan)', /useProjectFinanciering\(project && paid \? projectId : null\)/.test(detail));
   check('dossier: Bespreek met Subsidie Kompas gebruikt alleen de chatverzoek-handoff', /store\.zetChatVerzoek/.test(detail) && !/askKompas|functions\.invoke/.test(detail));
 

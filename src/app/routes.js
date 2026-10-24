@@ -53,6 +53,8 @@ export const routes = [
   // Dashboard van de Pro/Premium-werkruimte (cockpit, alleen samenvatten en doorlinken). Voor Free
   // toont de pagina zelf een uitnodiging voor Pro/Premium, net als Projecten.
   { pad: '/kompas/dashboard', area: AREA.app, titel: 'Dashboard', toegang: 'lid' },
+  // Subsidieadvies: Overzicht en Fondsen. Begroting, Deadlines en Indienen zijn de bestaande pagina's (zie advies/adviesLinks.js).
+  { pad: '/kompas/advies', area: AREA.app, titel: 'Subsidieadvies', toegang: 'lid' },
   { pad: '/kompas/deadlines', area: AREA.app, titel: 'Deadlines', toegang: 'publiek' },
   { pad: '/kompas/organisatie', area: AREA.app, titel: 'Organisatie', toegang: 'lid' },
   { pad: '/kompas/projecten', area: AREA.app, titel: 'Projecten', toegang: 'lid' },

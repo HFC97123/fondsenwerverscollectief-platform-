@@ -133,7 +133,7 @@ export const ABONNEMENTEN = {
     prijsTekst: `${formatEuro(maandPrijsCent('pro'))} per maand`,
     proefDuur: '7 dagen',
     kenmerken: [
-      'AI-matching met passende fondsen en regelingen',
+      'Fondsmatching met passende fondsen en regelingen',
       'Sluitende begroting, dekkingsplan en actieplan per project',
       '1 projectplan genereren per maand',
       '6 aanvragen beoordelen per maand',

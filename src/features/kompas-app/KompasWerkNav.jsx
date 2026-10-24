@@ -1,6 +1,6 @@
 // Hoofdnavigatie van de Pro/Premium-werkruimte van Subsidie Kompas:
 //
-//   Dashboard · Chat · Projecten · Deadlines · Documenten          Organisatie ▾
+//   Dashboard · Chat · Subsidieadvies · Mijn Subsidie Kompas          <organisatienaam> ▾
 //
 // Eén balk voor het hele werkgebied. De Free-ervaring en de publieke
 // Kompas-pagina's houden de bestaande KompasSubnav (zie KompasApp.jsx en
@@ -11,13 +11,17 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import { chatHref } from './chat/gesprekUrl.js';
+import { ADVIES_PADEN } from './advies/adviesLinks.js';
+
+// Mijn Subsidie Kompas = wie u bent en wat u doet (Projecten en Organisatie, met een eigen tweede balk).
+// Subsidieadvies = het werk in vier stappen (Fondsen, Begroting, Deadlines, Indienen), ook met een eigen tweede balk.
+export const MIJN_PADEN = ['/kompas/projecten', '/kompas/organisatie'];
 
 export const WERKNAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', href: '#/kompas/dashboard', paden: ['/kompas/dashboard'] },
   { key: 'chat', label: 'Chat', href: '#/kompas', paden: ['/kompas', '/subsidie-kompas'] },
-  { key: 'projecten', label: 'Projecten', href: '#/kompas/projecten', paden: ['/kompas/projecten'] },
-  { key: 'deadlines', label: 'Deadlines', href: '#/kompas/deadlines', paden: ['/kompas/deadlines'] },
-  { key: 'documenten', label: 'Documenten', href: '#/kompas/documentatie', paden: ['/kompas/documentatie'] },
+  { key: 'advies', label: 'Subsidieadvies', href: '#/kompas/advies', paden: ADVIES_PADEN },
+  { key: 'mijn', label: 'Mijn Subsidie Kompas', href: '#/kompas/projecten', paden: MIJN_PADEN },
 ];
 
 // Welk hoofditem hoort bij deze route? (Organisatie en Account horen bij het
@@ -29,7 +33,7 @@ export function actieveSleutel(pad) {
 }
 
 export function isOrganisatieMenuPad(pad) {
-  return pad === '/kompas/organisatie' || pad === '/kompas/account';
+  return pad === '/kompas/account';
 }
 
 const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
@@ -188,7 +192,6 @@ export default function KompasWerkNav({ pad }) {
               <div style={css("padding: 8px 14px 10px; border-bottom: 1px solid #E9EFEB; margin-bottom: 6px; font-family: 'Mulish', sans-serif; font-size: 12.5px; font-weight: 700; color: #7B8985;")}>
                 {app.naam || 'Mijn account'} · {tierLabel}
               </div>
-              <a href="#/kompas/organisatie" style={menuItemStijl}>Organisatieprofiel</a>
               <a href="#/kompas/account" style={menuItemStijl}>Account</a>
               <a href="#/hoe-het-werkt" style={menuItemStijl}>Abonnement</a>
               <button type="button" onClick={uitloggen} style={menuItemStijl}>Uitloggen</button>

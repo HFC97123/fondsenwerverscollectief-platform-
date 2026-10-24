@@ -1,6 +1,6 @@
 // Projectdossier: het project als samenhangende werkplek (/kompas/projecten/<id>).
-// Kop met één regel kerngegevens, tabbladen voor Projectprofiel, Fondsen en dekkingsplan, Deadlines en acties,
-// Documenten en Gesprekken, en een zijkolom met de dekking van de begroting en de komende deadlines.
+// Kop met één regel kerngegevens, tabbladen voor Projectprofiel, Documenten en Gesprekken, en een zijkolom met de dekking
+// van de begroting en de komende deadlines. Fondsen en dekkingsplan en Deadlines staan sinds Subsidieadvies bij Fondsen en Deadlines.
 // Bewust GEEN hoofdmenu-item: u komt hier vanuit Projecten of het Dashboard.
 //
 // - Projectprofiel gebruikt uitsluitend projectgegevens uit subsidie_kompas_programs (via de store).
@@ -15,16 +15,14 @@ import { useApp } from '../useKompasApp.js';
 import { useKompas } from '../KompasStore.jsx';
 import { useProjectFinanciering } from '../financiering/useProjectFinanciering.js';
 import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
-import { ActieplanVoorProject } from '../financiering/ActieplanBlok.jsx';
 import { dagenTekst, dagenTot, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, formatTijd, isKomendeDeadline, periodeTekst } from '../financiering/dekkingsplan.js';
-import ProjectfinancieringTab from './ProjectfinancieringTab.jsx';
 import ConversationsList from '../chat/ConversationsList.jsx';
 import ProjectgegevensAanvullen from './ProjectgegevensAanvullen.jsx';
 import { isEchtId } from '../../../data/services/projecten.js';
 import KaartMenu, { CSS_KAARTMENU } from '../KaartMenu.jsx';
 import { useHeeftWerkruimte } from '../werkruimteRechten.js';
 import ProjectBewerkFormulier from './ProjectBewerkFormulier.jsx';
-import { voortgang } from '../projectinformatie/projectinformatie.js';
+import { adviesDoorverwijzing, stapHref } from '../advies/adviesLinks.js';
 import { DocumentNaam, DocumentSoortKiezer, DocumentUploadKnop, DocumentVerwijderKnop, useDocumentenBeheer } from './DocumentenBeheer.jsx';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.6; color: #4B5C58;";
@@ -32,8 +30,6 @@ const LABEL = "font-family: 'Mulish', sans-serif; font-size: 10.5px; font-weight
 
 const TABS = [
   { id: 'overzicht', label: 'Projectprofiel' },
-  { id: 'projectfinanciering', label: 'Fondsen en dekkingsplan' },
-  { id: 'deadlines', label: 'Deadlines en acties' },
   { id: 'documenten', label: 'Documenten' },
   { id: 'gesprekken', label: 'Gesprekken' },
 ];
@@ -88,7 +84,6 @@ function ProfielTab({ project, bewerk, setBewerk, store }) {
   const doelgroep = Array.isArray(project.doelgroep) ? project.doelgroep.join(', ') : project.doelgroep;
   const discipline = Array.isArray(project.discipline) ? project.discipline.join(', ') : project.discipline;
   const periode = periodeTekst(project.periodeVan, project.periodeTot);
-  const pi = voortgang(project);
 
   return (
     <div data-testid="tab-overzicht" style={css('display: flex; flex-direction: column; gap: 18px;')}>
@@ -119,42 +114,7 @@ function ProfielTab({ project, bewerk, setBewerk, store }) {
           </div>
         )}
       </Blok>
-
-      {!bewerk && (
-        <Blok
-          testid="overzicht-projectinformatie"
-          titel="Projectdocumentatie"
-          actie={
-            <a href={`#/kompas/documentatie?project=${encodeURIComponent(project.id)}&tab=inhoud`} data-testid="overzicht-open-projectinformatie" className="fwk-wp-link">
-              Aanvullen
-            </a>
-          }
-        >
-          <div style={css('display: flex; align-items: center; gap: 12px;')}>
-            <div className="fwk-wp-voortgang" style={css('flex: 1 1 auto;')} aria-hidden="true">
-              <span style={css(`width: ${pi.totaal ? Math.round((pi.ingevuld / pi.totaal) * 100) : 0}%; background: ${KLEUR.toegekend};`)} />
-            </div>
-            <span data-testid="overzicht-pi-voortgang" style={css(`${TEKST} font-weight: 800; color: #2C4A5E; white-space: nowrap;`)}>
-              {pi.ingevuld} van {pi.totaal} onderdelen ingevuld.
-            </span>
-          </div>
-        </Blok>
-      )}
     </div>
-  );
-}
-
-function DeadlinesTab({ project, financiering }) {
-  if (financiering.status === 'laden') return <Leeg>Deadlines worden geladen…</Leeg>;
-
-  if (financiering.status !== 'klaar' || !isEchtId(project.id)) {
-    return <Leeg>Sla het project op om deadlines en acties te volgen.</Leeg>;
-  }
-
-  return (
-    <section id="pf-acties" data-testid="pf-acties" className="fwk-wp-blok">
-      <ActieplanVoorProject project={project} regels={financiering.regels} />
-    </section>
   );
 }
 
@@ -262,7 +222,7 @@ function Zijkolom({ project, dekking, volgende, regels, financiering }) {
         testid="detail-dekking"
         titel="Dekking"
         actie={
-          <a href={`#/kompas/projecten/${project.id}?tab=projectfinanciering`} className="fwk-wp-link">
+          <a href={stapHref('fondsen', project.id)} className="fwk-wp-link">
             Dekkingsplan
           </a>
         }
@@ -332,14 +292,24 @@ export default function ProjectDetailPage({ projectId }) {
   // tab en bewerkformulier volgen dan de URL.
   useEffect(() => {
     const volg = () => {
+      const door = adviesDoorverwijzing(window.location.hash, projectId);
+
+      if (door) {
+        window.location.replace(door);
+
+        return;
+      }
+
       setTab(leesTab());
       setBewerkState(leesBewerk());
     };
 
+    volg();
+
     window.addEventListener('hashchange', volg);
 
     return () => window.removeEventListener('hashchange', volg);
-  }, []);
+  }, [projectId]);
 
   const setBewerk = useCallback((aan, melding) => {
     setBewerkState(aan);
@@ -424,7 +394,7 @@ export default function ProjectDetailPage({ projectId }) {
     ...t,
     aantal: t.id === 'documenten' ? docs.length : t.id === 'gesprekken' ? gesprekken.length : t.id === 'projectfinanciering' && financiering.status === 'klaar' ? regels.length : null,
   }));
-  const metZijkolom = tab !== 'projectfinanciering';
+  const metZijkolom = true;
 
   return (
     <WerkPagina>
@@ -491,8 +461,6 @@ export default function ProjectDetailPage({ projectId }) {
               </div>
             )}
             {tab === 'overzicht' && <ProfielTab project={project} bewerk={bewerk} setBewerk={setBewerk} store={store} />}
-            {tab === 'projectfinanciering' && <ProjectfinancieringTab project={project} financiering={financiering} dekking={dekking} toonActieplan={false} />}
-            {tab === 'deadlines' && <DeadlinesTab project={project} financiering={financiering} />}
             {tab === 'documenten' && <DocumentenTab project={project} store={store} />}
             {tab === 'gesprekken' && <GesprekkenTab project={project} gesprekken={gesprekken} onOpen={openGesprek} onBespreek={bespreek} />}
           </div>

@@ -13,6 +13,11 @@ import MeterInvullen, { kanInvullen } from './MeterInvullen.jsx';
 import PlanEditor from './PlanEditor.jsx';
 import { datumTekst, splitsAanvragen } from './aanvraagModel.js';
 
+// Deze onderdelen vult u in het projectdossier (Indienen › Projectdossier) in; de server noemt ze nog Projectgegevens of Projectdocumentatie.
+const DOSSIER_ONDERDELEN = new Set(['aanleiding', 'doelstelling', 'activiteiten', 'resultaat', 'planning', 'borging']);
+const inDossier = (o) => o.waar === 'Projectdocumentatie' || DOSSIER_ONDERDELEN.has(o.id);
+const plekNaam = (o) => (inDossier(o) ? 'Projectdossier' : o.waar);
+
 export default function ProjectplanTab({ project, projecten, onKiesProject, store, assistent, onNieuweAanvraag, onOpenAanvraag, onNaarProjectinhoud }) {
   const projectId = project ? project.id : '';
   const [lijst, setLijst] = useState(null);
@@ -176,7 +181,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                                   <button type="button" className="fwk-wp-link" aria-expanded={invulId === o.id} data-testid={`aa-mist-${o.id}`} onClick={() => setInvulId(invulId === o.id ? null : o.id)}>
                                     {o.label} {invulId === o.id ? '↑' : '↓'}
                                   </button>{' '}
-                                  <span className="fwk-aa-klein">({o.waar})</span>
+                                  <span className="fwk-aa-klein">({plekNaam(o)})</span>
                                   {invulId === o.id && (
                                     <MeterInvullen
                                       onderdeel={o}
@@ -192,7 +197,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                                 </>
                               ) : (
                                 <>
-                                  {o.waar === 'Projectdocumentatie' && onNaarProjectinhoud ? (
+                                  {inDossier(o) && onNaarProjectinhoud ? (
                                     <button type="button" className="fwk-wp-link" onClick={onNaarProjectinhoud}>
                                       {o.label} →
                                     </button>
@@ -201,7 +206,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                                       {o.label} →
                                     </a>
                                   )}{' '}
-                                  <span className="fwk-aa-klein">({o.waar})</span>
+                                  <span className="fwk-aa-klein">({plekNaam(o)})</span>
                                 </>
                               )}
                             </li>
@@ -285,7 +290,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                   <>
                     {' '}
                     <button type="button" className="fwk-wp-link" onClick={onNaarProjectinhoud}>
-                      Naar de projectinhoud
+                      Naar het projectdossier
                     </button>
                   </>
                 )}

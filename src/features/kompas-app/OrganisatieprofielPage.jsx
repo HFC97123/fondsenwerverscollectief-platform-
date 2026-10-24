@@ -15,10 +15,7 @@ import {
   verwijderOrganisatieDocument,
 } from '../../data/services/organisatiedocumenten.js';
 import { analyseerWebsite, extractOrganisatieVelden } from '../../data/services/chat.js';
-import { haalClassificatiesOp } from '../../data/services/classificaties.js';
-import { Button, ClassificatieSelect, Field, Notice, Panel, PanelHeader, SectionHeading, veldStijl } from '../../shared/ui/index.js';
-import ExportMenu from '../../shared/ui/ExportMenu.jsx';
-import { organisatieExport } from './exportBronnen.js';
+import { Button, Field, Notice, Panel, PanelHeader, veldStijl } from '../../shared/ui/index.js';
 
 // Ook gebruikt door KompasToolPage.jsx (fase 6, veldlabels voor de
 // goedkeuring van AI-voorstellen die tijdens een gesprek naar voren komen).
@@ -29,7 +26,7 @@ export const VELDEN = [
   { s: 'Organisatieprofiel', n: 'opgericht', l: 'Opgericht in', t: 'number', p: '2014' },
   { s: 'Organisatieprofiel', n: 'kvk', l: 'KvK-nummer', t: 'text', p: '12345678' },
   { s: 'Organisatieprofiel', n: 'anbi', l: 'ANBI-status', t: 'text', p: 'Ja, sinds 2015' },
-  { s: 'Organisatieprofiel', n: 'mission', l: 'Missie', t: 'area', p: 'Waar staat uw organisatie voor?' },
+  { s: 'Organisatieprofiel', n: 'mission', l: 'Doelstelling of missie (volgens beleidsplan)', t: 'area', p: 'Wat wil uw organisatie bereiken?' },
   { s: 'Organisatieprofiel', n: 'visie', l: 'Visie', t: 'area', p: 'Waar werkt uw organisatie naartoe?' },
   { s: 'Werkgebied', n: 'regio', l: 'Werkgebied', t: 'text', p: 'Utrecht en omgeving' },
   { s: 'Werkgebied', n: 'gemeente', l: 'Gemeente', t: 'text', p: 'Utrecht' },
@@ -37,7 +34,7 @@ export const VELDEN = [
   { s: 'Werkgebied', n: 'themas', l: 'Disciplines', t: 'chips' },
   { s: 'Werkgebied', n: 'doelgroepen', l: 'Doelgroepen', t: 'chips' },
   { s: 'Organisatiegegevens', n: 'omzet', l: 'Jaarlijkse omzet (€)', t: 'number', p: '240000' },
-  { s: 'Organisatiegegevens', n: 'medewerkers', l: 'Aantal medewerkers', t: 'number', p: '4' },
+  { s: 'Organisatiegegevens', n: 'medewerkers', l: 'Aantal beroepskrachten', t: 'number', p: '4' },
   { s: 'Organisatiegegevens', n: 'vrijwilligers', l: 'Aantal vrijwilligers', t: 'number', p: '20' },
   {
     s: 'Organisatiegegevens',
@@ -51,35 +48,26 @@ export const VELDEN = [
   { s: 'Toon', n: 'toon', l: 'Toon van uw teksten', t: 'area', p: 'Hoe schrijft uw organisatie? Zakelijk, warm, direct?' },
 ];
 
-const SECTIES = ['Organisatieprofiel', 'Werkgebied', 'Organisatiegegevens', 'Contact', 'Toon'];
+// Alleen de noodzakelijke gegevens staan op de pagina. Overige velden in het profiel (visie, werkgebied, contact, toon, enzovoort) blijven bewaard
+// en blijven werken waar ze al worden gebruikt, maar worden hier niet meer gevraagd of door een analyse voorgesteld.
+const ZICHTBAAR = ['name', 'rechtsvorm', 'opgericht', 'kvk', 'anbi', 'mission', 'medewerkers', 'vrijwilligers'];
 
-const LEEG_CONTACT = { naam: '', functie: '', email: '', telefoon: '' };
-const LEEG_SOCIAL = { platform: '', url: '' };
+function zichtbareVelden(velden) {
+  return Object.fromEntries(Object.entries(velden || {}).filter(([k]) => ZICHTBAAR.indexOf(k) !== -1));
+}
 
 // Documenten die het organisatieprofiel kunnen aanvullen (fase 3). Ander
 // concept dan de documenten per project (ProjectenPage.jsx) of de
 // AI-gegenereerde documenten op de Documentatie-pagina.
-const ORG_DOC_SOORTEN = [
-  'Beleidsplan',
-  'Jaarverslag',
-  'Projectplan',
-  'Meerjarenstrategie',
-  'Begroting',
-  'Impactrapport',
-  'Evaluatie',
-  'Overig',
-];
+const ORG_DOC_SOORTEN = ['Beleidsplan', 'Jaarverslag', 'ANBI-status', 'Statuten', 'Overig'];
 
 function raadDocSoort(naam) {
   const l = (naam || '').toLowerCase();
 
   if (l.indexOf('beleidsplan') !== -1) return 'Beleidsplan';
   if (l.indexOf('jaarverslag') !== -1) return 'Jaarverslag';
-  if (l.indexOf('meerjaren') !== -1) return 'Meerjarenstrategie';
-  if (l.indexOf('projectplan') !== -1) return 'Projectplan';
-  if (l.indexOf('begroting') !== -1) return 'Begroting';
-  if (l.indexOf('impact') !== -1) return 'Impactrapport';
-  if (l.indexOf('evaluatie') !== -1) return 'Evaluatie';
+  if (l.indexOf('anbi') !== -1) return 'ANBI-status';
+  if (l.indexOf('statuten') !== -1 || l.indexOf('statuut') !== -1) return 'Statuten';
 
   return 'Overig';
 }
@@ -131,24 +119,12 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
   const [analyseVoorstel, setAnalyseVoorstel] = useState(null);
   const [analyseFout, setAnalyseFout] = useState('');
 
-  // Disciplines/doelgroepen komen niet meer uit een hardgecodeerde lijst in
-  // deze pagina, maar live uit de centrale classificatietabellen (themas,
-  // doelgroepen) - zie data/services/classificaties.js. Zo hoeft een nieuwe
-  // discipline maar op één plek (de database) te worden toegevoegd.
-  const [classificaties, setClassificaties] = useState({ themas: [], doelgroepen: [] });
-
   useEffect(() => {
     let actief = true;
 
     haalOrganisatieDocumentenOp().then((lijst) => {
       if (actief) {
         setDocumenten(lijst || []);
-      }
-    });
-
-    haalClassificatiesOp().then((lijst) => {
-      if (actief) {
-        setClassificaties(lijst);
       }
     });
 
@@ -175,12 +151,6 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
   const profiel = store.orgProfile || {};
   const bronnen = store.orgBronnen || {};
 
-  const isLeeg = !Object.keys(profiel).some((k) => {
-    const v = profiel[k];
-
-    return Array.isArray(v) ? v.length : String(v || '').trim();
-  });
-
   // Laat de eigen website lezen (fase 4): homepage plus, indien gevonden, een
   // paar voor de hand liggende pagina's (over ons/missie/contact) - geen
   // diepere crawl. Net als bij documenten: alleen voorstellen, nooit
@@ -197,7 +167,8 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
     setMelding('');
     setAnalyseVoorstel({ bronType: 'website', bronRef: profiel.website, bronLabel: `uw website (${profiel.website})`, velden: null, gekozen: {} });
 
-    const { velden, paginas, error } = await analyseerWebsite({ url: profiel.website });
+    const { velden: ruweVelden, paginas, error } = await analyseerWebsite({ url: profiel.website });
+    const velden = zichtbareVelden(ruweVelden);
 
     setAnalyseBezig(false);
 
@@ -282,7 +253,8 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
     setAnalyseFout('');
     setAnalyseVoorstel({ bronType: 'document', bronRef: doc.id, bronLabel: `"${doc.naam}"`, velden: null, gekozen: {} });
 
-    const { velden, error } = await extractOrganisatieVelden({ text: doc.tekst, fileName: doc.naam });
+    const { velden: ruweVelden, error } = await extractOrganisatieVelden({ text: doc.tekst, fileName: doc.naam });
+    const velden = zichtbareVelden(ruweVelden);
 
     if (error) {
       setAnalyseFout(error);
@@ -321,76 +293,69 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
     setMelding('De gekozen gegevens zijn overgenomen in het profiel.');
   };
 
+  const velden = ZICHTBAAR.map((n) => VELDEN.find((f) => f.n === n)).filter(Boolean);
+
   return (
     <Panel embedded={embedded}>
-      {!embedded && (
-        <PanelHeader title="Organisatie"
-          intro="Dit profiel is optioneel. Hoe meer u invult, hoe gerichter Subsidie Kompas adviseert over passende fondsen en hoe beter aanvragen in uw eigen toon worden geschreven."
-        />
-      )}
+      {!embedded && <PanelHeader title="Organisatieprofiel" />}
 
-      {!isLeeg && (
-        <div style={css('display: flex; justify-content: flex-end; margin: -6px 0 14px;')}>
-          <ExportMenu
-            toegestaan={paid}
-            uitlijnen="rechts"
-            maat="normaal"
-            ariaLabel="Organisatieprofiel exporteren"
-            bouwModel={organisatieExport({ velden: VELDEN, store })}
-          />
-        </div>
-      )}
+      <div style={css('margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px 18px;')}>
+        {velden.map((f) => (
+          <Field key={f.n}>
+            {f.l}
+            <input
+              type={f.t === 'number' ? 'number' : 'text'}
+              min={f.t === 'number' ? 0 : undefined}
+              value={profiel[f.n] || ''}
+              onChange={(e) => store.setOrgField(f.n, e.target.value)}
+              placeholder={f.p}
+              style={veldStijl}
+            />
+            <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
+          </Field>
+        ))}
+      </div>
 
-      {isLeeg && (
-        <div style={css('margin-bottom: 18px; padding: clamp(16px, 2.4vw, 26px); border: 1px solid #D5E6DB; border-radius: 24px; background: #EAF4EE;')}>
-          <div style={css("margin-bottom: 8px; font-family: 'Newsreader', serif; font-size: clamp(23px, 3vw, 28px); font-weight: 600; color: #2C4A5E;")}>
-            Begin met drie vragen
-          </div>
-          <div style={css('margin-bottom: 16px; max-width: 640px; font-size: 15px; line-height: 1.7; color: #4B5C58;')}>
-            Met deze drie gegevens kan Subsidie Kompas al gericht adviseren. De rest van uw profiel vult u later aan, of
-            laat u opbouwen uit uw website.
-          </div>
-          <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px;')}>
-            {['name', 'website', 'mission'].map((n) => {
-              const def = VELDEN.find((f) => f.n === n);
-
-              return (
-                <Field key={n}>
-                  {def.l}
-                  <input
-                    value={profiel[n] || ''}
-                    onChange={(e) => store.setOrgField(n, e.target.value)}
-                    placeholder={def.p}
-                    style={veldStijl}
-                  />
-                </Field>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div style={css('margin-bottom: 20px; padding: 16px; border: 1px solid #E1EAE4; border-radius: 20px; background: #F7F9F8;')}>
-        <div style={css('margin-bottom: 6px; font-size: 15px; font-weight: 800; color: #2C4A5E;')}>
-          Website analyseren
-        </div>
-        <div style={css('margin-bottom: 14px; max-width: 620px; font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
-          Laat Subsidie Kompas uw website lezen en het profiel voorstellen. De voorstellen zijn niet bindend: u past ze
-          aan of laat ze weg.
-        </div>
-        <Button variant="outline" onClick={analyseer}>
-          {analyseBezig ? 'Bezig met analyseren…' : 'Analyseer mijn website'}
+      <div style={css('margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;')}>
+        <Button onClick={() => setMelding('Profiel opgeslagen.')}>Profiel opslaan</Button>
+        <Button
+          variant="outline"
+          onClick={() => { store.clearOrgProfile(); setMelding('De informatie over uw organisatie is verwijderd.'); }}
+        >
+          Profiel verwijderen
         </Button>
       </div>
 
-      <div style={css('margin-bottom: 20px; padding: 16px; border: 1px solid #E1EAE4; border-radius: 20px; background: #F7F9F8;')}>
-        <div style={css('margin-bottom: 6px; font-size: 15px; font-weight: 800; color: #2C4A5E;')}>
-          Documenten uploaden
+      <Notice>{melding}</Notice>
+
+      <div style={css('margin-top: 30px; padding: clamp(16px, 2.4vw, 24px); border: 1px solid #D5E6DB; border-radius: 24px; background: #F3F8F5;')}>
+        <div style={css("margin-bottom: 16px; font-family: 'Newsreader', serif; font-size: clamp(21px, 2.6vw, 25px); font-weight: 600; color: #2C4A5E;")}>
+          Wilt u dit makkelijk invullen?
         </div>
-        <div style={css('margin-bottom: 14px; max-width: 620px; font-size: 14.5px; line-height: 1.65; color: #4B5C58;')}>
-          Upload een beleidsplan, jaarverslag, projectplan, meerjarenstrategie, begroting, impactrapport of evaluatie.
-          Subsidie Kompas kan zo'n document laten uitlezen en velden voorstellen - u kiest zelf welke worden overgenomen.
+
+        <div style={css('font-size: 14px; font-weight: 800; color: #2C4A5E; margin-bottom: 8px;')}>Website analyseren</div>
+        <div style={css('display: flex; flex-wrap: wrap; gap: 10px; align-items: center;')}>
+          <input
+            value={profiel.website || ''}
+            onChange={(e) => store.setOrgField('website', e.target.value)}
+            placeholder="www.stichtingvoorbeeld.nl"
+            aria-label="Website"
+            style={{ ...veldStijl, flex: '1 1 260px', minWidth: 0, background: '#FFFFFF' }}
+          />
+          <Button variant="outline" onClick={analyseer}>
+            {analyseBezig ? 'Bezig…' : 'Analyseer'}
+          </Button>
         </div>
+        <Herkomst bron={bronnen.website} onWis={() => store.clearOrgField('website')} />
+
+      <div style={css('margin-top: 20px; padding-top: 20px; border-top: 1px solid #E1EAE4;')}>
+        <div style={css('margin-bottom: 8px; font-size: 14px; font-weight: 800; color: #2C4A5E;')}>
+          Relevante documenten
+        </div>
+        <details style={css('margin-bottom: 12px; font-size: 14px; color: #4B5C58;')}>
+          <summary style={css('cursor: pointer; font-weight: 700; color: #4B5C58;')}>Welke documenten?</summary>
+          <div style={css('margin-top: 6px; line-height: 1.6;')}>{ORG_DOC_SOORTEN.filter((x) => x !== 'Overig').join(', ')}</div>
+        </details>
 
         <label
           style={css(
@@ -450,6 +415,7 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
             ))}
           </div>
         )}
+      </div>
 
         {analyseFout && <div style={css('margin-top: 14px; font-size: 13.5px; color: #9E3B2C;')}>{analyseFout}</div>}
 
@@ -500,203 +466,6 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
           </div>
         )}
       </div>
-
-      <div style={css('display: flex; flex-direction: column; gap: 22px;')}>
-        {SECTIES.map((sectie) => (
-          <div key={sectie}>
-            <SectionHeading>{sectie}</SectionHeading>
-            <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 14px;')}>
-              {VELDEN.filter((f) => f.s === sectie).map((f) => (
-                <Field
-                  key={f.n}
-                  style={
-                    f.t === 'area' || f.t === 'chips' || f.t === 'contacts' || f.t === 'socials'
-                      ? { gridColumn: 'span 2' }
-                      : undefined
-                  }
-                >
-                  {f.l}
-                  {f.t === 'text' && (
-                    <>
-                      <input
-                        value={profiel[f.n] || ''}
-                        onChange={(e) => store.setOrgField(f.n, e.target.value)}
-                        placeholder={f.p}
-                        style={veldStijl}
-                      />
-                      <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
-                    </>
-                  )}
-                  {f.t === 'number' && (
-                    <>
-                      <input
-                        type="number"
-                        value={profiel[f.n] || ''}
-                        onChange={(e) => store.setOrgField(f.n, e.target.value)}
-                        placeholder={f.p}
-                        style={veldStijl}
-                      />
-                      <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
-                    </>
-                  )}
-                  {f.t === 'area' && (
-                    <>
-                      <textarea
-                        value={profiel[f.n] || ''}
-                        onChange={(e) => store.setOrgField(f.n, e.target.value)}
-                        placeholder={f.p}
-                        rows={4}
-                        style={{ ...veldStijl, lineHeight: 1.6, resize: 'vertical' }}
-                      />
-                      <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
-                    </>
-                  )}
-                  {f.t === 'chips' && (
-                    <>
-                      <ClassificatieSelect
-                        opties={classificaties[f.n] || []}
-                        waarde={profiel[f.n] || []}
-                        onChange={(nieuw) => { store.setOrgField(f.n, nieuw); setMelding(''); }}
-                        multi
-                        metAnders
-                        placeholder={`${f.l} selecteren…`}
-                        ariaLabel={f.l}
-                      />
-                      <Herkomst bron={bronnen[f.n]} onWis={() => store.clearOrgField(f.n)} />
-                    </>
-                  )}
-                  {f.t === 'contacts' && (
-                    <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-                      {(profiel.contactpersonen || []).map((c, i) => (
-                        <div
-                          key={i}
-                          style={css(
-                            'display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)) auto; gap: 8px; align-items: center;',
-                          )}
-                        >
-                          {['naam', 'functie', 'email', 'telefoon'].map((veld) => (
-                            <input
-                              key={veld}
-                              value={c[veld] || ''}
-                              placeholder={veld === 'naam' ? 'Naam' : veld === 'functie' ? 'Functie' : veld === 'email' ? 'E-mailadres' : 'Telefoon'}
-                              onChange={(e) => {
-                                const lijst = (profiel.contactpersonen || []).slice();
-
-                                lijst[i] = { ...lijst[i], [veld]: e.target.value };
-                                store.setOrgField('contactpersonen', lijst);
-                              }}
-                              style={veldStijl}
-                            />
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const lijst = (profiel.contactpersonen || []).filter((_, j) => j !== i);
-
-                              store.setOrgField('contactpersonen', lijst);
-                            }}
-                            style={css(
-                              'cursor: pointer; padding: 8px 10px; border: 1px solid #E1EAE4; border-radius: 10px; background: #FFFFFF; color: #9E3B2C; font-weight: 700;',
-                            )}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            store.setOrgField('contactpersonen', (profiel.contactpersonen || []).concat([{ ...LEEG_CONTACT }]))
-                          }
-                          style={css(
-                            'cursor: pointer; padding: 9px 14px; border: 1px dashed #BFD4C6; border-radius: 999px; background: #FFFFFF; color: #2F6D47; font-weight: 700; font-size: 13px;',
-                          )}
-                        >
-                          + Contactpersoon toevoegen
-                        </button>
-                      </div>
-                      <Herkomst bron={bronnen.contactpersonen} onWis={() => store.clearOrgField('contactpersonen')} />
-                    </div>
-                  )}
-                  {f.t === 'socials' && (
-                    <div style={css('display: flex; flex-direction: column; gap: 10px;')}>
-                      {(profiel.socials || []).map((s, i) => (
-                        <div
-                          key={i}
-                          style={css(
-                            'display: grid; grid-template-columns: minmax(120px, 160px) 1fr auto; gap: 8px; align-items: center;',
-                          )}
-                        >
-                          <input
-                            value={s.platform || ''}
-                            placeholder="Platform (bijv. Instagram)"
-                            onChange={(e) => {
-                              const lijst = (profiel.socials || []).slice();
-
-                              lijst[i] = { ...lijst[i], platform: e.target.value };
-                              store.setOrgField('socials', lijst);
-                            }}
-                            style={veldStijl}
-                          />
-                          <input
-                            value={s.url || ''}
-                            placeholder="https://…"
-                            onChange={(e) => {
-                              const lijst = (profiel.socials || []).slice();
-
-                              lijst[i] = { ...lijst[i], url: e.target.value };
-                              store.setOrgField('socials', lijst);
-                            }}
-                            style={veldStijl}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const lijst = (profiel.socials || []).filter((_, j) => j !== i);
-
-                              store.setOrgField('socials', lijst);
-                            }}
-                            style={css(
-                              'cursor: pointer; padding: 8px 10px; border: 1px solid #E1EAE4; border-radius: 10px; background: #FFFFFF; color: #9E3B2C; font-weight: 700;',
-                            )}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => store.setOrgField('socials', (profiel.socials || []).concat([{ ...LEEG_SOCIAL }]))}
-                          style={css(
-                            'cursor: pointer; padding: 9px 14px; border: 1px dashed #BFD4C6; border-radius: 999px; background: #FFFFFF; color: #2F6D47; font-weight: 700; font-size: 13px;',
-                          )}
-                        >
-                          + Social media-profiel toevoegen
-                        </button>
-                      </div>
-                      <Herkomst bron={bronnen.socials} onWis={() => store.clearOrgField('socials')} />
-                    </div>
-                  )}
-                </Field>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={css('margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;')}>
-        <Button onClick={() => setMelding('Profiel opgeslagen.')}>Profiel opslaan</Button>
-        <Button
-          variant="danger"
-          onClick={() => { store.clearOrgProfile(); setMelding('De informatie over uw organisatie is verwijderd.'); }}
-        >
-          Profiel verwijderen
-        </Button>
-      </div>
-
-      <Notice>{melding}</Notice>
     </Panel>
   );
 }

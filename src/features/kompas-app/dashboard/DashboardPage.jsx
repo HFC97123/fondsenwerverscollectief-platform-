@@ -212,7 +212,7 @@ export default function DashboardPage() {
                   <Rij
                     key={a.sleutel}
                     testid="dashboard-actie"
-                    href={`#/kompas/projecten/${a.projectId}?tab=deadlines`}
+                    href="#/kompas/deadlines"
                     titel={a.titel}
                     sub={[a.projectNaam, a.regelNaam].filter(Boolean).join(' · ')}
                     kolommen={[{ label: 'Wanneer', waarde: a.datum ? formatDatum(a.datum) : 'Geen datum', sub: a.dagen != null ? dagenTekst(a.dagen) : null, urgent: a.dagen != null && a.dagen < 0 }]}

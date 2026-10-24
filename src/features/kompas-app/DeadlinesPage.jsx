@@ -1058,7 +1058,7 @@ export default function DeadlinesPage() {
                 'Uitgebreide informatie over deze regeling',
                 'Alle subsidiedetails: bedrag, deadline en voorwaarden',
                 'Aanvullende, vergelijkbare subsidiemogelijkheden',
-                'AI-matching op uw organisatieprofiel',
+                'Fondsmatching op uw organisatieprofiel',
                 'Extra functionaliteiten van Subsidie Kompas',
               ].map((t) => (
                 <li key={t}>{t}</li>

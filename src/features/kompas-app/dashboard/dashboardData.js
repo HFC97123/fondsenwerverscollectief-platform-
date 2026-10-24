@@ -78,10 +78,7 @@ export const ORGANISATIE_KERNVELDEN = [
   { n: 'website', l: 'Website' },
   { n: 'rechtsvorm', l: 'Rechtsvorm' },
   { n: 'kvk', l: 'KvK-nummer' },
-  { n: 'mission', l: 'Missie' },
-  { n: 'regio', l: 'Werkgebied' },
-  { n: 'themas', l: 'Disciplines' },
-  { n: 'doelgroepen', l: 'Doelgroepen' },
+  { n: 'mission', l: 'Doelstelling' },
 ];
 
 const isLeeg = (v) => (Array.isArray(v) ? v.length === 0 : !String(v == null ? '' : v).trim());
