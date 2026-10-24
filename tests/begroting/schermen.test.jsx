@@ -105,7 +105,7 @@ let s;
   check('Voedselpakketten staat onder Activa en uitrusting', !!regelMet('Voedselpakketten', kopje('activa')));
 }
 
-sectie('2. Bedrag, aantal x tarief en in natura achter ⋯');
+sectie('2. Bedrag, aantal x tarief achter ⋯ (geen in natura)');
 {
   await typ($('[data-testid="bg-bedrag"]', regelMet('Voedselpakketten')), '2.500');
   check('los bedrag telt mee', /Totaal € 2\.500/.test($('[data-testid="bg-totaal"]').textContent) && /Nog geen bedrag bij: Projectleider/.test(tekst()));
@@ -113,24 +113,13 @@ sectie('2. Bedrag, aantal x tarief en in natura achter ⋯');
   const pl = regelMet('Projectleider');
 
   await klik($('[data-testid="bg-meer"]', pl));
-  check('⋯ toont aantal, eenheid, tarief en In natura', !!$('[data-testid="bg-aantal"]', pl) && !!$('[data-testid="bg-eenheid"]', pl) && !!$('[data-testid="bg-tarief"]', pl) && !!$('[data-testid="bg-natura"]', pl) && $('[data-testid="bg-eenheid"]', pl).value === 'uur');
+  check('⋯ toont aantal, eenheid en tarief, en geen In natura', !!$('[data-testid="bg-aantal"]', pl) && !!$('[data-testid="bg-eenheid"]', pl) && !!$('[data-testid="bg-tarief"]', pl) && !$('[data-testid="bg-natura"]', pl) && !/natura/i.test($('[data-testid="bg-tab"]').textContent) && $('[data-testid="bg-eenheid"]', pl).value === 'uur');
   await typ($('[data-testid="bg-aantal"]', pl), '100');
   await typ($('[data-testid="bg-tarief"]', pl), '50');
   check('aantal x tarief wordt uitgerekend, het losse bedragveld maakt plaats voor het resultaat', /€ 5\.000/.test($('[data-testid="bg-bedrag-berekend"]', pl).textContent) && !$('[data-testid="bg-bedrag"]', pl) && /Totaal € 7\.500/.test($('[data-testid="bg-totaal"]').textContent));
   await klik($('[data-testid="bg-meer"]', pl));
   check('⋯ weer dicht: de regel is weer schoon', !$('[data-testid="bg-detail"]', pl));
   check('subtotaal per kopje klopt', /€ 5\.000/.test($('[data-testid="bg-sub-uitvoering"]').textContent) && /€ 2\.500/.test($('[data-testid="bg-sub-activa"]').textContent));
-
-  const pak = regelMet('Voedselpakketten');
-
-  await openDetail(pak);
-  await klik($('[data-testid="bg-natura"]', pak));
-  check('in natura: telt niet mee, staat er apart', /Totaal € 5\.000/.test($('[data-testid="bg-totaal"]').textContent) && /In natura \(telt niet mee in het totaal\): € 2\.500/.test(tekst()));
-  await klik($('[data-testid="bg-meer"]', pak));
-  check('met ⋯ dicht blijft in natura zichtbaar als klein label', !!$('[data-testid="bg-natura-label"]', pak));
-  await klik($('[data-testid="bg-meer"]', pak));
-  await klik($('[data-testid="bg-natura"]', pak));
-  check('weer als gewone kostenregel: telt weer mee', /Totaal € 7\.500/.test($('[data-testid="bg-totaal"]').textContent));
 
   await klik($('[data-testid="bg-kopje-kies-organisatie"]'));
   await klik($('[data-testid="bg-eigen-regel"]'));
@@ -196,7 +185,6 @@ sectie('6. Excel: dezelfde berekening als de begroting in de chat');
   const regels = leesBudgetRegels([
     { categorie: 'personeel', omschrijving: 'Projectleider', aantal: 100, tarief: 50, soort: 'geld' },
     { categorie: 'uitvoering', omschrijving: 'Materiaal', bedrag: 2000, soort: 'geld' },
-    { categorie: 'locatie', omschrijving: 'Gratis zaal', bedrag: 500, soort: 'natura' },
   ]);
   const { berekenBudget } = await import('../../src/shared/budget/berekenBudget.js');
   const budget = berekenBudget(expenseLinesVoorExcel(regels), { ...BASIS, begroting: 7000 }, {}, undefined);
@@ -382,14 +370,14 @@ sectie('8. Schatting, doorklik naar de chat en het voorstel uit de chat');
   await klik(knop('Maak het voorbeeld van de begroting'));
   check('het voorbeeld verschijnt', await wacht(() => $('[data-testid="bv-voorbeeld"]')));
   const regelsTekst = $$('[data-testid="bv-regel"]').map((r) => r.textContent.replace(/\s+/g, ' '));
-  check('vier regels, aantal x tarief is door het scherm uitgerekend (120 x 45 = 5.400), een regel zonder bedrag zegt bedrag volgt', regelsTekst.length === 4 && regelsTekst.some((t) => /Projectleider\s*€ 5\.400/.test(t)) && regelsTekst.some((t) => /Flyers\s*bedrag volgt/.test(t)));
-  check('schatting en in natura zijn herkenbaar', $$('[data-testid="bv-schatting"]').length === 1 && regelsTekst.some((t) => /Voedselpakketten\s*schatting\s*€ 2\.500/.test(t)) && regelsTekst.some((t) => /Zaalhuur\s*in natura/.test(t) || /Zaalhuur.*in natura/.test(t)));
-  check('totaal 5.400 + 2.500 = 7.900 (natura telt niet mee), waarvan 2.500 schatting', /Totaal € 7\.900/.test($('[data-testid="bv-totaal"]').textContent) && /waarvan € 2\.500 nog een schatting/.test($('[data-testid="bv-totaal"]').textContent));
+  check('drie regels, aantal x tarief is door het scherm uitgerekend (120 x 45 = 5.400), een regel zonder bedrag zegt bedrag volgt', regelsTekst.length === 3 && regelsTekst.some((t) => /Projectleider\s*€ 5\.400/.test(t)) && regelsTekst.some((t) => /Flyers\s*bedrag volgt/.test(t)));
+  check('een schatting is herkenbaar en er staat geen in natura bij', $$('[data-testid="bv-schatting"]').length === 1 && regelsTekst.some((t) => /Voedselpakketten\s*schatting\s*€ 2\.500/.test(t)) && !regelsTekst.some((t) => /natura/.test(t)));
+  check('totaal 5.400 + 2.500 = 7.900, waarvan 2.500 schatting', /Totaal € 7\.900/.test($('[data-testid="bv-totaal"]').textContent) && /waarvan € 2\.500 nog een schatting/.test($('[data-testid="bv-totaal"]').textContent));
   check('het voorbeeld meldt of de begroting met het dekkingsplan sluit: 7.900 tegen een dekking van 14.000', /€ 6\.100 hoger dan de begroting van € 7\.900/.test($('[data-testid="bv-sluit"]')?.textContent || ''), $('[data-testid="bv-sluit"]')?.textContent);
   check('zonder bestaande begroting geen keuze toevoegen of vervangen; resterende ruimte zichtbaar', !$('[data-testid="bv-toevoegen"]') && /Nog 5 beoordelingen over/.test($('[data-testid="bv-resterend"]').textContent));
   check('de server heeft het voorstel gemeld met de maandruimte (niets bewaard)', d.srv.s.aanroepen.some((a) => a[1] === 'begroting-voorstel') && d.bewaard.length === 0);
   await klik(knop('Zet de regels in mijn begroting'));
-  check('opgeslagen via de bestaande opslag: bron ai, schatting bewaard, kopjes en totaal', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].begroting === 7900 && d.bewaard[0].budgetRegels.length === 4 && d.bewaard[0].budgetRegels.every((r) => r.bron === 'ai') && d.bewaard[0].budgetRegels.filter((r) => r.schatting).length === 1 && d.bewaard[0].budgetRegels.some((r) => r.categorie === 'eigen:Locatie en huisvesting' && r.soort === 'natura'));
+  check('opgeslagen via de bestaande opslag: bron ai, schatting bewaard, kopjes en totaal', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].begroting === 7900 && d.bewaard[0].budgetRegels.length === 3 && d.bewaard[0].budgetRegels.every((r) => r.bron === 'ai') && d.bewaard[0].budgetRegels.filter((r) => r.schatting).length === 1);
   check('daarna: bevestiging met link naar de begroting van dit project', await wacht(() => $('[data-testid="bv-klaar"]')) && $('[data-testid="bv-naar-begroting"]').getAttribute('href') === `#/kompas/documentatie?project=${PROJECT}&tab=begroting` && /€ 7\.900/.test($('[data-testid="bv-klaar"]').textContent));
   await opruimen();
 
@@ -402,7 +390,7 @@ sectie('8. Schatting, doorklik naar de chat en het voorstel uit de chat');
   await klik($('[data-testid="bv-toevoegen"]'));
   check('met een bestaande begroting kiest het lid: toevoegen (standaard) of vervangen', $('[data-testid="bv-toevoegen"]').checked === true && !!$('[data-testid="bv-vervangen"]'));
   await klik(knop('Zet de regels in mijn begroting'));
-  check('toevoegen: de laptop blijft en het voorstel komt erbij (5 regels, totaal 8.900)', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].budgetRegels.length === 5 && d.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop' && r.bron === 'handmatig') && d.bewaard[0].begroting === 8900);
+  check('toevoegen: de laptop blijft en het voorstel komt erbij (4 regels, totaal 8.900)', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].budgetRegels.length === 4 && d.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop' && r.bron === 'handmatig') && d.bewaard[0].begroting === 8900);
   await opruimen();
 
   d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', begroting: 1000, budgetRegels: bestaand }, { standRegels: bestaand });
@@ -410,7 +398,7 @@ sectie('8. Schatting, doorklik naar de chat en het voorstel uit de chat');
   await wacht(() => $('[data-testid="bv-voorbeeld"]'));
   await klik($('[data-testid="bv-vervangen"]'));
   await klik(knop('Zet de regels in mijn begroting'));
-  check('vervangen: alleen het voorstel (4 regels), de laptop is weg', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].budgetRegels.length === 4 && !d.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop'));
+  check('vervangen: alleen het voorstel (3 regels), de laptop is weg', await wacht(() => d.bewaard.length === 1) && d.bewaard[0].budgetRegels.length === 3 && !d.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop'));
   await opruimen();
 
   d = await toonDialoog({ ...BASIS, naam: 'Samen Spelen', budgetRegels: [] }, {});
@@ -459,8 +447,8 @@ sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkin
   await kiesBestand(bestand());
   check('na het kiezen staat het resultaat er, direct opgeslagen (geen tussenstap)', await wacht(() => $('[data-testid="bg-upload-resultaat"]')) && u.bewaard.length === 1);
   check('de tekst die naar de server ging houdt rijen en cellen (" | "), formules als uitkomst, geen verborgen blad', /Projectleider \| 100 \| uur \| 50 \| 5000\nTraining vrijwilligers \| 2000/.test(u.srv.s.laatsteUpload || '') && /Formule \| 42/.test(u.srv.s.laatsteUpload) && !/Geheim blad/.test(u.srv.s.laatsteUpload));
-  check('vijf regels, in de opslag bron upload met de bestandsnaam, en geen "uit upload" meer bij elke regel', $$('[data-testid="bg-regel"]').length === 5 && !$('[data-testid="bg-upload-label"]') && !/uit upload/.test($('[data-testid="bg-tab"]').textContent) && u.bewaard[0].budgetRegels.length === 5 && u.bewaard[0].budgetRegels.every((r) => r.bron === 'upload' && r.bronNaam === 'begroting.xlsx'), JSON.stringify(u.bewaard[0].budgetRegels.map((r) => r.bronNaam)));
-  check('elke regel uit de upload heeft een stipje bij het bedrag; de pop-up staat dicht', $$('[data-testid="bg-herkomst-stip"]').length === 5 && !$('[data-testid="bg-herkomst"]'));
+  check('vier regels, in de opslag bron upload met de bestandsnaam, en geen "uit upload" meer bij elke regel', $$('[data-testid="bg-regel"]').length === 4 && !$('[data-testid="bg-upload-label"]') && !/uit upload/.test($('[data-testid="bg-tab"]').textContent) && u.bewaard[0].budgetRegels.length === 4 && u.bewaard[0].budgetRegels.every((r) => r.bron === 'upload' && r.bronNaam === 'begroting.xlsx'), JSON.stringify(u.bewaard[0].budgetRegels.map((r) => r.bronNaam)));
+  check('elke regel uit de upload heeft een stipje bij het bedrag; de pop-up staat dicht', $$('[data-testid="bg-herkomst-stip"]').length === 4 && !$('[data-testid="bg-herkomst"]'));
   const cel = $$('[data-testid="bg-bedragcel"]')[0];
   await act(async () => { cel.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
   const pop = $('[data-testid="bg-herkomst"]');
@@ -473,7 +461,7 @@ sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkin
   check('tikken op het stipje houdt de pop-up open (voor touch), tikken nogmaals sluit', !!$('[data-testid="bg-herkomst"]'));
   await klik($$('[data-testid="bg-herkomst-stip"]')[0]);
   check('nogmaals tikken sluit', !$('[data-testid="bg-herkomst"]'));
-  check('het projecttotaal volgt: 5.000 + 2.000 + 300 = 7.300 (natura telt niet mee)', u.bewaard[0].begroting === 7300 && /Totaal € 7\.300/.test($('[data-testid="bg-totaal"]').textContent));
+  check('het projecttotaal volgt: 5.000 + 2.000 + 300 = 7.300', u.bewaard[0].begroting === 7300 && /Totaal € 7\.300/.test($('[data-testid="bg-totaal"]').textContent));
   const meld = $$('[data-testid="bg-upload-waarschuwing"]').map((x) => x.textContent);
   check('afwijkingen staan er: regel die niet klopt, subtotaal, totaal en regel zonder bedrag', meld.length === 4 && meld.some((m) => /aantal × tarief is € 250/.test(m)) && meld.some((m) => /subtotaal van “Activa”/.test(m)) && meld.some((m) => /totaal in het bestand is € 9\.000/.test(m)) && meld.some((m) => /geen bedrag/.test(m)));
   check('de regel die niet klopt houdt het bedrag uit het bestand en een Let op', u.bewaard[0].budgetRegels.find((r) => r.omschrijving === 'Materiaal').bedrag === 300 && /Let op/.test(u.bewaard[0].budgetRegels.find((r) => r.omschrijving === 'Materiaal').toelichting));
@@ -489,7 +477,7 @@ sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkin
   u = await toonUpload({ ...BASIS, begroting: 1000, budgetRegels: [R('z1', 'activa', 'Laptop', { bedrag: 1000 })] });
   await kiesBestand(bestand());
   await wacht(() => $('[data-testid="bg-upload-resultaat"]'));
-  check('toegevoegd aan wat er stond: laptop blijft (6 regels), totaal 8.300, alleen de nieuwe hebben een stipje (de laptop zelf getypt, dus geen pop-up)', u.bewaard[0].budgetRegels.length === 6 && u.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop' && r.bron === 'handmatig' && r.bronNaam === '') && u.bewaard[0].begroting === 8300 && $$('[data-testid="bg-herkomst-stip"]').length === 5 && $$('[data-testid="bg-regel"]').length === 6);
+  check('toegevoegd aan wat er stond: laptop blijft (5 regels), totaal 8.300, alleen de nieuwe hebben een stipje (de laptop zelf getypt, dus geen pop-up)', u.bewaard[0].budgetRegels.length === 5 && u.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop' && r.bron === 'handmatig' && r.bronNaam === '') && u.bewaard[0].begroting === 8300 && $$('[data-testid="bg-herkomst-stip"]').length === 4 && $$('[data-testid="bg-regel"]').length === 5);
   await klik(knop('Upload ongedaan maken'));
   check('ongedaan maken zet de laptop-stand en de oude projectbegroting terug', await wacht(() => u.bewaard.length === 2) && u.bewaard[1].budgetRegels.length === 1 && u.bewaard[1].begroting === 1000);
   await opruimen();

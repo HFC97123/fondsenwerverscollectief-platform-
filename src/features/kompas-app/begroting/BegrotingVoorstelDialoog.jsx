@@ -137,7 +137,6 @@ export default function BegrotingVoorstelDialoog({ project, tekst, store, onSlui
                         <div key={r.id} data-testid="bv-regel" style={css('display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid #EEF2F0; font-size: 14.5px;')}>
                           <span>
                             {r.omschrijving}
-                            {r.soort === 'natura' ? <span style={css('margin-left: 8px; font-size: 12px; color: #52606A;')}>in natura</span> : null}
                             {r.schatting ? (
                               <span data-testid="bv-schatting" style={css('margin-left: 8px; font-size: 12px; font-weight: 800; color: #8A5A00;')}>
                                 schatting

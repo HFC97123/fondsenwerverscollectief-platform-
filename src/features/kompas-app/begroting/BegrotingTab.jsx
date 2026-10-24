@@ -1,5 +1,5 @@
 // Documenten › Begroting: de projectbegroting, schoon en leeg om mee te beginnen. Het lid voegt zelf een kopje (tussenregel) toe en daaronder
-// regels: omschrijving en bedrag, eventueel met aantal x tarief of als bijdrage in natura. Daaronder staat het dekkingsplan: toegekend,
+// regels: omschrijving en bedrag, eventueel met aantal x tarief. Daaronder staat het dekkingsplan: toegekend,
 // uitstaand en in planning, het totaal (dat gelijk moet zijn aan de begroting) en wat nog te dekken is. Het totaal van de kosten wordt de
 // projectbegroting (project.begroting), waarmee de rest van Subsidie Kompas al rekent. Bedragen verzint niemand: een lege regel telt niet mee.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -77,8 +77,6 @@ function BegrotingStijl() {
 .fwk-bg-chipx { cursor: pointer; border: none; background: none; padding: 5px 10px 5px 2px; font-size: 12px; line-height: 1; color: ${color.tekstLicht}; border-radius: 999px; }
 .fwk-bg-chipx:hover { color: ${color.donkerblauw}; }
 .fwk-bg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
-.fwk-bg-natura { cursor: pointer; border: 1px solid ${color.lijnInput}; background: ${color.wit}; border-radius: 999px; padding: 6px 12px; font-family: inherit; font-size: 12.5px; font-weight: 800; color: ${color.tekstGrijs}; }
-.fwk-bg-natura[aria-pressed="true"] { background: ${color.vlakGroen}; border-color: ${color.lijnGroen}; color: ${color.succes}; }
 @media (max-width: 560px) { .fwk-bg-rij { grid-template-columns: 14px minmax(0, 1fr) 104px auto; } }
 `}</style>
   );
@@ -181,7 +179,7 @@ function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEi
   const b = regelBedrag(r);
   const berekend = b.bron === 'berekend';
   const herkomst = regelHerkomst(r);
-  const [meer, setMeer] = useState(false); // aantal, tarief en in natura staan achter ⋯, zodat de regel zelf schoon blijft
+  const [meer, setMeer] = useState(false); // aantal, tarief en eenheid staan achter ⋯, zodat de regel zelf schoon blijft
 
   return (
     <div data-testid="bg-regel" className="fwk-bg-blok" data-sleep={sleep ? 'ja' : undefined} data-over={over || undefined} onDragOver={onSleepOver} onDrop={onDrop}>
@@ -205,11 +203,6 @@ function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEi
               schatting
             </button>
           )}
-          {r.soort === 'natura' && !meer && (
-            <span className="fwk-aa-klein" data-testid="bg-natura-label">
-              natura
-            </span>
-          )}
           <button type="button" className="fwk-bg-icoon" aria-label="Meer opties" aria-expanded={meer} data-testid="bg-meer" onClick={() => setMeer((v) => !v)}>
             ⋯
           </button>
@@ -232,9 +225,6 @@ function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEi
             Tarief €
             <input className="fwk-bg-veld" aria-label="Tarief in euro" data-testid="bg-tarief" inputMode="decimal" value={r.tarief} onChange={(e) => onWijzig({ tarief: e.target.value })} />
           </label>
-          <button type="button" className="fwk-bg-natura" aria-pressed={r.soort === 'natura'} data-testid="bg-natura" onClick={() => onWijzig({ soort: r.soort === 'natura' ? 'geld' : 'natura' })}>
-            In natura
-          </button>
           <span style={css('display: inline-flex; gap: 4px; margin-left: auto;')}>
             <button type="button" className="fwk-bg-icoon" aria-label="Regel omhoog" data-testid="bg-regel-omhoog" disabled={!kanOmhoog} onClick={() => onSchuif('omhoog')}>
               ↑
@@ -803,7 +793,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                     )}
                     <span className="fwk-aa-klein" data-testid={`bg-sub-${slug}`}>
                       {deel ? euro(deel.subtotaal) : euro(0)}
-                      {deel && deel.natura > 0 ? ` + ${euro(deel.natura)} in natura` : ''}
                     </span>
                   </div>
                 </div>
@@ -900,11 +889,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
         {totalen.aantalSchattingen > 0 && (
           <div className="fwk-aa-klein" data-testid="bg-schatting-totaal" style={css('margin: 10px 0;')}>
             Waarvan {euro(totalen.totaalSchatting)} nog een schatting ({totalen.aantalSchattingen} {totalen.aantalSchattingen === 1 ? 'regel' : 'regels'}). Klik op schatting bij een regel als u het bedrag hebt gecontroleerd.
-          </div>
-        )}
-        {totalen.totaalNatura > 0 && (
-          <div className="fwk-aa-klein" data-testid="bg-natura-totaal" style={css('margin: 10px 0;')}>
-            In natura (telt niet mee in het totaal): {euro(totalen.totaalNatura)}.
           </div>
         )}
 

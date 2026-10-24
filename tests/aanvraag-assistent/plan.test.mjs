@@ -158,7 +158,6 @@ sectie('Begroting en dekkingsplan als feiten (de actuele stand bij elke tekst)')
     { categorie: 'uitvoering', omschrijving: 'Training vrijwilligers', aantal: null, tarief: null, bedrag: 2500, soort: 'geld', schatting: true },
     { categorie: 'activa', omschrijving: 'Voedselpakketten', aantal: 10, eenheid: 'pakket', tarief: 250, bedrag: null, soort: 'geld', schatting: false },
     { categorie: 'eigen:Locatie en huisvesting', omschrijving: 'Huur ruimte', aantal: null, tarief: null, bedrag: 3000, soort: 'geld', schatting: false },
-    { categorie: 'eigen:Locatie en huisvesting', omschrijving: 'Zaal gratis', aantal: null, tarief: null, bedrag: 1200, soort: 'natura', schatting: false },
     { categorie: '', omschrijving: 'Verzekering', aantal: null, tarief: null, bedrag: null, soort: 'geld', schatting: false },
   ] };
   const rij = (naam, status, requested, awarded = null, extra = {}) => ({ id: naam, program_id: 'p', bron_type: 'financier', bron_status: 'zichtbaar', bron_naam: naam, requested_amount: requested, awarded_amount: awarded, status, ...extra });
@@ -178,7 +177,7 @@ sectie('Begroting en dekkingsplan als feiten (de actuele stand bij elke tekst)')
   check('een schatting blijft een schatting', /Training vrijwilligers: € 2\.500 \(schatting\)/.test(tekst('begroting.kopje.1')));
   check('een regel zonder bedrag zegt dat het bedrag nog niet is ingevuld', /Verzekering: bedrag nog niet ingevuld/.test(tekst('begroting.kopje.4')));
   check('subtotaal per kopje: 5.400 + 2.500 = 7.900', /Subtotaal Projectuitvoering: € 7\.900/.test(tekst('begroting.kopje.1')));
-  check('in natura staat apart en telt niet mee', /Zaal gratis: € 1\.200/.test(tekst('begroting.natura')) && /tellen niet mee/.test(tekst('begroting.natura')) && !/Zaal gratis/.test(tekst('begroting.kopje.3')));
+  check('er is geen apart feit meer voor bijdragen in natura', !feiten.some((f) => /natura/i.test(f.sleutel + f.label + f.tekst)));
   check('totaal van de regels 13.400, waarvan 2.500 schatting', /€ 13\.400, waarvan € 2\.500 nog een schatting/.test(tekst('begroting.totaal')));
   check('toegekend: eigen bijdrage en toegekend bedrag (8.000, niet 10.000)', /Eigen bijdrage € 7\.500; Fonds A € 8\.000/.test(tekst('dekking.toegekend')));
   check('aangevraagd en in planning staan apart; afgewezen staat er niet in', /Fonds B € 5\.000/.test(tekst('dekking.aangevraagd')) && /Fonds C € 3\.000/.test(tekst('dekking.planning')) && !feiten.some((f) => /Fonds D|9\.999/.test(f.tekst)));

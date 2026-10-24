@@ -25,7 +25,6 @@ export interface VoorstelRegel {
   eenheid: string;
   tarief: number | null;
   bedrag: number | null;
-  soort: 'geld' | 'natura';
   schatting: boolean;
   toelichting: string;
 }
@@ -48,13 +47,13 @@ const getal = (v: unknown): number | null => {
 
 export const VOORSTEL_SYSTEEM = `Je zet een gesprek over de begroting van een project om in begrotingsregels. Je krijgt de tekst van het antwoord uit de chat. Antwoord ALLEEN met JSON.
 
-Vorm: {"regels":[{"kopje":"uitvoering|activa|communicatie|organisatie|eigen","eigenKopje":"korte naam, alleen bij kopje eigen","omschrijving":"...","aantal":getal of null,"eenheid":"...","tarief":getal of null,"bedrag":getal of null,"natura":true of false,"schatting":true of false,"toelichting":"..."}]}
+Vorm: {"regels":[{"kopje":"uitvoering|activa|communicatie|organisatie|eigen","eigenKopje":"korte naam, alleen bij kopje eigen","omschrijving":"...","aantal":getal of null,"eenheid":"...","tarief":getal of null,"bedrag":getal of null,"schatting":true of false,"toelichting":"..."}]}
 
 Regels:
 - Neem alleen kostenposten op die in de tekst staan. Verzin geen posten, aantallen, tarieven of bedragen.
 - Reken niets uit. Noemt de tekst aantal en tarief, geef die allebei en laat bedrag null. Noemt de tekst alleen een bedrag voor de post, geef dat als bedrag en laat aantal en tarief null. Noemt de tekst geen bedrag, of staat er [in te vullen door gebruiker], zet dan alles op null.
 - schatting is true als de tekst het bedrag of tarief een schatting, richtbedrag, indicatie, circa of ongeveer noemt, of als het duidelijk niet door het lid zelf is opgegeven. Heeft het lid het bedrag zelf genoemd, dan is schatting false.
-- natura is true bij een bijdrage in natura (bijvoorbeeld gratis zaal, of uren van vrijwilligers die niet worden vergoed).
+- Neem alleen kosten op die voor het project worden gemaakt. Bijdragen in natura (gratis zaal, onvergoede uren) zijn geen kosten: laat ze weg.
 - kopje: uitvoering = mankracht, personeelskosten, vrijwilligers en het trainen daarvan en andere kosten om het project uit te voeren; activa = uitrusting en materialen voor de hulpverlening; communicatie = kosten om het project onder de aandacht te brengen; organisatie = kosten voor fondsenwerving, huisvesting, overhead, verzekeringen en boekhouding. Past een post nergens, kies kopje eigen met een korte, duidelijke naam in eigenKopje.
 - Totaalregels, subtotalen en dekkingsregels (eigen bijdrage, fondsen) zijn geen kostenposten: laat ze weg.
 - omschrijving is kort (maximaal 200 tekens), eenheid is bijvoorbeeld uur, stuk, maand, pakket of vrijwilliger.
@@ -69,6 +68,8 @@ export function schoneVoorstelRegel(ruw: any): VoorstelRegel | null {
   const omschrijving = schoon(ruw.omschrijving, MAX_TEKST);
 
   if (!omschrijving) return null;
+
+  if (ruw.natura === true) return null; // een bijdrage in natura is geen kostenpost van het project
 
   const kopje = schoon(ruw.kopje, 20).toLowerCase();
   let categorie = '';
@@ -99,7 +100,6 @@ export function schoneVoorstelRegel(ruw: any): VoorstelRegel | null {
     eenheid: schoon(ruw.eenheid, 40),
     tarief,
     bedrag,
-    soort: ruw.natura === true ? 'natura' : 'geld',
     schatting: ruw.schatting === true && (bedrag !== null || tarief !== null),
     toelichting: schoon(ruw.toelichting, MAX_TOELICHTING),
   };

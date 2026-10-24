@@ -23,13 +23,11 @@ sectie('2. Totalen');
     r('uitvoering', { omschrijving: 'Projectleider', aantal: '100', tarief: '50' }),
     r('activa', { omschrijving: 'Materiaal', bedrag: '2.000' }),
     r('activa', { omschrijving: 'Voedselpakketten', aantal: '40', tarief: '25' }),
-    r('organisatie', { omschrijving: 'Gratis zaal', bedrag: '1.200', soort: 'natura' }),
     r('eigen:Overig project', { omschrijving: 'Nog onbekend' }),
   ]);
 
-  gelijk('totaal kosten in geld', t.totaalGeld, 8000);
-  gelijk('in natura telt niet mee in het totaal', t.totaalNatura, 1200);
-  gelijk('subtotaal per kopje', t.perCategorie.map((c) => `${c.id}:${c.subtotaal}`).join(','), 'uitvoering:5000,activa:3000,organisatie:0,eigen:Overig project:0');
+  gelijk('totaal van de kosten', t.totaalGeld, 8000);
+  gelijk('subtotaal per kopje', t.perCategorie.map((c) => `${c.id}:${c.subtotaal}`).join(','), 'uitvoering:5000,activa:3000,eigen:Overig project:0');
   gelijk('regel zonder bedrag wordt gemeld, niet meegeteld', t.zonderBedrag.map((x) => x.omschrijving), ['Nog onbekend']);
   check('volgorde van de kopjes is die van de lijst, niet van invoer', t.perCategorie[0].id === 'uitvoering' && t.perCategorie[1].id === 'activa');
   gelijk('een helemaal lege regel telt niet als "zonder bedrag"', M.berekenBegroting([r('')]).zonderBedrag.length, 0);
@@ -81,11 +79,10 @@ sectie('5. Excel-invoer');
   const l = M.expenseLinesVoorExcel([
     r('uitvoering', { omschrijving: 'Projectleider', aantal: '10', tarief: '45' }),
     r('uitvoering', { omschrijving: 'Materiaal', bedrag: '2.000' }),
-    r('organisatie', { omschrijving: 'Gratis zaal', bedrag: '500', soort: 'natura' }),
     r('uitvoering', { omschrijving: '' , bedrag: '5' }),
   ]);
 
-  gelijk('natura en regels zonder omschrijving staan er niet in', l.length, 2);
+  gelijk('regels zonder omschrijving staan er niet in', l.length, 2);
   gelijk('aantal x tarief wordt aantal en tarief', [l[0].quantity, l[0].unitPrice, l[0].statedAmount], [10, 45, null]);
   gelijk('vast bedrag wordt vermeld bedrag', [l[1].quantity, l[1].unitPrice, l[1].statedAmount], [null, null, 2000]);
 }
@@ -149,7 +146,7 @@ sectie('8. Herkomst van een bedrag (pop-up bij het bedrag)');
   gelijk('de berekening laat zien hoe het bedrag ontstaat', h.rijen[1].waarde, '100 uur × € 50 = € 5.000');
   gelijk('vast bedrag uit de chat', M.regelHerkomst(r('activa', { bedrag: '1250', bron: 'ai' })).rijen.map((x) => x.waarde), ['Voorstel uit de chat met Subsidie Kompas', 'Vast bedrag: € 1.250']);
   gelijk('schatting krijgt een rij Status en markeert de pop-up', [M.regelHerkomst(r('activa', { bedrag: '900', bron: 'ai', schatting: true })).rijen.map((x) => x.label), M.regelHerkomst(r('activa', { bedrag: '900', bron: 'ai', schatting: true })).schatting], [['Herkomst', 'Berekening', 'Status'], true]);
-  gelijk('natura en toelichting staan er ook bij, toelichting laatst', M.regelHerkomst(r('activa', { bedrag: '300', bron: 'upload', soort: 'natura', toelichting: 'Let op: x' })).rijen.map((x) => x.label), ['Herkomst', 'Berekening', 'Soort', 'Toelichting']);
+  gelijk('schatting en toelichting staan er ook bij, toelichting laatst', M.regelHerkomst(r('activa', { bedrag: '300', bron: 'upload', schatting: true, toelichting: 'Let op: x' })).rijen.map((x) => x.label), ['Herkomst', 'Berekening', 'Status', 'Toelichting']);
   gelijk('zelf getypt zonder bijzonderheden: geen pop-up', M.regelHerkomst(r('activa', { bedrag: '100' })), { heeft: false, rijen: [] });
   gelijk('zelf getypt met een toelichting: wel, met Zelf ingevoerd', M.regelHerkomst(r('activa', { bedrag: '100', toelichting: 'offerte' })).rijen.map((x) => x.waarde), ['Zelf ingevoerd', 'Vast bedrag: € 100', 'offerte']);
   gelijk('upload zonder bestandsnaam', M.regelHerkomst(r('activa', { bedrag: '5', bron: 'upload' })).rijen[0].waarde, 'Geüpload bestand');

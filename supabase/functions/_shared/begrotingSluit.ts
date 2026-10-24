@@ -50,7 +50,7 @@ export function samenvoegRuw(bestaand: unknown, nieuw: unknown[], modus: 'toevoe
 
 export function sluitControle(inv: { regels: unknown[]; eigenBijdrage: unknown; financiering: unknown }): SluitControle | null {
   try {
-    const geld = leesRegels({ regels: inv.regels }).filter((r) => !r.natura);
+    const geld = leesRegels({ regels: inv.regels });
     const totaal = Math.round(geld.reduce((n, r) => n + (r.bedrag ?? 0), 0));
 
     if (totaal <= 0) return null; // zonder begroting valt er niets te vergelijken

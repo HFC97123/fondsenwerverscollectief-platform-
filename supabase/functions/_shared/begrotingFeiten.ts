@@ -6,7 +6,7 @@
 //
 // Regels:
 //   - Alleen wat het lid zelf heeft vastgelegd: begrotingsregels (Documenten > Begroting) en financieringsregels (Projectfinanciering).
-//   - Een bedrag dat als schatting is gemarkeerd, blijft in de tekst "schatting"; een bijdrage in natura telt niet mee in het totaal en staat apart.
+//   - Een bedrag dat als schatting is gemarkeerd, blijft in de tekst "schatting".
 //   - Afgewezen of ingetrokken financiering staat er niet in. Een financier die het abonnement niet laat zien, krijgt geen naam.
 import { berekenDekking, regelUitRpc } from './dekkingsplanRekenen.js';
 
@@ -53,7 +53,6 @@ interface Regel {
   eenheid: string;
   tarief: number | null;
   bedrag: number | null; // het bedrag van deze regel (aantal x tarief of vast bedrag), of null
-  natura: boolean;
   schatting: boolean;
 }
 
@@ -87,7 +86,6 @@ export function leesRegels(ruw: unknown): Regel[] {
       eenheid: schoon(o.eenheid, 40),
       tarief: aantal !== null && tarief !== null ? tarief : null,
       bedrag,
-      natura: o.soort === 'natura',
       schatting: o.schatting === true && bedrag !== null,
     });
   }
@@ -110,13 +108,13 @@ function begrotingFeiten(ruw: unknown): BegrotingFeit[] {
   const feiten: BegrotingFeit[] = [];
   const kopjes: string[] = [];
 
-  for (const r of regels) if (!r.natura && !kopjes.includes(r.kopje)) kopjes.push(r.kopje);
+  for (const r of regels) if (!kopjes.includes(r.kopje)) kopjes.push(r.kopje);
 
   let totaal = 0;
   let schatting = 0;
 
   for (const k of kopjes) {
-    const deze = regels.filter((r) => !r.natura && r.kopje === k);
+    const deze = regels.filter((r) => r.kopje === k);
     const subtotaal = deze.reduce((n, r) => n + (r.bedrag ?? 0), 0);
 
     totaal += subtotaal;
@@ -141,20 +139,6 @@ function begrotingFeiten(ruw: unknown): BegrotingFeit[] {
       bron: 'begroting',
       label: `Begroting: ${k}`,
       tekst: `${regelTeksten.join('; ')}${rest > 0 ? `; en nog ${rest} regels` : ''}. Subtotaal ${k}: ${euro(subtotaal)}.`.slice(0, MAX_FEIT_TEKST),
-    });
-  }
-
-  const natura = regels.filter((r) => r.natura);
-
-  if (natura.length) {
-    const naturaTekst = natura.slice(0, 15).map(regelTekst).join('; ');
-    const naturaTotaal = natura.reduce((n, r) => n + (r.bedrag ?? 0), 0);
-
-    feiten.push({
-      sleutel: 'begroting.natura',
-      bron: 'begroting',
-      label: 'Begroting: bijdragen in natura',
-      tekst: `${naturaTekst}. Dit zijn bijdragen in natura; ze tellen niet mee in de totale begroting.${naturaTotaal > 0 ? ` Waarde in natura: ${euro(naturaTotaal)}.` : ''}`.slice(0, MAX_FEIT_TEKST),
     });
   }
 

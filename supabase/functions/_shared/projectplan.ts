@@ -261,7 +261,7 @@ Regels:
 - Noem getallen alleen als ze letterlijk in de gebruikte feiten staan.
 - Aandachtspunten van het fonds mogen bepalen waar je de nadruk op legt, maar nooit wat je beweert.
 - Respecteer "maxTekens" als dat is opgegeven.
-- Staat bij een bedrag in de feiten "schatting", noem het dan ook een schatting. Een bijdrage in natura is geen geldbedrag en telt niet mee in de totale begroting. Rond bedragen niet af en reken niet zelf: neem de bedragen uit de feiten over.`;
+- Staat bij een bedrag in de feiten "schatting", noem het dan ook een schatting. Rond bedragen niet af en reken niet zelf: neem de bedragen uit de feiten over.`;
 
 export interface PlanSectie {
   id: string;

@@ -104,7 +104,6 @@ export function nieuweRegel(categorie, basis = {}) {
     eenheid: '',
     tarief: '',
     bedrag: '',
-    soort: 'geld',
     schatting: false, // een bedrag dat de AI als richtbedrag noemde en het lid nog niet heeft bevestigd
     toelichting: '',
     bron: 'handmatig',
@@ -131,7 +130,6 @@ export function leesBudgetRegels(waarde) {
       eenheid: tekst(r.eenheid, 40),
       tarief: getalTekst(r.tarief),
       bedrag: getalTekst(r.bedrag),
-      soort: r.soort === 'natura' ? 'natura' : 'geld',
       schatting: r.schatting === true,
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
@@ -243,12 +241,11 @@ export function regelBedrag(regel) {
 
 const rond = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-// Totalen: per categorie (in de volgorde van de lijst met categorieën), kosten in geld apart van bijdragen in natura.
+// Totalen: per categorie (in de volgorde van de lijst met categorieën).
 export function berekenBegroting(regels) {
   const lijst = Array.isArray(regels) ? regels : [];
   const perCategorie = [];
   let totaalGeld = 0;
-  let totaalNatura = 0;
   let totaalSchatting = 0; // het deel van het totaal in geld dat nog een schatting is
   let aantalSchattingen = 0;
   const zonderBedrag = [];
@@ -262,7 +259,6 @@ export function berekenBegroting(regels) {
     if (!eigen.length) return;
 
     let subtotaal = 0;
-    let natura = 0;
 
     const rijen = eigen.map((r) => {
       const b = regelBedrag(r);
@@ -272,7 +268,6 @@ export function berekenBegroting(regels) {
         // Een helemaal lege regel (nog niets getypt) telt niet als "zonder bedrag"; hij wordt bij het opslaan overgeslagen.
         if (String(r.omschrijving || '').trim()) zonderBedrag.push(r);
       }
-      else if (r.soort === 'natura') natura += b.bedrag;
       else {
         subtotaal += b.bedrag;
 
@@ -286,11 +281,10 @@ export function berekenBegroting(regels) {
     });
 
     totaalGeld += subtotaal;
-    totaalNatura += natura;
-    perCategorie.push({ id: c.id, label: c.label, subtotaal: rond(subtotaal), natura: rond(natura), rijen });
+    perCategorie.push({ id: c.id, label: c.label, subtotaal: rond(subtotaal), rijen });
   });
 
-  return { perCategorie, totaalGeld: rond(totaalGeld), totaalNatura: rond(totaalNatura), totaalSchatting: rond(totaalSchatting), aantalSchattingen, zonderBedrag, ongeldig };
+  return { perCategorie, totaalGeld: rond(totaalGeld), totaalSchatting: rond(totaalSchatting), aantalSchattingen, zonderBedrag, ongeldig };
 }
 
 // Schermregels -> te bewaren regels (getallen). Een regel zonder omschrijving én zonder bedragen wordt overgeslagen.
@@ -322,7 +316,6 @@ export function regelsVoorOpslag(regels) {
       eenheid: tekst(r.eenheid, 40),
       tarief,
       bedrag: aantal != null && tarief != null ? null : vast,
-      soort: r.soort === 'natura' ? 'natura' : 'geld',
       schatting: r.schatting === true && (tarief != null || vast != null),
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
@@ -359,7 +352,6 @@ export function leesOpgeslagenRegels(waarde) {
       eenheid: tekst(r.eenheid, 40),
       tarief: getalOfNull(r.tarief),
       bedrag: getalOfNull(r.bedrag),
-      soort: r.soort === 'natura' ? 'natura' : 'geld',
       schatting: r.schatting === true,
       toelichting: tekst(r.toelichting, MAX_TOELICHTING),
       bron: BRONNEN.includes(r.bron) ? r.bron : 'handmatig',
@@ -406,8 +398,6 @@ export function regelHerkomst(regel) {
 
   if (r.schatting === true) rijen.push({ label: 'Status', waarde: 'Schatting, nog niet bevestigd' });
 
-  if (r.soort === 'natura') rijen.push({ label: 'Soort', waarde: 'In natura, telt niet mee in het totaal' });
-
   if (toelichting) rijen.push({ label: 'Toelichting', waarde: toelichting });
 
   return { heeft: true, schatting: r.schatting === true, rijen };
@@ -426,10 +416,9 @@ export function samenvoegVoorstel(bestaand, nieuw, modus = 'toevoegen') {
 
 export const budgetKolom = (regels) => ({ versie: BUDGET_VERSIE, regels });
 
-// Kostenregels in geld voor de bestaande begrotings-Excel (berekenBudget). Bijdragen in natura staan daar niet in.
+// Kostenregels voor de bestaande begrotings-Excel (berekenBudget).
 export function expenseLinesVoorExcel(regels) {
   return (Array.isArray(regels) ? regels : [])
-    .filter((r) => r.soort !== 'natura')
     .map((r) => {
       const aantal = lees(r.aantal).waarde;
       const tarief = lees(r.tarief).waarde;

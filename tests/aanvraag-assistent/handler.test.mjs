@@ -96,7 +96,8 @@ function omgeving(opties = {}) {
         return { inhoud: JSON.stringify({ regels: [
           { kopje: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: 9999, natura: false, schatting: false, toelichting: '' },
           { kopje: 'activa', omschrijving: 'Voedselpakketten', aantal: null, eenheid: 'pakket', tarief: null, bedrag: '2.500,50', natura: false, schatting: true, toelichting: 'richtbedrag' },
-          { kopje: 'eigen', eigenKopje: 'Locatie en huisvesting', omschrijving: 'Zaalhuur', aantal: 10, eenheid: 'maand', tarief: null, bedrag: 1200, natura: true, schatting: false },
+          { kopje: 'eigen', eigenKopje: 'Locatie en huisvesting', omschrijving: 'Zaalhuur', aantal: 10, eenheid: 'maand', tarief: null, bedrag: 1200, natura: false, schatting: false },
+          { kopje: 'organisatie', omschrijving: 'Gratis zaal', aantal: null, tarief: null, bedrag: 800, natura: true, schatting: false },
           { kopje: 'onzin', omschrijving: 'Onbekend kopje', bedrag: 100 },
           { kopje: 'organisatie', omschrijving: '', bedrag: 100 },
           { kopje: 'communicatie', omschrijving: 'Flyers', bedrag: -5 },
@@ -643,10 +644,10 @@ sectie('10. Begrotingsvoorstel uit de chat');
 
   check('Pro krijgt een voorstel en het telt als één beoordeling (3 van 6 gebruikt, 3 resterend)', r.status === 200 && r.body.ok === true && r.body.resterend === 3 && r.body.limiet === 6 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen');
   const rg = r.body.regels || [];
-  check('een regel zonder omschrijving valt weg; een onbekend kopje wordt: geen kopje; een negatief bedrag wordt genegeerd (regel blijft, zonder bedrag)', rg.map((x) => x.omschrijving).join() === 'Projectleider,Voedselpakketten,Zaalhuur,Onbekend kopje,Flyers' && rg.find((x) => x.omschrijving === 'Onbekend kopje').categorie === '' && rg.find((x) => x.omschrijving === 'Flyers').bedrag === null);
+  check('een regel zonder omschrijving valt weg; een onbekend kopje wordt: geen kopje; een negatief bedrag wordt genegeerd (regel blijft, zonder bedrag); een bijdrage in natura valt weg', rg.map((x) => x.omschrijving).join() === 'Projectleider,Voedselpakketten,Zaalhuur,Onbekend kopje,Flyers' && !rg.some((x) => x.omschrijving === 'Gratis zaal') && rg.find((x) => x.omschrijving === 'Onbekend kopje').categorie === '' && rg.find((x) => x.omschrijving === 'Flyers').bedrag === null);
   check('aantal x tarief: het bedrag blijft leeg (het scherm rekent), het model rekende niets mee', rg[0].aantal === 120 && rg[0].tarief === 45 && rg[0].bedrag === null);
   check('bedrag in Nederlandse notatie wordt gelezen; schatting blijft gemarkeerd', rg[1].bedrag === 2500.5 && rg[1].schatting === true && rg[1].categorie === 'activa');
-  check('eigen kopje met naam; in natura; aantal zonder tarief wordt weggelaten', rg[2].categorie === 'eigen:Locatie en huisvesting' && rg[2].soort === 'natura' && rg[2].aantal === null && rg[2].tarief === null && rg[2].bedrag === 1200);
+  check('eigen kopje met naam; aantal zonder tarief wordt weggelaten', rg[2].categorie === 'eigen:Locatie en huisvesting' && !('soort' in rg[2]) && rg[2].aantal === null && rg[2].tarief === null && rg[2].bedrag === 1200);
   check('het gesprek wordt aan het model aangeboden als tekst tussen aanhalingstekens', /TEKST UIT DE CHAT/.test(e.o.gezienBegrotingTekst || '') && (e.o.gezienBegrotingTekst || '').includes('Projectleider: 120 uur'));
   check('gebruik gelogd als aanvraag_begroting zonder inhoud', e.log.gebruik.length === 1 && e.log.gebruik[0].actie === 'aanvraag_begroting' && e.log.gebruik[0].succes === true && !JSON.stringify(e.log.gebruik).includes('Voedselpakketten'));
   check('afgerond als gelukt', e.log.afgerond.length === 1 && e.log.afgerond[0].succes === true);
@@ -702,12 +703,12 @@ sectie('11. Begroting uit een geüpload bestand');
   const c = r.body.controle || {};
 
   check('Pro: een bestand wordt gelezen en telt als één beoordeling van de maandruimte (3 van 6, 3 resterend)', r.status === 200 && r.body.ok === true && r.body.resterend === 3 && r.body.limiet === 6 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen');
-  check('een dubbele regel onder dezelfde kop wordt niet dubbel geteld; de rest blijft', rg.map((x) => x.omschrijving).join() === 'Projectleider,Training vrijwilligers,Materiaal,Zaal,Verzekering');
+  check('een dubbele regel onder dezelfde kop wordt niet dubbel geteld; de rest blijft', rg.map((x) => x.omschrijving).join() === 'Projectleider,Training vrijwilligers,Materiaal,Verzekering');
   check('het kopje uit het bestand blijft op de server (geen veld sectie in het antwoord)', rg.every((x) => !('sectie' in x)));
   check('aantal x tarief dat klopt: aantal en tarief blijven, het scherm rekent', rg[0].aantal === 100 && rg[0].tarief === 50 && rg[0].bedrag === null);
   check('aantal x tarief dat niet klopt: het bedrag uit het bestand blijft staan en de regel krijgt een Let op', rg[2].aantal === null && rg[2].tarief === null && rg[2].bedrag === 300 && /Let op/.test(rg[2].toelichting));
-  check('een bedrag van het lid is geen schatting; in natura blijft in natura; een eigen kopje houdt zijn naam', rg.every((x) => x.schatting === false) && rg[3].soort === 'natura' && rg[3].categorie === 'eigen:Locatie');
-  check('de som van de regels (zonder natura): 5.000 + 2.000 + 300 = 7.300; het totaal in het bestand is 9.000', c.somRegels === 7300 && c.totaalInBestand === 9000 && c.opgenomen === 5);
+  check('een bedrag van het lid is geen schatting; een bijdrage in natura wordt niet opgenomen; een eigen kopje houdt zijn naam', rg.every((x) => x.schatting === false) && !rg.some((x) => x.omschrijving === 'Zaal') && rg[3].categorie === 'eigen:Locatie');
+  check('de som van de regels: 5.000 + 2.000 + 300 = 7.300; het totaal in het bestand is 9.000', c.somRegels === 7300 && c.totaalInBestand === 9000 && c.opgenomen === 4);
   const w = (c.waarschuwingen || []).join(' | ');
   check('afwijkingen worden gemeld: regel, subtotaal, totaal en regel zonder bedrag', /aantal × tarief is € 250/.test(w) && /subtotaal van “Activa”/.test(w) && /totaal in het bestand is € 9\.000/.test(w) && /1 regel heeft geen bedrag/.test(w));
   check('een kloppend subtotaal geeft geen melding', !/subtotaal van “Uitvoering”/.test(w));
@@ -772,7 +773,7 @@ sectie('12. Sluit de begroting met het dekkingsplan? (na een upload of een voors
 
   e = omgeving({ standNull: true });
   r = await verwerk(vraag(upload()), e.deps);
-  check('stand niet te lezen: toch gewoon een resultaat, zonder sluitcontrole', r.status === 200 && r.body.sluit === null && r.body.regels.length === 5);
+  check('stand niet te lezen: toch gewoon een resultaat, zonder sluitcontrole', r.status === 200 && r.body.sluit === null && r.body.regels.length === 4);
   e = omgeving({ stand: { regels: null, eigenBijdrage: 0, financiering: null } });
   r = await verwerk(vraag(upload()), e.deps);
   check('dekkingsplan niet te lezen: geen sluitcontrole (niet "geen dekking" beweren)', r.status === 200 && r.body.sluit === null);

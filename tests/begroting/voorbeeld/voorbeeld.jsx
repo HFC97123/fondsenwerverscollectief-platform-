@@ -19,7 +19,6 @@ const regels = q.get('leeg')
       { id: 'd', categorie: 'uitvoering', omschrijving: 'Training van vrijwilligers', aantal: 12, eenheid: 'vrijwilliger', tarief: 60, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
       { id: 'f', categorie: 'communicatie', omschrijving: 'Flyers en drukwerk', aantal: null, eenheid: '', tarief: null, bedrag: 750, soort: 'geld', toelichting: '', bron: 'handmatig' },
       { id: 'g', categorie: 'eigen:Locatie en huisvesting', omschrijving: 'Zaalhuur', aantal: 10, eenheid: 'maand', tarief: 120, bedrag: null, soort: 'geld', toelichting: '', bron: 'handmatig' },
-      { id: 'e', categorie: 'organisatie', omschrijving: 'Gratis zaal van de buurtvereniging', aantal: null, eenheid: '', tarief: null, bedrag: 2400, soort: 'natura', toelichting: '', bron: 'handmatig' },
     ];
 const project = { id: PROJECT, naam: 'Samen Spelen', begroting: 15920, eigenBijdrage: 2000, budgetRegels: regels };
 
@@ -30,7 +29,6 @@ const UPLOAD_ANTWOORD = {
     { categorie: 'uitvoering', omschrijving: 'Projectleider', aantal: 100, eenheid: 'uur', tarief: 50, bedrag: null, soort: 'geld', schatting: false, toelichting: '' },
     { categorie: 'uitvoering', omschrijving: 'Training vrijwilligers', aantal: null, eenheid: '', tarief: null, bedrag: 2000, soort: 'geld', schatting: false, toelichting: '' },
     { categorie: 'activa', omschrijving: 'Materiaal', aantal: null, eenheid: '', tarief: null, bedrag: 300, soort: 'geld', schatting: false, toelichting: 'Let op: in het bestand staat 10 × € 25 = € 250, maar het bestand noemt € 300. Het bedrag uit het bestand is overgenomen.' },
-    { categorie: 'eigen:Locatie', omschrijving: 'Zaal', aantal: null, eenheid: '', tarief: null, bedrag: 1200, soort: 'natura', schatting: false, toelichting: '' },
     { categorie: 'eigen:Locatie', omschrijving: 'Verzekering', aantal: null, eenheid: '', tarief: null, bedrag: null, soort: 'geld', schatting: false, toelichting: '' },
   ],
   controle: { waarschuwingen: [

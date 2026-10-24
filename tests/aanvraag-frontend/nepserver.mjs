@@ -61,7 +61,6 @@ export function maakServer(o = {}) {
           { sectie: 'Uitvoering', kopje: 'uitvoering', omschrijving: 'Projectleider', aantal: 100, eenheid: 'uur', tarief: 50, bedrag: 5000, natura: false, schatting: false },
           { sectie: 'Uitvoering', kopje: 'uitvoering', omschrijving: 'Training vrijwilligers', aantal: null, tarief: null, bedrag: 2000, natura: false, schatting: false },
           { sectie: 'Activa', kopje: 'activa', omschrijving: 'Materiaal', aantal: 10, eenheid: 'stuk', tarief: 25, bedrag: 300, natura: false, schatting: false },
-          { sectie: 'Locatie', kopje: 'eigen', eigenKopje: 'Locatie', omschrijving: 'Zaal', aantal: null, tarief: null, bedrag: 1200, natura: true, schatting: false },
           { sectie: 'Locatie', kopje: 'eigen', eigenKopje: 'Locatie', omschrijving: 'Verzekering', aantal: null, tarief: null, bedrag: null, natura: false, schatting: false },
         ], totalen: [{ soort: 'subtotaal', sectie: 'Uitvoering', bedrag: 7000 }, { soort: 'subtotaal', sectie: 'Activa', bedrag: 250 }, { soort: 'totaal', sectie: '', bedrag: 9000 }] }), usage: { prompt_tokens: 1500, completion_tokens: 300 } };
       }
@@ -69,7 +68,6 @@ export function maakServer(o = {}) {
         return { inhoud: JSON.stringify({ regels: [
           { kopje: 'uitvoering', omschrijving: 'Projectleider', aantal: 120, eenheid: 'uur', tarief: 45, bedrag: null, natura: false, schatting: false },
           { kopje: 'activa', omschrijving: 'Voedselpakketten', aantal: null, eenheid: 'pakket', tarief: null, bedrag: 2500, natura: false, schatting: true },
-          { kopje: 'eigen', eigenKopje: 'Locatie en huisvesting', omschrijving: 'Zaalhuur', aantal: null, eenheid: '', tarief: null, bedrag: 1200, natura: true, schatting: false },
           { kopje: 'communicatie', omschrijving: 'Flyers', aantal: null, tarief: null, bedrag: null },
         ] }), usage: { prompt_tokens: 900, completion_tokens: 200 } };
       }
