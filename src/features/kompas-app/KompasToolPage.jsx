@@ -1803,10 +1803,15 @@ export default function KompasToolPage() {
 
             {isFreePlan && (
               <div style={css('margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;')}>
-                <span style={css('flex: 1 1 300px; min-width: 0; color: #687974; font-size: 12px; font-weight: 700; text-wrap: pretty;')}>
-                  <strong>Pro:</strong> afgeronde projectplannen, begrotingen en aanvragen, uw deadlines helder in beeld en een
-                  geheugen voor uw organisatie. <strong>Premium:</strong> ook <FundingDatabaseCount /> fondsen die online
-                  nauwelijks te vinden zijn, en documenten in uw eigen huisstijl.
+                <span style={css('flex: 1 1 300px; min-width: 0; color: #687974; font-size: 12.5px; font-weight: 700; line-height: 1.5; text-wrap: pretty;')}>
+                  <span style={css('display: block;')}>
+                    <strong style={css('color: #2C4A5E;')}>Pro:</strong> van fondsmatch tot sluitende begroting en aanvraag, met al uw
+                    deadlines in beeld.
+                  </span>
+                  <span style={css('display: block; margin-top: 3px;')}>
+                    <strong style={css('color: #2F6D47;')}>Premium:</strong> alles van Pro, plus <FundingDatabaseCount /> fondsen
+                    die u elders bijna niet vindt.
+                  </span>
                 </span>
                 <span style={css('display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0;')}>
                   <a
