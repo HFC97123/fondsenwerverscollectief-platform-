@@ -11,10 +11,13 @@ import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 
 // Een blok is tekst, of een object met opsommingstekens.
 function Blok({ blok }) {
-  if (blok && Array.isArray(blok.bullets)) {
+  // De tekst in faqContent.jsx noemt een opsomming 'list'; oudere rijen uit de database 'bullets'.
+  const opsomming = blok && (Array.isArray(blok.list) ? blok.list : Array.isArray(blok.bullets) ? blok.bullets : null);
+
+  if (opsomming) {
     return (
       <div style={css('display: flex; flex-direction: column; gap: 6px;')}>
-        {blok.bullets.map((b, i) => (
+        {opsomming.map((b, i) => (
           <div key={i} style={css('display: flex; gap: 10px; align-items: flex-start;')}>
             <span style={css('flex-shrink: 0; color: #4E9A6C; font-size: 15px; line-height: 1.68;')}>•</span>
             <span style={css('font-size: 15px; line-height: 1.68; color: #4B5C58;')}>{b}</span>
