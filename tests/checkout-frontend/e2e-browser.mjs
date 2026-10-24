@@ -13,7 +13,9 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/jav
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
   if (p === '/') p = '/index.html';
-  const f = join(DIST, p);
+  let f = join(DIST, p);
+  // zoals Vercel: een adres zonder bestand (bijv. /subsidie-kompas/account) krijgt index.html
+  if (!existsSync(f) && !/\.[a-z0-9]{2,5}$/i.test(p)) f = join(DIST, 'index.html');
   if (existsSync(f) && !f.endsWith('/')) { res.writeHead(200, { 'content-type': MIME[extname(f)] || 'application/octet-stream' }); res.end(readFileSync(f)); }
   else { res.writeHead(404); res.end(); }
 }).listen(4174);
@@ -71,7 +73,7 @@ async function ctxMake(browser, state) {
   return { context, log, fn, stripe, state };
 }
 
-const hashOf = (page) => page.evaluate(() => window.location.hash);
+const hashOf = (page) => page.evaluate(() => window.__skAdres.huidigeHash());
 const store = (page) => page.evaluate(() => window.localStorage.getItem('fc.koopintentie'));
 async function inloggenViaModal(page) {
   await page.getByPlaceholder('naam@organisatie.nl').fill('test@example.com');
@@ -333,8 +335,33 @@ await scenario('P mobiel layout', async (page) => {
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'abonneren-pagina: geen horizontale scroll op 375px');
 });
 
+// Adressen zonder # (src/app/adres.js): de Supabase-terugkeer uit e-mails (#access_token / #error) blijft werken.
+await scenario('R wachtwoord-resetlink en verlopen link, adressen zonder #', async (page) => {
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  await page.goto(`${ORIGIN}/#access_token=${jwt(USER.id)}&expires_at=${exp}&expires_in=3600&refresh_token=r1&token_type=bearer&type=recovery`);
+  await page.waitForLoadState('networkidle'); await sleep(1500);
+  const u1 = new URL(page.url());
+  ok(u1.pathname === '/wachtwoord-instellen', `resetlink landt op /wachtwoord-instellen (${u1.pathname}${u1.hash})`);
+  ok(!u1.hash.includes('access_token'), 'inlogcode niet meer in de adresbalk');
+  ok(/wachtwoord/i.test(await page.locator('body').innerText()), 'pagina Nieuw wachtwoord instellen zichtbaar');
+
+});
+
+await scenario('R2 verlopen resetlink', async (page) => {
+  await page.goto(`${ORIGIN}/#error=access_denied&error_code=otp_expired&error_description=Deze+link+is+verlopen`);
+  await page.waitForLoadState('networkidle'); await sleep(1200);
+  ok(new URL(page.url()).pathname === '/wachtwoord-instellen', 'verlopen link landt op /wachtwoord-instellen');
+  const tekst = await page.locator('body').innerText();
+  ok(tekst.includes('Deze link is verlopen'), 'melding van Supabase zichtbaar: ' + tekst.slice(0, 300).replace(/\n/g, ' '));
+
+  await page.goto(`${ORIGIN}/subsidie-kompas/account?checkout=success`); await page.waitForLoadState('networkidle'); await sleep(1000);
+  ok(new URL(page.url()).pathname === '/subsidie-kompas/account', 'nieuw Stripe-terugkeeradres /subsidie-kompas/account werkt');
+});
+
+
 const mislukt = results.filter((r) => !r[0]);
 console.log(`\nBROWSER-E2E 2D: ${results.length - mislukt.length}/${results.length} checks geslaagd`);
 for (const m of mislukt) console.log('MISLUKT:', m[1]);
+
 await browser.close(); server.close();
 process.exit(mislukt.length ? 1 : 0);

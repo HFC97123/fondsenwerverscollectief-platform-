@@ -1,15 +1,17 @@
-// Hash-routering. Geen router-bibliotheek: één hook, één bron van waarheid.
-// Hash werkt op elke host zonder herschrijfregels, dus een refresh op een
-// diepe route kan niet stuklopen.
+// Routering. Geen router-bibliotheek: één hook, één bron van waarheid.
+// Intern werkt alles met hashpaden ('#/kompas/deadlines'); de adresbalk toont een gewoon adres
+// (/subsidie-kompas/deadlines), zie adres.js. Vercel stuurt elk adres naar index.html, dus een refresh op een
+// diepe route loopt niet stuk.
 import { useCallback, useEffect, useState } from 'react';
 import { matchRoute, naar, routeParam } from './routes.js';
+import { huidigeHash } from './adres.js';
 
 export function useRoute() {
-  const [hash, setHash] = useState(() => (typeof window === 'undefined' ? '#/' : window.location.hash || '#/'));
+  const [hash, setHash] = useState(() => (typeof window === 'undefined' ? '#/' : huidigeHash()));
 
   useEffect(() => {
     const onChange = () => {
-      setHash(window.location.hash || '#/');
+      setHash(huidigeHash());
       window.scrollTo(0, 0);
     };
 
@@ -21,7 +23,7 @@ export function useRoute() {
   const route = matchRoute(hash);
 
   const ga = useCallback((pad) => {
-    if (`#${pad}` === window.location.hash) {
+    if (`#${pad}` === huidigeHash()) {
       window.scrollTo(0, 0);
 
       return;

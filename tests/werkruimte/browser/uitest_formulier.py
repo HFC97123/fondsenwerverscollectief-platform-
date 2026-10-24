@@ -3,7 +3,7 @@
 import subprocess, time, sys, os, re, json
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-srv = subprocess.Popen(['python3','-m','http.server','8781','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), '8781', 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE='http://localhost:8781/index.html'
 P1='11111111-1111-4111-8111-111111111111'; P4='44444444-4444-4444-8444-444444444444'; PX='99999999-9999-4999-8999-999999999999'
@@ -73,7 +73,7 @@ with sync_playwright() as p:
     ok('ongeldig bedrag: foutmelding en niets opgeslagen', pg.locator('[data-testid="np-fout"]').count()==1 and len(db(pg,'subsidie_kompas_programs'))==aantal)
     vul(pg,'np-begroting','420.000'); vul(pg,'np-eigen','80.000')
     f.get_by_role('button',name='Project aanmaken').click(); pg.wait_for_timeout(1500)
-    h=pg.evaluate('location.hash')
+    h=pg.evaluate('__skAdres.huidigeHash()')
     m=re.match(r'#/kompas/projecten/([0-9a-f-]{36})$',h)
     ok('na aanmaken opent het projectdossier /kompas/projecten/<id>', bool(m), h)
     nid=m.group(1) if m else ''
@@ -241,7 +241,7 @@ with sync_playwright() as p:
     ok('A7 te financieren € 180.000 automatisch', waar(pg,'np-te-financieren')=='180000')
     pg.screenshot(path='shots/uitbreiding_1_nieuw_project_desktop.png', full_page=True)
     f.get_by_role('button',name='Project aanmaken').click(); pg.wait_for_timeout(1500)
-    nid=re.match(r'#/kompas/projecten/([0-9a-f-]{36})$',pg.evaluate('location.hash')).group(1)
+    nid=re.match(r'#/kompas/projecten/([0-9a-f-]{36})$',pg.evaluate('__skAdres.huidigeHash()')).group(1)
     r=prog(pg,nid)
     ok('A8 opgeslagen: exacte taxonomiewaarden (target_groups, themes), location, start/einde', (r.get('target_groups'),r.get('themes'),r.get('location'),r.get('period_start'),r.get('period_end'))==('Jongeren, Ouderen','Sport, Welzijn','Amsterdam','2027-01-01','2027-12-31'), str(r))
     ok('A9 dossier toont Discipline en Werkgebied / locatie', 'Sport, Welzijn' in txt(pg) and 'werkgebied / locatie' in txt(pg).lower())

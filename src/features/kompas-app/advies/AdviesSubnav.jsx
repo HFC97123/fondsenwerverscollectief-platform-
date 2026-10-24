@@ -6,6 +6,7 @@ import { css } from '../../../shared/lib/css.js';
 import { useKompas } from '../KompasStore.jsx';
 import { isEchtId } from '../../../data/services/projecten.js';
 import { STAPPEN, huidigeStap, kiesProjectId, leesProjectParam, stapHref } from './adviesLinks.js';
+import { huidigeHash } from '../../../app/adres.js';
 
 const STIJL = `
 .fwk-av-stap { text-decoration: none; transition: border-color .15s ease, background .15s ease; }
@@ -14,10 +15,10 @@ const STIJL = `
 `;
 
 export function useHash() {
-  const [hash, setHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
+  const [hash, setHash] = useState(() => (typeof window === 'undefined' ? '' : huidigeHash()));
 
   useEffect(() => {
-    const volg = () => setHash(window.location.hash || '');
+    const volg = () => setHash(huidigeHash());
 
     window.addEventListener('hashchange', volg);
 

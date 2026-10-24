@@ -21,6 +21,14 @@ import { naar } from '../routes.js';
 import { css } from '../../shared/lib/css.js';
 import { color, font, radius, type } from '../../shared/tokens.js';
 import { Button, Field, Input, Notice, Select, Textarea } from '../../shared/ui/index.js';
+import { huidigeHash } from '../adres.js';
+
+// Een Supabase-terugkeer (#access_token=..., #error=...) staat als echte hash in de adresbalk; anders het interne pad.
+function routeOfAuthHash() {
+  const h = window.location.hash || '';
+
+  return h && !h.startsWith('#/') ? h : huidigeHash();
+}
 
 const AuthModalContext = createContext(null);
 
@@ -143,10 +151,10 @@ export function AuthModalProvider({ children }) {
   // isIngelogd miste daardoor de terugleiding. Door ook op de hash (en op
   // 'laden') te reageren, wordt er daarna alsnog teruggeleid.
   // Wachtwoordherstel wordt nooit verstoord: zie magTerugleiden().
-  const [routeHash, setRouteHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
+  const [routeHash, setRouteHash] = useState(() => (typeof window === 'undefined' ? '' : routeOfAuthHash()));
 
   useEffect(() => {
-    const bijWijziging = () => setRouteHash(window.location.hash || '');
+    const bijWijziging = () => setRouteHash(routeOfAuthHash());
 
     window.addEventListener('hashchange', bijWijziging);
 

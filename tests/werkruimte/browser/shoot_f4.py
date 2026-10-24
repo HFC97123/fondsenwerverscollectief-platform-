@@ -7,7 +7,7 @@ PATCH=re.search(r'PATCH = """(.*?)"""',src,re.S).group(1)
 FETCH=re.search(r'FETCH = """(.*?)"""',src,re.S).group(1).replace('\\\\n','\\n')
 OUT=sys.argv[1]; os.makedirs(OUT,exist_ok=True)
 PORT=8795
-srv=subprocess.Popen(['python3','-m','http.server',str(PORT),'-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); time.sleep(1)
+srv=subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), str(PORT), 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); time.sleep(1)
 HIDE="document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='div[style*=\"z-index: 2000\"]{display:none !important}';document.head.appendChild(s)})"
 MASK="seed.tables.subsidie_kompas_program_funding.push(c.FR(11,c.P1,{scheme_id:'s6',status:'preparing',requested_amount:2000,eigen_deadline:c.dag(30)}));"
 def nieuw(b,vp,tier,pad='/kompas',lang=False,extra=None,mobiel=False):

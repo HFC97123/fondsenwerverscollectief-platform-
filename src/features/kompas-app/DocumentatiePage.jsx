@@ -53,6 +53,7 @@ import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
 import ProjectplanTab from './aanvraag/ProjectplanTab.jsx';
 import AanvragenTab from './aanvraag/AanvragenTab.jsx';
 import BegrotingTab from './begroting/BegrotingTab.jsx';
+import { huidigeHash, vervangAdres } from '../../app/adres.js';
 
 // Tot er een tweede documentgenerator bestaat (Excel/PDF, een latere stap) is
 // elk echt document hier altijd een .docx - geen verzonnen Excel/PDF-variant.
@@ -63,7 +64,7 @@ const FILTERS = [['alle', 'Alle documenten'], ...DOC_SOORTEN.map((soort) => [soo
 // Het gekozen project voor Projectinformatie staat als ?project=<id> in de hash, zodat het projectdossier er direct
 // naar kan linken en een vernieuwde pagina hetzelfde project toont.
 function leesProjectUitUrl() {
-  const m = /[?&]project=([^&]+)/.exec(window.location.hash || '');
+  const m = /[?&]project=([^&]+)/.exec(huidigeHash());
 
   return m ? decodeURIComponent(m[1]) : '';
 }
@@ -71,7 +72,7 @@ function leesProjectUitUrl() {
 // ?tab=inhoud of ?tab=bestanden kiest het tabblad; zonder tab opent een link met ?project=<id> (vanuit het project) de
 // projectinhoud van dat project, en de pagina zelf de bestanden.
 function leesTabUitUrl() {
-  const h = window.location.hash || '';
+  const h = huidigeHash();
   const m = /[?&]tab=(inhoud|bestanden|plan|aanvragen|begroting)(&|$)/.exec(h);
 
   if (m) return m[1];
@@ -81,9 +82,9 @@ function leesTabUitUrl() {
 
 function zetProjectInUrl(id) {
   try {
-    const basis = (window.location.hash || '#/kompas/documentatie').split('?')[0];
+    const basis = huidigeHash().split('?')[0];
 
-    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${basis}?project=${encodeURIComponent(id)}`);
+    vervangAdres(`${basis}?project=${encodeURIComponent(id)}`);
   } catch (e) {
     /* alleen een gemak voor het delen van de link */
   }
@@ -120,7 +121,7 @@ export default function DocumentatiePage() {
   // De balk van Subsidieadvies verandert alleen de hash (stap of project): tabblad en project volgen de URL.
   useEffect(() => {
     const volg = () => {
-      const h = window.location.hash || '';
+      const h = huidigeHash();
 
       if (!/^#\/kompas\/documentatie/.test(h)) return;
 

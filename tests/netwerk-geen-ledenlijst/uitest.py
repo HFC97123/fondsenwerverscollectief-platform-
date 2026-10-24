@@ -3,7 +3,7 @@ import subprocess, time, sys, os
 from playwright.sync_api import sync_playwright
 HIER = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(HIER, '..', 'export', 'browser', 'web')
-srv = subprocess.Popen(['python3', '-m', 'http.server', '8771', '-d', WEB], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3', __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../spa_server.py'), '8771', WEB], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE = 'http://localhost:8771/index.html'
 res = []

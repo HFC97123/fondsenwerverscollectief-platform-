@@ -5,7 +5,7 @@ import subprocess, time, sys, os, re, json
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 PORT=8786
-srv = subprocess.Popen(['python3','-m','http.server',str(PORT),'-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), str(PORT), 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE=f'http://localhost:{PORT}/index.html'
 P1='11111111-1111-4111-8111-111111111111'; P2='22222222-2222-4222-8222-222222222222'; P3='33333333-3333-4333-8333-333333333333'; PX='99999999-9999-4999-8999-999999999999'

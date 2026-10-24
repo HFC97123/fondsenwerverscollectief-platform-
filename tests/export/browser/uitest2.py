@@ -1,7 +1,7 @@
 import subprocess, time, os, zipfile, re
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-srv = subprocess.Popen(['python3','-m','http.server','8768','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); time.sleep(1)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), '8768', 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); time.sleep(1)
 BASE='http://localhost:8768/index.html'
 res=[]
 def ok(n,c,d=''): res.append((n,bool(c),d)); print(('OK  ' if c else 'FAIL'),n,d, flush=True)

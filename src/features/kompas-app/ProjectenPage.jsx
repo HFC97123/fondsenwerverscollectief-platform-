@@ -19,6 +19,7 @@ import { useHeeftWerkruimte } from './werkruimteRechten.js';
 import { useDekkingsplannen } from './financiering/useProjectFinanciering.js';
 import { projectFinancieringHref } from './financiering/deeplinks.js';
 import { STATUS_LABEL, dekkingVanProject, formatDatum, formatEuro, komendeDeadlines, periodeTekst } from './financiering/dekkingsplan.js';
+import { huidigeHash } from '../../app/adres.js';
 
 export default function ProjectenPage() {
   const app = useApp();
@@ -61,7 +62,7 @@ export default function ProjectenPage() {
 
   // Oude deep link: #/kompas/projecten?bewerk=<id> -> het bewerkformulier staat in het projectdossier.
   useEffect(() => {
-    const m = /[?&]bewerk=([^&]+)/.exec(window.location.hash || '');
+    const m = /[?&]bewerk=([^&]+)/.exec(huidigeHash());
 
     if (paid && m && m[1] !== '1') {
       window.location.replace(`#/kompas/projecten/${decodeURIComponent(m[1])}?bewerk=1`);
@@ -70,7 +71,7 @@ export default function ProjectenPage() {
 
   // ?nieuw=1 (bijv. vanaf het Dashboard) opent meteen het formulier voor een nieuw project.
   useEffect(() => {
-    if (paid && /[?&]nieuw=1(&|$)/.test(window.location.hash || '')) {
+    if (paid && /[?&]nieuw=1(&|$)/.test(huidigeHash())) {
       setForm({ ...PROJECT_EMPTY, id: `p${Date.now()}`, nieuw: true });
     }
   }, [paid]);

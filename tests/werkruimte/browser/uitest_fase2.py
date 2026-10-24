@@ -2,7 +2,7 @@
 import subprocess, time, sys, os, re
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-srv = subprocess.Popen(['python3','-m','http.server','8780','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), '8780', 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE='http://localhost:8780/index.html'
 P1='11111111-1111-4111-8111-111111111111'; P2='22222222-2222-4222-8222-222222222222'; P3='33333333-3333-4333-8333-333333333333'; PX='99999999-9999-4999-8999-999999999999'
@@ -67,7 +67,7 @@ with sync_playwright() as p:
     # --- Projectfinanciering
     pg.locator('[data-testid="tab-btn-projectfinanciering"]').click(); pg.wait_for_timeout(500)
     uitklappen(pg)
-    ok('tab Projectfinanciering: hash bevat ?tab=projectfinanciering', 'tab=projectfinanciering' in pg.evaluate('location.hash'))
+    ok('tab Projectfinanciering: hash bevat ?tab=projectfinanciering', 'tab=projectfinanciering' in pg.evaluate('__skAdres.huidigeHash()'))
     regels=pg.locator('[data-testid="pf-regel"]')
     ok('Projectfinanciering: 8 eigen regels (andermans/ander project niet)', regels.count()==8, str(regels.count()))
     t=txt(pg)
@@ -138,7 +138,7 @@ with sync_playwright() as p:
     ok('deeplink ?tab=gesprekken opent het tabblad', pg.locator('[data-testid="tab-btn-gesprekken"]').get_attribute('aria-selected')=='true')
     ok('Gesprekken: alleen eigen gesprek van dit project', pg.locator('[data-testid="tab-gesprekken"] [data-testid="gesprek-rij"]').count()==1 and 'Projectplan Buurtkeuken' in txt(pg) and 'Losse vraag' not in txt(pg) and 'GEHEIM' not in txt(pg))
     pg.locator('[data-testid="tab-gesprekken"] [data-testid="gesprek-open"]').click(); pg.wait_for_timeout(1500)
-    ok('Gesprekken: Open gesprek -> chat met actief project', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Buurtkeuken De Brug' in txt(pg) and 'Kun je me helpen met een projectplan?' in txt(pg))
+    ok('Gesprekken: Open gesprek -> chat met actief project', pg.evaluate('__skAdres.huidigeHash()') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Buurtkeuken De Brug' in txt(pg) and 'Kun je me helpen met een projectplan?' in txt(pg))
     ctx.close()
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten/{P1}')
     pg.locator('[data-testid="tab-btn-documenten"]').click(); pg.wait_for_timeout(200)
@@ -155,7 +155,7 @@ with sync_playwright() as p:
     uitklappen(pg)
     ok('project zonder financiering: lege staat, geen fout', pg.locator('[data-testid="pf-leeg"]').count()==1 and pg.locator('[data-testid="pf-fout"]').count()==0)
     pg.get_by_role('button',name='Bespreek met Subsidie Kompas').click(); pg.wait_for_timeout(1500)
-    ok('Bespreek met Subsidie Kompas -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Taalcafe Zuid' in txt(pg))
+    ok('Bespreek met Subsidie Kompas -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('__skAdres.huidigeHash()') in ('#/kompas', '#/kompas?conversation=55555555-5555-4555-8555-555555555555') and 'Actief in dit gesprek: Taalcafe Zuid' in txt(pg))
     ctx.close()
     # --- isolatie
     for naam,pad in [('ander project',f'/kompas/projecten/{PX}'),('onbekend id','/kompas/projecten/00000000-0000-4000-8000-0000000000aa')]:
@@ -199,7 +199,7 @@ with sync_playwright() as p:
     ok('Projecten: kaart toont dezelfde financiering als het projectdossier (30.000 / 15.000 / 20.000 / 35.000)', 'Toegekend € 30.000 · Aangevraagd € 15.000 · Eigen bijdrage € 20.000 · Nog te financieren € 35.000' in kf, kf)
     ok('Projecten: komende deadlines uit het dekkingsplan, niet uit legacy', pg.locator('[data-testid="projecten-komende-deadline"]').count()==3 and 'Oranje Fonds Burenhulp' in t and 'LEGACY' not in t)
     pg.locator('[data-testid="project-kaart-menu-knop"]').first.click(); pg.locator('[data-testid="project-kaart-menu-bewerken"]').click(); pg.wait_for_timeout(600)
-    ok('Projecten > kaartmenu > Bewerken opent het bewerkformulier in het projectdossier, geen oude regelingen-editor', pg.evaluate('location.hash').startswith('#/kompas/projecten/') and pg.evaluate('location.hash').endswith('?bewerk=1') and pg.locator('[data-testid="project-bewerk-formulier"]').count()==1 and 'Aan te vragen bedrag' not in pg.content() and 'LEGACY' not in txt(pg))
+    ok('Projecten > kaartmenu > Bewerken opent het bewerkformulier in het projectdossier, geen oude regelingen-editor', pg.evaluate('__skAdres.huidigeHash()').startswith('#/kompas/projecten/') and pg.evaluate('__skAdres.huidigeHash()').endswith('?bewerk=1') and pg.locator('[data-testid="project-bewerk-formulier"]').count()==1 and 'Aan te vragen bedrag' not in pg.content() and 'LEGACY' not in txt(pg))
     # linked_schemes wordt niet meer geschreven
     ctx.close()
     ctx,pg=nieuw(b,vp,'pro','/kompas/projecten')
@@ -211,7 +211,7 @@ with sync_playwright() as p:
     ok('linked_schemes: opslaan van project schrijft de kolom niet meer (sentinel onaangeroerd)', rij['name']=='Buurtkeuken De Brug 2' and rij['linked_schemes']==['SENTINEL'], str(rij['linked_schemes']))
     ctx.close()
     ctx,pg=nieuw(b,vp,'pro',f'/kompas/projecten?bewerk={P2}')
-    ok('Projecten: oude link ?bewerk=<id> stuurt door naar het bewerkformulier in het dossier van dat project', pg.evaluate('location.hash')==f'#/kompas/projecten/{P2}?bewerk=1' and pg.locator('input[value="Taalcafe Zuid"]').count()>=1)
+    ok('Projecten: oude link ?bewerk=<id> stuurt door naar het bewerkformulier in het dossier van dat project', pg.evaluate('__skAdres.huidigeHash()')==f'#/kompas/projecten/{P2}?bewerk=1' and pg.locator('input[value="Taalcafe Zuid"]').count()>=1)
     ctx.close()
     # --- Deadlines: "Opnemen in een project" schrijft naar de fundingtabel (geen linked_schemes)
     NIEUW='b0000000-0000-4000-8000-000000000001'

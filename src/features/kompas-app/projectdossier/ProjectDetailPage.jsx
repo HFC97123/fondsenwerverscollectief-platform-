@@ -24,6 +24,7 @@ import { useHeeftWerkruimte } from '../werkruimteRechten.js';
 import ProjectBewerkFormulier from './ProjectBewerkFormulier.jsx';
 import { adviesDoorverwijzing, stapHref } from '../advies/adviesLinks.js';
 import { DocumentNaam, DocumentSoortKiezer, DocumentUploadKnop, DocumentVerwijderKnop, useDocumentenBeheer } from './DocumentenBeheer.jsx';
+import { huidigeHash, vervangAdres } from '../../../app/adres.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.6; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #9AA6A2;";
@@ -36,18 +37,18 @@ const TABS = [
 
 // ?tab=<id> in de hash, zodat een tab gedeeld/herladen kan worden.
 function leesTab() {
-  const m = /[?&]tab=([a-z]+)/.exec(window.location.hash || '');
+  const m = /[?&]tab=([a-z]+)/.exec(huidigeHash());
 
   return m && TABS.some((t) => t.id === m[1]) ? m[1] : 'overzicht';
 }
 
 function zetTabInUrl(id) {
   try {
-    const [pad] = String(window.location.hash || '').replace(/^#/, '').split('?');
+    const [pad] = huidigeHash().replace(/^#/, '').split('?');
     const nieuw = `#${pad}${id === 'overzicht' ? '' : `?tab=${id}`}`;
 
-    // replaceState: geen hashchange, dus geen herrender van de hele route en geen extra historie-item.
-    window.history.replaceState(null, '', nieuw);
+    // Alleen het adres vervangen: geen herrender van de hele route en geen extra historie-item.
+    vervangAdres(nieuw);
   } catch (e) {
     // Zonder history API blijft de tab gewoon in de component-state.
   }
@@ -56,14 +57,14 @@ function zetTabInUrl(id) {
 // ?bewerk=1 in de hash opent het bewerkformulier (tab Overzicht). Oude links (#/kompas/projecten?bewerk=<id>)
 // worden door de Projecten-pagina naar hier doorgestuurd.
 function leesBewerk() {
-  return /[?&]bewerk=1(&|$)/.test(window.location.hash || '');
+  return /[?&]bewerk=1(&|$)/.test(huidigeHash());
 }
 
 function zetBewerkInUrl(aan) {
   try {
-    const [pad] = String(window.location.hash || '').replace(/^#/, '').split('?');
+    const [pad] = huidigeHash().replace(/^#/, '').split('?');
 
-    window.history.replaceState(null, '', `#${pad}${aan ? '?bewerk=1' : ''}`);
+    vervangAdres(`#${pad}${aan ? '?bewerk=1' : ''}`);
   } catch (e) {
     // Zonder history API blijft de modus gewoon in de component-state.
   }
@@ -292,7 +293,7 @@ export default function ProjectDetailPage({ projectId }) {
   // tab en bewerkformulier volgen dan de URL.
   useEffect(() => {
     const volg = () => {
-      const door = adviesDoorverwijzing(window.location.hash, projectId);
+      const door = adviesDoorverwijzing(huidigeHash(), projectId);
 
       if (door) {
         window.location.replace(door);

@@ -4,7 +4,7 @@ import subprocess, time, sys, os, json, re
 from playwright.sync_api import sync_playwright
 HIER = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(HIER, 'web')
-srv = subprocess.Popen(['python3', '-m', 'http.server', '8774', '-d', WEB], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3', __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../spa_server.py'), '8774', WEB], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE = 'http://localhost:8774/index.html'
 res = []
@@ -92,11 +92,11 @@ try:
                     if T['key'] == 'videos': ok(f'{tag}: 6 video met link zonder "Binnenkort"-badge', 'Binnenkort' not in a.first.inner_text())
                 if T.get('volledig'):
                     pub.get_by_text(T['velden']['Titel']).first.click(); pub.wait_for_timeout(700)
-                    ok(f'{tag}: 6 blog opent met volledige tekst op artikelpagina', 'Tweede alinea blijft zichtbaar' in pub.inner_text('body') and pub.evaluate('location.hash').startswith('#/artikel/'))
+                    ok(f'{tag}: 6 blog opent met volledige tekst op artikelpagina', 'Tweede alinea blijft zichtbaar' in pub.inner_text('body') and pub.evaluate('__skAdres.huidigeHash()').startswith('#/artikel/'))
                     pub.reload(); pub.wait_for_timeout(1500)
                     ok(f'{tag}: 6 artikel-URL werkt na refresh', 'Tweede alinea blijft zichtbaar' in pub.inner_text('body'))
                     pub.get_by_text('Terug naar het ledengedeelte').first.click(); pub.wait_for_timeout(700)
-                    ok(f'{tag}: 6 terugknop gaat naar ledengedeelte', pub.evaluate('location.hash') == '#/netwerk')
+                    ok(f'{tag}: 6 terugknop gaat naar ledengedeelte', pub.evaluate('__skAdres.huidigeHash()') == '#/netwerk')
                 pub.reload(); pub.wait_for_timeout(1500)
                 ok(f'{tag}: 7 refresh: item blijft zichtbaar', T['velden']['Titel'] in pub.inner_text('body'))
                 pub.close()

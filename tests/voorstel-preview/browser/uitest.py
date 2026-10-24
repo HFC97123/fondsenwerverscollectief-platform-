@@ -2,7 +2,7 @@
 import subprocess, time, os
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-srv = subprocess.Popen(['python3','-m','http.server','8791','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), '8791', 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE='http://localhost:8791/index.html'
 res=[]

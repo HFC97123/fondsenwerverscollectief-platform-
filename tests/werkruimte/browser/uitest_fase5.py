@@ -5,7 +5,7 @@ import subprocess, time, sys, os, re, json
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 PORT=8785
-srv = subprocess.Popen(['python3','-m','http.server',str(PORT),'-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), str(PORT), 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE=f'http://localhost:{PORT}/index.html'
 P1='11111111-1111-4111-8111-111111111111'; P2='22222222-2222-4222-8222-222222222222'; P4='44444444-4444-4444-8444-444444444444'; PX='99999999-9999-4999-8999-999999999999'
@@ -87,7 +87,7 @@ def open_rij(pg,titel):
     pg.locator('[data-testid="kolom-gesprekken"] [data-testid="gesprek-open"]').filter(has_text=titel).first.click(); pg.wait_for_timeout(900)
 def funding(pg,prog): return [r for r in db(pg,'subsidie_kompas_program_funding') if r['program_id']==prog]
 def item(pg,naam): return pg.get_by_test_id('fm-item').filter(has_text=naam)
-def hash(pg): return pg.evaluate('location.hash')
+def hash(pg): return pg.evaluate('__skAdres.huidigeHash()')
 DESK={'width':1440,'height':900}; MOB={'width':390,'height':844}
 
 try:

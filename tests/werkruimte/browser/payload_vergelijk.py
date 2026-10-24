@@ -9,7 +9,7 @@ PATCH=re.search(r'PATCH = """(.*?)"""',src,re.S).group(1)
 FETCH=re.search(r'FETCH = """(.*?)"""',src,re.S).group(1).replace('\\\\n','\\n')
 LANG_ANT="window.__CHAT_ANTWOORD=function(b){var l=b.messages[b.messages.length-1].content;return l.indexOf('begroting')!==-1?('Begroting voor de buurtkeuken met veel tekst en regels. '.repeat(9)):'Dit is het antwoord van de test.';};"
 def scenario(web,port,tier,variant):
-    srv=subprocess.Popen(['python3','-m','http.server',str(port),'-d',web],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); time.sleep(1)
+    srv=subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), str(port), web],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); time.sleep(1)
     uit={}
     try:
         with sync_playwright() as p:

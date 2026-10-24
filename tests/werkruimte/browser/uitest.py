@@ -1,7 +1,7 @@
 import subprocess, time, sys, os, re
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-srv = subprocess.Popen(['python3','-m','http.server','8767','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), '8767', 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE='http://localhost:8767/index.html'
 res=[]
@@ -70,7 +70,7 @@ with sync_playwright() as p:
         koppen=[re.sub(r'\d+$','',h.inner_text().strip()).strip().lower() for h in pg.locator('h2').all()]
         ok(f'{label}: structuur = Nu aan de slag, Projecten, Komende deadlines, Recente documenten (acties eerst)', koppen[:4]==['nu aan de slag','projecten','komende deadlines','recente documenten'], str(koppen))
         ok(f'{label}: naamgeving Subsidie Kompas op het Dashboard', 'Subsidiekompas' not in txt(pg) and 'Bespreek met Subsidie Kompas' in txt(pg))
-        ok(f'{label}: projectkaart is klikbaar via de titel (geen aparte Open project-knop)', k1.locator('[data-testid="dashboard-project-link"]').get_attribute('href')=='#/kompas/projecten/11111111-1111-4111-8111-111111111111' and k1.get_by_text('Open project').count()==0)
+        ok(f'{label}: projectkaart is klikbaar via de titel (geen aparte Open project-knop)', k1.locator('[data-testid="dashboard-project-link"]').get_attribute('href')=='/subsidie-kompas/projecten/11111111-1111-4111-8111-111111111111' and k1.get_by_text('Open project').count()==0)
         ok(f'{label}: geen horizontale scroll (dashboard)', geenhscroll(pg))
         ok(f'{label}: geen pageerrors (dashboard)', not pg.errs, '; '.join(pg.errs)[:300])
         pg.screenshot(path=f'shots/{label}_dashboard.png', full_page=True)
@@ -91,7 +91,7 @@ with sync_playwright() as p:
         knop.click(); pg.mouse.click(5,vp['height']-5); pg.wait_for_timeout(120)
         ok(f'{label}: klik buiten sluit menu', pg.locator('#fwk-wn-menu').count()==0)
         knop.click(); pg.locator('#fwk-wn-menu a:has-text("Organisatieprofiel")').click(); pg.wait_for_timeout(700)
-        ok(f'{label}: Organisatieprofiel opent, geen actief hoofditem, menu dicht', pg.evaluate('location.hash')=='#/kompas/organisatie' and nav(pg).locator('a[aria-current="page"]').count()==0 and pg.locator('#fwk-wn-menu').count()==0)
+        ok(f'{label}: Organisatieprofiel opent, geen actief hoofditem, menu dicht', pg.evaluate('__skAdres.huidigeHash()')=='#/kompas/organisatie' and nav(pg).locator('a[aria-current="page"]').count()==0 and pg.locator('#fwk-wn-menu').count()==0)
         ok(f'{label}: org-pagina heeft 1 werknav', nav(pg).count()==1 and pg.locator('text=Terug naar Het Fondsenwervers Collectief').count()==0)
         ctx.close()
 
@@ -135,11 +135,11 @@ with sync_playwright() as p:
         ctx,pg=nieuw(b,vp,'pro','/kompas/dashboard')
         pg.locator('[data-testid="dashboard-project"]').filter(has_text='Taalcafe Zuid').get_by_role('button',name='Bespreek met Subsidie Kompas').click(); pg.wait_for_timeout(1500)
         t=txt(pg)
-        ok(f'{label}: Bespreek -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('location.hash')=='#/kompas' and 'Actief in dit gesprek: Taalcafe Zuid' in t)
+        ok(f'{label}: Bespreek -> chat met Actief in dit gesprek: Taalcafe Zuid', pg.evaluate('__skAdres.huidigeHash()')=='#/kompas' and 'Actief in dit gesprek: Taalcafe Zuid' in t)
         # terug naar dashboard en dan naar chat via nav: geen oud verzoek
         nav(pg).get_by_role('link',name='Dashboard').click(); pg.wait_for_timeout(500)
         nav(pg).get_by_role('link',name='Chat',exact=True).click(); pg.wait_for_timeout(1000)
-        ok(f'{label}: verzoek is eenmalig (chat via nav begint niet opnieuw met oud verzoek)', pg.evaluate('location.hash')=='#/kompas' and not pg.errs)
+        ok(f'{label}: verzoek is eenmalig (chat via nav begint niet opnieuw met oud verzoek)', pg.evaluate('__skAdres.huidigeHash()')=='#/kompas' and not pg.errs)
         ctx.close()
 
     b.close()

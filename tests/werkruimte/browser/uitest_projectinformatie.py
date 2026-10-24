@@ -2,7 +2,7 @@
 import subprocess, time, sys, os, re, json
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-srv = subprocess.Popen(['python3','-m','http.server','8783','-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), '8783', 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE='http://localhost:8783/index.html'
 P1='11111111-1111-4111-8111-111111111111'; P2='22222222-2222-4222-8222-222222222222'
@@ -28,7 +28,7 @@ def nieuw(b,vp,tier,pad):
 def txt(pg): return pg.locator('body').inner_text().replace('\xa0',' ')
 def prog(pg,pid): return pg.evaluate(f'window.__DBL.subsidie_kompas_programs.find(r=>r.id==="{pid}")')
 def geenhscroll(pg): return pg.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
-def hsh(pg): return pg.evaluate('location.hash')
+def hsh(pg): return pg.evaluate('__skAdres.huidigeHash()')
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/opt/pw-browsers/chromium', args=['--no-sandbox'])
     # ===== Documenten (Pro): Projectinformatie

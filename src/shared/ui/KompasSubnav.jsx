@@ -12,6 +12,7 @@ import React, { useContext } from 'react';
 import { css } from '../lib/css.js';
 import { useApp } from '../../features/kompas-app/useKompasApp.js';
 import { WerkNavContext } from '../../features/kompas-app/werkNavContext.js';
+import { huidigeHash } from '../../app/adres.js';
 
 const linkStijl = css('font-size: 14.5px; font-weight: 700; color: #2C4A5E; white-space: nowrap;');
 const actiefStijl = css('font-size: 14.5px; font-weight: 700; color: #4E9A6C; white-space: nowrap;');
@@ -75,7 +76,7 @@ export default function KompasSubnav({ actief, terugNaarKompas = true, maxWidth 
   const naarChatbot = (event) => {
     event.preventDefault();
 
-    const hash = window.location.hash || '';
+    const hash = huidigeHash();
 
     if (hash === HOOFDROUTE_CHATBOT || hash === '#/subsidie-kompas') {
       window.scrollTo(0, 0);

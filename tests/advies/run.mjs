@@ -64,7 +64,7 @@ check('KompasApp toont de balk van Subsidieadvies en van Mijn Subsidie Kompas al
 // projectpagina en Documenten
 const pd = src('src/features/kompas-app/projectdossier/ProjectDetailPage.jsx');
 check('projectpagina: tabbladen Projectprofiel, Documenten, Gesprekken; geen Projectdocumentatie-blok meer', /id: 'overzicht'/.test(pd) && /id: 'documenten'/.test(pd) && /id: 'gesprekken'/.test(pd) && !/id: 'projectfinanciering', label/.test(pd) && !/id: 'deadlines', label/.test(pd) && !/overzicht-projectinformatie/.test(pd));
-check('projectpagina stuurt oude tab-links door', /adviesDoorverwijzing\(window\.location\.hash, projectId\)/.test(pd));
+check('projectpagina stuurt oude tab-links door', /adviesDoorverwijzing\(huidigeHash\(\), projectId\)/.test(pd));
 const dp = src('src/features/kompas-app/DocumentatiePage.jsx');
 check('Documenten: kop heet Begroting of Indienen; Projectinhoud heet Projectdossier', /titel=\{sectie === 'begroting' \? 'Begroting' : 'Indienen'\}/.test(dp) && /label: 'Projectdossier'/.test(dp) && !/label: 'Projectinhoud'/.test(dp));
 check('Indienen: tabbladen Projectdossier, Projectplan, Aanvragen, Bestanden in deze volgorde', dp.indexOf("label: 'Projectdossier'") < dp.indexOf("label: 'Projectplan'") && dp.indexOf("label: 'Projectplan'") < dp.indexOf("label: 'Aanvragen'") && dp.indexOf("label: 'Aanvragen'") < dp.indexOf("label: 'Bestanden'"));

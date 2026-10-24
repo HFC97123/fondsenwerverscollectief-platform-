@@ -4,7 +4,7 @@ import subprocess, time, sys, os, re
 from playwright.sync_api import sync_playwright
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 PORT=8781
-srv = subprocess.Popen(['python3','-m','http.server',str(PORT),'-d','web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+srv = subprocess.Popen(['python3',__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)),'../../spa_server.py'), str(PORT), 'web'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 BASE=f'http://localhost:{PORT}/index.html'
 P1='11111111-1111-4111-8111-111111111111'; P2='22222222-2222-4222-8222-222222222222'; P3='33333333-3333-4333-8333-333333333333'; PX='99999999-9999-4999-8999-999999999999'
@@ -105,7 +105,7 @@ with sync_playwright() as p:
 
     # --- 18 deeplink
     rij(pg,'Oranje Fonds Burenhulp').get_by_test_id('md-open').click(); pg.wait_for_timeout(1500)
-    ok('18: deeplink opent het juiste project op de tab Projectfinanciering', pg.evaluate('location.hash')==f'#/kompas/projecten/{P1}?tab=projectfinanciering' and pg.locator('[data-testid="tab-btn-projectfinanciering"]').get_attribute('aria-selected')=='true' and pg.locator('[data-testid="project-detail-naam"]').inner_text()=='Buurtkeuken De Brug', pg.evaluate('location.hash'))
+    ok('18: deeplink opent het juiste project op de tab Projectfinanciering', pg.evaluate('__skAdres.huidigeHash()')==f'#/kompas/projecten/{P1}?tab=projectfinanciering' and pg.locator('[data-testid="tab-btn-projectfinanciering"]').get_attribute('aria-selected')=='true' and pg.locator('[data-testid="project-detail-naam"]').inner_text()=='Buurtkeuken De Brug', pg.evaluate('__skAdres.huidigeHash()'))
     # 19 dashboard = projectdetail
     detail_nog=pg.locator('[data-testid="detail-kpi"][data-kpi="Nog te financieren"]').inner_text().replace('\xa0',' ')
     detail_aang=pg.locator('[data-testid="detail-kpi"][data-kpi="Aangevraagd"]').inner_text().replace('\xa0',' ')
@@ -153,7 +153,7 @@ with sync_playwright() as p:
     ok('12: geen technische foutmelding', not re.search(r'23505|duplicate|violates|constraint|postgres|42501', d, re.I), d)
     ok('10: nog steeds één regel in de database', len(fund(pg,P2))==1)
     pg.get_by_test_id('open-projectfinanciering').click(); pg.wait_for_timeout(1500)
-    ok('18: "Open projectfinanciering" vanuit het paneel opent de tab van het juiste project', pg.evaluate('location.hash')==f'#/kompas/projecten/{P2}?tab=projectfinanciering' and pg.locator('[data-testid="pf-regel"]').count()==1)
+    ok('18: "Open projectfinanciering" vanuit het paneel opent de tab van het juiste project', pg.evaluate('__skAdres.huidigeHash()')==f'#/kompas/projecten/{P2}?tab=projectfinanciering' and pg.locator('[data-testid="pf-regel"]').count()==1)
     ok('geen pageerrors / console errors (toevoegen)', not pg.errs and not pg.cons, '; '.join(pg.errs+pg.cons)[:300])
     ctx.close()
 
@@ -205,7 +205,7 @@ with sync_playwright() as p:
     pg.get_by_test_id('detail-bespreek').click(); pg.wait_for_timeout(1500)
     na=log(pg)[voor:]
     ls=pg.evaluate("JSON.stringify(Object.assign({}, localStorage))")
-    ok('17: Bespreek met Subsidie Kompas gaat alleen naar de bestaande Chat (/kompas)', pg.evaluate('location.hash')=='#/kompas', pg.evaluate('location.hash'))
+    ok('17: Bespreek met Subsidie Kompas gaat alleen naar de bestaande Chat (/kompas)', pg.evaluate('__skAdres.huidigeHash()')=='#/kompas', pg.evaluate('__skAdres.huidigeHash()'))
     ok('17: geen fondsgegevens in chatverzoek, opslag of database (geen insert, geen bron-id in localStorage)', not [l for l in na if l['op'] in ('insert','update','upsert','delete')] and S_NIEUW not in ls and 'Nieuwe Testregeling' not in ls, ls[:200])
     ok('17: chat start zonder gekoppeld project of fondscontext', 'Nieuwe Testregeling' not in txt(pg))
     ctx.close()

@@ -1,3 +1,5 @@
+import { naar as naarAdres } from './adres.js';
+
 // Routetabel. Eén plek waar paden, titels en toegang staan.
 // De vier gebieden blijven gescheiden: website, kompas-marketing, kompas-app, admin.
 
@@ -87,6 +89,8 @@ export function routeParam(hash, route) {
   return rest || null;
 }
 
+// Naar een pagina. Neemt het interne pad ('/kompas/deadlines'); de adresbalk toont het gewone adres
+// (/subsidie-kompas/deadlines), zie adres.js.
 export function naar(pad) {
-  window.location.hash = pad.startsWith('#') ? pad : `#${pad}`;
+  naarAdres(pad);
 }

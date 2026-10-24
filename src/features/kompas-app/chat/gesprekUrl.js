@@ -6,6 +6,7 @@
 // verzoekveld: de Edge Function controleert eigenaar, project en rechten opnieuw. Er staan geen namen, bedragen of
 // andere gegevens in de URL, alleen uuid's.
 import { isEchtId } from '../../../data/services/projecten.js';
+import { huidigeHash, vervangAdres } from '../../../app/adres.js';
 
 export const CHAT_PAD = '/kompas';
 
@@ -67,14 +68,15 @@ export function chatStartHref({ projectId, start }) {
 export function zetChatUrl(conversationId, win = typeof window === 'undefined' ? null : window) {
   if (!win) return false;
 
-  const nu = String(win.location.hash || '').replace(/^#/, '').split('?')[0].replace(/\/+$/, '');
+  const huidig = huidigeHash(win);
+  const nu = huidig.replace(/^#/, '').split('?')[0].replace(/\/+$/, '');
 
   if (nu !== CHAT_PAD) return false;
 
   const doel = chatHref({ conversationId });
 
-  if (win.location.hash !== doel) {
-    win.history.replaceState(win.history.state, '', doel);
+  if (huidig !== doel) {
+    vervangAdres(doel, win);
   }
 
   return true;

@@ -30,6 +30,7 @@ import {
   videos,
   CHAT_SYSTEM_PROMPT,
 } from './defaultContent.js';
+import { huidigeHash } from '../../app/adres.js';
 
 const CHAT_STORAGE_KEY = 'fwc_vraagbaak_chat_v1';
 const CHAT_MIN_INTERVAL_MS = 2500;
@@ -985,7 +986,8 @@ export function WebsiteProvider({ children, route, param }) {
     goAbonnementen: () => {
       update({ page: 'abonnementen' });
 
-      if (window.location.hash.startsWith('#/subsidie-kompas')) {
+      // Op de chatpagina van Subsidie Kompas (/subsidie-kompas) eerst terug naar de homepage van het Collectief.
+      if (/^#\/(subsidie-)?kompas(\?|$)/.test(huidigeHash())) {
         window.location.hash = '#/';
       }
 

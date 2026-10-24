@@ -90,12 +90,12 @@ check('5a: leesChatUrl accepteert alleen uuid\'s op de chatroute', JSON.stringif
 check('5b: chatHref bevat alleen uuid\'s; focus zonder gesprek/project valt weg; gesprek gaat voor project', url.chatHref({ conversationId: U(3), projectId: U(1), fundingId: U(4) }) === `#/kompas?conversation=${U(3)}&focus=${U(4)}` && url.chatHref({ fundingId: U(4) }) === '#/kompas' && url.chatHref({ projectId: U(1) }) === `#/kompas?project=${U(1)}` && url.chatHref({ conversationId: 'x y' }) === '#/kompas');
 const nepWin = (hash) => { const w = { location: { hash }, history: { state: null, vervangen: [], replaceState(s, t, h) { this.vervangen.push(h); w.location.hash = h; } } }; return w; };
 const w1 = nepWin(`#/kompas?conversation=${U(3)}&focus=${U(4)}`);
-check('5c: zetChatUrl vervangt de URL (replaceState) en laat alleen het gesprek staan', url.zetChatUrl(U(3), w1) && w1.location.hash === `#/kompas?conversation=${U(3)}` && w1.history.vervangen.length === 1);
+check('5c: zetChatUrl vervangt de URL (replaceState) en laat alleen het gesprek staan', url.zetChatUrl(U(3), w1) && w1.history.vervangen[0] === `/subsidie-kompas?conversation=${U(3)}` && w1.history.vervangen.length === 1);
 const w2 = nepWin('#/kompas/projecten');
 check('5d: buiten de chatroute doet zetChatUrl niets', url.zetChatUrl(U(3), w2) === false && w2.history.vervangen.length === 0);
 const w3 = nepWin(`#/kompas?conversation=${U(3)}`);
 url.wisChatUrl(w3);
-check('5e: wisChatUrl brengt de chat terug naar #/kompas', w3.location.hash === '#/kompas');
+check('5e: wisChatUrl brengt de chat terug naar /subsidie-kompas', w3.history.vervangen[0] === '/subsidie-kompas');
 
 // ---- 6. Bespreek-deeplink
 const gesprekken = [{ id: U(5), projectId: PROJ, tijd: '2026-10-01T10:00:00Z' }, { id: U(6), projectId: PROJ, tijd: '2026-10-09T10:00:00Z' }, { id: U(7), projectId: ANDER, tijd: '2026-10-10T10:00:00Z' }, { id: 'tmp-1', projectId: PROJ, tijd: '2026-10-11T10:00:00Z' }];

@@ -16,6 +16,7 @@
 // dat doet uitsluitend de geverifieerde Stripe-webhook.
 import { supabase } from '../client.js';
 import { BASIS_LOOPTIJD, isGeldigeLooptijd } from '../abonnementen.js';
+import { huidigeHash, vervangAdres } from '../../app/adres.js';
 
 const GEEN_KOPPELING =
   'Afrekenen is nog niet beschikbaar. Neem contact op en wij zetten uw abonnement voor u klaar.';
@@ -230,7 +231,7 @@ export function openBeheerportaal() {
 // wijzigt nooit tier of toegang. Alleen die twee waarden worden herkend.
 export function leesCheckoutResultaat() {
   try {
-    const hash = window.location.hash || '';
+    const hash = huidigeHash();
     const q = hash.indexOf('?');
 
     if (q === -1) {
@@ -249,7 +250,7 @@ export function leesCheckoutResultaat() {
 // niet opnieuw toont. Gebruikt replaceState: geen navigatie, geen hashchange.
 export function wisCheckoutResultaat() {
   try {
-    const hash = window.location.hash || '';
+    const hash = huidigeHash();
     const q = hash.indexOf('?');
 
     if (q === -1) {
@@ -262,7 +263,7 @@ export function wisCheckoutResultaat() {
     const rest = params.toString();
     const nieuweHash = hash.slice(0, q) + (rest ? `?${rest}` : '');
 
-    window.history.replaceState(null, '', window.location.pathname + window.location.search + nieuweHash);
+    vervangAdres(nieuweHash);
   } catch (e) {
     // melding blijft hooguit zichtbaar bij een refresh; geen verdere gevolgen
   }

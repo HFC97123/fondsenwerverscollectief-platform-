@@ -61,6 +61,7 @@ import BegrotingVoorstelDialoog from './begroting/BegrotingVoorstelDialoog.jsx';
 import { leesChatStart, leesChatUrl, wisChatUrl, zetChatUrl } from './chat/gesprekUrl.js';
 import { haalDekkingsplan } from '../../data/services/projectFinanciering.js';
 import { regelUitRpc } from './financiering/dekkingsplan.js';
+import { huidigeHash } from '../../app/adres.js';
 // FASE5-END
 
 // RC1-acceptatietest, bevinding K3 (2026-10-01): vóór deze aanpassing
@@ -876,18 +877,18 @@ export default function KompasToolPage() {
       return undefined;
     }
 
-    let url = leesChatUrl(window.location.hash);
+    let url = leesChatUrl(huidigeHash());
 
     // Navigatie-"Chat" zonder parameters: terug naar het laatst geopende gesprek van deze sessie (zo nodig).
     if (!url.conversation && !url.project && !conversationId && messages.length === 0 && !verzoekGenomenRef.current && store.laatsteGesprek) {
       const laatste = store.laatsteGesprek();
 
-      if (laatste && /^#\/kompas\/?$/.test(window.location.hash || '#/kompas')) {
+      if (laatste && /^#\/kompas\/?$/.test(huidigeHash())) {
         url = { conversation: laatste, project: null, focus: null };
       }
     }
 
-    const start = url.project && !url.conversation ? leesChatStart(window.location.hash) : null;
+    const start = url.project && !url.conversation ? leesChatStart(huidigeHash()) : null;
     const sleutel = `${url.conversation || ''}|${url.project || ''}|${url.focus || ''}${start ? `|${start}` : ''}`;
 
     if (sleutel === '||' || urlBezigRef.current === sleutel) {

@@ -41,6 +41,7 @@ import {
   neemTeAanbiedenIntentie,
   wisIntentie,
 } from '../../data/services/koopintentie.js';
+import { huidigeHash } from '../../app/adres.js';
 
 const KAART = css(`
   box-sizing: border-box;
@@ -312,7 +313,7 @@ export function AbonnerenBevestiging({ intentie, aanbod, looptijd = BASIS_LOOPTI
 // toont de bevestigingsflow.
 export default function AbonnerenPage() {
   const app = useApp();
-  const hash = typeof window === 'undefined' ? '' : window.location.hash;
+  const hash = typeof window === 'undefined' ? '' : huidigeHash();
   const fromHash = intentieUitHash(hash);
   const ongeldig = heeftIntentParam(hash) && !fromHash;
   const intentie = ongeldig ? null : fromHash || leesIntentie();
