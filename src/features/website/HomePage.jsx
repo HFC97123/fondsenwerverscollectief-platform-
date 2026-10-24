@@ -7,6 +7,7 @@ import { useApp } from './WebsiteProvider.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import MemberCount from '../../shared/ui/MemberCount.jsx';
 import LedenWaardering from '../../shared/ui/LedenWaardering.jsx';
+import WerkplekFilm from '../../shared/ui/WerkplekFilm.jsx';
 
 const zwevendeVorm = (positie, animatie) =>
   css(`position: absolute; ${positie} opacity: ${animatie.opacity}; animation: ${animatie.naam} ${animatie.duur} ease-in-out infinite;`);
@@ -130,12 +131,6 @@ const KOMPAS_BULLETS = [
   'Ondersteunt bij een sterke aanvraag: positionering, projectplan en begroting',
 ];
 
-const VOORBEELD_REGELINGEN = [
-  { naam: 'Landelijk cultuurfonds: Fotografie, t/m €25.000', deadline: 'deadline 1 sep' },
-  { naam: 'Gemeentelijk cultuurfonds, t/m €10.000', deadline: 'doorlopend' },
-  { naam: 'Particulier cultuurfonds, t/m €5.000', deadline: '15 okt' },
-];
-
 const ikBenKnop = (randkleur) =>
   css(`
     width: 180px;
@@ -216,7 +211,7 @@ export default function HomePage() {
       <div id="kompas-ai" style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 76px;')}>
         <div
           style={css(
-            'background: #EAF4EE; border-radius: 28px; padding: clamp(24px, 4vw, 64px); display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 56px; align-items: start; box-shadow: 0 1px 3px rgba(44,74,94,0.06);',
+            'background: #EAF4EE; border-radius: 28px; padding: clamp(24px, 4vw, 64px); display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 56px; align-items: center; box-shadow: 0 1px 3px rgba(44,74,94,0.06);',
           )}
         >
           <div>
@@ -263,68 +258,11 @@ export default function HomePage() {
                 'display: inline-block; padding: 15px 30px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px;',
               )}
             >
-              Ontdek Subsidie Kompas →
+              Probeer Subsidie Kompas →
             </a>
           </div>
 
-          <div style={css('background: #FFFFFF; border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 14px;')}>
-            <div style={css('display: flex; align-items: center; gap: 10px; padding: 0 4px;')}>
-              <img
-                src="/uploads/kompas-logo.png"
-                alt="Subsidie Kompas logo"
-                style={css('width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; display: block;')}
-              />
-              <div style={css('font-weight: 700; color: #2C4A5E; font-size: 14.5px;')}>Subsidie Kompas</div>
-              <div style={css('width: 7px; height: 7px; border-radius: 50%; background: #4E9A6C; margin-left: 2px;')} />
-              <div style={css('font-size: 12.5px; color: #4B5C58;')}>online</div>
-            </div>
-
-            <div
-              style={css(
-                'align-self: flex-end; max-width: 82%; background: #2C4A5E; color: #FFFFFF; padding: 12px 16px; border-radius: 16px 16px 4px 16px; font-size: 14.5px; line-height: 1.5;',
-              )}
-            >
-              Ik zoek financiering voor een hedendaagse fotografie tentoonstelling in Utrecht. Budget ±€40.000.
-            </div>
-
-            <div
-              style={css(
-                'align-self: flex-start; max-width: 92%; background: #FFFFFF; padding: 14px 16px; border-radius: 16px 16px 16px 4px; box-shadow: 0 1px 2px rgba(44,74,94,0.06);',
-              )}
-            >
-              <div style={css('font-size: 14.5px; line-height: 1.55; color: #2E3A38; margin-bottom: 12px;')}>
-                Goed idee. Ik vond 3 passende regelingen voor een fotografietentoonstelling in Utrecht:
-              </div>
-              <div style={css('display: flex; flex-direction: column; gap: 8px;')}>
-                {VOORBEELD_REGELINGEN.map((r) => (
-                  <div
-                    key={r.naam}
-                    style={css(
-                      'display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #EAF4EE; border-radius: 10px; padding: 9px 12px;',
-                    )}
-                  >
-                    <div style={css('font-size: 13.5px; font-weight: 700; color: #2C4A5E;')}>{r.naam}</div>
-                    <div style={css('font-size: 12px; color: #4E9A6C; font-weight: 700; white-space: nowrap;')}>{r.deadline}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={css('display: flex; align-items: center; gap: 10px; background: #FFFFFF; border-radius: 999px; padding: 12px 16px;')}>
-              <div style={css('flex-grow: 1; font-size: 14px; color: #9BAAA6;')}>Typ uw vraag...</div>
-              <div
-                style={css(
-                  'width: 30px; height: 30px; border-radius: 50%; background: #4E9A6C; flex-shrink: 0; display: flex; align-items: center; justify-content: center;',
-                )}
-              >
-                <div
-                  style={css(
-                    'width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 9px solid #FFFFFF; margin-left: 2px;',
-                  )}
-                />
-              </div>
-            </div>
-          </div>
+          <WerkplekFilm />
         </div>
       </div>
 
