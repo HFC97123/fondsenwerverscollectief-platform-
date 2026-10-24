@@ -165,6 +165,16 @@ sectie('4. Dekkingsplan: toegekend, uitstaand, in planning, totaal, nog te dekke
   check('precies genoeg: Nog te dekken € 0 en Sluitend, geen Reeds gedekt of Overdekking', /€ 0/.test($('[data-testid="bg-nog-te-plannen"]').textContent) && !!$('[data-testid="bg-sluit"]') && !$('[data-testid="bg-overdekking"]') && !$('[data-testid="bg-reeds-gedekt"]'));
   await opruimen();
   s = await toon({ ...BASIS, eigenBijdrage: 0, begroting: 20000 }, { funding: [FUNDING[0]] });
+  await opruimen();
+  // Zonder de financiers in planning is er nog iets te dekken (7.000 + 5.000 = 12.000 van 14.000); mét planning (3.000) is het 15.000: overdekking 1.000.
+  s = await toon({ ...BASIS, eigenBijdrage: 0, begroting: 14000 }, { funding: [FUNDING[0], FUNDING[1], FUNDING[2]] });
+  check('de overdekking ontstaat door de financiers in planning: dan Reeds gedekt en Overdekking, geen Nog te dekken', /€ 15\.000/.test($('[data-testid="bg-dek-totaal"]').textContent) && /€ 14\.000/.test($('[data-testid="bg-reeds-gedekt"]').textContent) && /€ 1\.000/.test($('[data-testid="bg-overdekking"]').textContent) && !$('[data-testid="bg-nog-te-plannen"]'));
+  await opruimen();
+  // Met planning er nog steeds te weinig: 15.000 van 20.000.
+  s = await toon({ ...BASIS, eigenBijdrage: 0, begroting: 20000 }, { funding: [FUNDING[0], FUNDING[1], FUNDING[2]] });
+  check('ook met de financiers in planning te weinig: Nog te dekken 5.000, geen Overdekking', /€ 15\.000/.test($('[data-testid="bg-dek-totaal"]').textContent) && /€ 5\.000/.test($('[data-testid="bg-nog-te-plannen"]').textContent) && !$('[data-testid="bg-overdekking"]') && !$('[data-testid="bg-sluit"]'));
+  await opruimen();
+  s = await toon({ ...BASIS, eigenBijdrage: 0, begroting: 20000 }, { funding: [FUNDING[0]] });
   check('een bestaande begroting bij Projecten zonder regels wordt kort genoemd', /Bij Projecten staat nu € 20\.000/.test($('[data-testid="bg-leeg"]').textContent));
   await opruimen();
 }
