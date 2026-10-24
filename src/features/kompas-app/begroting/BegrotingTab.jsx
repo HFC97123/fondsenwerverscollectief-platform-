@@ -818,7 +818,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
         )}
 
         <div className="fwk-bg-kopjesbalk" data-testid="bg-kopjes">
-          <div className="fwk-bg-kopjes-label">Kies een hoofdkop</div>
+          <div className="fwk-bg-kopjes-label">Kies een subcategorie, of voeg direct budgetregels toe</div>
           <div className="fwk-bg-chips">
             {nietZichtbaar.map((c) => (
               <Toelichting key={c.id} kopje={c} knop={false}>
@@ -832,12 +832,12 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 </span>
               </Toelichting>
             ))}
-            <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-kopje-eigen" aria-label="Eigen kopje toevoegen" title="Eigen kopje toevoegen" onClick={() => setEigenOpen(true)}>
+            <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-kopje-eigen" aria-label="Eigen subcategorie toevoegen" title="Eigen subcategorie toevoegen" onClick={() => setEigenOpen(true)}>
               +
             </button>
             {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
               <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-geen" onClick={() => voegToe(GEEN_KOPJE)}>
-                + Regel zonder kopje
+                + Budgetregel zonder subcategorie
               </button>
             )}
           </div>
@@ -850,8 +850,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 voegEigenKopjeToe();
               }}
             >
-              <input className="fwk-bg-veld" aria-label="Naam van het kopje" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van het kopje" onChange={(e) => setEigenNaam(e.target.value)} />
-              <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Kopje toevoegen">
+              <input className="fwk-bg-veld" aria-label="Naam van de subcategorie" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van de subcategorie" onChange={(e) => setEigenNaam(e.target.value)} />
+              <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Subcategorie toevoegen">
                 Toevoegen
               </Button>
             </form>
@@ -891,7 +891,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 <div className="fwk-bg-kophoofd">
                   <div className="fwk-bg-kopkant">
                     {kopjeNr !== -1 && (
-                      <span className="fwk-bg-greep" data-testid={`bg-kopje-greep-${slug}`} draggable aria-hidden="true" title="Kopje verslepen" onDragStart={startSleep('kopje', c.id)} onDragEnd={eindeSleep}>
+                      <span className="fwk-bg-greep" data-testid={`bg-kopje-greep-${slug}`} draggable aria-hidden="true" title="Subcategorie verslepen" onDragStart={startSleep('kopje', c.id)} onDragEnd={eindeSleep}>
                         ⠿
                       </span>
                     )}
@@ -900,17 +900,17 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                         {c.label}
                       </h3>
                     </Toelichting>
-                    <button type="button" className="fwk-bg-icoon" aria-label={`Kopje ${c.label} weghalen`} title="Kopje weghalen (de regels blijven staan)" data-testid={`bg-kopje-weg-${slug}`} onClick={() => haalKopjeWeg(c.id)}>
+                    <button type="button" className="fwk-bg-icoon" aria-label={`Subcategorie ${c.label} weghalen`} title="Subcategorie weghalen (de regels blijven staan)" data-testid={`bg-kopje-weg-${slug}`} onClick={() => haalKopjeWeg(c.id)}>
                       ✕
                     </button>
                   </div>
                   <div className="fwk-bg-kopkant">
                     {kopjeNr !== -1 && (
                       <span className="fwk-bg-schuif">
-                        <button type="button" className="fwk-bg-icoon" aria-label={`Kopje ${c.label} omhoog`} data-testid={`bg-kopje-omhoog-${slug}`} disabled={kopjeNr === 0} onClick={() => schuifKopjeKnop(c.id, 'omhoog')}>
+                        <button type="button" className="fwk-bg-icoon" aria-label={`Subcategorie ${c.label} omhoog`} data-testid={`bg-kopje-omhoog-${slug}`} disabled={kopjeNr === 0} onClick={() => schuifKopjeKnop(c.id, 'omhoog')}>
                           ▲
                         </button>
-                        <button type="button" className="fwk-bg-icoon" aria-label={`Kopje ${c.label} omlaag`} data-testid={`bg-kopje-omlaag-${slug}`} disabled={kopjeNr === kopjesMetRegels.length - 1} onClick={() => schuifKopjeKnop(c.id, 'omlaag')}>
+                        <button type="button" className="fwk-bg-icoon" aria-label={`Subcategorie ${c.label} omlaag`} data-testid={`bg-kopje-omlaag-${slug}`} disabled={kopjeNr === kopjesMetRegels.length - 1} onClick={() => schuifKopjeKnop(c.id, 'omlaag')}>
                           ▼
                         </button>
                       </span>
@@ -965,20 +965,25 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
               {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && rijen.length > 0 && !volgendeOpen && (
                 <div className="fwk-bg-klaar">
                   <button type="button" className="fwk-bg-volgende" data-testid="bg-volgende-kop" disabled={bezig} onClick={naOpslaanVerder}>
-                    {bezig ? 'Opslaan…' : 'Opslaan en volgende hoofdkop'}
+                    {bezig ? 'Opslaan…' : 'Opslaan en volgende subcategorie'}
                   </button>
                 </div>
               )}
               {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && volgendeOpen && (
                 <div className="fwk-bg-volgendekeuze" data-testid="bg-volgende-keuze">
-                  <div className="fwk-bg-kopjes-label">Opgeslagen. Kies de volgende hoofdkop</div>
+                  <div className="fwk-bg-kopjes-label">Opgeslagen. Kies de volgende subcategorie</div>
                   <div className="fwk-bg-chips">
                     {nietZichtbaar.map((k) => (
                       <button key={k.id} type="button" className="fwk-bg-chip" data-testid={`bg-volgende-kies-${k.id}`} onClick={() => kiesKopje(k.id)}>
                         {k.label}
                       </button>
                     ))}
-                    <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-volgende-eigen" aria-label="Eigen kopje toevoegen" title="Eigen kopje toevoegen" onClick={() => setVolgendeEigen(true)}>
+                    {!zichtbaar.some((k) => k.id === GEEN_KOPJE) && (
+                      <button type="button" className="fwk-bg-chip" data-testid="bg-volgende-geen" onClick={() => { setVolgendeOpen(false); voegToe(GEEN_KOPJE); }}>
+                        + Budgetregel zonder subcategorie
+                      </button>
+                    )}
+                    <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-volgende-eigen" aria-label="Eigen subcategorie toevoegen" title="Eigen subcategorie toevoegen" onClick={() => setVolgendeEigen(true)}>
                       +
                     </button>
                   </div>
@@ -991,8 +996,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                         voegEigenKopjeToe();
                       }}
                     >
-                      <input className="fwk-bg-veld" aria-label="Naam van het kopje" data-testid="bg-volgende-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van het kopje" onChange={(e) => setEigenNaam(e.target.value)} />
-                      <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Kopje toevoegen">
+                      <input className="fwk-bg-veld" aria-label="Naam van de subcategorie" data-testid="bg-volgende-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van de subcategorie" onChange={(e) => setEigenNaam(e.target.value)} />
+                      <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Subcategorie toevoegen">
                         Toevoegen
                       </Button>
                     </form>
