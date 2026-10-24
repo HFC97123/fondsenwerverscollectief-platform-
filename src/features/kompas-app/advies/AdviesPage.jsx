@@ -6,12 +6,13 @@ import React, { useMemo, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Blok, Leeg, Melding, PaginaKop, WerkPagina } from '../../../shared/ui/werkplek.jsx';
 import { Button } from '../../../shared/ui/index.js';
+import FundingDatabaseCount from '../../../shared/ui/FundingDatabaseCount.jsx';
 import { useApp } from '../useKompasApp.js';
 import { useKompas } from '../KompasStore.jsx';
 import { useHeeftWerkruimte } from '../werkruimteRechten.js';
 import { useProjectFinanciering } from '../financiering/useProjectFinanciering.js';
-import { KLEUR, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
-import { dagenTekst, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, periodeTekst } from '../financiering/dekkingsplan.js';
+import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
+import { dagenTekst, dagenTot, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, isKomendeDeadline, periodeTekst } from '../financiering/dekkingsplan.js';
 import ProjectfinancieringTab from '../projectdossier/ProjectfinancieringTab.jsx';
 import ProjectBewerkFormulier from '../projectdossier/ProjectBewerkFormulier.jsx';
 import { voortgang } from '../projectinformatie/projectinformatie.js';
@@ -109,25 +110,138 @@ function Projectgegevens({ project, store }) {
   );
 }
 
+// Groene voortgangsbalk met percentage (het projectdossier voor de aanvraag).
+function GroeneBalk({ ingevuld, totaal, label }) {
+  const pct = totaal > 0 ? Math.round((ingevuld / totaal) * 100) : 0;
+
+  return (
+    <div data-testid="advies-dossierbalk" style={css('margin: 8px 0 4px;')}>
+      <div
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        style={css('height: 12px; border-radius: 999px; background: #E9EFEB; overflow: hidden;')}
+      >
+        <span style={css(`display: block; height: 100%; width: ${pct}%; border-radius: 999px; background: ${KLEUR.toegekend}; transition: width .3s ease;`)} />
+      </div>
+      <div style={css(`${TEKST} font-size: 13px; margin-top: 6px;`)}>
+        {ingevuld} van {totaal} onderdelen ingevuld · {pct}%
+      </div>
+    </div>
+  );
+}
+
+// Een korte, aanmoedigende zin bij de stand van het projectdossier.
+function dossierZin(ingevuld, totaal) {
+  if (totaal <= 0 || ingevuld >= totaal) {
+    return 'Uw projectdossier is compleet. Daarmee kunt u een sterk projectplan en een beoordeling per fonds laten maken.';
+  }
+
+  if (ingevuld === 0) {
+    return 'Begin met het projectdossier: hoe completer het is, hoe sterker uw aanvraag en hoe beter het projectplan op maat.';
+  }
+
+  return ingevuld / totaal >= 0.5 ? 'U bent al ver. Vul de laatste onderdelen aan voor een sterke aanvraag.' : 'Een goed begin. Elk onderdeel dat u invult maakt uw aanvraag sterker.';
+}
+
+// De belangrijkste regel om nu op te handelen: de eerstvolgende komende deadline van een regel die nog niet is
+// ingediend; zonder deadline de regel met het hoogste bedrag.
+export function belangrijksteRegel(regels, nu) {
+  const open = (regels || []).filter((r) => r && (r.status === 'interesting' || r.status === 'preparing'));
+  const komend = open.filter((r) => isKomendeDeadline(r, nu)).sort((a, b) => String(a.deadline).slice(0, 10).localeCompare(String(b.deadline).slice(0, 10)) || String(a.naam).localeCompare(String(b.naam), 'nl'));
+
+  if (komend[0]) {
+    return komend[0];
+  }
+
+  return open.slice().sort((a, b) => (b.requested || 0) - (a.requested || 0) || String(a.naam).localeCompare(String(b.naam), 'nl'))[0] || null;
+}
+
+const VOORBEELD_CHIP = 'display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-family: \'Mulish\', sans-serif; font-size: 12px; font-weight: 800; white-space: nowrap;';
+
+// Zolang er nog geen fondsmatching is gedaan: een voorbeeld van wat de matching oplevert, in de taal van dit project.
+function VoorbeeldFondsen({ project }) {
+  const discipline = Array.isArray(project.discipline) ? project.discipline[0] : project.discipline;
+  const regio = String(project.regio || '').trim();
+  const rijen = [
+    [discipline ? `Landelijk fonds: ${discipline}` : 'Landelijk cultuurfonds: Fotografie', 'tot € 25.000', 'Open'],
+    [regio ? `Gemeentelijk fonds ${regio}` : 'Gemeentelijk cultuurfonds', 'tot € 10.000', 'Doorlopend'],
+    ['Particulier fonds', 'tot € 5.000', 'Open'],
+  ];
+
+  return (
+    <div data-testid="advies-fondsen-voorbeeld">
+      <div style={css(`${TEKST} margin-bottom: 8px;`)}>Vertel over uw project en zie welke fondsen en regelingen passen, met bedrag, voorwaarden en deadline.</div>
+      <div style={css("font-family: 'Mulish', sans-serif; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #9AA6A2; margin-bottom: 4px;")}>Voorbeeld</div>
+      {rijen.map(([naam, bedrag, chip]) => (
+        <div key={naam} style={css(`${TEKST} display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 0; opacity: 0.85;`)}>
+          <b style={css('color: #2C4A5E; min-width: 0; overflow-wrap: anywhere;')}>{naam}</b>
+          <span style={css('display: inline-flex; align-items: center; gap: 10px; white-space: nowrap;')}>
+            {bedrag}
+            <span style={css(VOORBEELD_CHIP)}>{chip}</span>
+          </span>
+        </div>
+      ))}
+      <div style={css(`${TEKST} margin-top: 8px;`)}>Dit is een voorbeeld. Start de fondsmatching om te zien wat echt bij {project.naam || 'dit project'} past.</div>
+    </div>
+  );
+}
+
+// Na de fondsmatching: bovenaan het fonds waar nu actie op nodig is, daaronder hoeveel er verder in het plan staat.
+function BelangrijksteFonds({ regels, nu }) {
+  const top = belangrijksteRegel(regels, nu);
+  const dagen = top ? dagenTot(top.deadline, nu) : null;
+  const andere = regels.length - (top ? 1 : 0);
+
+  return (
+    <div data-testid="advies-fondsen-top">
+      {top && (
+        <div data-testid="advies-fondsen-eerste" style={css('padding: 4px 0 10px; border-bottom: 1px solid #E1EAE4; margin-bottom: 8px;')}>
+          <div style={css("font-family: 'Mulish', sans-serif; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #4E9A6C;")}>Nu aan de beurt</div>
+          <div style={css(`${TEKST} display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 2px;`)}>
+            <b style={css('color: #2C4A5E; font-size: 15.5px; min-width: 0; overflow-wrap: anywhere;')}>{top.naam}</b>
+            <span style={css('display: inline-flex; align-items: center; gap: 10px; white-space: nowrap;')}>
+              {top.requested != null && <span>{formatEuro(top.requested)}</span>}
+              <StatusChip status={top.status} />
+            </span>
+          </div>
+          <div style={css(`${TEKST} font-size: 13.5px;`)}>
+            {dagen != null && dagen >= 0 ? `Aanvraag indienen vóór ${formatDatum(top.deadline)} (${dagenTekst(dagen)}).` : 'Neem contact op over passendheid, aanvraag en behandeltermijn.'}
+          </div>
+        </div>
+      )}
+      <Rij rechts={regels.length}>Passende fondsen en regelingen in uw plan</Rij>
+      {andere > 0 && top && <Rij>Plus {andere} {andere === 1 ? 'ander fonds' : 'andere fondsen'}, te zien bij de fondsmatching.</Rij>}
+      <Rij>
+        <FundingDatabaseCount /> fondsen en regelingen gescand op dit project.
+      </Rij>
+    </div>
+  );
+}
+
 function Overzicht({ project, paid }) {
   const financiering = useProjectFinanciering(project && paid ? project.id : null);
   const regels = financiering.status === 'klaar' ? financiering.regels : [];
   const dekking = useMemo(() => dekkingVanProject(project, regels), [project, regels]);
   const volgende = useMemo(() => eerstvolgendeDeadline(regels, new Date()), [regels]);
+  const nu = useMemo(() => new Date(), []);
   const pi = voortgang(project);
+  const gedektPct = dekking.heeftBegroting && dekking.begroting > 0 ? Math.min(100, Math.round(((dekking.toegekend + dekking.aangevraagd + dekking.overige) / dekking.begroting) * 100)) : 0;
   const begrotingRegels = Array.isArray(project.budgetRegels) ? project.budgetRegels.length : 0;
 
   return (
     <div className="fwk-av-raster" data-testid="advies-overzicht">
-      <Kaart nr="1" titel="Vind de fondsen die echt passen" uitleg="Fondsmatching op uw projectgegevens: discipline, doelgroep, werkgebied en bedrag." href={stapHref('fondsen', project.id)} linkTekst="Naar de fondsmatching" testid="advies-kaart-fondsen">
-        <Rij rechts={financiering.status === 'klaar' ? regels.length : '…'}>Regelingen en financiers in het plan</Rij>
-        <Rij>Eigen deadlines en herinneringen staan bij stap 3.</Rij>
+      <Kaart nr="1" titel="Vind de fondsen die echt passen" uitleg="Fondsmatching op uw projectgegevens: discipline, doelgroep, werkgebied en bedrag." href={stapHref('fondsen', project.id)} linkTekst={financiering.status === 'klaar' && regels.length === 0 ? 'Start de fondsmatching' : 'Naar de fondsmatching'} testid="advies-kaart-fondsen">
+        {financiering.status !== 'klaar' ? <Rij>Fondsen worden geladen…</Rij> : regels.length > 0 ? <BelangrijksteFonds regels={regels} nu={nu} /> : <VoorbeeldFondsen project={project} />}
       </Kaart>
 
       <Kaart nr="2" titel="Dek uw hele begroting" uitleg="Uw begroting per subcategorie, met de financiers die hem dekken." href={stapHref('begroting', project.id)} linkTekst="Naar de begroting" testid="advies-kaart-begroting">
         <Rij rechts={dekking.heeftBegroting ? formatEuro(dekking.begroting) : '—'}>Begroting</Rij>
         {dekking.heeftBegroting && (
           <>
+            <Rij rechts={`${gedektPct}%`}>Gedekt</Rij>
             <div style={css('margin: 8px 0;')}>
               <Voortgangsbalk dekking={dekking} projectNaam={project.naam || 'dit project'} />
             </div>
@@ -140,14 +254,15 @@ function Overzicht({ project, paid }) {
         <Rij>{begrotingRegels ? `${begrotingRegels} begrotingsregels` : 'Nog geen begrotingsregels'}</Rij>
       </Kaart>
 
-      <Kaart nr="3" titel="Houd elke deadline in beeld" uitleg="Een actieplan met herinneringen, zodat u uw tijd aan schrijven besteedt." href={stapHref('deadlines', project.id)} linkTekst="Naar de deadlines" testid="advies-kaart-deadlines">
+      <Kaart nr="3" titel="Houd uw actieplan bij" uitleg="Een actieplan met herinneringen, zodat u uw tijd aan schrijven besteedt." href={stapHref('deadlines', project.id)} linkTekst="Naar het actieplan" testid="advies-kaart-deadlines">
         <Rij rechts={volgende ? dagenTekst(volgende.dagen) : null}>{volgende ? `Eerstvolgende: ${volgende.naam}` : 'Geen komende deadline'}</Rij>
         {volgende && <Rij>{formatDatum(volgende.datum)}</Rij>}
       </Kaart>
 
       <Kaart nr="4" titel="Dien sterker in" uitleg="Het projectdossier, een projectplan op maat en een beoordeling vóór u indient." href={stapHref('indienen', project.id)} linkTekst="Naar indienen" testid="advies-kaart-indienen">
-        <Rij rechts={`${pi.ingevuld} van ${pi.totaal}`}>Projectdossier ingevuld</Rij>
-        <Rij>Daarna: projectplan en beoordeling per fonds.</Rij>
+        <Rij>Projectdossier voor de aanvraag</Rij>
+        <GroeneBalk ingevuld={pi.ingevuld} totaal={pi.totaal} label="Projectdossier ingevuld" />
+        <Rij>{dossierZin(pi.ingevuld, pi.totaal)}</Rij>
       </Kaart>
     </div>
   );
