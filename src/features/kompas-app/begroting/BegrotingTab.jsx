@@ -65,8 +65,8 @@ function BegrotingStijl() {
 .fwk-bg-detail { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: flex-end; margin: -2px 0 10px; padding: 8px 10px; border-radius: 10px; background: ${color.vlakGrijs}; }
 .fwk-bg-detail label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: ${color.tekstLicht}; }
 .fwk-bg-detail .fwk-bg-veld { width: 110px; min-height: 36px; }
-.fwk-bg-plus { cursor: pointer; border: none; background: none; padding: 6px 2px; font-family: inherit; font-size: 13.5px; font-weight: 800; color: ${color.groen}; }
-.fwk-bg-plus:hover { text-decoration: underline; }
+.fwk-bg-plus { cursor: pointer; border: none; background: none; padding: 2px 8px; font-family: inherit; font-size: 22px; line-height: 1; font-weight: 600; color: ${color.groen}; border-radius: 999px; }
+.fwk-bg-plus:hover { background: ${color.vlakGrijs}; }
 .fwk-bg-lijn { display: flex; align-items: center; gap: 10px; margin: 2px 0 0; }
 .fwk-bg-lijn::after { content: ''; flex: 1; height: 1px; background: ${color.lijn}; }
 .fwk-bg-chip { cursor: pointer; border: 1px dashed ${color.lijnInput}; background: ${color.wit}; border-radius: 999px; padding: 5px 12px; font-family: inherit; font-size: 13px; font-weight: 700; color: ${color.donkerblauw}; }
@@ -730,6 +730,46 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
           </Melding>
         )}
 
+        <div style={css('margin: 6px 0 4px;')} data-testid="bg-kopjes">
+          <div className="fwk-bg-chips">
+            {nietZichtbaar.map((c) => (
+              <Toelichting key={c.id} kopje={c} knop={false}>
+                <span className="fwk-bg-chipgroep">
+                  <button type="button" className="fwk-bg-chip" data-testid={`bg-kopje-kies-${c.id}`} onClick={() => kiesKopje(c.id)}>
+                    {c.label}
+                  </button>
+                  <button type="button" className="fwk-bg-chipx" aria-label={`Suggestie ${c.label} weghalen`} title="Deze suggestie weghalen" data-testid={`bg-kopje-sug-weg-${c.id}`} onClick={() => setAfgewezen((cur) => [...cur, c.id])}>
+                    ✕
+                  </button>
+                </span>
+              </Toelichting>
+            ))}
+            <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-eigen" onClick={() => setEigenOpen(true)}>
+              + Eigen kopje
+            </button>
+            {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
+              <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-geen" onClick={() => voegToe(GEEN_KOPJE)}>
+                + Regel zonder kopje
+              </button>
+            )}
+          </div>
+          {eigenOpen && (
+            <form
+              className="fwk-bg-eigen"
+              data-testid="bg-eigen-form"
+              onSubmit={(ev) => {
+                ev.preventDefault();
+                voegEigenKopjeToe();
+              }}
+            >
+              <input className="fwk-bg-veld" aria-label="Naam van het kopje" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van het kopje" onChange={(e) => setEigenNaam(e.target.value)} />
+              <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Kopje toevoegen">
+                Toevoegen
+              </Button>
+            </form>
+          )}
+        </div>
+
         {regels.length === 0 && project.begroting ? (
           <div className="fwk-aa-klein" data-testid="bg-leeg" style={css('margin-bottom: 8px;')}>
             Bij Projecten staat nu {formatEuro(project.begroting)}.
@@ -827,8 +867,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 </div>
               ) : (
                 <div className="fwk-bg-lijn">
-                  <button type="button" className="fwk-bg-plus" data-testid={`bg-plus-${slug}`} onClick={() => (c.id === GEEN_KOPJE ? voegToe(GEEN_KOPJE) : setPlusOpen(c.id))}>
-                    + Regel
+                  <button type="button" className="fwk-bg-plus" data-testid={`bg-plus-${slug}`} aria-label="Regel toevoegen" title="Regel toevoegen" onClick={() => (c.id === GEEN_KOPJE ? voegToe(GEEN_KOPJE) : setPlusOpen(c.id))}>
+                    +
                   </button>
                 </div>
               )}
@@ -843,46 +883,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
             </span>
           </div>
         )}
-
-        <div style={css('margin: 6px 0 4px;')} data-testid="bg-kopjes">
-          <div className="fwk-bg-chips">
-            {nietZichtbaar.map((c) => (
-              <Toelichting key={c.id} kopje={c} knop={false}>
-                <span className="fwk-bg-chipgroep">
-                  <button type="button" className="fwk-bg-chip" data-testid={`bg-kopje-kies-${c.id}`} onClick={() => kiesKopje(c.id)}>
-                    {c.label}
-                  </button>
-                  <button type="button" className="fwk-bg-chipx" aria-label={`Suggestie ${c.label} weghalen`} title="Deze suggestie weghalen" data-testid={`bg-kopje-sug-weg-${c.id}`} onClick={() => setAfgewezen((cur) => [...cur, c.id])}>
-                    ✕
-                  </button>
-                </span>
-              </Toelichting>
-            ))}
-            <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-eigen" onClick={() => setEigenOpen(true)}>
-              + Eigen kopje
-            </button>
-            {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
-              <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-geen" onClick={() => voegToe(GEEN_KOPJE)}>
-                + Regel zonder kopje
-              </button>
-            )}
-          </div>
-          {eigenOpen && (
-            <form
-              className="fwk-bg-eigen"
-              data-testid="bg-eigen-form"
-              onSubmit={(ev) => {
-                ev.preventDefault();
-                voegEigenKopjeToe();
-              }}
-            >
-              <input className="fwk-bg-veld" aria-label="Naam van het kopje" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van het kopje" onChange={(e) => setEigenNaam(e.target.value)} />
-              <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Kopje toevoegen">
-                Toevoegen
-              </Button>
-            </form>
-          )}
-        </div>
 
         {totalen.zonderBedrag.length > 0 && (
           <div className="fwk-aa-klein" data-testid="bg-zonder-bedrag" style={css('margin: 10px 0;')}>

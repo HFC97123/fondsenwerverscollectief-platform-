@@ -94,6 +94,7 @@ let s;
   check('suggestie kiezen geeft één schone regel: omschrijving en bedragveld, geen kolommen', !!regel && $('[data-testid="bg-bedrag"]', regel).value === '' && !$('[data-testid="bg-detail"]', regel) && !$('[data-testid="bg-suggesties-uitvoering"]') && !!$('[data-testid="bg-plus-uitvoering"]'));
   check('Opslaan verschijnt zodra er iets staat', !!knop('Begroting opslaan') && !!$('[data-testid="bg-niet-opgeslagen"]'));
 
+  check('de plusknop is alleen een + (met een toegankelijke naam) en de kopjes staan boven de regels', $('[data-testid="bg-plus-uitvoering"]').textContent.trim() === '+' && $('[data-testid="bg-plus-uitvoering"]').getAttribute('aria-label') === 'Regel toevoegen' && !!($('[data-testid="bg-kopjes"]').compareDocumentPosition($('[data-testid="bg-regel"]')) & 4));
   await klik($('[data-testid="bg-plus-uitvoering"]'));
   check('+ Regel opent de suggesties weer, zonder de al gebruikte', !$$('[data-testid="bg-suggestie"]').some((b) => /Projectleider/.test(b.textContent)) && !!$('[data-testid="bg-eigen-regel"]'));
   await klik($('[data-testid="bg-eigen-regel"]'));
