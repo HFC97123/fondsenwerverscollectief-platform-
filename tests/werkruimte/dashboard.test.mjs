@@ -7,12 +7,16 @@ import {
   ACTIEVE_STATUSSEN,
   berekenDekking,
   bouwDashboard,
+  dagEnMaand,
   dagenTekst,
   dagenTot,
+  datumVolledig,
   dekkingVanProject,
   eerstvolgendeDeadline,
+  eersteNaam,
   formatDatum,
   formatTijd,
+  groet,
   komendeDeadlines,
   organisatieVolledigheid,
   overigeDekkingVanProject,
@@ -241,8 +245,8 @@ const lees = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8')
 
   const nav = lees('src/features/kompas-app/KompasWerkNav.jsx');
   const volgorde = [...nav.matchAll(/key: '(\w+)', label: '([^']+)'/g)].map((m) => m[2]);
-  gelijk('werknav: definitieve volgorde', volgorde, ['Dashboard', 'Chat', 'Subsidieadvies', 'Mijn Subsidie Kompas']);
-  check('werknav: accountmenu met account, abonnement, uitloggen (Organisatie staat onder Mijn Subsidie Kompas)', !nav.includes('>Organisatieprofiel</') && ['Account', 'Abonnement', 'Uitloggen'].every((t) => nav.includes(`>${t}</`)));
+  gelijk('werknav: definitieve volgorde', volgorde, ['Dashboard', 'Chat', 'Subsidieadvies']);
+  check('werknav: accountmenu met projecten, organisatie, account, abonnement, uitloggen (één Mijn Subsidie Kompas, rechtsboven)', !nav.includes('>Organisatieprofiel</') && ['Projecten', 'Account', 'Abonnement', 'Uitloggen'].every((t) => nav.includes(`>${t}</`)));
   check('werknav: projectdossier is geen hoofdmenu-item', !/label: 'Projectdossier'/.test(nav));
 
   const dash = lees('src/features/kompas-app/dashboard/DashboardPage.jsx');
@@ -259,6 +263,12 @@ const lees = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8')
   check('chat: overdracht alleen voor Pro/Premium en via bestaande handlers', /store\.neemChatVerzoek[\s\S]{0,400}!hasPlanTools[\s\S]{0,700}openGesprek\(\{ id: verzoek\.gesprekId[\s\S]{0,200}koppelProject\(projectId\)/.test(tool));
   check('chat: askKompas-aanroep ongewijzigd aanwezig', tool.includes('activeProgramId: hasPlanTools && isEchtId(gekoppeldProjectId) ? gekoppeldProjectId : null'));
 }
+
+// Begroeting, voornaam en datum bovenaan het Dashboard
+check('groet: ochtend, middag, avond en nacht', groet(new Date(2026, 9, 24, 9, 0)) === 'Goedemorgen' && groet(new Date(2026, 9, 24, 12, 0)) === 'Goedemiddag' && groet(new Date(2026, 9, 24, 17, 59)) === 'Goedemiddag' && groet(new Date(2026, 9, 24, 18, 0)) === 'Goedenavond' && groet(new Date(2026, 9, 24, 2, 0)) === 'Goedenavond' && groet(new Date(2026, 9, 24, 5, 0)) === 'Goedemorgen');
+check('eersteNaam: voornaam, geen e-mailadres', eersteNaam('Aisya Fondsen') === 'Aisya' && eersteNaam('  Lid ') === 'Lid' && eersteNaam('lid@test.nl') === '' && eersteNaam(null) === '');
+check('datumVolledig: weekdag, dag en maand', datumVolledig(new Date(2026, 9, 26, 10, 0)) === 'maandag 26 oktober');
+check('dagEnMaand: dag zonder voorloopnul en korte maand', dagEnMaand('2026-11-02').dag === '2' && dagEnMaand('2026-11-02').maand === 'nov' && dagEnMaand('onzin').dag === '');
 
 console.log(`${ok} geslaagd, ${fail} mislukt`);
 process.exit(fail ? 1 : 0);

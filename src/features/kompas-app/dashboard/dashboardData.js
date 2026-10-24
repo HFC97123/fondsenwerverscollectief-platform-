@@ -28,6 +28,45 @@ export {
 } from '../financiering/dekkingsplan.js';
 
 // ---------------------------------------------------------------------------
+// Begroeting en datum bovenaan het Dashboard
+// ---------------------------------------------------------------------------
+
+const WEEKDAGEN = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag'];
+const MAANDEN_LANG = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
+const MAANDEN_KORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+
+// Goedemorgen (05:00-11:59), goedemiddag (12:00-17:59), anders goedenavond; naar de lokale tijd van de gebruiker.
+export function groet(nu) {
+  const uur = (nu || new Date()).getHours();
+
+  if (uur >= 5 && uur < 12) return 'Goedemorgen';
+  if (uur >= 12 && uur < 18) return 'Goedemiddag';
+
+  return 'Goedenavond';
+}
+
+// De voornaam uit de weergavenaam van het lid; een e-mailadres of lege naam geeft ''.
+export function eersteNaam(naam) {
+  const eerste = String(naam || '').trim().split(/\s+/)[0] || '';
+
+  return eerste.indexOf('@') === -1 ? eerste : '';
+}
+
+// 'maandag 24 oktober'
+export function datumVolledig(nu) {
+  const d = nu || new Date();
+
+  return `${WEEKDAGEN[d.getDay()]} ${d.getDate()} ${MAANDEN_LANG[d.getMonth()]}`;
+}
+
+// Een ISO-datum (YYYY-MM-DD) als { dag: '2', maand: 'nov' }; leeg als de datum niet te lezen is.
+export function dagEnMaand(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+
+  return m ? { dag: String(Number(m[3])), maand: MAANDEN_KORT[Number(m[2]) - 1] || '' } : { dag: '', maand: '' };
+}
+
+// ---------------------------------------------------------------------------
 // Gesprekken, documenten, organisatie
 // ---------------------------------------------------------------------------
 
