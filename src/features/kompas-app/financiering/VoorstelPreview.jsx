@@ -213,7 +213,7 @@ export function VoorstelRegelDetail({ r, bron = null, toonVerificatie = true, on
         </Rij>
         {r.grenzenTekst && <Rij label="Bijdragegrenzen">{r.grenzenTekst}</Rij>}
         <Rij label="Deadline" testId="voorstel-regel-deadline">{r.deadlineTekst || 'Geen deadline bekend'}</Rij>
-        {r.extraVelden.map((v) => (
+        {(toonBroninfo() ? r.extraVelden : []).map((v) => (
           <Rij key={v.label} label={v.label}>{v.waarde}</Rij>
         ))}
         <Rij label="Voorwaarden">
