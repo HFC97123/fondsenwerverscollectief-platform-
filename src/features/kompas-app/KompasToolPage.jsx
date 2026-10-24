@@ -1809,8 +1809,8 @@ export default function KompasToolPage() {
                     deadlines in beeld.
                   </span>
                   <span style={css('display: block; margin-top: 3px;')}>
-                    <strong style={css('color: #2F6D47;')}>Premium:</strong> alles van Pro, plus <FundingDatabaseCount /> fondsen
-                    die u elders bijna niet vindt.
+                    <strong style={css('color: #2F6D47;')}>Premium:</strong> alles van Pro, plus de fondsen die u nergens anders
+                    kunt vinden.
                   </span>
                 </span>
                 <span style={css('display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0;')}>
