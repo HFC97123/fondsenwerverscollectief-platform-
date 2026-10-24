@@ -23,7 +23,6 @@ import { OPTIONEEL_ONDERDEEL, OPTIONEEL_TEKST, isServiceclub } from './servicecl
 import { BEDRAG_INDICATIE_TEKST, BEDRAG_INDICATIE_TEKST_ZONDER_BEDRAG, realistischBedrag, selecteerDekkingsmix, selecteerZonderBedrag } from './dekkingsmix.ts';
 import type { MixKandidaat, MixNiveau, MixResultaat } from './dekkingsmix.ts';
 import type { TierConfig } from './tierConfig.ts';
-import { bronOordeelKort } from './bronControle.ts';
 import { koppelLocatie } from './locatie.ts';
 import { plantActies, plantRegel } from './actieplanStappen.ts';
 import type { PlanningBron, PlanningOpties, PlanSamenvatting } from './actieplanPlanning.ts';
@@ -887,31 +886,7 @@ export function valideerOpslag(inv: {
       datumControle: typeof a.datumControle === 'string' && isEchteDatum(a.datumControle) ? a.datumControle : null,
     }));
 
-  // Ontbrekende informatie per regel, in gewone taal bij de EERSTE taak van die regel (de eerste stap die het lid doet): wat nog niet vaststaat.
-  const ontbreektVan = new Map<string, string>();
-
-  for (const r of nieuwe) {
-    const oordeel = inv.bronOordelen?.[r.sleutel] ?? 'niet-gecontroleerd';
-    const mist: string[] = [];
-
-    if (!(r.deadline && r.deadline.status === 'geverifieerd')) mist.push('de deadline is niet geverifieerd');
-    if (r.grenzen.min == null && r.grenzen.max == null) mist.push('de bijdragegrenzen zijn niet bekend');
-    if (oordeel !== 'gecontroleerd') mist.push(bronOordeelKort(oordeel));
-    if (mist.length) ontbreektVan.set(r.sleutel, `Nog niet vastgesteld: ${mist.join('; ')}.`);
-  }
-
-  const eerste = new Set<string>();
-  const metOntbrekend = acties.map((a) => {
-    const info = a.regelSleutel ? ontbreektVan.get(a.regelSleutel) : undefined;
-
-    if (!info || !a.regelSleutel || eerste.has(a.regelSleutel)) return a;
-
-    eerste.add(a.regelSleutel);
-
-    return { ...a, toelichting: tekst(a.toelichting ? `${a.toelichting} ${info}` : info, 600) };
-  });
-
-  return { ok: true, regelFouten: {}, algemeen: null, regels, acties: metOntbrekend, waarschuwingen: uitkomst.waarschuwingen, planning };
+  return { ok: true, regelFouten: {}, algemeen: null, regels, acties, waarschuwingen: uitkomst.waarschuwingen, planning };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

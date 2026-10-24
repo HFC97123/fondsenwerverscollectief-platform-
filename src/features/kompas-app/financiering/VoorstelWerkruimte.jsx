@@ -9,7 +9,7 @@ import { haalClassificatiesOp } from '../../../data/services/classificaties.js';
 import BespreekLink from './BespreekLink.jsx';
 import FinancieringsRegel from './FinancieringsRegel.jsx';
 import VoorstelStart from './VoorstelStart.jsx';
-import { Kenmerken, VoorstelRegelDetail } from './VoorstelPreview.jsx';
+import { Kenmerken, toonBroninfo, VoorstelRegelDetail } from './VoorstelPreview.jsx';
 import { BEDRAG_OVERLEG_TEKST } from './voorstelPreviewModel.js';
 import { formatDatum, formatEuro, leesBedragInvoer } from './dekkingsplan.js';
 import {
@@ -81,7 +81,7 @@ const OPSLAG_STATUS_TEKST = { opgeslagen: 'toegevoegd aan het dekkingsplan (stat
 const REDEN_OPSLAAN = { 'niet-toegestaan': 'niet toegestaan met uw abonnement', ongeldig: 'ongeldige gegevens', fout: 'onbekende fout' };
 
 function BronChip({ bron }) {
-  if (!bron) return null;
+  if (!toonBroninfo() || !bron) return null;
 
   const kleur = { gecontroleerd: '#2F7A4D', onzeker: '#8A5A16', mislukt: '#A3382B', controleren: '#2C4A5E', niet_gecontroleerd: '#5D6B67' }[bron.status] || '#5D6B67';
 
@@ -124,7 +124,7 @@ function Samenvatting({ uit, projectId, onSluiten, onActieplanOpnieuw, actieplan
           ))}
           {uit.suggesties.map((x) => (
             <li key={x.naam} data-testid="voorstel-opgeslagen-suggestie" data-status={x.status}>
-              <strong>{x.naam}</strong>: {x.status === 'opgeslagen' ? 'op uw lijst gezet, zonder bedrag. Online gevonden en niet gecontroleerd. Er staan stappen klaar om te beoordelen: eerst beoordelen of het past, dan voorwaarden, deadline en bijdrage nagaan, daarna beslissen of het in uw dekkingsplan komt' : x.status === 'bestaat-al' ? 'stond al op uw lijst' : 'kon niet worden toegevoegd'}
+              <strong>{x.naam}</strong>: {x.status === 'opgeslagen' ? 'op uw lijst gezet, zonder bedrag. In uw actieplan staat een actie klaar: contact opnemen met het fonds' : x.status === 'bestaat-al' ? 'stond al op uw lijst' : 'kon niet worden toegevoegd'}
               {x.fundingId && x.status !== 'mislukt' && (
                 <>
                   {' · '}
@@ -911,9 +911,6 @@ export default function VoorstelWerkruimte({
               <summary style={css(`${TEKST} font-weight: 800; color: #2C4A5E; cursor: pointer;`)}>
                 Voorgestelde taken ({[...selectie.acties].filter((s) => model.acties.some((a) => a.sleutel === s && (!a.regelSleutel || selectie.regels.has(a.regelSleutel)))).length})
               </summary>
-              <div style={css(`${TEKST} font-size: 12.5px; color: #7B8985; margin-top: 6px;`)}>
-                De taken zijn terugberekend vanaf de deadline uit onze database. Bij regels zonder geverifieerde deadline staat een taak om de deadline eerst te controleren. Na het opslaan maakt de server de taken zelf aan.
-              </div>
               <ul style={css('list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px;')}>
                 {model.acties.map((a) => {
                   const regelGekozen = !a.regelSleutel || selectie.regels.has(a.regelSleutel);
@@ -937,9 +934,9 @@ export default function VoorstelWerkruimte({
           {model.suggesties.length > 0 && (
             <section data-testid="voorstel-online" style={css('border: 1px dashed #CFDDD5; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;')}>
               <div>
-                <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E;`)}>Online gevonden: nog niet gecontroleerd</div>
+                <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E;`)}>Online gevonden</div>
                 <div style={css(`${TEKST} font-size: 12.5px; color: #7B8985;`)}>
-                  Deze financiers staan niet in onze database. Ze tellen niet mee in de dekking hierboven{model.onlineIndicatief > 0 ? ` (samen ongeveer ${formatEuro(model.onlineIndicatief)}, een schatting)` : ''}. U kunt ze op uw lijst zetten (Interessant, zonder bedrag) en zelf controleren.
+                  Deze fondsen tellen niet mee in de dekking hierboven. Zet ze op uw lijst om er contact mee op te nemen.
                 </div>
               </div>
               {model.suggesties.map((s) => (

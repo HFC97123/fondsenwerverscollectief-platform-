@@ -26,7 +26,7 @@ const P = '11111111-1111-4111-8111-111111111111';
 const src = (p) => readFileSync(join(root, p), 'utf8');
 
 // stappen en links
-check('vijf stappen: Overzicht, fondsmatching, Begroting, Deadlines, Indienen', L.STAPPEN.map((s) => s.label).join('|') === 'Overzicht|Fondsmatching|Begroting|Deadlines|Indienen');
+check('vijf stappen: Overzicht, fondsmatching, Begroting, Actieplan, Indienen', L.STAPPEN.map((s) => s.label).join('|') === 'Overzicht|Fondsmatching|Begroting|Actieplan|Indienen');
 check('overzicht linkt naar /kompas/advies', L.stapHref('overzicht', P) === `#/kompas/advies?project=${P}`);
 check('Fondsmatching (fondsen) linkt naar /kompas/advies/fondsen', L.stapHref('fondsen', P) === `#/kompas/advies/fondsen?project=${P}`);
 check('begroting en indienen zijn de bestaande pagina Documenten met het juiste tabblad', L.stapHref('begroting', P) === `#/kompas/documentatie?tab=begroting&project=${P}` && L.stapHref('indienen', P) === `#/kompas/documentatie?tab=inhoud&project=${P}`);

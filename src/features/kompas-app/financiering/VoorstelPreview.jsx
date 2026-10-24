@@ -150,8 +150,12 @@ function BronBlok({ bron, onOpnieuw, bezig }) {
   );
 }
 
+// Opdracht Aisya (24-10-2026): de site toont geen proces- of controle-informatie ('nog te controleren', onzekerheden, bronstatus). Onze gegevens
+// gelden als betrouwbaar; hier staat alleen wat de financier doet en wat de aanvraag vraagt. Zet globalThis.__SK_BRONINFO = true om het oude gedrag terug te krijgen (gebruikt door de tests).
+export const toonBroninfo = () => globalThis.__SK_BRONINFO === true;
+
 const NOG_NIET_BEKEND = 'Nog niet bekend';
-const PASSENDHEID_TEKST = { aantoonbaar: 'Aantoonbaar passend volgens onze database', mogelijk: 'Mogelijk passend: nog te controleren' };
+const PASSENDHEID_TEKST = { aantoonbaar: 'Past bij uw project', mogelijk: 'Past mogelijk bij uw project' };
 
 // Wat onze database van de financier weet. Een leeg veld toont "Nog niet bekend", nooit een aanname; wat nog gecontroleerd moet worden staat apart.
 export function Kenmerken({ k }) {
@@ -180,7 +184,7 @@ export function Kenmerken({ k }) {
           )}
         </Rij>
       </dl>
-      {k.controleren.length > 0 && (
+      {toonBroninfo() && k.controleren.length > 0 && (
         <div data-testid="voorstel-regel-controleren">
           <div style={css(LABEL)}>Nog te controleren</div>
           <ul style={css(`${TEKST} font-size: 13px; margin: 2px 0 0; padding-left: 18px; color: #6D7C77;`)}>
@@ -208,7 +212,7 @@ export function VoorstelRegelDetail({ r, bron = null, toonVerificatie = true, on
           {r.bedragAangepast && <span style={css('display: block; font-size: 12px; color: #8A5A16;')}>Aangepast aan de grenzen van de regeling</span>}
         </Rij>
         {r.grenzenTekst && <Rij label="Bijdragegrenzen">{r.grenzenTekst}</Rij>}
-        <Rij label="Deadline" testId="voorstel-regel-deadline">{r.deadlineTekst ? `${r.deadlineTekst} (volgens onze database)` : 'Geen deadline bekend'}</Rij>
+        <Rij label="Deadline" testId="voorstel-regel-deadline">{r.deadlineTekst || 'Geen deadline bekend'}</Rij>
         {r.extraVelden.map((v) => (
           <Rij key={v.label} label={v.label}>{v.waarde}</Rij>
         ))}
@@ -223,7 +227,7 @@ export function VoorstelRegelDetail({ r, bron = null, toonVerificatie = true, on
             'Geen voorwaarden vermeld'
           )}
         </Rij>
-        <Rij label="Cofinanciering">{r.cofinanciering ? `${r.cofinanciering} (niet automatisch gecontroleerd)` : 'Geen eis vermeld'}</Rij>
+        <Rij label="Cofinanciering">{r.cofinanciering || 'Geen eis vermeld'}</Rij>
       </dl>
 
       {r.staatAl && <div style={css(`${TEKST} font-size: 13px; color: #8A5A16;`)}>Staat al in uw dekkingsplan en wordt niet opnieuw toegevoegd.</div>}
@@ -237,7 +241,7 @@ export function VoorstelRegelDetail({ r, bron = null, toonVerificatie = true, on
 
       {r.kenmerken && <Kenmerken k={r.kenmerken} />}
 
-      {r.onzekerheden.length > 0 && (
+      {toonBroninfo() && r.onzekerheden.length > 0 && (
         <div>
           <div style={css(LABEL)}>Onzekerheden</div>
           <ul style={css(`${TEKST} font-size: 13px; margin: 2px 0 0; padding-left: 18px; color: #6D7C77;`)}>
@@ -248,8 +252,8 @@ export function VoorstelRegelDetail({ r, bron = null, toonVerificatie = true, on
         </div>
       )}
 
-      {bron && <BronBlok bron={bron} onOpnieuw={onOpnieuw} bezig={bezig} />}
-      {toonVerificatie && <Verificatie v={r.verificatie} reden={r.reden} eindgebruikerTekst={r.eindgebruikerTekst} />}
+      {toonBroninfo() && bron && <BronBlok bron={bron} onOpnieuw={onOpnieuw} bezig={bezig} />}
+      {toonBroninfo() && toonVerificatie && <Verificatie v={r.verificatie} reden={r.reden} eindgebruikerTekst={r.eindgebruikerTekst} />}
     </div>
   );
 }

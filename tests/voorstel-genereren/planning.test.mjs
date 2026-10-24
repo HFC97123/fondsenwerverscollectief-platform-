@@ -136,7 +136,7 @@ sectie('6. Alleen een bestuursvergadering bekend: geen indiendatum afleiden');
   const M = d(90);
   const u = planFinancier('Fonds M', { status: 'Open', vergaderdatum: M, vergaderfrequentie: '4x per jaar', behandeltermijn: 'Bestuur vergadert 4x per jaar; exacte vergaderdata niet gepubliceerd.' }, V);
 
-  check('modus vergadering, begint met "Aanvraagmoment en behandeltermijn navragen"', u.samenvatting.modus === 'vergadering' && u.stappen[0].fase === 'navragen' && /Aanvraagmoment en behandeltermijn van Fonds M navragen/.test(u.stappen[0].titel));
+  check('modus vergadering, begint met "contact opnemen" (navragen)', u.samenvatting.modus === 'vergadering' && u.stappen[0].fase === 'navragen' && /Contact opnemen met Fonds M over passendheid, aanvraag en behandeltermijn/.test(u.stappen[0].titel));
   check('geen indiendatum en geen deadline afgeleid van de vergadering', u.samenvatting.indiendatum === null && u.samenvatting.deadline === null && stap(u, 'indienen').datum === null && stap(u, 'schrijven').datum === null && stap(u, 'indienen').externeDeadline === null);
   check('de vergadering is wel een bronvermelding: beoordelingsmoment volgen op die datum', stap(u, 'beoordeling').datum === M && stap(u, 'beoordeling').datumHerkomst === 'bron' && /alleen relevant als de aanvraag ruim voor deze vergadering/i.test(stap(u, 'beoordeling').toelichting));
   check('besluit zonder indiendatum: geen datum', stap(u, 'besluit').datum === null && stap(u, 'vervolg').datum === null);
@@ -248,19 +248,18 @@ const taak = (schemeId, re) => takenVan(schemeId).find((t) => re.test(t.title));
 const reg = (id_, naam, extra = {}, deadline = d(60)) => regeling({ naam, gever: `Gever ${naam}`, min: 1000, max: 60000, id: id_, deadline, extra });
 const wereld = (regelingen, extra = {}) => resetGenereren({ regelingen, funders: [fonds({ naam: 'Fonds Voorbeeld', min: 1000, max: 15000, id: FD })], dbActief: true, ...extra });
 
-sectie('10. Keten: vaste deadline -> opgeslagen taken met planning');
+sectie('10. Keten (slank): vaste deadline -> twee acties, indienen en uitslag');
 {
   wereld([reg(R1, 'Regeling Vast', { behandeltermijn: null, aanvraagprocedure: 'Digitaal portaal.' })], { planning: { regelingen: [{ id: R1, funder_id: 'x', status_laatst_gecheckt: '2026-10-10T08:00:00Z', volgende_vergaderdatum: null }], rondes: [], funders: [] } });
   const uit = await opslaan([r('regeling', R1, 20000)]);
   const t = takenVan(R1);
   const indienen = taak(R1, /indienen/);
-  const start = taak(R1, /Passendheid/);
+  const uitslag = taak(R1, /Uitslag van/);
 
-  check('opgeslagen, actieplan klaar', uit.status === 200 && uit.json.actieplan.status === 'klaar' && t.length >= 11, JSON.stringify(uit.json?.actieplan));
-  check('indienen 3 dagen vóór deadline, passendheid 6 weken ervoor', indienen?.due_date === d(57) && start?.due_date === d(18), `${indienen?.due_date} ${start?.due_date}`);
-  check('planningskolommen: fase, herkomst, bron, controledatum', start.planning_fase === 'passendheid' && start.datum_herkomst === 'berekend' && /aanvraagdeadline/.test(start.datum_bron) && start.datum_controle === '2026-10-10', JSON.stringify({ f: start?.planning_fase, h: start?.datum_herkomst, b: start?.datum_bron, c: start?.datum_controle }));
-  check('de toelichting noemt de herkomst ook leesbaar', /Berekend:/.test(start.notes) && /Voorlopige planningsaanname/.test(taak(R1, /Verwachte beslissing/).notes));
-  check('antwoord bevat de planning per regel voor de interface', uit.json.planning && Object.values(uit.json.planning)[0]?.modus === 'deadline' && Object.values(uit.json.planning)[0].voorbereidingKort === false && uit.json.voorbereidingsDagen === 42);
+  check('opgeslagen, actieplan klaar, precies twee acties', uit.status === 200 && uit.json.actieplan.status === 'klaar' && t.length === 2, JSON.stringify(uit.json?.actieplan));
+  check('indienen op de deadline, uitslag ongeveer 3 maanden later', indienen?.due_date === d(60) && uitslag?.due_date === plusMaanden(d(60), 3), `${indienen?.due_date} ${uitslag?.due_date}`);
+  check('planningskolommen: fase, herkomst, bron', indienen.planning_fase === 'indienen' && indienen.datum_herkomst === 'bron' && uitslag.planning_fase === 'besluit' && uitslag.datum_herkomst === 'aanname');
+  check('antwoord bevat de planning per regel voor de interface', uit.json.planning && Object.values(uit.json.planning)[0]?.modus === 'deadline' && Object.values(uit.json.planning)[0].voorbereidingKort === false);
   check('geen taak in het verleden en elke taak aan de regel gekoppeld', t.every((x) => !x.due_date || x.due_date >= V) && t.every((x) => x.funding_id === fundingVan(R1).id));
   check('geen dubbele titels', new Set(t.map((x) => x.title.toLowerCase())).size === t.length);
 }
@@ -269,14 +268,12 @@ sectie('11. Keten: meerdere rondes + korte voorbereiding');
 {
   wereld([reg(R2, 'Regeling Rondes', { rondes_aantal: 3 }, d(20))], { planning: { regelingen: [], rondes: [{ subsidieregeling_id: R2, sluitingsdatum: d(20), actief: true }, { subsidieregeling_id: R2, sluitingsdatum: d(110), actief: true, bron_url: 'https://rondes.example.nl/' }], funders: [] } });
   const uit = await opslaan([r('regeling', R2, 15000)]);
-  const indienen = taak(R2, /indienen/);
 
-  check('kort gemeld in de samenvatting en in de eerste taak', Object.values(uit.json.planning)[0].voorbereidingKort === true && /Voorbereidingstijd kort/.test(taak(R2, /Passendheid/).notes));
-  check('volgende ronde (uit de rondes-tabel) wordt genoemd', /volgende ronde sluit op/.test(indienen.notes) && new RegExp(d(110).split('-').reverse().join('-')).test(indienen.notes), indienen?.notes);
-  check('niets in het verleden en voorbereiding binnen de deadline', takenVan(R2).filter((t) => !/Ontvangst|Aanvullende|Beoordelings|Verwachte|Vervolg/.test(t.title)).every((t) => !t.due_date || (t.due_date >= V && t.due_date <= d(20))));
+  check('kort gemeld in de samenvatting, indienen op de eerstvolgende sluitingsdatum', Object.values(uit.json.planning)[0].voorbereidingKort === true && taak(R2, /indienen/).due_date === d(20));
+  check('niets in het verleden', takenVan(R2).every((t) => !t.due_date || t.due_date >= V));
 }
 
-sectie('12. Keten: alleen een bestuursvergadering (funder) en doorlopende regeling');
+sectie('12. Keten: alleen een bestuursvergadering of doorlopende regeling -> één actie "contact opnemen"');
 {
   wereld([reg(R3, 'Regeling Vergadering', { behandeltermijn: 'Bestuur vergadert 4x per jaar; exacte vergaderdata niet gepubliceerd.' }, null), reg(R4, 'Regeling Doorlopend', { status: 'Doorlopend', behandeltermijn: 'Max. 4 maanden' }, null)], {
     planning: { regelingen: [{ id: R3, funder_id: 'f-r3', volgende_vergaderdatum: d(90), vergaderfrequentie: '4x per jaar' }], rondes: [], funders: [] },
@@ -285,30 +282,20 @@ sectie('12. Keten: alleen een bestuursvergadering (funder) en doorlopende regeli
   const v = takenVan(R3);
   const dl = takenVan(R4);
 
-  check('vergadering: eerste taak is "Aanvraagmoment en behandeltermijn navragen"', uit.status === 200 && /Aanvraagmoment en behandeltermijn van Regeling Vergadering navragen/.test(v[0].title));
-  check('vergadering: indienen en schrijven hebben GEEN datum, beoordeling volgt de vergadering (bron)', !taak(R3, /indienen/).due_date && !taak(R3, /schrijven/).due_date && taak(R3, /Beoordelings/).due_date === d(90) && taak(R3, /Beoordelings/).datum_herkomst === 'bron');
-  check('vergadering: onderdelen zonder datum zijn niet verzonnen', v.filter((t) => t.planning_fase && t.due_date).every((t) => t.due_date === d(7) || t.due_date === d(90)));
-  check('doorlopend: indienen = eigen streefdatum (aanname) vandaag + 42', taak(R4, /indienen/).due_date === d(42) && taak(R4, /indienen/).datum_herkomst === 'aanname');
-  check('doorlopend met "Max. 4 maanden": besluit = indienen + 120 dagen, geen extra beoordelingsaanname', taak(R4, /Verwachte beslissing/).due_date === d(120, d(42)) && !dl.some((t) => /Beoordelingsmoment .* navragen/.test(t.title)));
+  check('vergadering: één actie, contact opnemen over passendheid, aanvraag en behandeltermijn', uit.status === 200 && v.length === 1 && /^Contact opnemen met Regeling Vergadering over passendheid, aanvraag en behandeltermijn$/.test(v[0].title));
+  check('doorlopend: ook één actie, geen verzonnen indiendatum', dl.length === 1 && /^Contact opnemen met Regeling Doorlopend/.test(dl[0].title));
+  check('de datum is een eigen streefdatum (aanname) over een week', [v[0], dl[0]].every((t) => t.due_date === d(7) && t.datum_herkomst === 'aanname'));
   check('antwoord: modus per regel', Object.values(uit.json.planning).map((x) => x.modus).sort().join() === 'doorlopend,vergadering');
 }
 
-sectie('13. Keten: gewijzigd bedrag (veeleisend) en zonder planningskolommen (migratie D ontbreekt)');
+sectie('13. Keten: zonder planningskolommen (migratie D ontbreekt)');
 {
-  wereld([reg(R1, 'Regeling Vast', {}, d(150))]);
-  await opslaan([r('regeling', R1, 60000)]);
-  check('bedrag ≥ € 50.000: voorbereiding 56 dagen', taak(R1, /Passendheid/).due_date === d(-56, d(150)), taak(R1, /Passendheid/)?.due_date);
-
-  wereld([reg(R1, 'Regeling Vast', {}, d(150))]);
-  await opslaan([r('regeling', R1, 20000)]);
-  check('bedrag € 20.000: voorbereiding 42 dagen', taak(R1, /Passendheid/).due_date === d(-42, d(150)));
-
   wereld([reg(R1, 'Regeling Vast', {}, d(60))], { migratieD: false });
   const uit = await opslaan([r('regeling', R1, 20000)]);
   const t = takenVan(R1);
 
-  check('zonder migratie D: opslaan lukt, atomair, klaar', uit.status === 200 && uit.json.actieplan.status === 'klaar' && uit.json.actieplan.atomair === true && t.length >= 11, JSON.stringify(uit.json?.actieplan));
-  check('zonder migratie D: geen planningskolommen, wel de herkomst in de toelichting', t.every((x) => !('datum_herkomst' in x)) && /Berekend:/.test(taak(R1, /Passendheid/).notes));
+  check('zonder migratie D: opslaan lukt, atomair, klaar', uit.status === 200 && uit.json.actieplan.status === 'klaar' && uit.json.actieplan.atomair === true && t.length === 2, JSON.stringify(uit.json?.actieplan));
+  check('zonder migratie D: geen planningskolommen', t.every((x) => !('datum_herkomst' in x)));
   check('zonder migratie D: opnieuw opslaan maakt niets dubbel', (await opslaan([r('regeling', R1, 20000)])).json.actieplan.aangemaakt === 0 && takenVan(R1).length === t.length);
 }
 
@@ -317,36 +304,34 @@ sectie('14. Keten: planninggegevens onleesbaar of ontbrekend blokkeert niets');
   wereld([reg(R3, 'Regeling Vergadering', {}, null)], { planningFout: true, planning: { regelingen: [{ id: R3, volgende_vergaderdatum: d(90) }], rondes: [], funders: [] } });
   const uit = await opslaan([r('regeling', R3, 10000)]);
 
-  check('planningstabellen onleesbaar: opslaan lukt; zonder vergaderdatum geen vergaderstap', uit.status === 200 && uit.json.actieplan.status === 'klaar' && taak(R3, /Beoordelings/)?.due_date !== d(90) && !taak(R3, /Beoordelings/)?.due_date);
-  check('het plan blijft logisch: begint met navragen', /navragen/.test(takenVan(R3)[0].title));
+  check('planningstabellen onleesbaar: opslaan lukt, één actie contact opnemen', uit.status === 200 && uit.json.actieplan.status === 'klaar' && takenVan(R3).length === 1 && /^Contact opnemen met/.test(takenVan(R3)[0].title));
 }
 
-sectie('15. Keten: gedeeltelijk mislukte taakgeneratie bewaart planning; opnieuw proberen herstelt zonder dubbelen');
+sectie('15. Keten: mislukte taakgeneratie bewaart planning; opnieuw proberen herstelt zonder dubbelen');
 {
   wereld([reg(R1, 'Regeling Vast', {}, d(60))], { dbFout: { actions: { code: 'XX000' } } });
   const eerste = await opslaan([r('regeling', R1, 20000)]);
 
-  check('dekkingsplan bewaard, actieplan mislukt en bewaard voor opnieuw proberen', eerste.json.regels[0].status === 'opgeslagen' && eerste.json.actieplan.status === 'mislukt' && eerste.json.actieplan.bewaard === true && w.wachtrij.length >= 11);
-  check('de wachtrij bewaart de planning per taak', w.wachtrij.filter((x) => x.planning_fase).length >= 11 && w.wachtrij.some((x) => x.datum_herkomst === 'berekend' && x.datum_bron));
+  check('dekkingsplan bewaard, actieplan mislukt en bewaard voor opnieuw proberen', eerste.json.regels[0].status === 'opgeslagen' && eerste.json.actieplan.status === 'mislukt' && eerste.json.actieplan.bewaard === true && w.wachtrij.length === 2);
+  check('de wachtrij bewaart de planning per taak', w.wachtrij.filter((x) => x.planning_fase).length === 2 && w.wachtrij.some((x) => x.datum_herkomst === 'bron' && x.datum_bron));
 
   w.dbFout = null;
   const herstel = await post({ mode: 'voorstel-actieplan-herstel', projectId: PID });
   const t = takenVan(R1);
 
-  check('herstel maakt de taken met planning aan, wachtrij leeg', herstel.json.actieplan.status === 'klaar' && w.wachtrij.length === 0 && t.length >= 11 && t.filter((x) => x.planning_fase).length >= 11 && t.filter((x) => x.planning_fase).every((x) => x.datum_herkomst || !x.due_date), JSON.stringify(herstel.json?.actieplan));
+  check('herstel maakt de taken met planning aan, wachtrij leeg', herstel.json.actieplan.status === 'klaar' && w.wachtrij.length === 0 && t.length === 2 && t.every((x) => x.planning_fase), JSON.stringify(herstel.json?.actieplan));
 
   const nogEens = await post({ mode: 'voorstel-actieplan-herstel', projectId: PID });
 
   check('nog eens herstellen: geen dubbelen', nogEens.json.actieplan.status === 'geen' && takenVan(R1).length === t.length);
 
-  // Zonder migratie D: wachtrij en taken schrijven zonder de planningskolommen.
   wereld([reg(R1, 'Regeling Vast', {}, d(60))], { migratieD: false, dbFout: { actions: { code: 'XX000' } } });
   await opslaan([r('regeling', R1, 20000)]);
-  check('zonder migratie D: wachtrij werkt nog', w.wachtrij.length >= 11 && w.wachtrij.every((x) => !('datum_herkomst' in x)));
+  check('zonder migratie D: wachtrij werkt nog', w.wachtrij.length === 2 && w.wachtrij.every((x) => !('datum_herkomst' in x)));
   w.dbFout = null;
   const h2 = await post({ mode: 'voorstel-actieplan-herstel', projectId: PID });
 
-  check('zonder migratie D: herstel werkt nog', h2.json.actieplan.status === 'klaar' && takenVan(R1).length >= 11);
+  check('zonder migratie D: herstel werkt nog', h2.json.actieplan.status === 'klaar' && takenVan(R1).length === 2);
 }
 
 sectie('16. Herplannen: gewijzigde deadline wordt een voorstel; handmatige wijzigingen blijven');
@@ -359,31 +344,29 @@ sectie('16. Herplannen: gewijzigde deadline wordt een voorstel; handmatige wijzi
   const voor = w.db.actions.map((t) => ({ ...t }));
   const geenWijziging = await herplan();
 
-  check('niets gewijzigd: geen voorstellen, niets geschreven', geenWijziging.status === 200 && geenWijziging.json.wijzigingen.length === 0 && geenWijziging.json.ongewijzigd >= 10);
+  check('niets gewijzigd: geen voorstellen, niets geschreven', geenWijziging.status === 200 && geenWijziging.json.wijzigingen.length === 0 && geenWijziging.json.ongewijzigd === 2);
 
   // De financier verlaat de deadline: 3 weken later.
   w.regelingen[0].deadline_datum = d(81);
-  const eigenBewerkt = taak(R1, /schrijven/);
+  const eigenBewerkt = taak(R1, /Uitslag van/);
 
-  gebruikerWijzigt(eigenBewerkt.id, { due_date: d(30) });
+  gebruikerWijzigt(eigenBewerkt.id, { due_date: d(200) });
 
   const voorstel = await herplan();
   const wz = voorstel.json.wijzigingen;
   const indienenWz = wz.find((x) => /indienen/.test(x.titel));
 
-  check('voorstel: indienen en voorbereiding schuiven mee, schrijft NIETS', voorstel.status === 200 && wz.length >= 6 && indienenWz.oud === d(57) && indienenWz.nieuw === d(78) && voorstel.json.toegepast === false && w.dbSchrijfLog.filter((l) => l.update).length === 0);
-  check('de voorgestelde datum draagt herkomst, bron en nieuwe toelichting', indienenWz.nieuweHerkomst === 'berekend' && /deadline/.test(indienenWz.nieuweBron) && /Externe deadline/.test(indienenWz.toelichting));
+  check('voorstel: indienen schuift mee, schrijft NIETS', voorstel.status === 200 && wz.length === 2 && indienenWz.oud === d(60) && indienenWz.nieuw === d(81) && voorstel.json.toegepast === false && w.dbSchrijfLog.filter((l) => l.update).length === 0);
+  check('de voorgestelde datum draagt herkomst, bron en nieuwe toelichting', indienenWz.nieuweHerkomst === 'bron' && /Uiterste indiendatum/.test(indienenWz.toelichting));
   check('de door het lid aangepaste taak is als handmatig gemarkeerd', wz.find((x) => x.actieId === eigenBewerkt.id)?.handmatig === true && wz.filter((x) => x.actieId !== eigenBewerkt.id).every((x) => x.handmatig === false));
-  check('opvolging schuift ook mee (besluit)', wz.some((x) => /Verwachte beslissing/.test(x.titel)));
   check('samenvatting per financieringsregel in het antwoord', Object.values(voorstel.json.planning)[0].deadline === d(81));
 
-  // Toepassen: alles kiezen, handmatig NIET uitdrukkelijk meegegeven.
   const alle = wz.map((x) => x.actieId);
   const toegepast = await herplan({ toepassen: alle });
   const na = (t) => w.db.actions.find((x) => x.id === t.id);
 
-  check('toepassen: onaangeroerde taken verschuiven, versie omhoog, herkomst bijgewerkt', toegepast.json.aantalToegepast === wz.length - 1 && na(taak(R1, /indienen/)).due_date === d(78) && na(taak(R1, /indienen/)).planning_versie === 2 && na(taak(R1, /indienen/)).datum_herkomst === 'berekend');
-  check('handmatig aangepaste taak is NIET overschreven (ook niet als hij in de lijst staat)', na(eigenBewerkt).due_date === d(30) && toegepast.json.overgeslagenHandmatig === 1 && na(eigenBewerkt).datum_herkomst === 'handmatig');
+  check('toepassen: onaangeroerde taken verschuiven, versie omhoog', toegepast.json.aantalToegepast === wz.length - 1 && na(taak(R1, /indienen/)).due_date === d(81) && na(taak(R1, /indienen/)).planning_versie === 2);
+  check('handmatig aangepaste taak is NIET overschreven', na(eigenBewerkt).due_date === d(200) && toegepast.json.overgeslagenHandmatig === 1 && na(eigenBewerkt).datum_herkomst === 'handmatig');
   check('geen enkele taak is bijgekomen of verdwenen', w.db.actions.length === voor.length);
 
   const nogEens = await herplan();
@@ -394,19 +377,13 @@ sectie('16. Herplannen: gewijzigde deadline wordt een voorstel; handmatige wijzi
 
   check('alleen met uitdrukkelijke keuze wordt ook een handmatige taak aangepast', uitdrukkelijk.json.aantalToegepast === 1 && na(eigenBewerkt).due_date === nogEens.json.wijzigingen[0].nieuw);
 
-  const afgerond = taak(R1, /Passendheid/);
+  const afgerond = taak(R1, /indienen/);
 
   afgerond.status = 'done';
   w.regelingen[0].deadline_datum = d(95);
   const metAfgerond = await herplan();
 
   check('afgeronde taken blijven buiten het voorstel', !metAfgerond.json.wijzigingen.some((x) => x.actieId === afgerond.id) && metAfgerond.json.afgerond >= 1);
-
-  // Deadline vervalt: de datums vervallen, er komt geen verzonnen datum voor in de plaats.
-  w.regelingen[0].deadline_datum = null;
-  const vervallen = await herplan();
-
-  check('deadline weg: voorstel om datums te laten vervallen (geen verzonnen data)', vervallen.json.wijzigingen.some((x) => /indienen/.test(x.titel) && x.nieuw === null && x.reden === 'datum-vervallen'));
 }
 
 sectie('17. Herplannen zonder migratie D: handmatig herkend aan updated_at');
@@ -415,9 +392,9 @@ sectie('17. Herplannen zonder migratie D: handmatig herkend aan updated_at');
   await opslaan([r('regeling', R1, 20000)]);
   w.regelingen[0].deadline_datum = d(81);
 
-  const bewerkt = taak(R1, /schrijven/);
+  const bewerkt = taak(R1, /Uitslag van/);
 
-  gebruikerWijzigt(bewerkt.id, { due_date: d(30) });
+  gebruikerWijzigt(bewerkt.id, { due_date: d(200) });
 
   const v = await herplan();
 
@@ -425,7 +402,7 @@ sectie('17. Herplannen zonder migratie D: handmatig herkend aan updated_at');
 
   const toe = await herplan({ toepassen: v.json.wijzigingen.map((x) => x.actieId) });
 
-  check('zonder D: toepassen werkt (zonder planningskolommen), handmatige blijft', toe.json.aantalToegepast === v.json.wijzigingen.length - 1 && w.db.actions.find((x) => x.id === bewerkt.id).due_date === d(30) && taak(R1, /indienen/).due_date === d(78) && !('planning_versie' in taak(R1, /indienen/)));
+  check('zonder D: toepassen werkt (zonder planningskolommen), handmatige blijft', toe.json.aantalToegepast === v.json.wijzigingen.length - 1 && w.db.actions.find((x) => x.id === bewerkt.id).due_date === d(200) && taak(R1, /indienen/).due_date === d(81) && !('planning_versie' in taak(R1, /indienen/)));
 }
 
 sectie('18. Herplannen: poorten (login, flag, abonnement, project, invoer)');

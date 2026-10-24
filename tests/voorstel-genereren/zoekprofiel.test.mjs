@@ -255,7 +255,7 @@ sectie('8. Financieringsbehoefte onbekend: wel zoeken, zonder bedragen, met uitd
   check('passende financiers uit de database, ALLE zonder bedrag, selecteerbaar', regels.length >= 2 && regels.every((r) => r.bedrag == null && r.selecteerbaar === true && r.herkomst === 'database'), JSON.stringify(regels.map((r) => [r.naam, r.bedrag])));
   check('de melding zegt dat de matching op bedrag beperkt is', /matching op bedrag is beperkt/.test(met.json.melding || ''));
   check('werkwijze meldt bedrag onbekend; geen dekkingsdoel-aanvullen', met.json.werkwijze.bedrag === 'onbekend' && met.json.aanvullenMogelijk === false && met.json.totalen.gat === 0);
-  check('er zijn acties, waaronder het bepalen van het aan te vragen bedrag', (met.json.voorstel.acties || []).length > 0 && (met.json.voorstel.acties || []).some((a) => /bedrag/i.test(a.titel)), JSON.stringify((met.json.voorstel.acties || []).map((a) => a.titel)));
+  check('er zijn acties (slank: indienen, uitslag of contact opnemen)', (met.json.voorstel.acties || []).length > 0 && (met.json.voorstel.acties || []).some((a) => /indienen|Contact opnemen/i.test(a.titel)), JSON.stringify((met.json.voorstel.acties || []).map((a) => a.titel)));
   check('niets opgeslagen door genereren', met.json.opgeslagen === false && w.schrijfpogingen.length === 0);
 
   wereld({ project: projectRij(zonderBegroting), profile: { subscription_tier: 'premium', subscription_active: true, trial_ends_at: null, role: 'user' } });

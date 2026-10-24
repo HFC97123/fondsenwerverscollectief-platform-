@@ -6,6 +6,7 @@ g.window = dom.window; g.document = dom.window.document; g.localStorage = dom.wi
 Object.defineProperty(g, 'navigator', { value: dom.window.navigator, configurable: true });
 g.HTMLElement = dom.window.HTMLElement; g.Event = dom.window.Event; g.MouseEvent = dom.window.MouseEvent;
 g.IS_REACT_ACT_ENVIRONMENT = true;
+g.__SK_BRONINFO = true; // oude flow met broncontrole en bronstatus; de standaard (uit) wordt onderaan apart getest
 
 const React = (await import('react')).default;
 const { act } = await import('react');
@@ -743,7 +744,7 @@ sectie('11. Fouten, hint, documenten, online suggesties');
   await toon(werkruimte(s2));
   await klik(q('[data-testid="voorstel-start-knop"]'));
   await rust(80);
-  check('online suggestie: "niet gecontroleerd", standaard uit, wordt niet gecontroleerd door de browser', !!q('[data-testid="voorstel-online"]') && /nog niet gecontroleerd/.test(q('[data-testid="voorstel-online"]').textContent) && !q('[data-testid="voorstel-suggestie"] input').checked && s2.log.filter(([n]) => n === 'controleer').length === 3);
+  check('online suggestie: "Online gevonden", standaard uit, wordt niet gecontroleerd door de browser', !!q('[data-testid="voorstel-online"]') && /Online gevonden/.test(q('[data-testid="voorstel-online"]').textContent) && !q('[data-testid="voorstel-suggestie"] input').checked && s2.log.filter(([n]) => n === 'controleer').length === 3);
   check('bron-link veilig', /noopener/.test(q('[data-testid="voorstel-online"] a').getAttribute('rel')));
   check('documenten: aantal en uitleg, geen inhoud', /2 geüploade projectdocumenten/.test(q('[data-testid="voorstel-documenten"]').textContent));
   const s3 = maakServer({ gen: genereerAntwoord({ premiumHint: { aantal: 4 } }) });
@@ -839,7 +840,7 @@ sectie('12b. Bespreek met Subsidiekompas per regel, vervolgacties voor online su
   check('opgeslagen: per opgeslagen regel een Bespreek-link met focus op die regel', qa('[data-testid="voorstel-opgeslagen-regel"]').length === 2 && links.length >= 3, String(links.length));
   check('de links wijzen naar de chat met project en de eigen fundingId (geen gedeelde link)', new Set(hrefs).size === hrefs.length && hrefs.every((h) => /kompas\?project=/.test(h) && /focus=/.test(h)), hrefs.join(' | '));
   check('ook de online suggestie heeft een Bespreek-link', !!q('[data-testid="voorstel-opgeslagen-suggestie"] [data-testid="bespreek-link"]') || hrefs.some((h) => h.includes(fid('online:Online BV - Fonds X'))), hrefs.join(' | '));
-  check('online suggestie: onzekere status en beoordelingsroute blijven zichtbaar', /niet gecontroleerd/i.test(q('[data-testid="voorstel-opgeslagen"]').textContent) && /beoordelen of het past/.test(q('[data-testid="voorstel-opgeslagen"]').textContent));
+  check('online suggestie: staat op de lijst, met de actie contact opnemen', /op uw lijst gezet/.test(q('[data-testid="voorstel-opgeslagen"]').textContent) && /contact opnemen met het fonds/.test(q('[data-testid="voorstel-opgeslagen"]').textContent));
   const eerste = opslagCalls(s)[0];
   check('suggestie gaat zonder bedrag mee in het opslagverzoek', Array.isArray(eerste.suggesties) && eerste.suggesties.length === 1 && eerste.suggesties[0].gever === 'Online BV' && eerste.suggesties[0].bedrag == null);
   check('actieplan deels (taken van de regels mislukten) maar de suggestie-stappen staan er', s.taken.size === 3 && [...s.taken.keys()].every((k) => k.startsWith('online:')));
@@ -1228,5 +1229,16 @@ sectie('Direct opslaan: Subsidie Kompas zet het advies meteen in het dekkingspla
 }
 
 console.error = origError;
+sectie('Standaard (opdracht 24-10-2026): geen broncontrole en geen controle-informatie in beeld');
+{
+  g.__SK_BRONINFO = false;
+
+  const model = { regels: [{ sleutel: 'a', selecteerbaar: true }, { sleutel: 'b', selecteerbaar: false }] };
+
+  check('standaard worden er geen bronnen gecontroleerd', W.teControleren(model).length === 0 && Object.keys(W.beginControles(model)).length === 0);
+  g.__SK_BRONINFO = true;
+  check('met de testvlag aan gedraagt de oude flow zich nog zoals voorheen', W.teControleren(model).length === 1);
+}
+
 console.log(`\n${stand.ok} geslaagd, ${stand.fout} mislukt`);
 process.exit(stand.fout ? 1 : 0);

@@ -371,20 +371,10 @@ export function beoordeelProject({ project, antwoorden, documentBedragen } = {})
 // 2. Terugplannen van acties vanaf een geverifieerde fondsdeadline
 // ---------------------------------------------------------------------------
 
-// Standaardstappen per financier. Alleen gebruikt als vangnet en voor verificatietaken; het taalmodel mag zelf inhoudelijke
-// acties voorstellen (valideerVoorstel corrigeert de datums). Offsets in dagen vóór de externe deadline.
-const STAPPEN = [
-  { soort: 'voorwaarden', titel: (n) => `Voorwaarden van ${n} controleren`, offset: 28, prioriteit: 'high' },
-  { soort: 'vooroverleg', titel: (n) => `Vooroverleg met ${n} plannen`, offset: 24, prioriteit: 'normal' },
-  { soort: 'stukken', titel: () => 'Projectstukken verzamelen (begroting, plan, statuten)', offset: 21, prioriteit: 'normal' },
-  { soort: 'voorbereiden', titel: (n) => `Aanvraag bij ${n} voorbereiden`, offset: 14, prioriteit: 'high' },
-  { soort: 'indienen', titel: (n) => `Aanvraag bij ${n} indienen`, offset: 3, prioriteit: 'high' },
-];
-
 // Eerste stap van elk plan zonder betrouwbare deadline. Eén vaste titel, zodat de planningsmotor, dit vangnet en het ontdubbelen dezelfde
 // stap herkennen.
 export function navragenTitel(naam) {
-  return `Aanvraagmoment en behandeltermijn van ${naam} navragen`.slice(0, MAX.titel);
+  return `Contact opnemen met ${naam} over passendheid, aanvraag en behandeltermijn`.slice(0, MAX.titel);
 }
 
 // Herkomst van een actiedatum: uit de bron, berekend uit een bekende deadline of termijn, of een voorlopige planningsaanname.
@@ -402,11 +392,11 @@ export function verificatieActie(regel, vandaag) {
     datumType: DATUM_TYPE.STREEF,
     externeDeadline: null,
     prioriteit: 'high',
-    toelichting: 'Er is geen betrouwbare aanvraagdeadline bekend. Vraag het aanvraagmoment en de behandeltermijn na bij de financier of lees ze op de website na. Voorlopige planningsaanname, geen datum van de financier: eigen streefdatum. U kunt de datum aanpassen.',
+    toelichting: 'Er is nog geen indiendatum bekend. Vraag na of uw project past, wanneer u kunt aanvragen en hoe lang de behandeling duurt.',
     automatisch: true,
     fase: 'navragen',
     datumHerkomst: 'aanname',
-    datumBron: 'eigen streefdatum om dit nu uit te zoeken',
+    datumBron: 'eigen streefdatum',
     datumControle: null,
   };
 }
@@ -420,24 +410,39 @@ export function plantTerug(regel, vandaag) {
     return [verificatieActie(regel, vandaag)];
   }
 
-  return STAPPEN.map((s) => {
-    let datum = voegDagenToe(deadline, -s.offset);
-
-    if (datum < vandaag) datum = vandaag;
-    if (datum > deadline) datum = deadline;
-
-    return {
-      titel: s.titel(regel.naam).slice(0, MAX.titel),
+  // Slank: alleen indienen op de sluitingsdatum en de uitslag, ongeveer 3 maanden later. Geen losse voorbereidingsstappen.
+  return [
+    {
+      titel: `Aanvraag bij ${regel.naam} indienen`.slice(0, MAX.titel),
       regelSleutel: regel.sleutel,
       financier: regel.naam,
-      datum,
+      datum: deadline < vandaag ? vandaag : deadline,
       datumType: DATUM_TYPE.STREEF,
       externeDeadline: deadline,
-      prioriteit: s.prioriteit,
-      toelichting: s.soort === 'indienen' ? `Externe deadline van de financier: ${deadline}.` : '',
+      prioriteit: 'high',
+      toelichting: `Uiterste indiendatum: ${deadline}.`,
       automatisch: true,
-    };
-  });
+      fase: 'indienen',
+      datumHerkomst: 'bron',
+      datumBron: 'sluitingsdatum van de financier',
+      datumControle: null,
+    },
+    {
+      titel: `Uitslag van ${regel.naam} verwacht`.slice(0, MAX.titel),
+      regelSleutel: regel.sleutel,
+      financier: regel.naam,
+      datum: voegDagenToe(deadline < vandaag ? vandaag : deadline, 91),
+      datumType: DATUM_TYPE.STREEF,
+      externeDeadline: null,
+      prioriteit: 'normal',
+      toelichting: 'Binnen ongeveer 3 maanden na indienen.',
+      automatisch: true,
+      fase: 'besluit',
+      datumHerkomst: 'aanname',
+      datumBron: 'ongeveer 3 maanden na indienen',
+      datumControle: null,
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ export const STAPPEN = [
   { id: 'overzicht', nr: '★', label: 'Overzicht' },
   { id: 'fondsen', nr: '1', label: 'Fondsmatching' },
   { id: 'begroting', nr: '2', label: 'Begroting' },
-  { id: 'deadlines', nr: '3', label: 'Deadlines' },
+  { id: 'deadlines', nr: '3', label: 'Actieplan' },
   { id: 'indienen', nr: '4', label: 'Indienen' },
 ];
 

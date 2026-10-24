@@ -214,9 +214,9 @@ export default function DeadlinesPage() {
   const tier = app.subscriptionTier || 'free';
   const premium = tier === 'premium';
   const paid = tier === 'pro' || premium;
-  // Pro/Premium: twee segmenten. Mijn deadlines (standaard) toont de deadlines uit de eigen projectfinanciering,
+  // Pro/Premium: drie segmenten. Actieplan (standaard) bundelt alle acties; Deadlines toont de deadlines uit de eigen projectfinanciering,
   // Alle regelingen is het bestaande marktoverzicht. Free ziet alleen het marktoverzicht, ongewijzigd.
-  const [segment, setSegment] = useState('mijn');
+  const [segment, setSegment] = useState(paid ? 'actieplan' : 'alle');
 
   const [supaRows, setSupaRows] = useState([]);
   // Funder-brede datamomenten (geen regelingkoppeling) — aparte feed, eigen
@@ -636,17 +636,19 @@ export default function DeadlinesPage() {
       <style>{CSS_DEADLINES}</style>
       <div className="fwk-wp-pagina" style={css('min-height: 0;')}>
         <div className="fwk-dl-kop">
-          <span className="fwk-dl-eyebrow">Deadlines</span>
+          <span className="fwk-dl-eyebrow">{paid ? 'Actieplan' : 'Deadlines'}</span>
           <PaginaKop
-            titel="Actuele subsidieregelingen en deadlines"
+            titel={paid ? 'Actieplan' : 'Actuele subsidieregelingen en deadlines'}
             meta={
-              <>
-                <FundingDatabaseCount /> fondsen en regelingen in de database
-              </>
+              paid ? null : (
+                <>
+                  <FundingDatabaseCount /> fondsen en regelingen in de database
+                </>
+              )
             }
             help={
               <>
-                {paid && <p>Mijn deadlines toont de deadlines uit de dekkingsplannen van uw projecten. Actieplan bundelt de acties per project.</p>}
+                {paid && <p>Actieplan toont alle acties van uw fondsen en projecten door elkaar; kies bovenaan een project of fonds om te filteren. Deadlines toont de sluitingsdatums.</p>}
                 <p>
                   {paid ? 'Alle regelingen' : 'Dit'} is het volledige overzicht van regelingen en fondsen die nu open zijn, binnenkort openen of doorlopend aan te
                   vragen zijn. Klik op een regeling voor de details{paid ? ' en om hem in een project op te nemen' : ''}.
@@ -662,8 +664,8 @@ export default function DeadlinesPage() {
           <div data-testid="deadlines-segmenten">
             <Tabs
               tabs={[
-                { id: 'mijn', label: 'Mijn deadlines' },
                 { id: 'actieplan', label: 'Actieplan' },
+                { id: 'mijn', label: 'Deadlines' },
                 { id: 'alle', label: 'Alle regelingen' },
               ]}
               actief={segment}

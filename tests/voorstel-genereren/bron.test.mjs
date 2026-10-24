@@ -242,11 +242,9 @@ sectie('6. Actieplan: concrete stappen, ontbrekende informatie, herstel zonder d
   const uit = await opslaan([r('regeling', A1, 30000), r('regeling', A3, 20000)]);
   const taken = w.db.actions;
   const van = (id) => taken.filter((t) => t.funding_id === w.db.funding.find((f) => f.scheme_id === id).id);
-  check('elke opgeslagen regel heeft eigen vervolgstappen, gekoppeld aan de regel', van(A1).length >= 4 && van(A3).length >= 4 && van(A1).every((t) => t.source === 'chat'));
-  const voorIndienen = (t) => !/Ontvangstbevestiging|Aanvullende vragen|Beoordelings|Verwachte beslissing|Vervolgstappen/.test(t.title);
+  check('elke opgeslagen regel heeft eigen vervolgstappen, gekoppeld aan de regel', van(A1).length === 2 && van(A3).length === 2 && van(A1).every((t) => t.source === 'chat'));
+  const voorIndienen = (t) => !/Uitslag van/.test(t.title);
   check('voorbereidende taken komen uit de database en liggen nooit na de deadline van de financier', van(A1).filter(voorIndienen).every((t) => t.due_date && t.due_date <= '2026-12-15') && van(A3).filter(voorIndienen).every((t) => !t.due_date || t.due_date <= '2026-12-15'));
-  const eerste = (id) => van(id).find((t) => /Passendheid|navragen/.test(t.title));
-  check('ongecontroleerde bron wordt in de eerste taak vermeld als nog niet vastgesteld', /Nog niet vastgesteld:.*bron is nog niet gecontroleerd/.test(eerste(A3).notes || ''), eerste(A3)?.notes);
   check('gecontroleerde bron met bekende deadline en grenzen: geen "nog niet vastgesteld"', !/Nog niet vastgesteld/.test(van(A1).map((t) => t.notes || '').join(' ')));
   check('actieplan klaar', uit.json.actieplan.status === 'klaar' && uit.json.actieplan.aangemaakt === taken.length);
 
@@ -254,8 +252,8 @@ sectie('6. Actieplan: concrete stappen, ontbrekende informatie, herstel zonder d
   const zonderDl = regeling({ naam: 'Landelijk Muziekpodium', gever: 'Landelijk Podium', min: 1000, max: 25000, regios: ['Landelijk'], id: A3, deadline: null });
   wereld({ regelingen: [zonderDl] });
   await opslaan([r('regeling', A3, 10000)]);
-  const t3 = w.db.actions.find((t) => /Aanvraagmoment en behandeltermijn/.test(t.title));
-  check('geen geverifieerde deadline: verificatietaak, met vermelding van wat ontbreekt', Boolean(t3) && /deadline is niet geverifieerd/.test(t3.notes));
+  const t3 = w.db.actions.find((t) => /Contact opnemen met/.test(t.title));
+  check('geen geverifieerde deadline: contactactie, met uitleg dat er geen indiendatum bekend is', Boolean(t3) && /geen indiendatum bekend/.test(t3.notes));
 }
 {
   // Gedeeltelijk mislukt: dekkingsplan blijft, alleen het actieplan kan opnieuw, zonder dubbelen.
@@ -319,7 +317,7 @@ sectie('7. Startpunt vanuit de chat: dezelfde preview, validatie en opslag');
   const met = await opslaan([r('regeling', A1, 10000)]);
   check('zonder begroting: een bedrag opslaan wordt geweigerd', met.status === 422 && met.json.algemeen?.code === 'geen-begroting' && w.db.funding.length === 0);
   const zonder = await opslaan([r('regeling', A1, null)]);
-  check('zonder begroting: opslaan zonder bedrag lukt, met taken voor die regel', zonder.status === 200 && zonder.json.regels[0].status === 'opgeslagen' && w.db.funding[0].requested_amount === null && w.db.actions.length >= 4);
+  check('zonder begroting: opslaan zonder bedrag lukt, met taken voor die regel', zonder.status === 200 && zonder.json.regels[0].status === 'opgeslagen' && w.db.funding[0].requested_amount === null && w.db.actions.length >= 1);
 }
 {
   // Beide ingangen bereiken dezelfde opslag: een regel uit de chat en een regel uit de projectroute eindigen in dezelfde tabellen met dezelfde regels.

@@ -12,6 +12,7 @@ import { Blok, HelpKnop, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { ActieplanVoorProject } from '../financiering/ActieplanBlok.jsx';
 import VoorstelWerkruimte from '../financiering/VoorstelWerkruimte.jsx';
 import { bronVoorRegel, datumTekst } from '../financiering/bronStatus.js';
+import { toonBroninfo } from '../financiering/VoorstelPreview.jsx';
 import { leesBronControles } from '../../../data/services/voorstelGenereren.js';
 import FinancierFormulier from '../financiering/FinancierFormulier.jsx';
 import FinancieringsRegel from '../financiering/FinancieringsRegel.jsx';
@@ -185,7 +186,7 @@ function RegelInfo({ regel, bron, details, kans, heeftBron }) {
           <span style={css('color: #9AA6A2;')}>Geen website bekend</span>
         )}
         {/* De bronstatus is los van de financieringsstatus: gecontroleerd betekent alleen dat de bron is gecontroleerd, niet dat er is toegekend. */}
-        {bron && (
+        {toonBroninfo() && bron && (
           <div data-testid="pf-regel-bron" data-bron-status={bron.status} title={bron.uitleg} style={css(`margin-top: 4px; font-size: 12.5px; font-weight: 700; color: ${{ gecontroleerd: '#2F7A4D', onzeker: '#8A5A16', mislukt: '#A3382B' }[bron.status] || '#5D6B67'};`)}>
             Bron: {bron.label}
             {bron.gecontroleerdOp && bron.status === 'gecontroleerd' ? ` op ${datumTekst(bron.gecontroleerdOp)}` : ''}
@@ -259,7 +260,7 @@ function Regel({ regel, bron = null, details = null, kans = null, nieuw = false,
     deadlineKort ? `deadline ${deadlineKort}` : null,
     heeftBron ? soort : null,
     heeftBron && regel.funder && regel.bronType !== 'fonds' && regel.bronType !== 'financier' ? regel.funder : null,
-    bron ? `Bron: ${bron.label}` : null,
+    toonBroninfo() && bron ? `Bron: ${bron.label}` : null,
   ]
     .filter(Boolean)
     .join(' · ');

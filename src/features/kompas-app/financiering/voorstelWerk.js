@@ -105,7 +105,9 @@ export async function controleerRegel({ projectId, regel, diensten, opnieuw = fa
 }
 
 // Wie moet gecontroleerd worden: elke regel die nog niet in het dekkingsplan staat.
-export const teControleren = (model) => model.regels.filter((r) => r.selecteerbaar);
+// Opdracht Aisya (24-10-2026): geen extra broncontrole-aanroepen meer; onze gegevens gelden. Zet globalThis.__SK_BRONINFO = true om ze terug te krijgen (gebruikt door de tests).
+export const bronControleAan = () => globalThis.__SK_BRONINFO === true;
+export const teControleren = (model) => (bronControleAan() ? model.regels.filter((r) => r.selecteerbaar) : []);
 
 // De begintoestand: alles wat gecontroleerd moet worden staat op "Controleren…".
 export function beginControles(model) {
