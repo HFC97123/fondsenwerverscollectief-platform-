@@ -92,10 +92,14 @@ let s;
   await klik($$('[data-testid="bg-suggestie"]').find((b) => /Projectleider/.test(b.textContent)));
   const regel = regelMet('Projectleider');
   check('suggestie kiezen geeft één schone regel: omschrijving en bedragveld, geen kolommen', !!regel && $('[data-testid="bg-bedrag"]', regel).value === '' && !$('[data-testid="bg-detail"]', regel) && !$('[data-testid="bg-suggesties-uitvoering"]') && !!$('[data-testid="bg-plus-uitvoering"]'));
+  check('de plusknop is alleen een + (met een toegankelijke naam) en de kopjes staan boven de regels', $('[data-testid="bg-plus-uitvoering"]').textContent.trim() === '+' && $('[data-testid="bg-plus-uitvoering"]').getAttribute('aria-label') === 'Regel toevoegen' && !!($('[data-testid="bg-kopjes"]').compareDocumentPosition($('[data-testid="bg-regel"]')) & 4));
+  check('na een suggestie staat de cursor meteen in het bedragveld', document.activeElement === $('[data-testid="bg-bedrag"]', regel));
+  await act(async () => { $('[data-testid="bg-bedrag"]', regel).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+  check('Enter in het bedrag opent de suggesties voor de volgende regel van hetzelfde kopje', !!$('[data-testid="bg-suggesties-uitvoering"]'));
+  check('de keuzes onder een kopje heten + Zelf invullen en boven staat Kies een hoofdkop met een kale + voor een eigen kopje', /\+ Zelf invullen/.test($('[data-testid="bg-eigen-regel"]').textContent) && /Kies een hoofdkop/.test($('[data-testid="bg-kopjes"]').textContent) && $('[data-testid="bg-kopje-eigen"]').textContent.trim() === '+');
   check('Opslaan verschijnt zodra er iets staat', !!knop('Begroting opslaan') && !!$('[data-testid="bg-niet-opgeslagen"]'));
 
-  check('de plusknop is alleen een + (met een toegankelijke naam) en de kopjes staan boven de regels', $('[data-testid="bg-plus-uitvoering"]').textContent.trim() === '+' && $('[data-testid="bg-plus-uitvoering"]').getAttribute('aria-label') === 'Regel toevoegen' && !!($('[data-testid="bg-kopjes"]').compareDocumentPosition($('[data-testid="bg-regel"]')) & 4));
-  await klik($('[data-testid="bg-plus-uitvoering"]'));
+  if ($('[data-testid="bg-plus-uitvoering"]')) await klik($('[data-testid="bg-plus-uitvoering"]'));
   check('+ Regel opent de suggesties weer, zonder de al gebruikte', !$$('[data-testid="bg-suggestie"]').some((b) => /Projectleider/.test(b.textContent)) && !!$('[data-testid="bg-eigen-regel"]'));
   await klik($('[data-testid="bg-eigen-regel"]'));
   check('eigen regel: lege regel met de cursor erin', document.activeElement && document.activeElement.getAttribute('data-testid') === 'bg-omschrijving' && document.activeElement.value === '');

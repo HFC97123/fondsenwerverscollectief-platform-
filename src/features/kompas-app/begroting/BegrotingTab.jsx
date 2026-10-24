@@ -33,7 +33,10 @@ function BegrotingStijl() {
 .fwk-bg-sec[data-over="na"] { box-shadow: 0 3px 0 0 ${color.groen}; }
 .fwk-bg-sec[data-sleep="ja"] { opacity: 0.5; }
 .fwk-bg-sec[data-doel="ja"] { box-shadow: inset 0 0 0 2px ${color.groen}; border-radius: 12px; }
-.fwk-bg-kophoofd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 14px 0 8px; }
+.fwk-bg-sec { margin: 0 0 22px; }
+.fwk-bg-kophoofd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: #E8F0EC; border-left: 4px solid ${color.groen}; }
+.fwk-bg-kophoofd h3 { font-size: 17px; }
+.fwk-bg-sec[data-kop="ja"] > .fwk-bg-blok, .fwk-bg-sec[data-kop="ja"] > .fwk-bg-lijn, .fwk-bg-sec[data-kop="ja"] > .fwk-bg-chips { margin-left: 14px; padding-left: 12px; border-left: 2px solid #D5E3DB; }
 .fwk-bg-kopkant { display: flex; align-items: center; gap: 4px; min-width: 0; position: relative; }
 .fwk-bg-schuif { display: inline-flex; gap: 2px; opacity: 0; transition: opacity .15s; }
 .fwk-bg-kophoofd:hover .fwk-bg-schuif, .fwk-bg-kophoofd:focus-within .fwk-bg-schuif { opacity: 1; }
@@ -53,6 +56,9 @@ function BegrotingStijl() {
 .fwk-bg-balk-leg { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 10px; font-size: 14px; color: ${color.tekst}; }
 .fwk-bg-balk-leg span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .fwk-bg-balk-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #CFDDD5; }
+.fwk-bg-kopjesbalk { position: sticky; top: 8px; z-index: 6; margin: 6px 0 10px; padding: 8px 0 4px; background: ${color.wit}; }
+.fwk-bg-kopjes-label { margin-bottom: 6px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.04em; color: ${color.tekstLicht}; }
+.fwk-bg-chip-plus { padding-left: 14px; padding-right: 14px; font-size: 16px; line-height: 1; }
 .fwk-bg-bedragcel { position: relative; min-width: 0; }
 .fwk-bg-stip { position: absolute; z-index: 2; left: 2px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; border-radius: 999px; }
 .fwk-bg-stip::before { content: ''; position: absolute; left: 6px; top: 6px; width: 8px; height: 8px; border-radius: 999px; background: #7C9BB0; }
@@ -228,7 +234,7 @@ function BedragCel({ herkomst, children }) {
   );
 }
 
-function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEinde, onSleepOver, onDrop, onSchuif, kanOmhoog, kanOmlaag }) {
+function Regel({ r, focus, onVolgende, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEinde, onSleepOver, onDrop, onSchuif, kanOmhoog, kanOmlaag }) {
   const b = regelBedrag(r);
   const berekend = b.bron === 'berekend';
   const herkomst = regelHerkomst(r);
@@ -240,14 +246,14 @@ function Regel({ r, focus, sleep, over, onWijzig, onWeg, onSleepStart, onSleepEi
         <span className="fwk-bg-greep" data-testid="bg-greep" draggable aria-hidden="true" title="Verslepen" onDragStart={onSleepStart} onDragEnd={onSleepEinde}>
           ⠿
         </span>
-        <input className="fwk-bg-veld" aria-label="Omschrijving" data-testid="bg-omschrijving" value={r.omschrijving} maxLength={200} autoFocus={focus} onChange={(e) => onWijzig({ omschrijving: e.target.value })} placeholder="Omschrijving" />
+        <input className="fwk-bg-veld" aria-label="Omschrijving" data-testid="bg-omschrijving" value={r.omschrijving} maxLength={200} autoFocus={focus === 'omschrijving'} onChange={(e) => onWijzig({ omschrijving: e.target.value })} placeholder="Omschrijving" />
         <BedragCel herkomst={herkomst}>
           {berekend ? (
             <div className="fwk-bg-sub" data-testid="bg-bedrag-berekend">
               {euro(b.bedrag)}
             </div>
           ) : (
-            <input className="fwk-bg-veld" aria-label="Bedrag in euro" data-testid="bg-bedrag" inputMode="decimal" value={r.bedrag} onChange={(e) => onWijzig({ bedrag: e.target.value })} placeholder="€" style={css('text-align: right;')} />
+            <input className="fwk-bg-veld" aria-label="Bedrag in euro" data-testid="bg-bedrag" inputMode="decimal" value={r.bedrag} autoFocus={focus === 'bedrag'} onChange={(e) => onWijzig({ bedrag: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter' && onVolgende) onVolgende(); }} placeholder="€" style={css('text-align: right;')} />
           )}
         </BedragCel>
         <div className="fwk-bg-acties">
@@ -314,6 +320,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const [eigenOpen, setEigenOpen] = useState(false); // het lid bedenkt zelf een kopje
   const [eigenNaam, setEigenNaam] = useState('');
   const [focusId, setFocusId] = useState('');
+  const [focusVeld, setFocusVeld] = useState('omschrijving'); // welk veld van de nieuwe regel de cursor krijgt: bij een suggestie meteen het bedrag
   const [fout, setFout] = useState('');
   const [melding, setMelding] = useState('');
   const [bezig, setBezig] = useState(false);
@@ -390,7 +397,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     const n = nieuweRegel(categorie, basisRegel);
 
     setRegels((cur) => [...cur, n]);
-    setFocusId(basisRegel.omschrijving ? '' : n.id);
+    setFocusId(n.id);
+    setFocusVeld(basisRegel.omschrijving ? 'bedrag' : 'omschrijving');
     setPlusOpen(null);
     setMelding('');
   };
@@ -402,6 +410,15 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setExtra((cur) => (cur.includes(id) ? cur : [...cur, id]));
     setEigenOpen(false);
     setPlusOpen(id);
+
+    // Het nieuwe kopje komt onderaan: breng het in beeld, zodat het lid meteen verder kan.
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-testid="bg-kopje-${kopjeSlug(id)}"]`);
+
+        if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
   };
   const voegEigenKopjeToe = () => {
     const gekozen = eigenKopjeSleutel(eigenNaam);
@@ -785,7 +802,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
           </Melding>
         )}
 
-        <div style={css('margin: 6px 0 4px;')} data-testid="bg-kopjes">
+        <div className="fwk-bg-kopjesbalk" data-testid="bg-kopjes">
+          <div className="fwk-bg-kopjes-label">Kies een hoofdkop</div>
           <div className="fwk-bg-chips">
             {nietZichtbaar.map((c) => (
               <Toelichting key={c.id} kopje={c} knop={false}>
@@ -799,8 +817,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 </span>
               </Toelichting>
             ))}
-            <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-eigen" onClick={() => setEigenOpen(true)}>
-              + Eigen kopje
+            <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-kopje-eigen" aria-label="Eigen kopje toevoegen" title="Eigen kopje toevoegen" onClick={() => setEigenOpen(true)}>
+              +
             </button>
             {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
               <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-geen" onClick={() => voegToe(GEEN_KOPJE)}>
@@ -845,13 +863,14 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
             <section
               key={c.id}
               className="fwk-bg-sec"
+              data-kop={c.id !== GEEN_KOPJE ? 'ja' : undefined}
               data-testid={`bg-kopje-${slug}`}
               data-sleep={drag && drag.soort === 'kopje' && drag.id === c.id ? 'ja' : undefined}
               data-over={kopOver}
               data-doel={isDoel ? 'ja' : undefined}
               onDragOver={kopjeOver(c)}
               onDrop={kopjeDrop(c)}
-              style={css('margin: 0 0 16px;')}
+              style={css('margin: 0 0 22px;')}
             >
               {c.id !== GEEN_KOPJE && (
                 <div className="fwk-bg-kophoofd">
@@ -892,7 +911,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 <Regel
                   key={r.id}
                   r={r}
-                  focus={focusId === r.id}
+                  focus={focusId === r.id ? focusVeld : ''}
+                  onVolgende={() => (c.id === GEEN_KOPJE ? voegToe(GEEN_KOPJE) : setPlusOpen(c.id))}
                   sleep={!!drag && drag.soort === 'regel' && drag.id === r.id}
                   over={over && over.soort === 'regel' && over.id === r.id ? over.plek : undefined}
                   onWijzig={(w) => wijzig(r.id, w)}
@@ -917,7 +937,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                       </button>
                     ))}
                   <button type="button" className="fwk-bg-chip" data-testid="bg-eigen-regel" onClick={() => voegToe(c.id)}>
-                    Eigen regel
+                    + Zelf invullen
                   </button>
                 </div>
               ) : (
