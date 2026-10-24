@@ -1,6 +1,6 @@
 // Hoofdnavigatie van de Pro/Premium-werkruimte van Subsidie Kompas:
 //
-//   Dashboard · Chat · Subsidieadvies · Mijn Subsidie Kompas          Mijn Subsidie Kompas ▾
+//   Dashboard · Chat · Subsidieadvies                                  Mijn Subsidie Kompas ▾
 //
 // Eén balk voor het hele werkgebied. De Free-ervaring en de publieke
 // Kompas-pagina's houden de bestaande KompasSubnav (zie KompasApp.jsx en
@@ -21,7 +21,6 @@ export const WERKNAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', href: '#/kompas/dashboard', paden: ['/kompas/dashboard'] },
   { key: 'chat', label: 'Chat', href: '#/kompas', paden: ['/kompas', '/subsidie-kompas'] },
   { key: 'advies', label: 'Subsidieadvies', href: '#/kompas/advies', paden: ADVIES_PADEN },
-  { key: 'mijn', label: 'Mijn Subsidie Kompas', href: '#/kompas/projecten', paden: MIJN_PADEN },
 ];
 
 // Welk hoofditem hoort bij deze route? (Organisatie en Account horen bij het
@@ -33,7 +32,7 @@ export function actieveSleutel(pad) {
 }
 
 export function isOrganisatieMenuPad(pad) {
-  return pad === '/kompas/account';
+  return pad === '/kompas/account' || MIJN_PADEN.indexOf(pad) !== -1;
 }
 
 const TIER_LABEL = { free: 'Free', pro: 'Pro', premium: 'Premium' };
@@ -192,6 +191,7 @@ export default function KompasWerkNav({ pad }) {
               <div style={css("padding: 8px 14px 10px; border-bottom: 1px solid #E9EFEB; margin-bottom: 6px; font-family: 'Mulish', sans-serif; font-size: 12.5px; font-weight: 700; color: #7B8985;")}>
                 {app.naam || 'Mijn account'} · {tierLabel}
               </div>
+              <a href="#/kompas/projecten" style={menuItemStijl}>Projecten</a>
               <a href="#/kompas/organisatie" style={menuItemStijl}>
                 Organisatie
                 {orgNaam !== 'Organisatie' && <span style={css('display: block; font-size: 12.5px; font-weight: 600; color: #7B8985; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;')}>{orgNaam}</span>}

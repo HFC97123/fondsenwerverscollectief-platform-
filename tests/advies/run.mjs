@@ -54,7 +54,7 @@ check('deeplinks: projectfinanciering staat bij de fondsmatching; ongeldig id va
 // hoofdnavigatie en routes (bron)
 const nav = src('src/features/kompas-app/KompasWerkNav.jsx');
 const volgorde = [...nav.matchAll(/\{ key: '([a-z]+)', label: '([^']+)'/g)].map((m) => m[2]);
-check('hoofdnavigatie: Dashboard, Chat, Subsidieadvies, Mijn Subsidie Kompas (rechts)', volgorde.join('|') === 'Dashboard|Chat|Subsidieadvies|Mijn Subsidie Kompas', volgorde.join('|'));
+check('hoofdnavigatie: Dashboard, Chat, Subsidieadvies (Mijn Subsidie Kompas staat alleen rechtsboven, met Projecten in het menu)', volgorde.join('|') === 'Dashboard|Chat|Subsidieadvies' && nav.includes('href="#/kompas/projecten"'), volgorde.join('|'));
 check('Deadlines en Documenten zijn geen eigen hoofditems meer maar horen bij Subsidieadvies', L.ADVIES_PADEN.includes('/kompas/deadlines') && L.ADVIES_PADEN.includes('/kompas/documentatie') && !/label: 'Deadlines'|label: 'Documenten'/.test(nav));
 check('Organisatie staat onder Mijn Subsidie Kompas, niet meer in het accountmenu', /MIJN_PADEN = \['\/kompas\/projecten', '\/kompas\/organisatie'\]/.test(nav) && !/>Organisatieprofiel</.test(nav));
 check('route /kompas/advies bestaat (lid)', /pad: '\/kompas\/advies', area: AREA\.app, titel: 'Subsidieadvies', toegang: 'lid'/.test(src('src/app/routes.js')));
