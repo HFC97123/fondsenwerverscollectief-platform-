@@ -81,7 +81,7 @@ sectie('1. Leeg beginnen: alleen kopjes om uit te kiezen');
 let s;
 {
   s = await toon(BASIS);
-  check('helemaal leeg: geen regels, geen opslaan, geen Excel, totaal 0', $$('[data-testid="bg-regel"]').length === 0 && !knop('Begroting opslaan') && /Totaal € 0/.test($('[data-testid="bg-totaal"]').textContent));
+  check('helemaal leeg: geen regels, geen opslaan, geen Excel, nog geen totaal', $$('[data-testid="bg-regel"]').length === 0 && !knop('Begroting opslaan') && !$('[data-testid="bg-totaal"]'));
   check('de vier vaste kopjes staan klaar om te kiezen, plus eigen kopje en zonder kopje', ['uitvoering', 'activa', 'communicatie', 'organisatie'].every((k) => $(`[data-testid="bg-kopje-kies-${k}"]`)) && !!$('[data-testid="bg-kopje-eigen"]') && !!$('[data-testid="bg-kopje-geen"]'));
   check('dekkingsplan zegt: vul eerst de begroting in', /Vul eerst de begroting in/.test(tekst()));
 
@@ -153,13 +153,18 @@ sectie('4. Dekkingsplan: toegekend, uitstaand, in planning, totaal, nog te dekke
   check('begint met Toegekend: eigen bijdrage, dan het toegekende fonds met het toegekende bedrag', /Toegekend\s*Eigen bijdrage\s*€ 2\.000\s*Fonds Toegekend\s*€ 7\.000/.test(d));
   check('dan Uitstaand met het aangevraagde fonds', /Uitstaand\s*Fonds Uitstaand\s*€ 5\.000/.test(d));
   check('dan In planning, en een fonds zonder bedrag zegt "bedrag volgt"', /In planning\s*Fonds Gepland\s*€ 3\.000/.test(d) && /Fonds Zonder Bedrag\s*bedrag volgt/.test(d) && /Bij 1 financier in planning staat nog geen bedrag/.test(d));
-  check('onderaan: Totaal en daaronder Nog te dekken', d.search(/Totaal\s*€/) > d.indexOf('In planning') && d.indexOf('Nog te dekken') > d.search(/Totaal\s*€/));
-  check('totaal 17.000 = 2.000 + 7.000 + 5.000 + 3.000; nog te dekken € 0; sluitend met het meerdere genoemd', /€ 17\.000/.test($('[data-testid="bg-dek-totaal"]').textContent) && /€ 0/.test($('[data-testid="bg-nog-te-plannen"]').textContent) && /meer dan de begroting/.test($('[data-testid="bg-sluit"]').textContent) && /€ 9\.480/.test($('[data-testid="bg-sluit"]').textContent));
+  check('onderaan: Totaal, daaronder Reeds gedekt en Overdekking (bij te veel dekking)', d.search(/Totaal\s*€/) > d.indexOf('In planning') && d.indexOf('Reeds gedekt') > d.search(/Totaal\s*€/) && d.indexOf('Overdekking') > d.indexOf('Reeds gedekt'));
+  check('te veel gedekt: totaal 17.000, daaronder Reeds gedekt (de begroting) en Overdekking 9.480, geen Nog te dekken en geen Sluitend', /€ 17\.000/.test($('[data-testid="bg-dek-totaal"]').textContent) && /€ 7\.520/.test($('[data-testid="bg-reeds-gedekt"]').textContent) && /€ 9\.480/.test($('[data-testid="bg-overdekking"]').textContent) && !$('[data-testid="bg-nog-te-plannen"]') && !$('[data-testid="bg-sluit"]'));
   check('de plek om het aan te passen is Projectfinanciering', $('[data-testid="bg-dekking"] a').getAttribute('href').includes(`/kompas/projecten/${PROJECT}?tab=projectfinanciering`));
   await opruimen();
 
   s = await toon({ ...BASIS, eigenBijdrage: 0, begroting: 20000 }, { funding: [FUNDING[0]] });
   check('niet sluitend: totaal van de dekking en het nog te dekken bedrag, geen Sluitend', /€ 7\.000/.test($('[data-testid="bg-dek-totaal"]').textContent) && /€ 13\.000/.test($('[data-testid="bg-nog-te-plannen"]').textContent) && !$('[data-testid="bg-sluit"]'));
+  await opruimen();
+  s = await toon({ ...BASIS, eigenBijdrage: 0, begroting: 7000 }, { funding: [FUNDING[0]] });
+  check('precies genoeg: Nog te dekken € 0 en Sluitend, geen Reeds gedekt of Overdekking', /€ 0/.test($('[data-testid="bg-nog-te-plannen"]').textContent) && !!$('[data-testid="bg-sluit"]') && !$('[data-testid="bg-overdekking"]') && !$('[data-testid="bg-reeds-gedekt"]'));
+  await opruimen();
+  s = await toon({ ...BASIS, eigenBijdrage: 0, begroting: 20000 }, { funding: [FUNDING[0]] });
   check('een bestaande begroting bij Projecten zonder regels wordt kort genoemd', /Bij Projecten staat nu € 20\.000/.test($('[data-testid="bg-leeg"]').textContent));
   await opruimen();
 }
@@ -174,7 +179,7 @@ sectie('5. Bestaande regels, wisselen en weg');
   await klik($('[data-testid="bg-kopje-sug-weg-uitvoering"]'));
   check('suggestie met het kruisje weggeklikt: weg uit de lijst, er komt geen kopje bij', !$('[data-testid="bg-kopje-kies-uitvoering"]') && !kopje('uitvoering'));
   await klik($('[data-testid="bg-weg"]'));
-  check('regel verwijderen werkt en het totaal volgt', $$('[data-testid="bg-regel"]').length === 0 && /Totaal € 0/.test($('[data-testid="bg-totaal"]').textContent));
+  check('regel verwijderen werkt en het totaal verdwijnt met de laatste regel', $$('[data-testid="bg-regel"]').length === 0 && !$('[data-testid="bg-totaal"]'));
   await klik(knop('Begroting opslaan'));
   check('een lege begroting bewaart de regels maar laat de projectbegroting staan', await wacht(() => s.bewaard.length === 1) && s.bewaard[0].begroting === 1600 && s.bewaard[0].budgetRegels.length === 0);
   await opruimen();

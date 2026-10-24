@@ -672,11 +672,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       <Blok
         titel="Begroting"
         testid="bg-begroting"
-        actie={
-          <span data-testid="bg-totaal" style={css('font-weight: 800; font-size: 17px;')}>
-            Totaal {euro(totaal)}
-          </span>
-        }
       >
         <div className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
           {regels.length === 0 ? 'Weet u niet waar u moet beginnen? ' : 'Iets vergeten? '}
@@ -841,6 +836,14 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
           );
         })}
 
+        {regels.length > 0 && (
+          <div style={css('display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid #E3EAE6;')}>
+            <span data-testid="bg-totaal" style={css('font-weight: 800; font-size: 17px; padding-right: 4px;')}>
+              Totaal {euro(totaal)}
+            </span>
+          </div>
+        )}
+
         <div style={css('margin: 6px 0 4px;')} data-testid="bg-kopjes">
           <div className="fwk-bg-chips">
             {nietZichtbaar.map((c) => (
@@ -959,13 +962,26 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 <span>Totaal</span>
                 <b data-testid="bg-dek-totaal">{euro(dek.gedektMetPlan)}</b>
               </div>
-              <div className="fwk-aa-regel" data-testid="bg-nog-te-plannen" style={css('padding: 3px 0;')}>
-                <span>Nog te dekken</span>
-                <b>{euro(dek.nogTePlannen)}</b>
-              </div>
-              {dek.planVolledig && (
+              {dek.overgedekt > 0 ? (
+                <>
+                  <div className="fwk-aa-regel" data-testid="bg-reeds-gedekt" style={css('padding: 3px 0;')}>
+                    <span>Reeds gedekt</span>
+                    <b>{euro(Math.max(0, dek.gedektMetPlan - dek.overgedekt))}</b>
+                  </div>
+                  <div className="fwk-aa-regel" data-testid="bg-overdekking" style={css('padding: 3px 0;')}>
+                    <span>Overdekking</span>
+                    <b>{euro(dek.overgedekt)}</b>
+                  </div>
+                </>
+              ) : (
+                <div className="fwk-aa-regel" data-testid="bg-nog-te-plannen" style={css('padding: 3px 0;')}>
+                  <span>Nog te dekken</span>
+                  <b>{euro(dek.nogTePlannen)}</b>
+                </div>
+              )}
+              {dek.planVolledig && dek.overgedekt <= 0 && (
                 <div style={css('margin-top: 8px;')}>
-                  <Chip testid="bg-sluit">{dek.overgedekt > 0 ? `Sluitend, ${euro(dek.overgedekt)} meer dan de begroting` : 'Sluitend'}</Chip>
+                  <Chip testid="bg-sluit">Sluitend</Chip>
                 </div>
               )}
               {dek.geplandZonderBedrag > 0 && (
