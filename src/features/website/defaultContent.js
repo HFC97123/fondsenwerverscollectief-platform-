@@ -69,13 +69,14 @@ export const sessions = [];
 
 export const blogPosts = [];
 
+// Vacatures: nagelopen op 24 oktober 2026 (alle links open en de vacature nog niet gesloten volgens de pagina).
 export const vacancies = [
-        { title: 'Relatiemanager Fondsenwerving', org: 'Stichting AAP', location: 'Almere', type: 'Parttime', tags: ['Dierenwelzijn', 'Relatiebeheer'], url: 'https://www.aap.nl/vacatures-betaald-werken/vacature-relatiemanager-fondsenwerving/' },
-        { title: 'Senior Relatiemanager & Fondsenwerver', org: 'De Natuur en Milieufederaties', location: 'Utrecht', type: 'Parttime', tags: ['Natuur & milieu', 'Major donors'], url: 'https://www.natuurenmilieufederaties.nl/vacature/de-natuur-en-milieufederaties-zoeken-een-commerciele-en-bevlogen-senior-relatiemanager-fondsenwerver/' },
-        { title: 'Relatiemanager Fondsenwerving', org: 'Nationaal Fonds Kinderhulp', location: 'Nederland', type: 'Parttime', tags: ['Kind & jeugd', 'Relatiebeheer'], url: 'https://kinderhulp.nl/nieuws/vacature-relatiemanager-fondsenwerving-24-uur/' },
-        { title: 'Fondsenwerver', org: 'Goededoelenorganisatie', location: 'Nederland', type: 'Fulltime', tags: ['Goede doelen', 'Fondsenwerving'], url: 'https://www.oneworld.nl/job/fondsenwerver-17/' },
-        { title: 'Fondsenwerver, diverse organisaties', org: 'Diverse organisaties', location: 'Nederland', type: 'Wisselend', tags: ['Diverse thema’s', 'Fondsenwerving'], url: 'https://nl.indeed.com/q-fondsenwerver-vacatures.html' },
-        { title: 'Coördinator Fondsenwerving & Partnerships', org: 'Goededoelenorganisatie', location: 'Nederland', type: 'Parttime', tags: ['Gezondheid', 'Partnerships'], url: 'https://nl.indeed.com/q-fondsenwerver-vacatures.html' }
+        { title: 'Fondsenwerver', org: 'Het Scheepvaartmuseum', location: 'Amsterdam', type: 'Fulltime', tags: ['Erfgoed & cultuur', 'Vermogensfondsen'], url: 'https://www.culturele-vacatures.nl/2026/10/het-scheepvaartmuseum-fondsenwerver/' },
+        { title: 'Hoofd Development', org: 'Internationaal Theater Amsterdam', location: 'Amsterdam', type: 'Parttime', tags: ['Podiumkunsten', 'Partnerships'], url: 'https://www.culturele-vacatures.nl/2026/10/internationaal-theater-amsterdam-hoofd-development/' },
+        { title: 'Senior Fondsenwerver Major Donors, Bedrijven & Fondsen', org: 'Habitat for Humanity Nederland', location: 'Amsterdam', type: 'Parttime', tags: ['Wonen', 'Major donors'], url: 'https://www.fondsenwerving.nl/k/n876/vacancy/v/Senior-Fondsenwerver-Major-Donors-Bedrijven--Fondsen/Amsterdam/Habitat-for-Humanity-Nederland' },
+        { title: 'Manager Fondsenwerving & Communicatie', org: 'Wilde Ganzen', location: 'Amersfoort', type: 'Parttime', tags: ['Ontwikkelingssamenwerking', 'Leidinggevend'], url: 'https://fondsen.org/vacatures/manager-fondsenwerving-communicatie' },
+        { title: 'Fondsenwerver / Zakelijk Medewerker', org: 'NOORDWOORD', location: 'Groningen', type: 'Parttime', tags: ['Literatuur', 'Cultuurfondsen'], url: 'https://www.culturele-vacatures.nl/2026/10/noordwoord-fondsenwerver-zakelijk-medewerker/' },
+        { title: 'Fondsenwerver, diverse organisaties', org: 'Diverse organisaties', location: 'Nederland', type: 'Wisselend', tags: ['Diverse thema’s', 'Fondsenwerving'], url: 'https://nl.indeed.com/q-fondsenwerver-vacatures.html' }
       ];
 
 export const newsItems = [
