@@ -33,40 +33,24 @@ const menuItemUitloggenStijl = css('padding: 10px 12px; border-radius: 9px; font
 // padding afgetrokken); de horizontale padding is ruimer. Hover: heel lichte
 // achtergrond en iets duidelijkere rand, zonder schaduw of animatie. De
 // uitklap-dropdown (Inloggen/Aanmelden) erft eveneens het sitelettertype.
-// Ingelogd blijft de bestaande, rustigere pastelgroen/Newsreader-badge
-// ongewijzigd (buiten scope).
-function accountBadgeStijl(compact, hover, loggedOut) {
-  if (loggedOut) {
-    // Geen font-family hier: `all: unset` laat het lettertype van de pagina
-    // (Mulish) doorlopen, dezelfde als de groene knop en de navigatielinks.
-    // Zelfde hoogte en lettertype als de groene knop; alleen de horizontale
-    // padding is smaller (14-18px) zodat de knop compacter en luchtiger oogt.
-    return css(`
-      all: unset; box-sizing: border-box; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 6px;
-      padding: 9px clamp(14px, 1.5vw, 18px); border-radius: 999px;
-      background: ${hover ? '#F5F8FB' : '#FFFFFF'};
-      border: 1.5px solid ${hover ? '#B5C7D2' : '#D3DFE4'};
-      font-size: ${compact ? '13.5px' : 'clamp(13.5px, 1.2vw, 15px)'};
-      font-weight: 700;
-      color: #2C4A5E;
-      white-space: nowrap;
-      text-align: center;
-      transition: background 0.2s ease, border-color 0.2s ease;
-    `);
-  }
-
+// Ingelogd ("Naam · Tier") heeft nu exact dezelfde vorm en hetzelfde
+// lettertype als de uitgelogde Login-knop, zodat het geen losse badge meer is.
+function accountBadgeStijl(compact, hover) {
+  // Geen font-family hier: `all: unset` laat het lettertype van de pagina
+  // (Mulish) doorlopen, dezelfde als de groene knop en de navigatielinks.
+  // Zelfde hoogte en lettertype als de groene knop; alleen de horizontale
+  // padding is smaller (14-18px) zodat de knop compacter en luchtiger oogt.
   return css(`
     all: unset; box-sizing: border-box; cursor: pointer;
-    display: flex; align-items: center; gap: 6px;
-    padding: 8px 18px; border-radius: 999px;
-    background: ${hover ? 'rgba(168,213,186,0.32)' : 'rgba(168,213,186,0.18)'};
-    border: 1px solid ${hover ? 'rgba(168,213,186,0.7)' : 'rgba(168,213,186,0.4)'};
-    font-family: 'Newsreader', serif;
-    font-size: ${compact ? '13px' : '14px'};
-    font-weight: 500;
-    color: #43855D;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px clamp(14px, 1.5vw, 18px); border-radius: 999px;
+    background: ${hover ? '#F5F8FB' : '#FFFFFF'};
+    border: 1.5px solid ${hover ? '#B5C7D2' : '#D3DFE4'};
+    font-size: ${compact ? '13.5px' : 'clamp(13.5px, 1.2vw, 15px)'};
+    font-weight: 700;
+    color: #2C4A5E;
     white-space: nowrap;
+    text-align: center;
     transition: background 0.2s ease, border-color 0.2s ease;
   `);
 }
@@ -111,7 +95,7 @@ function AccountMenu({ compact }) {
         onMouseLeave={() => setHover(false)}
         aria-haspopup="menu"
         aria-expanded={open}
-        style={accountBadgeStijl(compact, hover, !app.isLoggedIn)}
+        style={accountBadgeStijl(compact, hover)}
       >
         <span>{badgeLabel}</span>
         {/* Uitgelogde "Login"-knop toont bewust geen pijltje meer (op expliciet
