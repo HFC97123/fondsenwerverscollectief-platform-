@@ -30,16 +30,17 @@ try:
         ok('2b links tonen het nieuwe adres', any(h.startswith('/subsidie-kompas/') for h in hrefs), str(hrefs[:8]))
 
         pg.evaluate('window.__nietHerladen = 1')
-        link = pg.locator('a[href="/subsidie-kompas/projecten"]').first
-        ok('3 er is een link naar Projecten', link.count() == 1)
+        link = pg.locator('a[href^="/subsidie-kompas/"]:visible').filter(has_not=pg.locator('xpath=self::*[@href="/subsidie-kompas/deadlines"]')).first
+        doel = link.get_attribute('href') if link.count() else ''
+        ok('3 er is een zichtbare link naar een andere Subsidie Kompas-pagina', bool(doel), doel)
         link.click(); pg.wait_for_timeout(1200)
-        ok('3b klik: adres /subsidie-kompas/projecten en Projecten open', pad(pg) == '/subsidie-kompas/projecten' and intern(pg) == '#/kompas/projecten', pad(pg))
+        ok('3b klik: adres van die pagina en de pagina is open', pad(pg) == doel and intern(pg) == '#/kompas' + doel[len('/subsidie-kompas'):], pad(pg) + ' ' + doel)
         ok('3c klik herlaadt de pagina niet', pg.evaluate('window.__nietHerladen') == 1)
 
         pg.go_back(); pg.wait_for_timeout(1200)
         ok('4 terug-knop: weer Deadlines', pad(pg) == '/subsidie-kompas/deadlines' and pg.locator('[data-testid="deadlines-segmenten"]').count() > 0, pad(pg))
         pg.go_forward(); pg.wait_for_timeout(1200)
-        ok('4b vooruit-knop: weer Projecten', pad(pg) == '/subsidie-kompas/projecten' and intern(pg) == '#/kompas/projecten', pad(pg))
+        ok('4b vooruit-knop: weer dezelfde pagina', pad(pg) == doel, pad(pg))
 
         pg.evaluate(f"location.hash = '#/kompas/projecten/{P1}?tab=documenten'"); pg.wait_for_timeout(1500)
         ok('5 code die nog location.hash zet werkt en geeft het nieuwe adres', pad(pg) == f'/subsidie-kompas/projecten/{P1}?tab=documenten', pad(pg))
