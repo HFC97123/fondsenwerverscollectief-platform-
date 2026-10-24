@@ -187,7 +187,7 @@ check('voegFinancierToe schrijft alleen naar subsidie_kompas_program_funding (ge
 check('financier op naam: financier_naam, geen scheme_id/funder_id (geen fuzzy koppeling)', /financier_naam: schoon/.test(insertBlok) && !/scheme_id|funder_id/.test(insertBlok));
 check('eigen deadline alleen bij Interessant/In voorbereiding/Aangevraagd en alleen als echte datum', /\['interesting', 'preparing', 'submitted'\]\.indexOf\(status\)/.test(insertBlok) && /\\d\{4\}-\\d\{2\}-\\d\{2\}/.test(insertBlok));
 const pfSrc = lees('src/features/kompas-app/projectdossier/ProjectfinancieringTab.jsx');
-check('Financier snel toevoegen staat bij Fondsen en dekkingsplan (één plek, dezelfde financiering); het projectprofiel herhaalt dat niet', /<FinancierFormulier projectId=\{project.id\}/.test(pfSrc) && !/CofinanciersSectie/.test(detail));
+check('Financier snel toevoegen staat bij Fondsen en dekkingsplan (één plek, dezelfde financiering); het projectprofiel herhaalt dat niet', /<FinancierFormulier\s+projectId=\{project.id\}/.test(pfSrc) && !/CofinanciersSectie/.test(detail));
 check('per financieringsregel: Bespreek met Subsidie Kompas (focus = fundingId)', /<BespreekLink projectId=\{regel.projectId\} fundingId=\{regel.id\}/.test(pfSrc));
 const tabSrc = lees('src/features/kompas-app/projectdossier/ProjectfinancieringTab.jsx');
 check('Projectfinanciering gebruikt hetzelfde formulier (één implementatie)', /FinancierFormulier/.test(tabSrc) && !/function FinancierToevoegen/.test(tabSrc));

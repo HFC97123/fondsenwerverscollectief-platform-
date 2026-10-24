@@ -27,6 +27,7 @@ import {
   formatDatum,
   formatEuro,
   leesBedragInvoer,
+  projectBedrag,
 } from '../financiering/dekkingsplan.js';
 
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
@@ -41,6 +42,9 @@ const CSS_TAB = `
 .fwk-pf-nieuwlijst li { display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 11px; border: 1px solid #CFDFEA; border-radius: 999px; background: #FFFFFF; font-size: 13px; font-weight: 700; color: #2C4A5E; }
 .fwk-pf-nieuwlijst button { cursor: pointer; width: 24px; height: 24px; border: none; border-radius: 50%; background: none; font-size: 16px; line-height: 1; color: #7B8985; }
 .fwk-pf-nieuwlijst button:hover { background: #F9ECEA; color: #9E3B2C; }
+.fwk-pf-akkoord { cursor: pointer; min-height: 42px; padding: 0 22px; border: 1px solid #4E9A6C; border-radius: 999px; background: #4E9A6C; color: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; align-self: center; }
+.fwk-pf-akkoord:hover { background: #3E7F59; }
+.fwk-pf-akkoordmelding { margin-bottom: 12px; padding: 12px 16px; border: 1px solid #BFD9C8; border-radius: 14px; background: #EAF4EE; font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.5; font-weight: 700; color: #2F6D47; }
 .fwk-pf-rij { display: grid; gap: 12px 14px; align-items: start; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 12px; padding-top: 12px; border-top: 1px solid #EEF2EF; }
 .fwk-pf-label { display: block; margin-bottom: 4px; }
 .fwk-pf-notitie { grid-column: 1 / 4; }
@@ -467,6 +471,15 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
   };
   const nieuwInPlan = status === 'klaar' ? regels.filter((r) => nieuweIds.includes(r.id)) : [];
   const nieuwSamen = nieuwInPlan.reduce((t, r) => t + (Number(r.requested) || 0), 0);
+  // Akkoord: het lid bevestigt wat Subsidie Kompas voorstelde. De regels staan al in het dekkingsplan (en tellen mee als Gepland); akkoord haalt alleen
+  // het label "Nieuw van Subsidie Kompas" weg, zodat duidelijk is dat deze fondsen door het lid zijn goedgekeurd.
+  const [akkoord, setAkkoord] = useState(null); // { aantal, bedrag }
+  const eigenBijdrage = projectBedrag(project && project.eigenBijdrage);
+  const [eigenOpen, setEigenOpen] = useState(0);
+  const keurGoed = () => {
+    setAkkoord({ aantal: nieuwInPlan.length, bedrag: nieuwSamen });
+    zetNieuw([]);
+  };
   const [actieVersie, setActieVersie] = useState(0);
   const [openRegels, setOpenRegels] = useState({});
   const [bronDetails, setBronDetails] = useState({ perRegeling: {}, perFonds: {} });
@@ -601,9 +614,9 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
             <div className="fwk-pf-nieuwtekst">
               <div>
                 <strong>
-                  Subsidie Kompas heeft {nieuwInPlan.length} {nieuwInPlan.length === 1 ? 'fonds' : 'fondsen'} toegevoegd
+                  Subsidie Kompas stelt {nieuwInPlan.length} {nieuwInPlan.length === 1 ? 'fonds' : 'fondsen'} voor
                 </strong>
-                {nieuwSamen > 0 ? `, samen ${formatEuro(nieuwSamen)} geadviseerd` : ''}:
+                {nieuwSamen > 0 ? `, samen ${formatEuro(nieuwSamen)} geadviseerd` : ''}. Ze staan al in uw dekking als Gepland. Haal weg wat niet past en klik daarna op Akkoord.
               </div>
               <ul className="fwk-pf-nieuwlijst" data-testid="pf-nieuw-lijst">
                 {nieuwInPlan.map((r) => {
@@ -620,6 +633,15 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
                 })}
               </ul>
             </div>
+            <button type="button" data-testid="pf-akkoord" onClick={keurGoed} className="fwk-pf-akkoord">
+              ✓ Akkoord
+            </button>
+          </div>
+        )}
+
+        {nieuwInPlan.length === 0 && akkoord && (
+          <div data-testid="pf-akkoord-melding" role="status" className="fwk-pf-akkoordmelding">
+            ✓ Akkoord. {akkoord.aantal === 1 ? 'Dit fonds staat' : `Deze ${akkoord.aantal} fondsen staan`} in uw dekkingsplan{akkoord.bedrag > 0 ? ` (${formatEuro(akkoord.bedrag)} gepland)` : ''}, tellen mee in de dekking van de begroting en staan in uw actieplan.
           </div>
         )}
 
@@ -655,15 +677,39 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
                 );
               })}
             </div>
+            {eigenBijdrage > 0 && (
+              <div data-testid="pf-eigen-regel" style={css('display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 8px; padding: 12px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF;')}>
+                <div>
+                  <div style={css("font-family: 'Mulish', sans-serif; font-size: 15px; font-weight: 800; color: #2C4A5E;")}>Eigen bijdrage</div>
+                  <div style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>Financier · telt mee in de dekking</div>
+                </div>
+                <div style={css('display: flex; align-items: center; gap: 14px;')}>
+                  <strong style={css(`${TEKST} color: #2C4A5E;`)}>{formatEuro(eigenBijdrage)}</strong>
+                  <button type="button" className="fwk-wp-link" data-testid="pf-eigen-aanpassen" onClick={() => setEigenOpen((n) => n + 1)}>
+                    Aanpassen
+                  </button>
+                </div>
+              </div>
+            )}
             <div data-testid="pf-totaal" style={css(`${TEKST} margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: #F3F9F5; font-weight: 700; color: #2C4A5E;`)}>
-              Samen: toegekend {formatEuro(dekking.toegekend)} · aangevraagd {formatEuro(dekking.aangevraagd)} · gepland {formatEuro(dekking.gepland)}
+              Samen: toegekend {formatEuro(dekking.toegekend)}{eigenBijdrage > 0 ? ` · eigen bijdrage ${formatEuro(eigenBijdrage)}` : ''} · aangevraagd {formatEuro(dekking.aangevraagd)} · gepland {formatEuro(dekking.gepland)}
               {dekking.heeftBegroting && <> · {dekking.volledigGedekt ? 'volledig gedekt' : `nog te financieren ${formatEuro(dekking.nogNodig)}`}</>}
             </div>
           </>
         )}
         {status === 'klaar' && project && project.id && (
           <div style={css('margin-top: 12px;')}>
-            <FinancierFormulier projectId={project.id} onKlaar={laad} />
+            <FinancierFormulier
+              projectId={project.id}
+              onKlaar={laad}
+              eigenBijdrage={eigenBijdrage}
+              openEigen={eigenOpen}
+              onEigenBijdrage={async (bedrag) => {
+                const id = await store.saveProject({ ...project, eigenBijdrage: bedrag });
+
+                return Boolean(id);
+              }}
+            />
           </div>
         )}
       </Blok>
