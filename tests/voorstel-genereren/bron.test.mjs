@@ -252,7 +252,7 @@ sectie('6. Actieplan: concrete stappen, ontbrekende informatie, herstel zonder d
   const zonderDl = regeling({ naam: 'Landelijk Muziekpodium', gever: 'Landelijk Podium', min: 1000, max: 25000, regios: ['Landelijk'], id: A3, deadline: null });
   wereld({ regelingen: [zonderDl] });
   await opslaan([r('regeling', A3, 10000)]);
-  const t3 = w.db.actions.find((t) => /Contact opnemen met/.test(t.title));
+  const t3 = w.db.actions.find((t) => /^Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met/.test(t.title));
   check('geen geverifieerde deadline: contactactie, met uitleg dat er geen indiendatum bekend is', Boolean(t3) && /geen indiendatum bekend/.test(t3.notes));
 }
 {

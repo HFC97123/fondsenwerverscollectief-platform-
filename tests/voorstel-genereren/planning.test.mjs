@@ -136,7 +136,7 @@ sectie('6. Alleen een bestuursvergadering bekend: geen indiendatum afleiden');
   const M = d(90);
   const u = planFinancier('Fonds M', { status: 'Open', vergaderdatum: M, vergaderfrequentie: '4x per jaar', behandeltermijn: 'Bestuur vergadert 4x per jaar; exacte vergaderdata niet gepubliceerd.' }, V);
 
-  check('modus vergadering, begint met "contact opnemen" (navragen)', u.samenvatting.modus === 'vergadering' && u.stappen[0].fase === 'navragen' && /Contact opnemen met Fonds M over passendheid, aanvraag en behandeltermijn/.test(u.stappen[0].titel));
+  check('modus vergadering, begint met "contact opnemen" (navragen)', u.samenvatting.modus === 'vergadering' && u.stappen[0].fase === 'navragen' && /Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met Fonds M$/.test(u.stappen[0].titel));
   check('geen indiendatum en geen deadline afgeleid van de vergadering', u.samenvatting.indiendatum === null && u.samenvatting.deadline === null && stap(u, 'indienen').datum === null && stap(u, 'schrijven').datum === null && stap(u, 'indienen').externeDeadline === null);
   check('de vergadering is wel een bronvermelding: beoordelingsmoment volgen op die datum', stap(u, 'beoordeling').datum === M && stap(u, 'beoordeling').datumHerkomst === 'bron' && /alleen relevant als de aanvraag ruim voor deze vergadering/i.test(stap(u, 'beoordeling').toelichting));
   check('besluit zonder indiendatum: geen datum', stap(u, 'besluit').datum === null && stap(u, 'vervolg').datum === null);
@@ -282,8 +282,8 @@ sectie('12. Keten: alleen een bestuursvergadering of doorlopende regeling -> é�
   const v = takenVan(R3);
   const dl = takenVan(R4);
 
-  check('vergadering: één actie, contact opnemen over passendheid, aanvraag en behandeltermijn', uit.status === 200 && v.length === 1 && /^Contact opnemen met Regeling Vergadering over passendheid, aanvraag en behandeltermijn$/.test(v[0].title));
-  check('doorlopend: ook één actie, geen verzonnen indiendatum', dl.length === 1 && /^Contact opnemen met Regeling Doorlopend/.test(dl[0].title));
+  check('vergadering: één actie, contact opnemen over passendheid, aanvraag en behandeltermijn', uit.status === 200 && v.length === 1 && /^Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met Regeling Vergadering$/.test(v[0].title));
+  check('doorlopend: ook één actie, geen verzonnen indiendatum', dl.length === 1 && /^Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met Regeling Doorlopend/.test(dl[0].title));
   check('de datum is een eigen streefdatum (aanname) over een week', [v[0], dl[0]].every((t) => t.due_date === d(7) && t.datum_herkomst === 'aanname'));
   check('antwoord: modus per regel', Object.values(uit.json.planning).map((x) => x.modus).sort().join() === 'doorlopend,vergadering');
 }
@@ -304,7 +304,7 @@ sectie('14. Keten: planninggegevens onleesbaar of ontbrekend blokkeert niets');
   wereld([reg(R3, 'Regeling Vergadering', {}, null)], { planningFout: true, planning: { regelingen: [{ id: R3, volgende_vergaderdatum: d(90) }], rondes: [], funders: [] } });
   const uit = await opslaan([r('regeling', R3, 10000)]);
 
-  check('planningstabellen onleesbaar: opslaan lukt, één actie contact opnemen', uit.status === 200 && uit.json.actieplan.status === 'klaar' && takenVan(R3).length === 1 && /^Contact opnemen met/.test(takenVan(R3)[0].title));
+  check('planningstabellen onleesbaar: opslaan lukt, één actie contact opnemen', uit.status === 200 && uit.json.actieplan.status === 'klaar' && takenVan(R3).length === 1 && /^Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met/.test(takenVan(R3)[0].title));
 }
 
 sectie('15. Keten: mislukte taakgeneratie bewaart planning; opnieuw proberen herstelt zonder dubbelen');

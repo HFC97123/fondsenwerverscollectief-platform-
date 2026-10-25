@@ -344,7 +344,7 @@ export function planFinancier(naam: string, planningIn: PlanningBron | null | un
             ? `De status is "${status}".`
             : 'Er is geen betrouwbare aanvraagdeadline bekend.';
 
-    maak('navragen', navragenTitel(naam), 'high', `${reden} Vraag het aanvraagmoment en de behandeltermijn na bij de financier of lees ze op de website na.${termijnTekst ? ` Volgens onze bron: "${termijnTekst}".` : ''}`, start);
+    maak('navragen', navragenTitel(naam), 'high', `${reden} Toets met de financier of uw project past en kansrijk is, en wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn).${termijnTekst ? ` Volgens onze bron: "${termijnTekst}".` : ''}`, start);
     maak('passendheid', `Passendheid van ${naam} beoordelen`, 'high', 'Lees de actuele voorwaarden, doelgroep en werkgebied en noteer wat niet past of onduidelijk is.', start);
     maak('adviseur', `Subsidieadviseur raadplegen over ${naam}: go/no-go en aanpak`, 'high', 'Bespreek of de aanvraag kans maakt en hoe u haar het best opbouwt.', start);
 
