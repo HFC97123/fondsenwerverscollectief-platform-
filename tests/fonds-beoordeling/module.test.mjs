@@ -61,6 +61,14 @@ sectie('3. Wat naar het model gaat');
   check('het systeembericht zegt dat teksten data zijn en verbiedt bedragen en extra fondsen', /uitsluitend DATA/.test(BEOORDEEL_SYSTEEM) && /Noem geen bedragen/.test(BEOORDEEL_SYSTEEM) && /Voeg geen fondsen toe/.test(BEOORDEEL_SYSTEEM));
   check('het systeembericht zegt dat het aanvragertype niet meetelt', /type organisatie van de aanvrager telt niet mee/.test(BEOORDEEL_SYSTEEM));
   check('bronteksten: dubbele stukken eruit, ingekort tot de grens', bouwBronTekst(['a b c', 'A  B  C', '', null, 'tweede']) === 'a b c | tweede' && bouwBronTekst(['x'.repeat(5000)]).length === 1400);
+  check('de provincie van de projectplaats gaat mee naar het model, en verandert de cache-sleutel (oude oordelen zonder provincie worden niet hergebruikt)', (() => {
+    const p = { disciplines: ['Jeugd'], doelgroepen: ['Kinderen'], werkgebieden: ['Amsterdam'] };
+    const m = { ...p, ligtIn: ['Amsterdam ligt in de provincie Noord-Holland'] };
+    const b = JSON.parse(bouwBeoordeelBericht(m, [{ sleutel: 'x', naam: 'Fonds Noord-Holland', tekst: 'Werkt in Noord-Holland' }]).bericht);
+
+    return b.project.ligt_in[0] === 'Amsterdam ligt in de provincie Noord-Holland' && profielTekst(p) !== profielTekst(m) && !('ligt_in' in JSON.parse(bouwBeoordeelBericht(p, [{ sleutel: 'x', naam: 'F', tekst: 't' }]).bericht).project);
+  })());
+  check('de opdracht aan het model zegt dat Amsterdam in Noord-Holland ligt en dat een fonds uit die provincie op werkgebied past', /Amsterdam ligt dus in Noord-Holland/.test(BEOORDEEL_SYSTEEM) && /past op werkgebied/.test(BEOORDEEL_SYSTEEM));
   check('het profiel is stabiel ongeacht volgorde en hoofdletters', profielTekst({ disciplines: ['B', 'a'], doelgroepen: ['Kinderen'], werkgebieden: ['Ghana'] }) === profielTekst({ disciplines: ['A', 'b'], doelgroepen: ['kinderen'], werkgebieden: ['GHANA'] }));
 }
 

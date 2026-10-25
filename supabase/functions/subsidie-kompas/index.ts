@@ -6250,7 +6250,13 @@ async function bouwProSelectie(
         return bouwBronTekst([r.aanvraagcriteria, r.funder_aanvraagcriteria, r.type_projecten, r.beoordelingscriteria, r.funder_missie, r.missie, r.toelichting, r.voorwaarden, ex?.voorwaarden, r.werkgebied]);
       };
       const uitkomst = await beoordeelFondsen({
-        profiel: { disciplines, doelgroepen, werkgebieden: landWerkgebieden },
+        profiel: {
+          disciplines,
+          doelgroepen,
+          werkgebieden: landWerkgebieden,
+          // Waar de plaats van het project ligt (provincie), zodat "Amsterdam" niet als iets anders dan Noord-Holland wordt gelezen.
+          ligtIn: Array.from(new Set([eersteGebied, ...criteria.regios, criteria.locatieTekst].flatMap((t) => NL_PLAATSEN.filter((p) => p.provincie && p.provincie !== p.naam && p.re.test(String(t ?? ''))).map((p) => `${p.naam} ligt in de provincie ${p.provincie}`)))).slice(0, 4),
+        },
         kandidaten: top.map((x) => ({ sleutel: x.c.sleutel, naam: x.c.naam, tekst: tekstVan(x.c) })),
         cache: ai.cache,
         roep: async (systeem, gebruiker) => {
