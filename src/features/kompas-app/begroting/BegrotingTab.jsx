@@ -641,7 +641,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     }
 
     const nieuw = voorstelNaarRegels(res.antwoord.regels, 'upload', bestand.name);
-    const samen = leesBudgetRegels(samenvoegVoorstel(vorig.regels, nieuw, 'toevoegen'));
+    const samen = leesBudgetRegels(samenvoegVoorstel(vorig.regels, nieuw, 'vervangen'));
     const klaar = regelsVoorOpslag(samen);
 
     if (!klaar.ok) {
@@ -680,7 +680,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       bestand: bestand.name,
       aantal: Array.isArray(res.antwoord.regels) ? res.antwoord.regels.length : 0,
       waarschuwingen: Array.isArray(controle.waarschuwingen) ? controle.waarschuwingen : [],
-      sluit: res.antwoord.sluit && res.antwoord.sluit.toevoegen ? res.antwoord.sluit.toevoegen : null, // de controle van de server: sluit de begroting met het dekkingsplan?
+      sluit: res.antwoord.sluit ? res.antwoord.sluit.vervangen || res.antwoord.sluit.toevoegen || null : null, // de controle van de server: sluit de begroting met het dekkingsplan?
+      vervangen: vorig.regels.length,
       vorigeRegels: vorig.regels,
       vorigeBegroting: project.begroting,
       resterend: typeof res.antwoord.resterend === 'number' ? res.antwoord.resterend : null,
@@ -803,6 +804,11 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
             <b>
               {upload.aantal} {upload.aantal === 1 ? 'regel' : 'regels'} uit {upload.bestand} staan in uw begroting en zijn opgeslagen.
             </b>{' '}
+            {upload.vervangen > 0 && (
+              <span data-testid="bg-upload-vervangen">
+                De {upload.vervangen === 1 ? 'regel' : upload.vervangen + ' regels'} die er eerst stond{upload.vervangen === 1 ? '' : 'en'} {upload.vervangen === 1 ? 'is' : 'zijn'} vervangen. Niet de bedoeling? Kies Ongedaan maken.{' '}
+              </span>
+            )}
             Wijs met de muis naar het stipje bij een bedrag om te zien waar het vandaan komt.
             {upload.waarschuwingen.length > 0 && (
               <div data-testid="bg-upload-let-op" style={css('margin-top: 8px;')}>

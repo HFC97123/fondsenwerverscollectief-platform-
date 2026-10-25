@@ -497,11 +497,11 @@ sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkin
   check('ongedaan maken: de vorige (lege) stand wordt weer opgeslagen en de regels zijn weg', await wacht(() => u.bewaard.length === 2) && u.bewaard[1].budgetRegels.length === 0 && $$('[data-testid="bg-regel"]').length === 0 && !$('[data-testid="bg-upload-resultaat"]'));
   await opruimen();
 
-  // Met een bestaande begroting wordt toegevoegd en blijft wat er stond.
+  // Met een bestaande begroting vervangt de upload de handmatige regels (ongedaan maken zet ze terug).
   u = await toonUpload({ ...BASIS, begroting: 1000, budgetRegels: [R('z1', 'activa', 'Laptop', { bedrag: 1000 })] });
   await kiesBestand(bestand());
   await wacht(() => $('[data-testid="bg-upload-resultaat"]'));
-  check('toegevoegd aan wat er stond: laptop blijft (5 regels), totaal 8.300, alleen de nieuwe hebben een stipje (de laptop zelf getypt, dus geen pop-up)', u.bewaard[0].budgetRegels.length === 5 && u.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop' && r.bron === 'handmatig' && r.bronNaam === '') && u.bewaard[0].begroting === 8300 && $$('[data-testid="bg-herkomst-stip"]').length === 4 && $$('[data-testid="bg-regel"]').length === 5);
+  check('vervangen: de laptop is weg (4 regels uit het bestand), totaal 7.300, en het blok zegt dat de oude regel is vervangen', u.bewaard[0].budgetRegels.length === 4 && !u.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop') && u.bewaard[0].begroting === 7300 && $$('[data-testid="bg-regel"]').length === 4 && /eerst stond is vervangen/.test($('[data-testid="bg-upload-vervangen"]')?.textContent || ''), $('[data-testid="bg-upload-vervangen"]')?.textContent);
   await klik(knop('Upload ongedaan maken'));
   check('ongedaan maken zet de laptop-stand en de oude projectbegroting terug', await wacht(() => u.bewaard.length === 2) && u.bewaard[1].budgetRegels.length === 1 && u.bewaard[1].begroting === 1000);
   await opruimen();
