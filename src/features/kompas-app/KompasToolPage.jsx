@@ -173,6 +173,17 @@ const STARTERS = [
   'Hoe onderbouw ik mijn begroting?',
 ];
 
+// Pro en Premium: financiering zoeken en strategie bovenaan, daaronder het schrijfwerk.
+const STARTERS_PRO = [
+  'Ik zoek financiering voor een project',
+  'Help mij met een fondsenwervende strategie',
+  'Help mij met een projectplan schrijven',
+  'Help mij met mijn begroting en dekkingsplan opstellen',
+];
+
+// Alleen deze startvragen zetten de projectplan-modus aan.
+const PROJECTPLAN_STARTERS = ['Help mij een projectplan opzetten', 'Help mij met een projectplan schrijven'];
+
 // Vervolgopdracht, prioriteit 7 (Export): kleine, gedempte actieknopjes
 // onder een AI-resultaat - bewust geen "pil" (die suggereert een filter/
 // keuze) en geen primaire knop (dit is een secundaire actie na het antwoord).
@@ -1323,7 +1334,7 @@ export default function KompasToolPage() {
               </div>
               )}
               <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(max(240px, calc(50% - 7px)), 1fr)); gap: 14px;')}>
-                {STARTERS.map((s) => (
+                {(isFreePlan ? STARTERS : STARTERS_PRO).map((s) => (
                   <div
                     key={s}
                     onClick={() => {
@@ -1331,7 +1342,7 @@ export default function KompasToolPage() {
                       // starter geeft een modus mee - de andere drie
                       // starters/vrije berichten blijven ongewijzigd op
                       // 'algemeen', zoals nu al het geval is.
-                      verstuur(s, s === 'Help mij een projectplan opzetten' ? 'projectplan' : undefined);
+                      verstuur(s, PROJECTPLAN_STARTERS.includes(s) ? 'projectplan' : undefined);
                     }}
                     style={css(
                       'cursor: pointer; min-height: 78px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid #D7E2DC; border-radius: 18px; background: #FFFFFF; color: #2C4A5E; font-size: 14.5px; font-weight: 700; line-height: 1.4;',
