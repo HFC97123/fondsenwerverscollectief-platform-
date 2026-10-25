@@ -13,6 +13,8 @@ import { useHeeftWerkruimte } from '../werkruimteRechten.js';
 import { useProjectFinanciering } from '../financiering/useProjectFinanciering.js';
 import { KLEUR, StatusChip, Voortgangsbalk } from '../financiering/FinancieringUi.jsx';
 import { dagenTekst, dagenTot, dekkingVanProject, eerstvolgendeDeadline, formatDatum, formatEuro, isKomendeDeadline, periodeTekst } from '../financiering/dekkingsplan.js';
+import { useActieplan } from '../financiering/useActieplan.js';
+import { bouwActiesEnDeadlines } from '../financiering/actiesEnDeadlines.js';
 import ProjectfinancieringTab from '../projectdossier/ProjectfinancieringTab.jsx';
 import ProjectBewerkFormulier from '../projectdossier/ProjectBewerkFormulier.jsx';
 import { voortgang } from '../projectinformatie/projectinformatie.js';
@@ -260,6 +262,12 @@ function Overzicht({ project, paid }) {
   const dekking = useMemo(() => dekkingVanProject(project, regels), [project, regels]);
   const volgende = useMemo(() => eerstvolgendeDeadline(regels, new Date()), [regels]);
   const nu = useMemo(() => new Date(), []);
+  // Het actieplan van dit project: dezelfde afleiding als op de actieplanpagina en het dashboard (opgeslagen acties en afgeleide acties).
+  const plan = useActieplan(project && paid ? [project.id] : []);
+  const acties = useMemo(
+    () => (financiering.status === 'klaar' && plan.status === 'klaar' ? bouwActiesEnDeadlines({ project, regels, taken: plan.actieVoor(project.id), nu }).filter((i) => i.status !== 'done') : []),
+    [financiering.status, plan, project, regels, nu],
+  );
   const pi = voortgang(project);
   const gedektPct = dekking.heeftBegroting && dekking.begroting > 0 ? Math.min(100, Math.round(((dekking.toegekend + dekking.aangevraagd + dekking.overige) / dekking.begroting) * 100)) : 0;
   const begrotingRegels = Array.isArray(project.budgetRegels) ? project.budgetRegels.length : 0;
@@ -289,8 +297,24 @@ function Overzicht({ project, paid }) {
       </Kaart>
 
       <Kaart nr="3" titel="Houd uw actieplan bij" uitleg="Een actieplan met herinneringen, zodat u uw tijd aan schrijven besteedt." href={stapHref('deadlines', project.id)} linkTekst="Naar het actieplan" testid="advies-kaart-deadlines">
-        <Rij rechts={volgende ? dagenTekst(volgende.dagen) : null}>{volgende ? `Eerstvolgende: ${volgende.naam}` : 'Geen komende deadline'}</Rij>
-        {volgende && <Rij>{formatDatum(volgende.datum)}</Rij>}
+        {acties.length > 0 ? (
+          <div data-testid="advies-acties">
+            <Rij rechts={acties.some((a) => a.dagen != null && a.dagen < 0) ? `${acties.filter((a) => a.dagen != null && a.dagen < 0).length} te laat` : null}>
+              {acties.length} {acties.length === 1 ? 'actie' : 'acties'} open
+            </Rij>
+            {acties.slice(0, 3).map((a) => (
+              <div key={a.sleutel} data-testid="advies-actie">
+                <Rij rechts={a.datum ? (a.dagen != null && a.dagen < 0 ? 'te laat' : dagenTekst(a.dagen)) : 'zonder datum'}>{a.titel}</Rij>
+              </div>
+            ))}
+            {acties.length > 3 && <Rij>en {acties.length - 3} {acties.length - 3 === 1 ? 'andere actie' : 'andere acties'}</Rij>}
+          </div>
+        ) : (
+          <>
+            <Rij rechts={volgende ? dagenTekst(volgende.dagen) : null}>{volgende ? `Eerstvolgende: ${volgende.naam}` : 'Geen komende deadline'}</Rij>
+            {volgende && <Rij>{formatDatum(volgende.datum)}</Rij>}
+          </>
+        )}
       </Kaart>
 
       <Kaart nr="4" titel="Dien sterker in" uitleg="Het projectdossier, een projectplan op maat en een beoordeling vóór u indient." href={stapHref('indienen', project.id)} linkTekst="Naar indienen" testid="advies-kaart-indienen">

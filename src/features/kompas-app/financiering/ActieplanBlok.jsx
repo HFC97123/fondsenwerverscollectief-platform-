@@ -4,7 +4,7 @@
 // deadline van het fonds tenzij het lid een eigen streefdatum kiest.
 // Eén blok voor twee plekken: onder het project (Projectfinanciering) en op de pagina Deadlines (tab Actieplan).
 // Geen bedragen: het dekkingsplan blijft de enige bron voor geld.
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { HelpKnop } from '../../../shared/ui/werkplek.jsx';
 import { isEchtId } from '../../../data/services/projecten.js';
@@ -433,15 +433,23 @@ const fondsVan = (i) => i.regelNaam || (i.taak && i.taak.financier) || '';
 
 // Pagina Deadlines, tab Actieplan: alle acties van alle actieve projecten en fondsen door elkaar, op datum. Met een filter op project en op fonds
 // kiest het lid één project of één fonds apart.
-export function ActieplanOverzicht({ projecten }) {
+export function ActieplanOverzicht({ projecten, startProject = '' }) {
   const actief = useMemo(() => (projecten || []).filter((p) => p && !p.gearchiveerd && isEchtId(p.id)), [projecten]);
   const ids = useMemo(() => actief.map((p) => p.id), [actief]);
   const { status, perProject } = useDekkingsplannen(ids);
   const plan = useActieplan(ids);
   const nu = useMemo(() => new Date(), []);
-  const [kiesProject, setKiesProject] = useState('');
+  const [kiesProject, setKiesProject] = useState(startProject || '');
   const [kiesFonds, setKiesFonds] = useState('');
   const [open, setOpen] = useState(false);
+
+  // Het project uit de link (of uit de projectkeuze bovenaan Subsidieadvies) bepaalt het filter; een onbekend project doet niets.
+  useEffect(() => {
+    if (startProject && actief.some((p) => p.id === startProject)) {
+      setKiesProject(startProject);
+      setKiesFonds('');
+    }
+  }, [startProject, actief]);
   const naamVanProject = (id) => {
     const p = actief.find((x) => x.id === id);
 

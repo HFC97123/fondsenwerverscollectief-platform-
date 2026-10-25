@@ -30,7 +30,7 @@ check('vijf stappen: Overzicht, fondsmatching, Begroting, Actieplan, Indienen', 
 check('overzicht linkt naar /kompas/advies', L.stapHref('overzicht', P) === `#/kompas/advies?project=${P}`);
 check('Fondsmatching (fondsen) linkt naar /kompas/advies/fondsen', L.stapHref('fondsen', P) === `#/kompas/advies/fondsen?project=${P}`);
 check('begroting en indienen zijn de bestaande pagina Documenten met het juiste tabblad', L.stapHref('begroting', P) === `#/kompas/documentatie?tab=begroting&project=${P}` && L.stapHref('indienen', P) === `#/kompas/documentatie?tab=inhoud&project=${P}`);
-check('deadlines is de bestaande pagina Deadlines', L.stapHref('deadlines', P) === '#/kompas/deadlines');
+check('deadlines is de bestaande pagina Deadlines (het actieplan), met het project in de link', L.stapHref('deadlines', P) === '#/kompas/deadlines?project=' + P && L.stapHref('deadlines', '') === '#/kompas/deadlines');
 check('zonder project geen lege ?project=', L.stapHref('fondsen', '') === '#/kompas/advies/fondsen' && L.stapHref('begroting', '') === '#/kompas/documentatie?tab=begroting');
 
 // huidige stap
@@ -47,7 +47,7 @@ check('kiesProjectId: bestaand project uit de URL, anders het eerste, anders lee
 
 // oude links
 check('oude link ?tab=projectfinanciering wijst naar de fondsmatching', L.adviesDoorverwijzing('#/kompas/projecten/x?tab=projectfinanciering', P) === `#/kompas/advies/fondsen?project=${P}`);
-check('oude link ?tab=deadlines wijst naar Deadlines', L.adviesDoorverwijzing('#/kompas/projecten/x?tab=deadlines', P) === '#/kompas/deadlines');
+check('oude link ?tab=deadlines wijst naar Deadlines', L.adviesDoorverwijzing('#/kompas/projecten/x?tab=deadlines', P) === '#/kompas/deadlines?project=' + P);
 check('andere tabs worden niet doorgestuurd', L.adviesDoorverwijzing('#/kompas/projecten/x?tab=documenten', P) === null && L.adviesDoorverwijzing('#/kompas/projecten/x', P) === null);
 check('deeplinks: projectfinanciering staat bij de fondsmatching; ongeldig id valt terug op Projecten', D.projectFinancieringPad(P) === `/kompas/advies/fondsen?project=${P}` && D.projectFinancieringPad('lokaal-1') === '/kompas/projecten');
 
@@ -72,6 +72,15 @@ check('Documenten volgt de hash (stap en project uit de balk)', /addEventListene
 const ap = src('src/features/kompas-app/advies/AdviesPage.jsx');
 check('Fondsmatching: projectgegevens met Aanpassen en + Nieuw project (zelfde formulier als Projecten), daaronder de projectfinanciering', /ProjectBewerkFormulier/.test(ap) && /advies-nieuw-project/.test(ap) && /<ProjectfinancieringTab/.test(ap));
 check('geen eigen opslag in Subsidieadvies', !/localStorage|sessionStorage|\.from\(|supabase/.test(ap + src('src/features/kompas-app/advies/AdviesSubnav.jsx')));
+
+{
+  const adv = readFileSync(join(root, 'src/features/kompas-app/advies/AdviesPage.jsx'), 'utf8');
+  const dl = readFileSync(join(root, 'src/features/kompas-app/DeadlinesPage.jsx'), 'utf8');
+  const ap = readFileSync(join(root, 'src/features/kompas-app/financiering/ActieplanBlok.jsx'), 'utf8');
+
+  check('kaart 3 telt de acties van het actieplan (zelfde afleiding als de actieplanpagina)', /bouwActiesEnDeadlines/.test(adv) && /useActieplan/.test(adv) && /data-testid="advies-acties"/.test(adv));
+  check('de actieplanpagina begint op het project uit de link en volgt de projectkeuze', /leesProjectParam\(hash\)/.test(dl) && /startProject/.test(ap));
+}
 
 console.log(`\nadvies: ${ok} OK, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

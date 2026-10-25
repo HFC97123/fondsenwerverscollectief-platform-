@@ -16,6 +16,8 @@ import {
 } from '../../data/services/deadlines.js';
 import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
+import { leesProjectParam } from './advies/adviesLinks.js';
+import { useHash } from './advies/AdviesSubnav.jsx';
 import FundingDatabaseCount from '../../shared/ui/FundingDatabaseCount.jsx';
 import KompasSubnav from '../../shared/ui/KompasSubnav.jsx';
 import { CSS_WERKPLEK, PaginaKop, Tabs, Zijpaneel } from '../../shared/ui/werkplek.jsx';
@@ -211,6 +213,7 @@ const AANVRAAG_VELDEN = [
 export default function DeadlinesPage() {
   const app = useApp();
   const store = useKompas();
+  const hash = useHash();
   const tier = app.subscriptionTier || 'free';
   const premium = tier === 'premium';
   const paid = tier === 'pro' || premium;
@@ -678,7 +681,7 @@ export default function DeadlinesPage() {
 
         {paid && segment === 'mijn' && <MijnDeadlines projecten={store.projects} onNaarAlleRegelingen={() => setSegment('alle')} />}
 
-        {paid && segment === 'actieplan' && <ActieplanOverzicht projecten={store.projects} />}
+        {paid && segment === 'actieplan' && <ActieplanOverzicht projecten={store.projects} startProject={leesProjectParam(hash)} />}
 
         {(!paid || segment === 'alle') && (
           <div className="fwk-dl-raster" data-desktop={desktop ? 'ja' : 'nee'}>

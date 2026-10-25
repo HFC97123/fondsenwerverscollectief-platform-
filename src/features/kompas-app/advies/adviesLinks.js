@@ -66,7 +66,7 @@ export function stapPad(stapId, projectId) {
     case 'begroting':
       return metProject('/kompas/documentatie', projectId, ['tab=begroting']);
     case 'deadlines':
-      return '/kompas/deadlines';
+      return metProject('/kompas/deadlines', projectId);
     case 'indienen':
       return metProject('/kompas/documentatie', projectId, ['tab=inhoud']);
     default:
