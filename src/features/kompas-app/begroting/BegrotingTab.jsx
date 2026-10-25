@@ -36,7 +36,7 @@ function BegrotingStijl() {
 .fwk-bg-sec { margin: 0 0 22px; }
 .fwk-bg-kophoofd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: #E8F0EC; border-left: 4px solid ${color.groen}; }
 .fwk-bg-kophoofd h3 { font-size: 17px; }
-.fwk-bg-sec[data-kop="ja"] > .fwk-bg-blok, .fwk-bg-sec[data-kop="ja"] > .fwk-bg-lijn, .fwk-bg-sec[data-kop="ja"] > .fwk-bg-chips { margin-left: 14px; padding-left: 12px; border-left: 2px solid #D5E3DB; }
+.fwk-bg-sec[data-kop="ja"] > .fwk-bg-blok, .fwk-bg-sec[data-kop="ja"] > .fwk-bg-lijn, .fwk-bg-sec[data-kop="ja"] > .fwk-bg-chips, .fwk-bg-sec[data-kop="ja"] > .fwk-bg-subtotaal { margin-left: 14px; padding-left: 12px; border-left: 2px solid #D5E3DB; }
 .fwk-bg-kopkant { display: flex; align-items: center; gap: 4px; min-width: 0; position: relative; }
 .fwk-bg-schuif { display: inline-flex; gap: 2px; opacity: 0; transition: opacity .15s; }
 .fwk-bg-kophoofd:hover .fwk-bg-schuif, .fwk-bg-kophoofd:focus-within .fwk-bg-schuif { opacity: 1; }
@@ -58,6 +58,11 @@ function BegrotingStijl() {
 .fwk-bg-balk-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #CFDDD5; }
 .fwk-bg-kopjesbalk { position: sticky; top: 8px; z-index: 6; margin: 6px 0 10px; padding: 8px 0 4px; background: ${color.wit}; }
 .fwk-bg-kopjes-label { margin-bottom: 6px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.04em; color: ${color.tekstLicht}; }
+.fwk-bg-subtotaal { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 10px; padding: 9px 4px 0 12px; border-top: 1.5px solid ${color.groen}; font-size: 15px; font-weight: 800; color: #2F6D47; }
+.fwk-bg-nieuwe { cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border: 1.5px dashed ${color.groen}; background: #F4FAF6; color: #2F6D47; border-radius: 999px; padding: 12px 22px; font-family: inherit; font-size: 15px; font-weight: 800; }
+.fwk-bg-nieuwe:hover { background: ${color.vlakGroen}; }
+.fwk-bg-nieuwe-klein { cursor: pointer; border: 1.5px solid ${color.groen}; background: ${color.wit}; color: #2F6D47; border-radius: 999px; padding: 8px 16px; font-family: inherit; font-size: 13.5px; font-weight: 800; }
+.fwk-bg-nieuwe-klein:hover { background: ${color.vlakGroen}; }
 .fwk-bg-klaar { display: flex; justify-content: flex-end; margin: 12px 0 0; }
 .fwk-bg-volgende { cursor: pointer; border: 1px solid ${color.groen}; background: ${color.wit}; color: ${color.groen}; border-radius: 999px; padding: 8px 18px; font-family: inherit; font-size: 13.5px; font-weight: 800; }
 .fwk-bg-volgende:hover { background: ${color.vlakGroen}; }
@@ -740,6 +745,19 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     }
   };
 
+  // De knop bovenaan: dezelfde keuze als onder de laatste hoofdcategorie. Staat er nog geen hoofdcategorie, dan opent het veld voor een eigen naam.
+  const nieuweHoofdcategorie = async () => {
+    const laatste = zichtbaar[zichtbaar.length - 1];
+
+    if (!laatste || laatste.id === GEEN_KOPJE) {
+      setEigenOpen(true);
+
+      return;
+    }
+
+    await naOpslaanVerder();
+  };
+
   if (!project) return null;
 
   const lijst = fin ? fin.regels : [];
@@ -759,6 +777,11 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       <Blok
         titel="Begroting"
         testid="bg-begroting"
+        actie={
+          <button type="button" className="fwk-bg-nieuwe-klein" data-testid="bg-hoofd-boven" onClick={nieuweHoofdcategorie}>
+            + Hoofdcategorie toevoegen
+          </button>
+        }
       >
         <div className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
           {regels.length === 0 ? 'Weet u niet waar u moet beginnen? ' : 'Iets vergeten? '}
@@ -769,9 +792,9 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
         <div className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
           Heeft u al een begroting?{' '}
           <button type="button" className="fwk-wp-link" data-testid="bg-upload-knop" disabled={uploadBezig} onClick={kiesBestand} style={css('background: none; border: 0; padding: 0; font: inherit; cursor: pointer;')}>
-            {uploadBezig ? 'Bezig met lezen…' : 'Upload een Excel- of Word-bestand →'}
+            {uploadBezig ? 'Bezig met lezen…' : 'Upload een Excel-, Word- of PDF-bestand →'}
           </button>
-          <input ref={bestandRef} type="file" accept=".xlsx,.docx" data-testid="bg-upload-bestand" aria-label="Begroting uploaden" style={css('display: none;')} onChange={uploadBestand} />
+          <input ref={bestandRef} type="file" accept=".xlsx,.docx,.pdf" data-testid="bg-upload-bestand" aria-label="Begroting uploaden" style={css('display: none;')} onChange={uploadBestand} />
         </div>
 
         {upload && (
@@ -818,7 +841,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
         )}
 
         <div className="fwk-bg-kopjesbalk" data-testid="bg-kopjes">
-          <div className="fwk-bg-kopjes-label">Kies een subcategorie, of voeg direct budgetregels toe</div>
+          <div className="fwk-bg-kopjes-label">Kies een hoofdcategorie, of voeg direct budgetregels toe</div>
           <div className="fwk-bg-chips">
             {nietZichtbaar.map((c) => (
               <Toelichting key={c.id} kopje={c} knop={false}>
@@ -832,12 +855,12 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 </span>
               </Toelichting>
             ))}
-            <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-kopje-eigen" aria-label="Eigen subcategorie toevoegen" title="Eigen subcategorie toevoegen" onClick={() => setEigenOpen(true)}>
-              +
+            <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-kopje-eigen" aria-label="Eigen hoofdcategorie toevoegen" title="Eigen hoofdcategorie toevoegen" onClick={() => setEigenOpen(true)}>
+              + Eigen hoofdcategorie
             </button>
             {!zichtbaar.some((c) => c.id === GEEN_KOPJE) && (
               <button type="button" className="fwk-bg-chip" data-testid="bg-kopje-geen" onClick={() => voegToe(GEEN_KOPJE)}>
-                + Budgetregel zonder subcategorie
+                + Budgetregel zonder hoofdcategorie
               </button>
             )}
           </div>
@@ -850,8 +873,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 voegEigenKopjeToe();
               }}
             >
-              <input className="fwk-bg-veld" aria-label="Naam van de subcategorie" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van de subcategorie" onChange={(e) => setEigenNaam(e.target.value)} />
-              <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Subcategorie toevoegen">
+              <input className="fwk-bg-veld" aria-label="Naam van de hoofdcategorie" data-testid="bg-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van de hoofdcategorie" onChange={(e) => setEigenNaam(e.target.value)} />
+              <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Hoofdcategorie toevoegen">
                 Toevoegen
               </Button>
             </form>
@@ -891,7 +914,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 <div className="fwk-bg-kophoofd">
                   <div className="fwk-bg-kopkant">
                     {kopjeNr !== -1 && (
-                      <span className="fwk-bg-greep" data-testid={`bg-kopje-greep-${slug}`} draggable aria-hidden="true" title="Subcategorie verslepen" onDragStart={startSleep('kopje', c.id)} onDragEnd={eindeSleep}>
+                      <span className="fwk-bg-greep" data-testid={`bg-kopje-greep-${slug}`} draggable aria-hidden="true" title="Hoofdcategorie verslepen" onDragStart={startSleep('kopje', c.id)} onDragEnd={eindeSleep}>
                         ⠿
                       </span>
                     )}
@@ -900,23 +923,23 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                         {c.label}
                       </h3>
                     </Toelichting>
-                    <button type="button" className="fwk-bg-icoon" aria-label={`Subcategorie ${c.label} weghalen`} title="Subcategorie weghalen (de regels blijven staan)" data-testid={`bg-kopje-weg-${slug}`} onClick={() => haalKopjeWeg(c.id)}>
+                    <button type="button" className="fwk-bg-icoon" aria-label={`Hoofdcategorie ${c.label} weghalen`} title="Hoofdcategorie weghalen (de regels blijven staan)" data-testid={`bg-kopje-weg-${slug}`} onClick={() => haalKopjeWeg(c.id)}>
                       ✕
                     </button>
                   </div>
                   <div className="fwk-bg-kopkant">
                     {kopjeNr !== -1 && (
                       <span className="fwk-bg-schuif">
-                        <button type="button" className="fwk-bg-icoon" aria-label={`Subcategorie ${c.label} omhoog`} data-testid={`bg-kopje-omhoog-${slug}`} disabled={kopjeNr === 0} onClick={() => schuifKopjeKnop(c.id, 'omhoog')}>
+                        <button type="button" className="fwk-bg-icoon" aria-label={`Hoofdcategorie ${c.label} omhoog`} data-testid={`bg-kopje-omhoog-${slug}`} disabled={kopjeNr === 0} onClick={() => schuifKopjeKnop(c.id, 'omhoog')}>
                           ▲
                         </button>
-                        <button type="button" className="fwk-bg-icoon" aria-label={`Subcategorie ${c.label} omlaag`} data-testid={`bg-kopje-omlaag-${slug}`} disabled={kopjeNr === kopjesMetRegels.length - 1} onClick={() => schuifKopjeKnop(c.id, 'omlaag')}>
+                        <button type="button" className="fwk-bg-icoon" aria-label={`Hoofdcategorie ${c.label} omlaag`} data-testid={`bg-kopje-omlaag-${slug}`} disabled={kopjeNr === kopjesMetRegels.length - 1} onClick={() => schuifKopjeKnop(c.id, 'omlaag')}>
                           ▼
                         </button>
                       </span>
                     )}
-                    <span className="fwk-aa-klein" data-testid={`bg-sub-${slug}`}>
-                      {deel ? euro(deel.subtotaal) : euro(0)}
+                    <span className="fwk-aa-klein" data-testid={`bg-aantal-${slug}`}>
+                      {rijen.length} {rijen.length === 1 ? 'regel' : 'regels'}
                     </span>
                   </div>
                 </div>
@@ -962,16 +985,22 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                   </button>
                 </div>
               )}
-              {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && rijen.length > 0 && !volgendeOpen && (
-                <div className="fwk-bg-klaar">
-                  <button type="button" className="fwk-bg-volgende" data-testid="bg-volgende-kop" disabled={bezig} onClick={naOpslaanVerder}>
-                    {bezig ? 'Opslaan…' : 'Opslaan en volgende subcategorie'}
+              {c.id !== GEEN_KOPJE && rijen.length > 0 && (
+                <div className="fwk-bg-subtotaal" data-testid={`bg-subtotaal-${slug}`}>
+                  <span>Subtotaal {c.label}</span>
+                  <span data-testid={`bg-sub-${slug}`}>{deel ? euro(deel.subtotaal) : euro(0)}</span>
+                </div>
+              )}
+              {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && !volgendeOpen && (
+                <div className="fwk-bg-klaar" style={css('justify-content: flex-start; margin-top: 18px;')}>
+                  <button type="button" className="fwk-bg-nieuwe" data-testid="bg-volgende-kop" disabled={bezig} onClick={naOpslaanVerder}>
+                    {bezig ? 'Opslaan…' : '+ Hoofdcategorie toevoegen'}
                   </button>
                 </div>
               )}
               {c.id !== GEEN_KOPJE && c.id === zichtbaar[zichtbaar.length - 1].id && volgendeOpen && (
                 <div className="fwk-bg-volgendekeuze" data-testid="bg-volgende-keuze">
-                  <div className="fwk-bg-kopjes-label">Opgeslagen. Kies de volgende subcategorie</div>
+                  <div className="fwk-bg-kopjes-label">Opgeslagen. Kies de volgende hoofdcategorie</div>
                   <div className="fwk-bg-chips">
                     {nietZichtbaar.map((k) => (
                       <button key={k.id} type="button" className="fwk-bg-chip" data-testid={`bg-volgende-kies-${k.id}`} onClick={() => kiesKopje(k.id)}>
@@ -980,11 +1009,11 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                     ))}
                     {!zichtbaar.some((k) => k.id === GEEN_KOPJE) && (
                       <button type="button" className="fwk-bg-chip" data-testid="bg-volgende-geen" onClick={() => { setVolgendeOpen(false); voegToe(GEEN_KOPJE); }}>
-                        + Budgetregel zonder subcategorie
+                        + Budgetregel zonder hoofdcategorie
                       </button>
                     )}
-                    <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-volgende-eigen" aria-label="Eigen subcategorie toevoegen" title="Eigen subcategorie toevoegen" onClick={() => setVolgendeEigen(true)}>
-                      +
+                    <button type="button" className="fwk-bg-chip fwk-bg-chip-plus" data-testid="bg-volgende-eigen" aria-label="Eigen hoofdcategorie toevoegen" title="Eigen hoofdcategorie toevoegen" onClick={() => setVolgendeEigen(true)}>
+                      + Eigen hoofdcategorie
                     </button>
                   </div>
                   {volgendeEigen && (
@@ -996,8 +1025,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                         voegEigenKopjeToe();
                       }}
                     >
-                      <input className="fwk-bg-veld" aria-label="Naam van de subcategorie" data-testid="bg-volgende-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van de subcategorie" onChange={(e) => setEigenNaam(e.target.value)} />
-                      <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Subcategorie toevoegen">
+                      <input className="fwk-bg-veld" aria-label="Naam van de hoofdcategorie" data-testid="bg-volgende-eigen-naam" value={eigenNaam} maxLength={60} autoFocus placeholder="Naam van de hoofdcategorie" onChange={(e) => setEigenNaam(e.target.value)} />
+                      <Button size="s" variant="dark" type="submit" disabled={!eigenNaam.trim()} ariaLabel="Hoofdcategorie toevoegen">
                         Toevoegen
                       </Button>
                     </form>

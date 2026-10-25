@@ -50,7 +50,7 @@ async function leesDocx(file) {
   }
 }
 
-async function leesPdf(file) {
+async function leesPdf(file, max = MAX_TEKENS) {
   try {
     const lib = await pdfjsLib();
     const buffer = await file.arrayBuffer();
@@ -58,7 +58,7 @@ async function leesPdf(file) {
 
     let tekst = '';
 
-    for (let i = 1; i <= doc.numPages && tekst.length < MAX_TEKENS; i += 1) {
+    for (let i = 1; i <= doc.numPages && tekst.length < max; i += 1) {
       const pagina = await doc.getPage(i);
       const inhoud = await pagina.getTextContent();
 
@@ -70,6 +70,9 @@ async function leesPdf(file) {
     return '';
   }
 }
+
+// Voor wie meer tekst uit een PDF nodig heeft dan de standaardgrens (bijvoorbeeld een begroting).
+export const leesPdfTekst = (file, max = MAX_TEKENS) => leesPdf(file, max);
 
 // Excel (.xlsx): per werkblad de rijen als tekst, cellen gescheiden door " | ". Formules worden als hun uitkomst gelezen.
 async function leesXlsx(file) {

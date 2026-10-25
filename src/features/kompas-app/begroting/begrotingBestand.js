@@ -1,4 +1,4 @@
-// Tekst uit een begrotingsbestand (Excel .xlsx of Word .docx) halen, in de browser. Het bestand verlaat de browser niet; alleen de tekst gaat (op verzoek van het lid) naar de server.
+// Tekst uit een begrotingsbestand (Excel .xlsx, Word .docx of PDF) halen, in de browser. Het bestand verlaat de browser niet; alleen de tekst gaat (op verzoek van het lid) naar de server.
 // Rijen blijven rijen: de cellen van een rij staan achter elkaar, gescheiden door " | ". exceljs en mammoth worden pas geladen als iemand een bestand kiest.
 export const MAX_BEGROTING_BYTES = 5 * 1024 * 1024;
 export const MAX_BEGROTING_TEKENS = 60000; // gelijk aan de grens van de server
@@ -108,23 +108,30 @@ async function leesWord(bestand) {
   return String(value || '');
 }
 
+// PDF: de tekst per pagina, in leesvolgorde (pdf.js). Een PDF die alleen uit een afbeelding bestaat (scan) geeft geen tekst.
+async function leesPdf(bestand) {
+  const { leesPdfTekst } = await import('../../../data/services/documentExtractie.js');
+
+  return leesPdfTekst(bestand, MAX_BEGROTING_TEKENS + 1);
+}
+
 export async function leesBegrotingBestand(bestand) {
   if (!bestand || typeof bestand.arrayBuffer !== 'function') return { ok: false, melding: 'Dit bestand kon niet worden gelezen.' };
 
   const naam = String(bestand.name || '');
 
   if (/\.xls$/i.test(naam) || /\.doc$/i.test(naam)) return { ok: false, melding: 'Dit is een ouder bestandstype. Sla het op als .xlsx (Excel) of .docx (Word) en probeer het opnieuw.' };
-  if (!/\.(xlsx|docx)$/i.test(naam)) return { ok: false, melding: 'Kies een Excel-bestand (.xlsx) of een Word-bestand (.docx).' };
+  if (!/\.(xlsx|docx|pdf)$/i.test(naam)) return { ok: false, melding: 'Kies een Excel-bestand (.xlsx), een Word-bestand (.docx) of een PDF-bestand.' };
   if (bestand.size > MAX_BEGROTING_BYTES) return { ok: false, melding: 'Dit bestand is te groot (maximaal 5 MB). Bewaar alleen het blad of het deel met de begroting in een nieuw bestand.' };
 
   try {
-    const tekst = (/\.xlsx$/i.test(naam) ? await leesExcel(bestand) : await leesWord(bestand)).replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    const tekst = (/\.xlsx$/i.test(naam) ? await leesExcel(bestand) : /\.pdf$/i.test(naam) ? await leesPdf(bestand) : await leesWord(bestand)).replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
 
-    if (tekst.length < 40) return { ok: false, melding: 'In dit bestand staat geen tekst die we kunnen lezen. Staat de begroting in een afbeelding? Upload dan een bestand met de begroting als tekst.' };
+    if (tekst.length < 40) return { ok: false, melding: 'In dit bestand staat geen tekst die we kunnen lezen. Staat de begroting in een afbeelding of is de PDF een scan? Upload dan een bestand met de begroting als tekst.' };
     if (tekst.length > MAX_BEGROTING_TEKENS) return { ok: false, melding: 'Dit bestand is te groot om in één keer te lezen. Bewaar alleen het blad of het deel met de begroting in een nieuw bestand.' };
 
     return { ok: true, tekst };
   } catch (e) {
-    return { ok: false, melding: 'Dit bestand kon niet worden gelezen. Controleer of het een Excel- (.xlsx) of Word-bestand (.docx) is.' };
+    return { ok: false, melding: 'Dit bestand kon niet worden gelezen. Controleer of het een Excel- (.xlsx), Word- (.docx) of PDF-bestand is.' };
   }
 }

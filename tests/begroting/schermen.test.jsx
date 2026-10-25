@@ -96,8 +96,8 @@ let s;
   check('na een suggestie staat de cursor meteen in het bedragveld', document.activeElement === $('[data-testid="bg-bedrag"]', regel));
   await act(async () => { $('[data-testid="bg-bedrag"]', regel).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
   check('Enter in het bedrag opent de suggesties voor de volgende regel van hetzelfde kopje', !!$('[data-testid="bg-suggesties-uitvoering"]'));
-  check('de keuzes onder een kopje heten + Zelf invullen en boven staat Kies een subcategorie met een kale + voor een eigen kopje', /\+ Zelf invullen/.test($('[data-testid="bg-eigen-regel"]').textContent) && /Kies een subcategorie/.test($('[data-testid="bg-kopjes"]').textContent) && $('[data-testid="bg-kopje-eigen"]').textContent.trim() === '+');
-  check('onder het laatste kopje met regels staat Opslaan en volgende subcategorie; er wordt niets automatisch gekozen', /Opslaan en volgende subcategorie/.test(($('[data-testid="bg-volgende-kop"]') || { textContent: '' }).textContent) && !$('[data-testid="bg-volgende-keuze"]'));
+  check('de keuzes onder een kopje heten + Zelf invullen en boven staat Kies een subcategorie met een duidelijke knop voor een eigen kopje', /\+ Zelf invullen/.test($('[data-testid="bg-eigen-regel"]').textContent) && /Kies een hoofdcategorie/.test($('[data-testid="bg-kopjes"]').textContent) && /Eigen hoofdcategorie/.test($('[data-testid="bg-kopje-eigen"]').textContent));
+  check('onder het laatste kopje met regels staat + Hoofdcategorie toevoegen; er wordt niets automatisch gekozen', /\+ Hoofdcategorie toevoegen/.test(($('[data-testid="bg-volgende-kop"]') || { textContent: '' }).textContent) && !$('[data-testid="bg-volgende-keuze"]'));
   check('Opslaan verschijnt zodra er iets staat', !!knop('Begroting opslaan') && !!$('[data-testid="bg-niet-opgeslagen"]'));
 
   if ($('[data-testid="bg-plus-uitvoering"]')) await klik($('[data-testid="bg-plus-uitvoering"]'));
@@ -318,9 +318,9 @@ sectie('7. Uitleg per kopje, verslepen, kopje weghalen en eigen kopje');
   // eigen kopje
   await openKopjes();
   await klik($('[data-testid="bg-kopje-eigen"]'));
-  check('Toevoegen is uit zolang er geen naam is', knop('Subcategorie toevoegen').disabled === true);
+  check('Toevoegen is uit zolang er geen naam is', $('[data-testid="bg-eigen-form"] button').disabled === true);
   await typ($('[data-testid="bg-eigen-naam"]'), 'Locatie en huisvesting');
-  await klik(knop('Subcategorie toevoegen')); await wacht(() => true);
+  await klik($('[data-testid="bg-eigen-form"] button')); await wacht(() => true);
   check('eigen kopje staat er met de eigen naam, zonder uitleg-knop, met algemene suggesties', !!kopje('eigen-locatie-en-huisvesting') && $('[data-testid="bg-kop-eigen-locatie-en-huisvesting"]').textContent === 'Locatie en huisvesting' && !$('[data-testid="bg-info-eigen-locatie-en-huisvesting"]') && $$('[data-testid="bg-suggestie"]').some((b) => /Onvoorzien/.test(b.textContent)));
   await klik($('[data-testid="bg-eigen-regel"]'));
   await typ($('[data-testid="bg-omschrijving"]', regelMet('', kopje('eigen-locatie-en-huisvesting'))), 'Zaalhuur');
@@ -329,7 +329,7 @@ sectie('7. Uitleg per kopje, verslepen, kopje weghalen en eigen kopje');
   await openKopjes();
   await klik($('[data-testid="bg-kopje-eigen"]'));
   await typ($('[data-testid="bg-eigen-naam"]'), 'locatie en huisvesting');
-  await klik(knop('Subcategorie toevoegen')); await wacht(() => true);
+  await klik($('[data-testid="bg-eigen-form"] button')); await wacht(() => true);
   check('dezelfde naam nog eens geeft geen tweede kopje', volgorde().filter((v) => v.startsWith('eigen')).length === 1);
 
   // opslaan: volgorde, zonder kopje en eigen kopje blijven bewaard
@@ -508,8 +508,8 @@ sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkin
 
   // Fouten
   u = await toonUpload({ ...BASIS, budgetRegels: [] });
-  await kiesBestand(bestand('begroting.pdf'));
-  check('een pdf wordt vriendelijk geweigerd, zonder servercontact', /Excel-bestand \(\.xlsx\) of een Word-bestand/.test($('[data-testid="bg-fout"]')?.textContent || '') && u.srv.s.aanroepen.length === 0 && u.bewaard.length === 0);
+  await kiesBestand(bestand('begroting.txt'));
+  check('een ander bestandstype wordt vriendelijk geweigerd, zonder servercontact', /Excel-bestand \(\.xlsx\), een Word-bestand \(\.docx\) of een PDF-bestand/.test($('[data-testid="bg-fout"]')?.textContent || '') && u.srv.s.aanroepen.length === 0 && u.bewaard.length === 0);
   await kiesBestand(bestand('oud.xls'));
   check('een oud .xls zegt: opslaan als .xlsx', /ouder bestandstype/.test($('[data-testid="bg-fout"]')?.textContent || ''));
   await kiesBestand(bestand('kapot.xlsx', new ArrayBuffer(20)));
@@ -543,6 +543,33 @@ sectie('9b. Een Word-bestand lezen: tabellen blijven rijen');
   check('een kapot Word-bestand geeft een melding, geen fout', leeg.ok === false && /kon niet worden gelezen/.test(leeg.melding));
 }
 
+sectie('9c. Een PDF-begroting lezen: de tekst komt eruit, een scan geeft een duidelijke melding');
+{
+  // Een minimale PDF met tekstregels (geen afbeelding), zoals een geëxporteerde begroting.
+  const maakPdf = (regelsTekst) => {
+    const inhoud = `BT /F1 12 Tf 14 TL 40 780 Td ${regelsTekst.map((t) => `(${t}) Tj T*`).join(' ')} ET`;
+    const delen = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>', `<< /Length ${inhoud.length} >>\nstream\n${inhoud}\nendstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+    let uit = '%PDF-1.4\n';
+    const plekken = [];
+
+    delen.forEach((d, i) => { plekken.push(uit.length); uit += `${i + 1} 0 obj\n${d}\nendobj\n`; });
+
+    const xref = uit.length;
+
+    uit += `xref\n0 ${delen.length + 1}\n0000000000 65535 f \n${plekken.map((p) => `${String(p).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${delen.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+
+    return new TextEncoder().encode(uit).buffer;
+  };
+  const ab = maakPdf(['Begroting Samen Spelen 2027', 'Projectleider 100 uur 50 5.000', 'Materiaal 10 25 250', 'Totaal 5.250']);
+  const res = await leesBegrotingBestand({ name: 'begroting.pdf', size: ab.byteLength, arrayBuffer: async () => ab });
+
+  check('een PDF-bestand wordt gelezen: elke regel staat erin', res.ok && /Begroting Samen Spelen 2027/.test(res.tekst) && /Projectleider/.test(res.tekst) && /5\.250/.test(res.tekst), JSON.stringify(res).slice(0, 300));
+
+  const scan = await leesBegrotingBestand({ name: 'scan.pdf', size: 100, arrayBuffer: async () => maakPdf([]) });
+
+  check('een PDF zonder tekst (scan) geeft een duidelijke melding, geen fout', scan.ok === false && /scan|afbeelding/.test(scan.melding), JSON.stringify(scan).slice(0, 200));
+}
+
 sectie('10. Opslaan en dan zelf de volgende subcategorie kiezen');
 {
   s = await toon({ ...BASIS, begroting: 0, budgetRegels: [] });
@@ -550,7 +577,7 @@ sectie('10. Opslaan en dan zelf de volgende subcategorie kiezen');
   await klik($$('[data-testid="bg-suggestie"]').find((b) => /Projectleider/.test(b.textContent)));
   await typ($('[data-testid="bg-bedrag"]'), '5000');
   await klik($('[data-testid="bg-volgende-kop"]'));
-  check('Opslaan en volgende subcategorie slaat op en toont daarna de keuze, zonder zelf een subcategorie te kiezen', await wacht(() => s.bewaard.length === 1) && !!(await wacht(() => $('[data-testid="bg-volgende-keuze"]'))) && !kopje('activa') && !$('[data-testid="bg-volgende-kop"]'));
+  check('+ Hoofdcategorie toevoegen slaat op en toont daarna de keuze, zonder zelf een subcategorie te kiezen', await wacht(() => s.bewaard.length === 1) && !!(await wacht(() => $('[data-testid="bg-volgende-keuze"]'))) && !kopje('activa') && !$('[data-testid="bg-volgende-kop"]'));
   check('de keuze toont de nog niet gebruikte subcategorieën en een + voor een eigen subcategorie', ['activa', 'communicatie', 'organisatie'].every((k) => !!$(`[data-testid="bg-volgende-kies-${k}"]`)) && !$('[data-testid="bg-volgende-kies-uitvoering"]') && !!$('[data-testid="bg-volgende-eigen"]'));
   await klik($('[data-testid="bg-volgende-kies-communicatie"]'));
   check('de gekozen subcategorie komt erbij met de suggesties open en de keuze verdwijnt', !!kopje('communicatie') && !!$('[data-testid="bg-suggesties-communicatie"]') && !$('[data-testid="bg-volgende-keuze"]'));
@@ -561,7 +588,7 @@ sectie('10. Opslaan en dan zelf de volgende subcategorie kiezen');
   await typ($('[data-testid="bg-bedrag"]'), '5000');
   await klik($('[data-testid="bg-volgende-kop"]'));
   await wacht(() => $('[data-testid="bg-volgende-keuze"]'));
-  check('je kunt ook zonder subcategorie door: een budgetregel zonder subcategorie komt er los bij', /Budgetregel zonder subcategorie/.test($('[data-testid="bg-volgende-geen"]').textContent));
+  check('je kunt ook zonder hoofdcategorie door: een budgetregel zonder hoofdcategorie komt er los bij', /Budgetregel zonder hoofdcategorie/.test($('[data-testid="bg-volgende-geen"]').textContent));
   await klik($('[data-testid="bg-volgende-geen"]'));
   check('die regel staat los (zonder kopregel) en de keuze is weg', !!kopje('zonder') && !$('[data-testid="bg-kop-zonder"]') && !$('[data-testid="bg-volgende-keuze"]'));
 }

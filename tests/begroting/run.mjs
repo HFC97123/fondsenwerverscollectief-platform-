@@ -3,6 +3,7 @@
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 let status = 0;
 
@@ -35,7 +36,7 @@ for (const b of []) {
     define: { 'process.env.NODE_ENV': '"test"', 'import.meta.env': '{}' },
     banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
     external: ['jsdom', 'exceljs', 'docx', 'jszip', 'pdfjs-dist', 'mammoth'],
-    plugins: [{ name: 'alias-fakes', setup(b) { b.onResolve({ filter: /\/client\.js$/ }, (a) => (a.importer.includes('/src/') ? { path: fakeClient } : null)); } }],
+    plugins: [{ name: 'alias-fakes', setup(b) { b.onResolve({ filter: /\/client\.js$/ }, (a) => (a.importer.includes('/src/') ? { path: fakeClient } : null)); b.onResolve({ filter: /\?url$/ }, () => ({ path: 'worker-url', namespace: 'stub-url' })); b.onLoad({ filter: /.*/, namespace: 'stub-url' }, () => ({ contents: `export default ${JSON.stringify(pathToFileURL(join(process.cwd(), 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs')).href)};`, loader: 'js' })); } }],
     logLevel: 'error',
   });
 
