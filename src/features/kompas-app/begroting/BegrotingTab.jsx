@@ -61,8 +61,6 @@ function BegrotingStijl() {
 .fwk-bg-subtotaal { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 10px; padding: 9px 4px 0 12px; border-top: 1.5px solid ${color.groen}; font-size: 15px; font-weight: 800; color: #2F6D47; }
 .fwk-bg-nieuwe { cursor: pointer; display: inline-flex; align-items: center; gap: 8px; border: 1.5px dashed ${color.groen}; background: #F4FAF6; color: #2F6D47; border-radius: 999px; padding: 12px 22px; font-family: inherit; font-size: 15px; font-weight: 800; }
 .fwk-bg-nieuwe:hover { background: ${color.vlakGroen}; }
-.fwk-bg-nieuwe-klein { cursor: pointer; border: 1.5px solid ${color.groen}; background: ${color.wit}; color: #2F6D47; border-radius: 999px; padding: 8px 16px; font-family: inherit; font-size: 13.5px; font-weight: 800; }
-.fwk-bg-nieuwe-klein:hover { background: ${color.vlakGroen}; }
 .fwk-bg-klaar { display: flex; justify-content: flex-end; margin: 12px 0 0; }
 .fwk-bg-volgende { cursor: pointer; border: 1px solid ${color.groen}; background: ${color.wit}; color: ${color.groen}; border-radius: 999px; padding: 8px 18px; font-family: inherit; font-size: 13.5px; font-weight: 800; }
 .fwk-bg-volgende:hover { background: ${color.vlakGroen}; }
@@ -746,19 +744,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     }
   };
 
-  // De knop bovenaan: dezelfde keuze als onder de laatste hoofdcategorie. Staat er nog geen hoofdcategorie, dan opent het veld voor een eigen naam.
-  const nieuweHoofdcategorie = async () => {
-    const laatste = zichtbaar[zichtbaar.length - 1];
-
-    if (!laatste || laatste.id === GEEN_KOPJE) {
-      setEigenOpen(true);
-
-      return;
-    }
-
-    await naOpslaanVerder();
-  };
-
   if (!project) return null;
 
   const lijst = fin ? fin.regels : [];
@@ -778,11 +763,6 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
       <Blok
         titel="Begroting"
         testid="bg-begroting"
-        actie={
-          <button type="button" className="fwk-bg-nieuwe-klein" data-testid="bg-hoofd-boven" onClick={nieuweHoofdcategorie}>
-            + Hoofdcategorie toevoegen
-          </button>
-        }
       >
         <div className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
           {regels.length === 0 ? 'Weet u niet waar u moet beginnen? ' : 'Iets vergeten? '}
