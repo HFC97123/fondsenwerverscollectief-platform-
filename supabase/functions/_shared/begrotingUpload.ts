@@ -62,6 +62,8 @@ Regels:
 - sectie: de kop waaronder de regel in het bestand staat, letterlijk. Staat er geen kop, laat sectie leeg.
 - kopje: uitvoering = mankracht, personeelskosten, vrijwilligers en hun training en andere kosten om het project uit te voeren; activa = uitrusting en materialen voor de hulpverlening; communicatie = kosten om het project onder de aandacht te brengen; organisatie = fondsenwerving, huisvesting, overhead, verzekeringen en boekhouding. Past een post nergens, kies eigen met een korte, duidelijke naam in eigenKopje (liefst de kop uit het bestand).
 - Totaalregels en subtotalen zijn geen kostenposten: zet ze in "totalen" met het bedrag zoals het er staat. Het totaal van de hele begroting heeft soort "totaal"; het subtotaal van één kop soort "subtotaal" met die kop in sectie.
+- Een hoofdregel is een kop of tussenregel met een bedrag waaronder losse subregels staan (bijvoorbeeld "Personeel € 20.000" met daaronder de functies). Dat bedrag is de optelling van de subregels en geen kostenpost: neem alleen de subregels op en zet de hoofdregel als "subtotaal" in "totalen". Staat er onder een hoofdregel niets, dan is de hoofdregel zelf wel een kostenpost.
+- Elke euro komt precies één keer voor in "regels": nooit een hoofdregel én zijn subregels, en nooit een totaal als regel.
 - Dekkingsregels (eigen bijdrage, toegekende of aangevraagde fondsen, subsidies, "te dekken") zijn geen kostenposten en geen totalen: laat ze weg.
 - omschrijving is kort (maximaal 200 tekens), eenheid is bijvoorbeeld uur, stuk, maand, pakket of vrijwilliger.
 - Staat er geen enkele kostenpost in de tekst, antwoord dan {"regels":[],"totalen":[]}.`;
@@ -113,6 +115,34 @@ export function schoneUploadRegel(ruw: any, waarschuw: (t: string) => void): Upl
   return { ...s, toelichting: [s.toelichting, extra].filter(Boolean).join(' ').slice(0, 500), sectie: schoon(ruw.sectie, 120) };
 }
 
+// Een regel is een tussentelling als zijn bedrag gelijk is aan de som van minstens twee andere regels (onder dezelfde kop, of onder een kop die zo heet als de regel) en hij zelf geen aantal x tarief heeft.
+function vindTussentellingen(regels: UploadRegel[]): Set<UploadRegel> {
+  const weg = new Set<UploadRegel>();
+
+  for (const r of regels) {
+    const eigen = regelBedragNaScherm(r);
+
+    if (eigen === null || eigen <= 0 || (r.aantal !== null && r.tarief !== null)) continue;
+
+    const naam = sleutelSectie(r.omschrijving);
+    const onder = naam ? regels.filter((x) => x !== r && !weg.has(x) && regelBedragNaScherm(x) !== null && sleutelSectie(x.sectie) === naam) : [];
+    const gelijkeKop = sleutelSectie(r.sectie) !== '' ? regels.filter((x) => x !== r && !weg.has(x) && sleutelSectie(x.sectie) === sleutelSectie(r.sectie) && regelBedragNaScherm(x) !== null) : [];
+
+    for (const groep of [onder, gelijkeKop]) {
+      if (groep.length < 2) continue;
+
+      const som = Math.round(groep.reduce((n, x) => n + (regelBedragNaScherm(x) ?? 0), 0) * 100) / 100;
+
+      if (Math.abs(som - eigen) <= TOLERANTIE_EURO) {
+        weg.add(r);
+        break;
+      }
+    }
+  }
+
+  return weg;
+}
+
 export function valideerUpload(ruw: unknown): { regels: UploadRegel[]; controle: UploadControle } {
   const obj = ruw && typeof ruw === 'object' ? (ruw as any) : {};
   const lijst: unknown[] = Array.isArray(obj.regels) ? obj.regels : [];
@@ -135,6 +165,15 @@ export function valideerUpload(ruw: unknown): { regels: UploadRegel[]; controle:
 
     gezien.add(sleutel);
     regels.push(s);
+  }
+
+  // Vangnet tegen dubbeltelling: een hoofdregel (kop met een bedrag) naast zijn eigen subregels is een tussentelling, geen kostenpost.
+  const tussentellingen = vindTussentellingen(regels);
+
+  if (tussentellingen.size > 0) {
+    for (const t of tussentellingen) waarschuw(`“${t.omschrijving}” (${euro(regelBedragNaScherm(t) ?? 0)}) is de optelling van de regels eronder en telt niet apart mee.`);
+
+    for (let i = regels.length - 1; i >= 0; i -= 1) if (tussentellingen.has(regels[i])) regels.splice(i, 1);
   }
 
   const afgekapt = regels.length > MAX_REGELS_UPLOAD;
