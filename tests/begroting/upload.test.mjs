@@ -25,4 +25,7 @@ res = valideerUpload({ regels: [R('Sportmaterialen', 500, 'Activa'), R('Bal', 20
 check('staat een kopregel met precies de som van de regels eronder, dan is dat een optelling (en gemeld)', res.regels.length === 2 && res.controle.waarschuwingen.length === 1);
 res = valideerUpload({ regels: [R('Trainers', 5000, 'Uitvoering', { aantal: 10, tarief: 500 }), R('Zaal', 2000, 'Uitvoering'), R('Reis', 3000, 'Uitvoering')], totalen: [] });
 check('een regel met aantal x tarief wordt nooit als optelling weggehaald', res.regels.length === 3 && som(res) === 10000);
+sectie('4. Geen hoofdregels of kopjes: alle losse regels tellen gewoon op');
+res = valideerUpload({ regels: [R('Laptop', 500), R('Beamer', 200), R('Scherm', 300), R('Trainer', 1000), R('Flyers', 400)], totalen: [{ soort: 'totaal', sectie: '', bedrag: 2400 }] });
+check('vijf losse regels zonder kop blijven vijf, ook al is 500 gelijk aan 200 + 300; totaal 2.400 en geen enkele melding', res.regels.length === 5 && som(res) === 2400 && res.controle.waarschuwingen.length === 0, JSON.stringify(res.controle.waarschuwingen));
 klaar('begroting-upload-dubbel');
