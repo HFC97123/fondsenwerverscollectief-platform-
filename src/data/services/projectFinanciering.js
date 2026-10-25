@@ -197,6 +197,24 @@ export async function verwijderRegel(regelId) {
   return { ok: !error };
 }
 
+// Overzicht, kaart 1: per thema van het project het aantal fondsen in de database met dat thema, voor het abonnement van het lid
+// (kompas_thema_aantallen). Alleen aantallen; de database bepaalt abonnement en eigenaar. -> [{ thema, aantal }], meest eerst.
+export async function haalThemaAantallen(projectId) {
+  if (!supabase || !isEchtId(projectId)) return [];
+
+  try {
+    const { data, error } = await supabase.rpc('kompas_thema_aantallen', { p_program_id: projectId });
+
+    if (error || !Array.isArray(data)) return [];
+
+    return data
+      .map((r) => ({ thema: String(r.thema || ''), aantal: Number(r.aantal) || 0 }))
+      .filter((r) => r.thema && r.aantal > 0);
+  } catch (e) {
+    return [];
+  }
+}
+
 // Premium-teasers voor Pro (kompas_premium_teasers): hooguit 3 passende Premium-fondsen of -regelingen voor dit project, ZONDER naam, id,
 // website, bedrag of deadline. De database bepaalt alles (alleen voor Pro, alleen het eigen project); dit leest alleen.
 // -> { teasers: [{ volgnummer, soort, bandbreedte, disciplines, doelgroepen, match }], totaal }

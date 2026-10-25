@@ -2,11 +2,11 @@
 // Geen eigen opslag en geen eigen rekenregels: alles komt uit dezelfde bronnen als het Dashboard en het projectdossier
 // (useProjectFinanciering, dekkingVanProject, voortgang van Projectinformatie). Begroting, Deadlines en Indienen zijn de
 // bestaande pagina's; zie adviesLinks.js voor de koppeling.
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Blok, Leeg, Melding, PaginaKop, WerkPagina } from '../../../shared/ui/werkplek.jsx';
 import { Button } from '../../../shared/ui/index.js';
-import FundingDatabaseCount from '../../../shared/ui/FundingDatabaseCount.jsx';
+import { haalThemaAantallen } from '../../../data/services/projectFinanciering.js';
 import { useApp } from '../useKompasApp.js';
 import { useKompas } from '../KompasStore.jsx';
 import { useHeeftWerkruimte } from '../werkruimteRechten.js';
@@ -214,9 +214,42 @@ function BelangrijksteFonds({ regels, nu }) {
       )}
       <Rij rechts={regels.length}>Passende fondsen en regelingen in uw plan</Rij>
       {andere > 0 && top && <Rij>Plus {andere} {andere === 1 ? 'ander fonds' : 'andere fondsen'}, te zien bij de fondsmatching.</Rij>}
-      <Rij>
-        <FundingDatabaseCount /> fondsen en regelingen gescand op dit project.
-      </Rij>
+    </div>
+  );
+}
+
+const THEMA_PIL = "display: inline-flex; align-items: center; gap: 6px; margin: 4px 6px 0 0; padding: 5px 12px; border-radius: 999px; border: 1.5px solid #D3DFE4; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 700; text-decoration: none;";
+
+// Onder de fondsen in het plan: de drie thema's van het project met de meeste fondsen in de database. Een klik gaat naar de fondsmatching.
+function OokOpThema({ project }) {
+  const [thema, setThema] = useState([]);
+
+  useEffect(() => {
+    let actief = true;
+
+    haalThemaAantallen(project.id).then((r) => {
+      if (actief) setThema(r.slice(0, 3));
+    });
+
+    return () => {
+      actief = false;
+    };
+  }, [project.id]);
+
+  if (!thema.length) {
+    return null;
+  }
+
+  return (
+    <div data-testid="advies-fondsen-thema" style={css('margin-top: 10px; padding-top: 10px; border-top: 1px solid #E1EAE4;')}>
+      <div style={css("font-family: 'Mulish', sans-serif; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #7B8985;")}>Ook mogelijk passend, op thema</div>
+      <div>
+        {thema.map((t) => (
+          <a key={t.thema} data-testid="advies-thema-pil" href={stapHref('fondsen', project.id)} style={css(THEMA_PIL)}>
+            {t.thema} <b style={css('color: #4E9A6C; font-weight: 800;')}>{t.aantal} {t.aantal === 1 ? 'fonds' : 'fondsen'}</b>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -235,6 +268,7 @@ function Overzicht({ project, paid }) {
     <div className="fwk-av-raster" data-testid="advies-overzicht">
       <Kaart nr="1" titel="Vind de fondsen die echt passen" uitleg="Fondsmatching op uw projectgegevens: discipline, doelgroep, werkgebied en bedrag." href={stapHref('fondsen', project.id)} linkTekst={financiering.status === 'klaar' && regels.length === 0 ? 'Start de fondsmatching' : 'Naar de fondsmatching'} testid="advies-kaart-fondsen">
         {financiering.status !== 'klaar' ? <Rij>Fondsen worden geladen…</Rij> : regels.length > 0 ? <BelangrijksteFonds regels={regels} nu={nu} /> : <VoorbeeldFondsen project={project} />}
+        {financiering.status === 'klaar' && paid && <OokOpThema project={project} />}
       </Kaart>
 
       <Kaart nr="2" titel="Dek uw hele begroting" uitleg="Uw begroting per subcategorie, met de financiers die hem dekken." href={stapHref('begroting', project.id)} linkTekst="Naar de begroting" testid="advies-kaart-begroting">

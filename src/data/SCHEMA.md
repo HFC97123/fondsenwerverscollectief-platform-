@@ -204,6 +204,13 @@ anders missie), voorwaarden, disciplines, doelgroepen, werkgebieden, bandbreedte
 `funder_deadlines`). Gebruik via `haalBronDetails()` in services/deadlines.js. De views `subsidieregelingen_deadlines` en
 `funder_deadlines` geven sindsdien ook `access_tier` mee (alleen voor het label "Premium").
 
+## Themaaantallen (kompas_thema_aantallen, sinds 25-10-2026)
+
+`rpc('kompas_thema_aantallen', { p_program_id })` — alleen ingelogd, alleen het eigen project, alleen lezen. Geeft per thema van het project het
+aantal nagekeken fondsen met dat thema, voor het abonnement van het lid (Free krijgt niets; het abonnement wordt in de database bepaald). Fondsen
+die al in het plan van het project staan tellen niet mee; 'Kinderen/jongeren' telt bij 'Jeugd en kinderen' en 'Armoede/zelfredzaamheid' bij
+'Zelfredzaamheid'. Alleen aantallen, geen fondsgegevens. Gebruik via `haalThemaAantallen()` in services/projectFinanciering.js (Overzicht, kaart 1).
+
 ## Premium-teasers (kompas_premium_teasers, sinds 19-10-2026)
 
 `rpc('kompas_premium_teasers', { p_program_id })` — alleen Pro, alleen het eigen project, alleen lezen. Hooguit 3 passende Premium-fondsen of

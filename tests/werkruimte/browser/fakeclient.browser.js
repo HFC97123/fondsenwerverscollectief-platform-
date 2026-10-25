@@ -69,6 +69,7 @@ export const supabase = {
   functions: { invoke: async (n, opts) => { window.__LOG.push({ tabel: `functions:${n}`, op: 'invoke', filters: [JSON.stringify((opts && opts.body) || {})] }); if (window.__FN) return window.__FN(n, opts && opts.body); return { data: null, error: null }; } },
   rpc: async (naam, args) => {
     window.__LOG.push({ tabel: `rpc:${naam}`, op: 'rpc', filters: [JSON.stringify(args || {})] });
+    if (naam === 'kompas_thema_aantallen') return { data: (window.__THEMA_AANTALLEN || []).map((r) => ({ ...r })), error: null };
     if (naam === 'kompas_premium_teasers') return { data: (window.__TEASERS || []).map((r) => ({ ...r })), error: null };
     if (naam === 'kompas_bron_details') {
       // Zonder __BRON_DETAILS gedraagt de nep-database zich als een database zonder deze functie (de app valt terug op de views).
