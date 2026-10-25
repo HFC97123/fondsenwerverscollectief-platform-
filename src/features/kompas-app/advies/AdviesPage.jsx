@@ -279,7 +279,7 @@ function Overzicht({ project, paid }) {
         {financiering.status === 'klaar' && paid && <OokOpThema project={project} />}
       </Kaart>
 
-      <Kaart nr="2" titel="Dek uw hele begroting" uitleg="Uw begroting per subcategorie, met de financiers die hem dekken." href={stapHref('begroting', project.id)} linkTekst="Naar de begroting" testid="advies-kaart-begroting">
+      <Kaart nr="2" titel="Begroting en dekkingsplan" uitleg="Uw begroting per subcategorie, met de financiers die hem dekken." href={stapHref('begroting', project.id)} linkTekst="Naar begroting en dekkingsplan" testid="advies-kaart-begroting">
         <Rij rechts={dekking.heeftBegroting ? formatEuro(dekking.begroting) : '—'}>Begroting</Rij>
         {dekking.heeftBegroting && (
           <>
@@ -289,6 +289,11 @@ function Overzicht({ project, paid }) {
             </div>
             <div style={css(`${TEKST} font-size: 13px;`)}>
               <span style={css(`color: ${KLEUR.toegekend};`)}>●</span> {formatEuro(dekking.toegekend)} toegekend ·{' '}
+              {dekking.overige > 0 && (
+                <>
+                  <span data-testid="advies-eigen-bijdrage"><span style={css(`color: ${KLEUR.overige};`)}>●</span> {formatEuro(dekking.overige)} eigen bijdrage</span> ·{' '}
+                </>
+              )}
               <span style={css(`color: ${KLEUR.aangevraagd};`)}>●</span> {formatEuro(dekking.aangevraagd)} aangevraagd · {dekking.volledigGedekt ? 'volledig gedekt' : `${formatEuro(dekking.nogNodig)} nog te dekken`}
             </div>
           </>

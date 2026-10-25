@@ -25,7 +25,7 @@ const STAPPEN = [
   },
   {
     n: '2',
-    titel: 'Dek uw hele begroting',
+    titel: 'Begroting en dekkingsplan',
     tekst: 'Een slimme combinatie van fondsen met realistische bedragen, zodat uw project niet half blijft.',
     voorbeeld: 'dekking',
   },

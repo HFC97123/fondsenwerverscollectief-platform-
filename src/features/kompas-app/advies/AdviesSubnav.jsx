@@ -1,4 +1,4 @@
-// Subsidieadvies: de balk met vijf knoppen (Overzicht, 1 Fondsen, 2 Begroting, 3 Deadlines, 4 Indienen) en de projectkeuze.
+// Subsidieadvies: de balk met vijf knoppen (Overzicht, 1 Fondsen, 2 Begroting en dekkingsplan, 3 Deadlines, 4 Indienen) en de projectkeuze.
 // Staat onder de hoofdnavigatie op alle pagina's die bij Subsidieadvies horen. De balk bewaart zelf niets: het project staat in
 // de URL (?project=<id>) en elke stap is de bestaande pagina (zie adviesLinks.js).
 import React, { useEffect, useMemo, useState } from 'react';

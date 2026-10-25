@@ -26,7 +26,7 @@ const P = '11111111-1111-4111-8111-111111111111';
 const src = (p) => readFileSync(join(root, p), 'utf8');
 
 // stappen en links
-check('vijf stappen: Overzicht, fondsmatching, Begroting, Actieplan, Indienen', L.STAPPEN.map((s) => s.label).join('|') === 'Overzicht|Fondsmatching|Begroting|Actieplan|Indienen');
+check('vijf stappen: Overzicht, fondsmatching, Begroting en dekkingsplan, Actieplan, Indienen', L.STAPPEN.map((s) => s.label).join('|') === 'Overzicht|Fondsmatching|Begroting en dekkingsplan|Actieplan|Indienen');
 check('overzicht linkt naar /kompas/advies', L.stapHref('overzicht', P) === `#/kompas/advies?project=${P}`);
 check('Fondsmatching (fondsen) linkt naar /kompas/advies/fondsen', L.stapHref('fondsen', P) === `#/kompas/advies/fondsen?project=${P}`);
 check('begroting en indienen zijn de bestaande pagina Documenten met het juiste tabblad', L.stapHref('begroting', P) === `#/kompas/documentatie?tab=begroting&project=${P}` && L.stapHref('indienen', P) === `#/kompas/documentatie?tab=inhoud&project=${P}`);
@@ -66,7 +66,7 @@ const pd = src('src/features/kompas-app/projectdossier/ProjectDetailPage.jsx');
 check('projectpagina: tabbladen Projectprofiel, Documenten, Gesprekken; geen Projectdocumentatie-blok meer', /id: 'overzicht'/.test(pd) && /id: 'documenten'/.test(pd) && /id: 'gesprekken'/.test(pd) && !/id: 'projectfinanciering', label/.test(pd) && !/id: 'deadlines', label/.test(pd) && !/overzicht-projectinformatie/.test(pd));
 check('projectpagina stuurt oude tab-links door', /adviesDoorverwijzing\(huidigeHash\(\), projectId\)/.test(pd));
 const dp = src('src/features/kompas-app/DocumentatiePage.jsx');
-check('Documenten: kop heet Begroting of Indienen; Projectinhoud heet Projectdossier', /titel=\{sectie === 'begroting' \? 'Begroting' : 'Indienen'\}/.test(dp) && /label: 'Projectdossier'/.test(dp) && !/label: 'Projectinhoud'/.test(dp));
+check('Documenten: kop heet Begroting en dekkingsplan of Indienen; Projectinhoud heet Projectdossier', /titel=\{sectie === 'begroting' \? 'Begroting en dekkingsplan' : 'Indienen'\}/.test(dp) && /label: 'Projectdossier'/.test(dp) && !/label: 'Projectinhoud'/.test(dp));
 check('Indienen: tabbladen Projectdossier, Projectplan, Aanvragen, Bestanden in deze volgorde', dp.indexOf("label: 'Projectdossier'") < dp.indexOf("label: 'Projectplan'") && dp.indexOf("label: 'Projectplan'") < dp.indexOf("label: 'Aanvragen'") && dp.indexOf("label: 'Aanvragen'") < dp.indexOf("label: 'Bestanden'"));
 check('Documenten volgt de hash (stap en project uit de balk)', /addEventListener\('hashchange', volg\)/.test(dp));
 const ap = src('src/features/kompas-app/advies/AdviesPage.jsx');

@@ -188,7 +188,7 @@ export default function DocumentatiePage() {
   return (
     <WerkPagina testid="documenten">
       <PaginaKop
-        titel={sectie === 'begroting' ? 'Begroting' : 'Indienen'}
+        titel={sectie === 'begroting' ? 'Begroting en dekkingsplan' : 'Indienen'}
         meta={sectie === 'begroting' ? null : tabActief === 'bestanden' ? `${alle.length} ${alle.length === 1 ? 'document' : 'documenten'}${aantalProjecten ? ` in ${aantalProjecten} ${aantalProjecten === 1 ? 'project' : 'projecten'}` : ''}` : null}
         help={
           sectie === 'begroting' ? (

@@ -212,7 +212,7 @@ export default function BegrotingVoorstelDialoog({ project, tekst, store, onSlui
             </p>
             <div style={css('display: flex; gap: 8px; flex-wrap: wrap;')}>
               <a className="fwk-wp-link" data-testid="bv-naar-begroting" href={`#/kompas/documentatie?project=${encodeURIComponent(project.id)}&tab=begroting`} onClick={onSluit} style={css('font-weight: 800;')}>
-                Naar de begroting →
+                Naar begroting en dekkingsplan →
               </a>
               <Button variant="outline" onClick={onSluit}>
                 Sluiten

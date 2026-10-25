@@ -31,7 +31,7 @@ export const RONDLEIDING = [
     id: 'begroting',
     titel: 'Stap 2 · Begroting',
     tekst: 'Uw begroting per subcategorie, met de financiers die hem dekken. De balk laat zien hoeveel is toegekend, aangevraagd en nog te dekken.',
-    link: { href: '#/kompas/documentatie?tab=begroting', tekst: 'Naar de begroting' },
+    link: { href: '#/kompas/documentatie?tab=begroting', tekst: 'Naar begroting en dekkingsplan' },
   },
   {
     id: 'actieplan',
@@ -95,7 +95,7 @@ export const VRAGEN = [
     id: 'begroting-invullen',
     vraag: 'Hoe vul ik mijn begroting in?',
     antwoord: 'Bij Subsidieadvies › Begroting vult u de begroting per subcategorie in. Daaronder staat het dekkingsplan met de financiers die de begroting dekken. U kunt de begroting ook als Excel downloaden.',
-    links: [{ href: '#/kompas/documentatie?tab=begroting', tekst: 'Naar de begroting' }],
+    links: [{ href: '#/kompas/documentatie?tab=begroting', tekst: 'Naar begroting en dekkingsplan' }],
   },
   {
     id: 'dekking-balk',

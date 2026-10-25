@@ -9,7 +9,7 @@ export const ADVIES_PADEN = ['/kompas/advies', '/kompas/deadlines', '/kompas/doc
 export const STAPPEN = [
   { id: 'overzicht', nr: '★', label: 'Overzicht' },
   { id: 'fondsen', nr: '1', label: 'Fondsmatching' },
-  { id: 'begroting', nr: '2', label: 'Begroting' },
+  { id: 'begroting', nr: '2', label: 'Begroting en dekkingsplan' },
   { id: 'deadlines', nr: '3', label: 'Actieplan' },
   { id: 'indienen', nr: '4', label: 'Indienen' },
 ];
