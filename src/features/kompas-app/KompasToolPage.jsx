@@ -176,13 +176,13 @@ const STARTERS = [
 // Pro en Premium: financiering zoeken en strategie bovenaan, daaronder het schrijfwerk.
 const STARTERS_PRO = [
   'Ik zoek financiering voor een project',
-  'Help mij met een fondsenwervende strategie',
-  'Help mij met een projectplan schrijven',
-  'Help mij met mijn begroting en dekkingsplan opstellen',
+  'Welke fondsenwervende strategie past bij mijn organisatie?',
+  'Laten we samen een projectplan schrijven',
+  'Mijn begroting en dekkingsplan opstellen',
 ];
 
 // Alleen deze startvragen zetten de projectplan-modus aan.
-const PROJECTPLAN_STARTERS = ['Help mij een projectplan opzetten', 'Help mij met een projectplan schrijven'];
+const PROJECTPLAN_STARTERS = ['Help mij een projectplan opzetten', 'Laten we samen een projectplan schrijven'];
 
 // Vervolgopdracht, prioriteit 7 (Export): kleine, gedempte actieknopjes
 // onder een AI-resultaat - bewust geen "pil" (die suggereert een filter/
