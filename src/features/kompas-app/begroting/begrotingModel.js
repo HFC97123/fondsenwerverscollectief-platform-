@@ -14,7 +14,7 @@ const MAX_TOELICHTING = 500;
 export const CATEGORIEEN = [
   {
     id: 'uitvoering',
-    label: 'Projectuitvoering',
+    label: 'Projectuitvoeringskosten',
     toelichting: ['Vaak de mankracht: personeelskosten, of andere kosten die gemaakt worden om het project uit te voeren.', 'Ook het trainen van de mankracht, zoals het trainen van vrijwilligers, en wat daarvoor nodig is.'],
     suggesties: [['Projectleider', 'uur'], ['Coördinator', 'uur'], ['Uitvoerend medewerker', 'uur'], ['Trainer of docent', 'dag'], ['Zzp-uitvoerder', 'uur'], ['Vrijwilligersvergoeding', 'vrijwilliger'], ['Training van vrijwilligers', 'vrijwilliger'], ['Activiteiten en bijeenkomsten', 'bijeenkomst'], ['Reiskosten', 'kilometer']],
   },

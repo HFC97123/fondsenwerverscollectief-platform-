@@ -1,7 +1,7 @@
 // Documenten › Begroting: de projectbegroting, schoon en leeg om mee te beginnen. Het lid voegt zelf een kopje (tussenregel) toe en daaronder
 // regels: omschrijving en bedrag, eventueel met aantal x tarief. Daaronder staat het dekkingsplan: toegekend,
-// uitstaand en in planning, het totaal (dat gelijk moet zijn aan de begroting) en wat nog te dekken is. Het totaal van de kosten wordt de
-// projectbegroting (project.begroting), waarmee de rest van Subsidie Kompas al rekent. Bedragen verzint niemand: een lege regel telt niet mee.
+// uitstaand en in planning, het totaal (dat gelijk moet zijn aan de begroting) en wat nog te dekken is. Het bedrag bij Projectgegevens (project.begroting, waarmee de fondsmatching rekent) verandert hier nooit stilletjes:
+// is het leeg dan wordt het gevuld met het begrotingstotaal, wijkt het af dan kiest het lid in het groene vlak. Bedragen verzint niemand: een lege regel telt niet mee.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { color } from '../../../shared/tokens.js';
@@ -339,6 +339,23 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
   const [uploadBezig, setUploadBezig] = useState(false);
   const [upload, setUpload] = useState(null); // { bestand, aantal, waarschuwingen, vorigeRegels, vorigeBegroting, resterend } na een geslaagde upload
   const bestandRef = useRef(null);
+  const [laatStaan, setLaatStaan] = useState(null); // het begrotingstotaal waarbij het lid koos: het bedrag bij Projectgegevens laten staan
+  const [bedragBezig, setBedragBezig] = useState(false);
+  const laatStaanSleutel = `fwk-bg-laatstaan:${projectId || ''}`;
+
+  useEffect(() => {
+    let v = null;
+
+    try {
+      const x = window.localStorage.getItem(laatStaanSleutel);
+
+      v = x !== null && x !== '' && Number.isFinite(Number(x)) ? Number(x) : null;
+    } catch (e) {
+      v = null;
+    }
+
+    setLaatStaan(v);
+  }, [laatStaanSleutel]);
 
   // Een ander project: de regels van dat project laden.
   useEffect(() => {
@@ -387,6 +404,10 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
 
   const totalen = useMemo(() => berekenBegroting(regels), [regels]);
   const totaal = totalen.totaalGeld;
+  // Het bedrag van de OPGESLAGEN begroting tegen het bedrag bij Projectgegevens (niet het nog niet opgeslagen werk).
+  const opgeslagenTotaal = useMemo(() => Math.round(berekenBegroting(leesBudgetRegels(project && project.budgetRegels)).totaalGeld), [project]);
+  const projectBedrag = project && Number(project.begroting) > 0 ? Math.round(Number(project.begroting)) : 0;
+  const bedragAfwijking = opgeslagenTotaal > 0 && projectBedrag > 0 && opgeslagenTotaal !== projectBedrag && laatStaan !== opgeslagenTotaal;
   const begrotingVoorDekking = totaal > 0 ? Math.round(totaal) : project ? project.begroting : 0;
   const dek = useMemo(() => dekkingVanProject({ ...(project || {}), begroting: begrotingVoorDekking }, fin ? fin.regels : []), [project, begrotingVoorDekking, fin]);
 
@@ -563,7 +584,8 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setBezig(true);
     setFout('');
 
-    const nieuweBegroting = totaal > 0 ? Math.round(totaal) : project.begroting;
+    const vulBedragIn = !(Number(project.begroting) > 0) && totaal > 0; // alleen als er bij Projectgegevens nog niets staat
+    const nieuweBegroting = vulBedragIn ? Math.round(totaal) : project.begroting;
     const check = valideerEnBereidOp({ ...project, budgetRegels: klaar.regels, begroting: nieuweBegroting });
 
     if (!check.ok) {
@@ -587,7 +609,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
 
     setRegels(opgeslagen);
     setBasis(JSON.stringify(opgeslagen));
-    setMelding(totaal > 0 ? `Opgeslagen. De projectbegroting is nu ${formatEuro(totaal)}.` : 'Opgeslagen.');
+    setMelding(vulBedragIn ? `Opgeslagen. Bij Projectgegevens staat nu ${formatEuro(totaal)}.` : 'Opgeslagen.');
     laadFin();
 
     return true;
@@ -650,7 +672,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     }
 
     const totaalNa = berekenBegroting(samen).totaalGeld;
-    const check = valideerEnBereidOp({ ...project, budgetRegels: klaar.regels, begroting: totaalNa > 0 ? Math.round(totaalNa) : project.begroting });
+    const check = valideerEnBereidOp({ ...project, budgetRegels: klaar.regels, begroting: !(Number(project.begroting) > 0) && totaalNa > 0 ? Math.round(totaalNa) : project.begroting });
 
     if (!check.ok) {
       setFout(check.fout);
@@ -694,8 +716,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setFout('');
 
     const terug = leesBudgetRegels(upload.vorigeRegels);
-    const totaalTerug = berekenBegroting(terug).totaalGeld;
-    const check = valideerEnBereidOp({ ...project, budgetRegels: upload.vorigeRegels, begroting: totaalTerug > 0 ? Math.round(totaalTerug) : upload.vorigeBegroting });
+    const check = valideerEnBereidOp({ ...project, budgetRegels: upload.vorigeRegels, begroting: upload.vorigeBegroting });
 
     if (!check.ok) {
       setFout(check.fout);
@@ -744,6 +765,58 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     }
   };
 
+  const neemBegrotingOver = async () => {
+    if (bedragBezig || !(opgeslagenTotaal > 0)) return;
+
+    setBedragBezig(true);
+    setFout('');
+
+    const check = valideerEnBereidOp({ ...project, begroting: opgeslagenTotaal });
+
+    if (!check.ok) {
+      setFout(check.fout);
+      setBedragBezig(false);
+
+      return;
+    }
+
+    const id = await Promise.resolve(store.saveProject(check.project));
+
+    setBedragBezig(false);
+
+    if (id === null) {
+      setFout('Opslaan lukte niet. Probeer het opnieuw.');
+
+      return;
+    }
+
+    setMelding(`Bij Projectgegevens staat nu ${formatEuro(opgeslagenTotaal)}.`);
+  };
+
+  const laatBedragStaan = () => {
+    try {
+      window.localStorage.setItem(laatStaanSleutel, String(opgeslagenTotaal));
+    } catch (e) {
+      // zonder opslag in de browser komt de vraag bij een volgend bezoek gewoon terug
+    }
+
+    setLaatStaan(opgeslagenTotaal);
+  };
+
+  const bedragVraag = bedragAfwijking ? (
+    <div data-testid="bg-bedrag-vraag" style={css('margin-top: 8px;')}>
+      <b>Het bedrag klopt nog niet met Projectgegevens.</b> Uw begroting komt uit op <b data-testid="bg-bedrag-begroting">{formatEuro(opgeslagenTotaal)}</b>. Bij Projectgegevens, waarmee Subsidie Kompas fondsen voor u zoekt, staat <b data-testid="bg-bedrag-project">{formatEuro(projectBedrag)}</b>. Welk bedrag wilt u gebruiken?
+      <div style={css('margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;')}>
+        <Button variant="dark" onClick={neemBegrotingOver} disabled={bedragBezig} ariaLabel={`Gebruik ${formatEuro(opgeslagenTotaal)} uit de begroting`}>
+          Gebruik {formatEuro(opgeslagenTotaal)} uit de begroting
+        </Button>
+        <Button variant="outline" onClick={laatBedragStaan} disabled={bedragBezig} ariaLabel={`Laat ${formatEuro(projectBedrag)} staan`}>
+          Laat {formatEuro(projectBedrag)} staan
+        </Button>
+      </div>
+    </div>
+  ) : null;
+
   if (!project) return null;
 
   const lijst = fin ? fin.regels : [];
@@ -778,6 +851,12 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
           <input ref={bestandRef} type="file" accept=".xlsx,.docx,.pdf" data-testid="bg-upload-bestand" aria-label="Begroting uploaden" style={css('display: none;')} onChange={uploadBestand} />
         </div>
 
+        {!upload && bedragVraag && (
+          <Melding toon="succes" testid="bg-bedrag-melding">
+            <div style={css('min-width: 0; flex: 1;')}>{bedragVraag}</div>
+          </Melding>
+        )}
+
         {upload && (
           <Melding toon="succes" testid="bg-upload-resultaat">
             <div style={css('min-width: 0; flex: 1;')}>
@@ -807,6 +886,7 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
                 De sommen in het bestand kloppen met de regels.
               </div>
             )}
+            {bedragVraag}
             {upload.sluit && (
               <div data-testid="bg-upload-sluit" data-uitkomst={upload.sluit.uitkomst} style={css('margin-top: 8px;')}>
                 <b>{upload.sluit.uitkomst === 'sluitend' ? 'Begroting en dekkingsplan sluiten.' : 'Begroting en dekkingsplan:'}</b> {upload.sluit.tekst}

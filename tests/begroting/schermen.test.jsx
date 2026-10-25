@@ -148,7 +148,7 @@ sectie('3. Opslaan: de regels en het totaal gaan via het bestaande projectopslaa
   check('de projectbegroting is het totaal (hele euro\'s) en het te financieren bedrag volgt', p.begroting === 7520 && p.gevraagd === 5520);
   check('de regels staan als getallen op het project', Array.isArray(p.budgetRegels) && p.budgetRegels.length === 3 && p.budgetRegels.some((r) => r.categorie === 'activa') && p.budgetRegels.some((r) => r.aantal === 100 && r.tarief === 50));
   check('overige projectvelden blijven ongemoeid', p.naam === 'Samen Spelen' && p.eigenBijdrage === 2000);
-  check('na opslaan: bevestiging met het nieuwe totaal en Opslaan weer uit', await wacht(() => $('[data-testid="bg-melding"]')) && /projectbegroting is nu € 7\.520/.test($('[data-testid="bg-melding"]').textContent) && knop('Begroting opslaan').disabled === true);
+  check('na opslaan: bevestiging met het nieuwe totaal en Opslaan weer uit', await wacht(() => $('[data-testid="bg-melding"]')) && /Bij Projectgegevens staat nu € 7\.520/.test($('[data-testid="bg-melding"]').textContent) && knop('Begroting opslaan').disabled === true);
 }
 
 sectie('4. Dekkingsplan: toegekend, uitstaand, in planning, totaal, nog te dekken');
@@ -501,7 +501,7 @@ sectie('9. Een begroting uploaden (Excel): direct opgeslagen met label, afwijkin
   u = await toonUpload({ ...BASIS, begroting: 1000, budgetRegels: [R('z1', 'activa', 'Laptop', { bedrag: 1000 })] });
   await kiesBestand(bestand());
   await wacht(() => $('[data-testid="bg-upload-resultaat"]'));
-  check('vervangen: de laptop is weg (4 regels uit het bestand), totaal 7.300, en het blok zegt dat de oude regel is vervangen', u.bewaard[0].budgetRegels.length === 4 && !u.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop') && u.bewaard[0].begroting === 7300 && $$('[data-testid="bg-regel"]').length === 4 && /eerst stond is vervangen/.test($('[data-testid="bg-upload-vervangen"]')?.textContent || ''), $('[data-testid="bg-upload-vervangen"]')?.textContent);
+  check('vervangen: de laptop is weg (4 regels uit het bestand), het bedrag bij Projectgegevens (1.000) blijft staan, en het blok zegt dat de oude regel is vervangen', u.bewaard[0].budgetRegels.length === 4 && !u.bewaard[0].budgetRegels.some((r) => r.omschrijving === 'Laptop') && u.bewaard[0].begroting === 1000 && $$('[data-testid="bg-regel"]').length === 4 && /eerst stond is vervangen/.test($('[data-testid="bg-upload-vervangen"]')?.textContent || ''), $('[data-testid="bg-upload-vervangen"]')?.textContent);
   await klik(knop('Upload ongedaan maken'));
   check('ongedaan maken zet de laptop-stand en de oude projectbegroting terug', await wacht(() => u.bewaard.length === 2) && u.bewaard[1].budgetRegels.length === 1 && u.bewaard[1].begroting === 1000);
   await opruimen();
@@ -591,6 +591,44 @@ sectie('10. Opslaan en dan zelf de volgende subcategorie kiezen');
   check('je kunt ook zonder hoofdcategorie door: een budgetregel zonder hoofdcategorie komt er los bij', /Budgetregel zonder hoofdcategorie/.test($('[data-testid="bg-volgende-geen"]').textContent));
   await klik($('[data-testid="bg-volgende-geen"]'));
   check('die regel staat los (zonder kopregel) en de keuze is weg', !!kopje('zonder') && !$('[data-testid="bg-kop-zonder"]') && !$('[data-testid="bg-volgende-keuze"]'));
+}
+
+sectie('11. Het begrotingsbedrag tegen het bedrag bij Projectgegevens');
+{
+  const RB = (id, bedrag) => ({ id, categorie: 'uitvoering', omschrijving: 'Team', aantal: null, eenheid: '', tarief: null, bedrag, soort: 'geld', schatting: false, toelichting: '', bron: 'handmatig' });
+
+  try { dom.window.localStorage.clear(); } catch (e) { /* geen opslag */ }
+
+  s = await toon({ ...BASIS, begroting: 35000, budgetRegels: [RB('b1', 48300)] });
+  check('afwijking: groen vlak met beide bedragen en twee knoppen', !!$('[data-testid="bg-bedrag-melding"]') && /48\.300/.test($('[data-testid="bg-bedrag-begroting"]').textContent) && /35\.000/.test($('[data-testid="bg-bedrag-project"]').textContent) && !!knop('Gebruik € 48.300 uit de begroting') && !!knop('Laat € 35.000 staan'));
+  await klik(knop('Gebruik € 48.300 uit de begroting'));
+  check('gebruik de begroting: Projectgegevens wordt 48.300, de regels blijven zoals ze zijn', await wacht(() => s.bewaard.length === 1) && s.bewaard[0].begroting === 48300 && s.bewaard[0].budgetRegels.length === 1);
+  await opruimen();
+
+  s = await toon({ ...BASIS, begroting: 35000, budgetRegels: [RB('b1', 48300)] });
+  await klik(knop('Laat € 35.000 staan'));
+  check('laat staan: de vraag verdwijnt en er wordt niets bewaard', !$('[data-testid="bg-bedrag-vraag"]') && s.bewaard.length === 0);
+  await opruimen();
+  s = await toon({ ...BASIS, begroting: 35000, budgetRegels: [RB('b1', 48300)] });
+  check('en bij een volgend bezoek komt de vraag niet terug zolang het totaal gelijk blijft', !$('[data-testid="bg-bedrag-vraag"]'));
+  await opruimen();
+  s = await toon({ ...BASIS, begroting: 35000, budgetRegels: [RB('b1', 50000)] });
+  check('maar verandert het begrotingstotaal, dan komt de vraag wel terug', !!$('[data-testid="bg-bedrag-vraag"]'));
+  await opruimen();
+
+  s = await toon({ ...BASIS, begroting: 48300, budgetRegels: [RB('b1', 48300)] });
+  check('gelijke bedragen: geen vraag', !$('[data-testid="bg-bedrag-vraag"]'));
+  await opruimen();
+  s = await toon({ ...BASIS, begroting: 0, budgetRegels: [RB('b1', 48300)] });
+  check('geen bedrag bij Projectgegevens: geen vraag', !$('[data-testid="bg-bedrag-vraag"]'));
+  await opruimen();
+
+  try { dom.window.localStorage.clear(); } catch (e) { /* geen opslag */ }
+  s = await toon({ ...BASIS, begroting: 35000, budgetRegels: [RB('b1', 48300)] });
+  await typ($('[data-testid="bg-bedrag"]'), '50000');
+  await klik(knop('Begroting opslaan'));
+  check('opslaan overschrijft het bedrag bij Projectgegevens niet meer (35.000 blijft)', await wacht(() => s.bewaard.length === 1) && s.bewaard[0].begroting === 35000, JSON.stringify(s.bewaard[0] && s.bewaard[0].begroting));
+  await opruimen();
 }
 
 console.log(`\nbegroting-schermen: ${stand.ok} OK, ${stand.fout} FAIL`);
