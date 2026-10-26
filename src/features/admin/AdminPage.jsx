@@ -187,6 +187,9 @@ export default function AdminPage() {
     [profiles],
   );
 
+  // Lid worden kan direct (geen aanvraag meer). Op het dashboard staat daarom het aantal nieuwe leden van de laatste 30 dagen.
+  const nieuweLeden = useMemo(() => approvedMembers.filter((m) => isNieuwLid(m)), [approvedMembers]);
+
   const filteredMembers = useMemo(() => {
     const search = memberSearch.trim().toLowerCase();
 
@@ -417,6 +420,7 @@ export default function AdminPage() {
           {activeTab === 'dashboard' ? (
             <DashboardSection
               applications={applications.length}
+              nieuweLeden={nieuweLeden.length}
               members={approvedMembers.length}
               rejected={rejectedApplications.length}
               counts={counts}
@@ -446,6 +450,7 @@ export default function AdminPage() {
                 memberSearch={memberSearch}
                 setMemberSearch={setMemberSearch}
                 members={filteredMembers}
+                ingetrokken={rejectedApplications}
                 processingId={processingId}
                 updateMember={updateMember}
                 currentUserId={user?.id}
@@ -583,6 +588,7 @@ export default function AdminPage() {
 
 function DashboardSection({
   applications,
+  nieuweLeden = 0,
   members,
   rejected,
   counts,
@@ -617,14 +623,15 @@ function DashboardSection({
 
       <div style={cardGridStyle}>
         <DashboardCard
-          number={applications}
-          label="Open aanvragen"
-          helper="Nog te beoordelen"
+          number={nieuweLeden}
+          label="Nieuwe leden"
+          helper="Aangemeld in de laatste 30 dagen"
+          onClick={() => setActiveTab('members')}
         />
 
         <DashboardCard
           number={members}
-          label="Goedgekeurde leden"
+          label="Leden"
           helper="Actieve community"
           onClick={() => setActiveTab('members')}
         />
@@ -638,8 +645,9 @@ function DashboardSection({
 
         <DashboardCard
           number={rejected}
-          label="Afgewezen aanvragen"
-          helper="Historisch overzicht"
+          label="Ingetrokken lidmaatschappen"
+          helper="Terug te zetten onder Leden"
+          onClick={() => setActiveTab('members')}
         />
       </div>
 
@@ -1559,6 +1567,10 @@ function KeyValueSection({
   valueColumn = 'value',
 }) {
   const [values, setValues] = useState({});
+  // Wat er bij het laden in de database stond: opslaan schrijft alleen de velden die echt gewijzigd zijn, zodat een veld dat
+  // iemand anders (of een ander scherm) intussen aanpaste niet stil wordt overschreven. Is het laden mislukt, dan kan er niet
+  // worden opgeslagen (anders zou een leeg formulier de teksten in de database wissen).
+  const [origineel, setOrigineel] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -1579,17 +1591,18 @@ function KeyValueSection({
         return;
       }
 
-      setValues(
-        Object.fromEntries(
-          (data || []).map((row) => {
-            const ruw = row[valueColumn];
-            // Een booleaanse vlag tonen we als ja/nee in het keuzeveld.
-            const waarde = typeof ruw === 'boolean' ? (ruw ? 'ja' : 'nee') : ruw ?? '';
+      const geladen = Object.fromEntries(
+        (data || []).map((row) => {
+          const ruw = row[valueColumn];
+          // Een booleaanse vlag tonen we als ja/nee in het keuzeveld.
+          const waarde = typeof ruw === 'boolean' ? (ruw ? 'ja' : 'nee') : ruw ?? '';
 
-            return [row.key, waarde];
-          }),
-        ),
+          return [row.key, waarde];
+        }),
       );
+
+      setValues(geladen);
+      setOrigineel(geladen);
 
       setLoading(false);
     };
@@ -1603,11 +1616,32 @@ function KeyValueSection({
   }, [table, valueColumn]);
 
   const save = async () => {
-    setSaving(true);
     clearMessages();
 
-    const rows = blocks
+    if (!origineel) {
+      notify('error', 'De gegevens zijn niet geladen; er is niets opgeslagen. Vernieuw de pagina en probeer het opnieuw.');
+      return;
+    }
+
+    const gewijzigd = blocks
       .flatMap((block) => block.items)
+      .filter((item) => (values[item.key] ?? '') !== (origineel[item.key] ?? ''));
+
+    if (!gewijzigd.length) {
+      notify('success', 'Er was niets gewijzigd.');
+      return;
+    }
+
+    const leegVerplicht = gewijzigd.find((item) => item.verplicht && !String(values[item.key] ?? '').trim());
+
+    if (leegVerplicht) {
+      notify('error', `"${leegVerplicht.label}" mag niet leeg zijn. Er is niets opgeslagen.`);
+      return;
+    }
+
+    setSaving(true);
+
+    const rows = gewijzigd
       .map((item) => {
         const row = {
           key: item.key,
@@ -1633,6 +1667,7 @@ function KeyValueSection({
     }
 
     notify('success', 'De wijzigingen zijn opgeslagen.');
+    setOrigineel((cur) => ({ ...(cur || {}), ...Object.fromEntries(gewijzigd.map((item) => [item.key, values[item.key] ?? ''])) }));
     setSaving(false);
 
     if (reloadContent) reloadContent();
@@ -1676,7 +1711,7 @@ function KeyValueSection({
                       type: item.type || 'text',
                       options: item.options,
                       placeholder: item.placeholder || item.fallback || '',
-                      rows: 3,
+                      rows: item.rows || 3,
                     }}
                     value={values[item.key] ?? ''}
                     onChange={(value) =>
@@ -1779,16 +1814,19 @@ function MembersSection({
   memberSearch,
   setMemberSearch,
   members,
+  ingetrokken = [],
   processingId,
   updateMember,
   currentUserId,
 }) {
+  const [toonIngetrokken, setToonIngetrokken] = useState(false);
+
   return (
     <section>
       <h2 style={sectionTitleStyle}>Leden</h2>
 
       <p style={sectionIntroStyle}>
-        Overzicht van alle goedgekeurde leden. Hier wijst u ook beheerders aan.
+        Iedereen kan direct lid worden; er is geen aanvraag meer. Nieuwste leden staan bovenaan. Hier wijst u ook beheerders aan.
       </p>
 
       <input
@@ -1838,6 +1876,15 @@ function MembersSection({
                     {isAdminMember ? ' · beheerder' : ''}
                   </div>
 
+                  <div style={css(`color: #7B8985; font-size: 13px; margin-top: 3px;`)}>
+                    {member.created_at ? `Lid sinds ${formatDate(member.created_at)}` : ''}
+                    {isNieuwLid(member) ? (
+                      <span data-testid="lid-nieuw" style={css(`margin-left: 8px; padding: 2px 9px; border-radius: 999px; background: #EAF4EE; color: #2F6D47; font-size: 11.5px; font-weight: 800;`)}>
+                        Nieuw
+                      </span>
+                    ) : null}
+                  </div>
+
                   <div style={css(`color: #7B8985; font-size: 13.5px; margin-top: 6px; max-width: 520px;`)}>
                     {member.motivation || 'Geen motivatie ingevuld.'}
                   </div>
@@ -1881,8 +1928,46 @@ function MembersSection({
           })}
         </div>
       )}
+
+      {ingetrokken.length > 0 && (
+        <div style={css(`margin-top: 28px;`)}>
+          <button type="button" onClick={() => setToonIngetrokken((v) => !v)} style={secondaryButtonStyle} aria-expanded={toonIngetrokken}>
+            {toonIngetrokken ? 'Verberg ingetrokken lidmaatschappen' : `Ingetrokken lidmaatschappen (${ingetrokken.length})`}
+          </button>
+
+          {toonIngetrokken && (
+            <div data-testid="leden-ingetrokken" style={css(`display: grid; gap: 12px; margin-top: 14px;`)}>
+              {ingetrokken.map((member) => (
+                <div key={member.id} style={css(`${panelCss} display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;`)}>
+                  <div style={css(`min-width: 220px;`)}>
+                    <div style={css(`color: #2C4A5E; font-weight: 800;`)}>
+                      {`${member.first_name || ''} ${member.last_name || ''}`.trim() || 'Naam onbekend'}
+                    </div>
+                    <div style={css(`color: #536460; font-size: 14px; margin-top: 3px;`)}>{member.email}</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={processingId === member.id}
+                    onClick={() => updateMember(member, { status: 'approved', approved_at: new Date().toISOString() }, 'Het lidmaatschap is hersteld.')}
+                    style={secondaryButtonStyle}
+                  >
+                    Lidmaatschap herstellen
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
+}
+
+// Lid geworden in de laatste 30 dagen (op basis van de aanmelddatum van het profiel).
+function isNieuwLid(member, nu = Date.now()) {
+  const t = member && member.created_at ? Date.parse(member.created_at) : NaN;
+
+  return Number.isFinite(t) && nu - t <= 30 * 86_400_000;
 }
 
 // ---------------------------------------------------------------------------
