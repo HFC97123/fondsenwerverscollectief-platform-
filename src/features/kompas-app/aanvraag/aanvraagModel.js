@@ -480,3 +480,53 @@ export function telAntwoorden(onderdelen, limieten) {
 
   return { totaal: lijst.length, beantwoord, metGat, leeg, overLimiet };
 }
+
+// ───────────── De vier stappen van een aanvraag per fonds ─────────────
+// Vragenlijst, Antwoorden, Stukken en Controle. Zuivere functie: wat is klaar en wat staat er onder de naam. 'weg' = de stap is nog niet te openen.
+export const WERKBLAD_STAPPEN = [
+  { id: 'vragenlijst', nr: 1, naam: 'Vragenlijst' },
+  { id: 'antwoorden', nr: 2, naam: 'Antwoorden' },
+  { id: 'stukken', nr: 3, naam: 'Stukken' },
+  { id: 'controle', nr: 4, naam: 'Controle' },
+];
+
+// beantwoord = volledig (geen plekken om in te vullen); geschreven = er staat tekst (ook met plekken om in te vullen).
+export function werkbladStappen({ bevestigd = false, aantalVragen = 0, beantwoord = 0, geschreven = beantwoord, stukkenTotaal = 0, stukkenKlaar = 0, definitief = false } = {}) {
+  const lijstKlaar = Boolean(bevestigd) && aantalVragen > 0;
+  const antwoordenKlaar = lijstKlaar && beantwoord >= aantalVragen;
+  const stukkenOk = lijstKlaar && stukkenKlaar >= stukkenTotaal;
+  const meervoud = (n, een, meer) => `${n} ${n === 1 ? een : meer}`;
+
+  return [
+    { ...WERKBLAD_STAPPEN[0], klaar: lijstKlaar, open: true, sub: lijstKlaar ? meervoud(aantalVragen, 'vraag', 'vragen') : 'Wat vraagt het fonds?' },
+    { ...WERKBLAD_STAPPEN[1], klaar: antwoordenKlaar, open: lijstKlaar, sub: lijstKlaar ? `${Math.max(geschreven, beantwoord)} van ${aantalVragen} geschreven` : 'Schrijven en aanpassen' },
+    { ...WERKBLAD_STAPPEN[2], klaar: stukkenOk, open: lijstKlaar, sub: lijstKlaar ? (stukkenTotaal === 0 ? 'Geen stukken nodig' : `${stukkenKlaar} van ${stukkenTotaal} klaar`) : 'Bijlagen verzamelen' },
+    { ...WERKBLAD_STAPPEN[3], klaar: Boolean(definitief) && antwoordenKlaar && stukkenOk, open: lijstKlaar, sub: definitief ? 'Definitief gemaakt' : 'Klaar om in te dienen?' },
+  ];
+}
+
+// De voortgang van de server (kaart per fonds) omgezet naar de vier stappen, met de stukken zoals die nu in de documentatie staan.
+export function stappenUitVoortgang(voortgang, docs, nu = new Date()) {
+  if (!voortgang) return null;
+
+  const t = telStukken(voortgang.stukken, docs, nu);
+
+  return werkbladStappen({
+    bevestigd: voortgang.vragenBevestigd,
+    aantalVragen: voortgang.aantalVragen,
+    beantwoord: voortgang.aantalAntwoorden,
+    geschreven: voortgang.aantalAntwoorden,
+    stukkenTotaal: t.totaal,
+    stukkenKlaar: t.klaar,
+    definitief: voortgang.status === 'definitief',
+  });
+}
+
+// Welke stap is aan de beurt: de eerste die nog niet klaar is (is alles klaar, dan de laatste).
+export function volgendeStap(stappen) {
+  const lijst = Array.isArray(stappen) ? stappen : [];
+
+  return lijst.find((s) => !s.klaar) || lijst[lijst.length - 1] || null;
+}
+
+export const STAP_KNOP = { vragenlijst: 'Ga verder met de vragenlijst', antwoorden: 'Ga verder met de antwoorden', stukken: 'Ga verder met de stukken', controle: 'Naar de controle' };

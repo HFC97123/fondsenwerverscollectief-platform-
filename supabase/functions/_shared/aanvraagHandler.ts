@@ -275,6 +275,7 @@ export interface HandlerDeps {
   // Formulier: vragen en stukken. Optioneel: ontbreekt een functie, dan antwoordt de server dat het tijdelijk niet beschikbaar is.
   leesVragenStand?(userId: string, aanvraagId: string): Promise<VragenStand | null | 'storing'>; // null = niet gevonden (of van iemand anders)
   bewaarVragenStukken?(userId: string, aanvraagId: string, velden: { vragen?: VragenLijst; stukken?: Stuk[]; schrijf_maand?: string; schrijf_aantal?: number }): Promise<boolean>;
+  lijstVoortgang?(userId: string, aanvraagIds: string[]): Promise<Record<string, AanvraagVoortgang> | null>; // null = niet te lezen (bijvoorbeeld de migratie is er nog niet): dan blijft de kaart zoals voorheen
   haalPagina(url: string): Promise<PaginaUitkomst>;
   roep: ModelAanroep;
   meldGebruik(melding: GebruikMelding): Promise<void>; // gooit nooit
@@ -324,6 +325,15 @@ export function aanvraagVlagAan(vlag: string | undefined | null, gebruikerId: st
 const tekstVeld = (x: unknown, max: number): string => (typeof x === 'string' ? x.replace(/\u0000/g, '').slice(0, max) : '');
 
 // Wat de lijst met aanvragen laat zien: geen inhoud van criteria of plan, alleen waar het lid aan toe is.
+// Hoever een aanvraag per vraag is: voor de kaart per fonds in Indienen. Alleen tellingen en de lijst met stukken, nooit de teksten van de antwoorden.
+export interface AanvraagVoortgang {
+  status: 'concept' | 'definitief';
+  aantalVragen: number;
+  vragenBevestigd: boolean;
+  aantalAntwoorden: number; // vragen met een antwoord in de nieuwste versie
+  stukken: Stuk[];
+}
+
 export function samenvatAanvraag(r: AanvraagRij) {
   const plan = r.plan && typeof r.plan === 'object' ? (r.plan as any) : null;
 
@@ -427,7 +437,10 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
     if (rijen === null) return fout(503, 'opslag', 'De aanvragen konden nu niet worden opgehaald. Probeer het later opnieuw.');
 
-    return { status: 200, body: { ok: true, aanvragen: rijen.map(samenvatAanvraag) } };
+    // Per aanvraag hoever het lid is (vragenlijst, antwoorden, stukken). Lukt dat niet, dan krijgt het lid de lijst zonder voortgang.
+    const voortgang = deps.lijstVoortgang && rijen.length ? await deps.lijstVoortgang(userId, rijen.map((r) => r.id)).catch(() => null) : null;
+
+    return { status: 200, body: { ok: true, aanvragen: rijen.map((r) => ({ ...samenvatAanvraag(r), ...(voortgang && voortgang[r.id] ? { voortgang: voortgang[r.id] } : {}) })) } };
   }
 
   if (modus === 'aanvraag') {

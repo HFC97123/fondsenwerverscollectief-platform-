@@ -37,7 +37,21 @@ export interface PlanBron {
   organisatie: Record<string, unknown>; // name, rechtsvorm, opgericht, anbi, mission, visie, regio, gemeente, provincie, medewerkers, vrijwilligers
   begroting?: unknown; // budget_lines van het project ({versie, regels}); de actuele begrotingsregels uit Documenten > Begroting
   financiering?: unknown; // rijen uit kompas_dekkingsplan (zoals het lid ze ziet): het actuele dekkingsplan met de toekenningen tot nu toe
+  documenten?: PlanDocument[]; // de tekst van de projectdocumenten (Projectdocumentatie) en de organisatiedocumenten (organisatieprofiel)
 }
+
+// Een document van het lid met de tekst die er bij het uploaden uit is gehaald. De server leest ze alleen; ze zijn DATA, geen instructie.
+export interface PlanDocument {
+  naam: string;
+  soort: string; // bijvoorbeeld Projectplan, Jaarverslag
+  van: 'project' | 'organisatie';
+  tekst: string;
+}
+
+export const MAX_DOCUMENTEN = 16;
+export const MAX_DOC_TEKENS = 12_000; // per document wordt zoveel tekst gebruikt
+export const PASSAGE_TEKENS = 1_000;
+export const MAX_PASSAGES_TOTAAL = 60;
 
 export const MAX_FEIT_TEKENS = 2_000;
 export const MAX_FEITEN_TEKENS = 14_000; // totaal naar het model per onderdeel
@@ -127,7 +141,56 @@ export function bouwFeiten(bron: PlanBron): Feit[] {
     feiten.push({ id: `f${feiten.length + 1}`, sleutel: b.sleutel, bron: b.bron, label: b.label, tekst: schoon(b.tekst).slice(0, MAX_FEIT_TEKENS) });
   }
 
+  // De documenten van het lid: stukjes tekst (passages) die per vraag worden gekozen, zie feitenVoorSectie.
+  for (const d of documentPassages(bron?.documenten)) {
+    feiten.push({ id: `f${feiten.length + 1}`, sleutel: d.sleutel, bron: d.bron, label: d.label, tekst: d.tekst });
+  }
+
   return feiten;
+}
+
+// Een document wordt in stukjes van ongeveer PASSAGE_TEKENS tekens gesneden, bij voorkeur op een alinea- of zinsgrens.
+export function snijPassages(tekst: string, grootte: number = PASSAGE_TEKENS): string[] {
+  const t = String(tekst ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]+/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, MAX_DOC_TEKENS);
+  const uit: string[] = [];
+  let rest = t;
+
+  while (rest.length > grootte) {
+    let snede = rest.lastIndexOf('\n\n', grootte);
+
+    if (snede < grootte * 0.5) snede = rest.lastIndexOf('. ', grootte) + 1;
+    if (snede < grootte * 0.5) snede = grootte;
+
+    uit.push(rest.slice(0, snede).trim());
+    rest = rest.slice(snede).trim();
+  }
+
+  if (rest.length >= 40) uit.push(rest);
+
+  return uit.filter(Boolean);
+}
+
+export function documentPassages(docs: PlanDocument[] | undefined): Array<{ sleutel: string; bron: FeitBron; label: string; tekst: string }> {
+  const uit: Array<{ sleutel: string; bron: FeitBron; label: string; tekst: string }> = [];
+
+  (Array.isArray(docs) ? docs : []).slice(0, MAX_DOCUMENTEN).forEach((d, i) => {
+    const naam = schoonRegel(d?.naam).slice(0, 80) || 'Document';
+    const soort = schoonRegel(d?.soort).slice(0, 40);
+    const passages = snijPassages(d?.tekst ?? '');
+
+    passages.forEach((p, k) => {
+      if (uit.length >= MAX_PASSAGES_TOTAAL) return;
+
+      uit.push({
+        sleutel: `doc.${d?.van === 'organisatie' ? 'org' : 'project'}.${i + 1}.${k + 1}`,
+        bron: d?.van === 'organisatie' ? 'organisatieprofiel' : 'projectdocumentatie',
+        label: `${d?.van === 'organisatie' ? 'Organisatiedocument' : 'Projectdocument'}: ${naam}${soort ? ` (${soort})` : ''}${passages.length > 1 ? `, deel ${k + 1}` : ''}`,
+        tekst: p.slice(0, MAX_FEIT_TEKENS),
+      });
+    });
+  });
+
+  return uit;
 }
 
 // ───────────────────────── Gereedheid ─────────────────────────
@@ -228,21 +291,65 @@ export function sectiesUitCriteria(criteria: Eis[]): { secties: SectieDef[]; aan
   return { secties, aandachtspunten, uitFormulier: true };
 }
 
-// Welke feiten horen bij dit onderdeel? 'alle' neemt alles (gesneden op het totaalmaximum).
+// Welke feiten horen bij dit onderdeel? 'alle' neemt alles (past het niet, dan de feiten die het best bij de vraag passen).
+const STOPWOORDEN = new Set(['welke', 'wordt', 'worden', 'uitleg', 'graag', 'geef', 'beschrijf', 'project', 'projecten', 'organisatie', 'aanvraag', 'hoe', 'wat', 'wie', 'waar', 'waarom', 'wanneer', 'deze', 'door', 'voor', 'naar', 'over', 'zijn', 'heeft', 'hebben', 'en', 'de', 'het', 'een', 'van', 'uw', 'met', 'als', 'dat', 'die', 'dit', 'bij', 'ook', 'kunt', 'kunnen', 'moet', 'moeten']);
+// Onderwerpen die niet in de woorden van de vraag hoeven te staan: wie over geld vraagt, wil de begroting en het dekkingsplan.
+const THEMA_WOORDEN: ReadonlyArray<{ vraag: RegExp; feit: RegExp }> = [
+  { vraag: /begrot|kosten|financi|bedrag|dekking|eigen bijdrage|co.?financ|budget|inkomsten|fonds/i, feit: /^(begroting|dekking|project\.(begroting|gevraagd|eigenBijdrage)|info\.(financieringsbehoefte|begrotingstoelichting))/ },
+  { vraag: /organisatie|wie zijn|geschikt|ervaring|missie|visie|bestuur|rechtsvorm|anbi/i, feit: /^organisatie\./ },
+  { vraag: /doelgroep|deelnemer|bereik|wie profiteert|kinderen|jongeren|ouderen/i, feit: /^(project\.doelgroep|info\.(doelgroep_uitgebreid|bereik|toegang_doelgroep))/ },
+  { vraag: /resultaat|effect|impact|meten|monitor|evalu|output|outcome/i, feit: /^(project\.(impact|resultaten)|info\.(output|outcome|monitoring_evaluatie))/ },
+  { vraag: /borging|duurzaam|na afloop|voortzet|continu|toekomst/i, feit: /^info\.borging/ },
+  { vraag: /risico|planning|tijdlijn|uitvoer|wanneer/i, feit: /^(project\.planning|info\.(risicos|organisatie_uitvoerbaarheid))/ },
+  { vraag: /aanleiding|probleem|noodzaak|waarom/i, feit: /^info\.(aanleiding|noodzaak)/ },
+  { vraag: /doel|aanpak|activiteit|werkwijze|methode/i, feit: /^(project\.(doelstellingen|activiteiten)|info\.(subdoelstellingen|werkwijze))/ },
+  { vraag: /samenwerk|partner/i, feit: /^project\.partners/ },
+];
+const woordenIn = (t: string): string[] =>
+  Array.from(new Set(normaliseer(t).split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !STOPWOORDEN.has(w)).map((w) => w.slice(0, 6))));
+
+export function relevantie(def: SectieDef, f: Feit): number {
+  const vraag = `${def.titel} ${def.vraag}`;
+  const woorden = woordenIn(vraag);
+  const haystack = woordenIn(`${f.label} ${f.tekst}`);
+  let punten = woorden.filter((w) => haystack.includes(w)).length;
+
+  for (const th of THEMA_WOORDEN) {
+    if (th.vraag.test(vraag) && th.feit.test(f.sleutel)) punten += 3;
+  }
+
+  // Wat het lid zelf in het projectdossier en de organisatiegegevens vastlegde gaat voor een stukje uit een document.
+  if (!f.sleutel.startsWith('doc.')) punten += 1;
+
+  return punten;
+}
+
 export function feitenVoorSectie(def: SectieDef, feiten: Feit[]): Feit[] {
   const past = (f: Feit) => (def.feitSleutels as string[]).some((k) => (k.endsWith('.*') ? f.sleutel.startsWith(k.slice(0, -1)) : k === f.sleutel));
   const gekozen = def.feitSleutels === 'alle' ? feiten : feiten.filter(past);
-  const uit: Feit[] = [];
+  const totaalTekens = gekozen.reduce((n, f) => n + f.tekst.length, 0);
+
+  // Past alles, dan gaat alles mee (zoals het was). Anders eerst de feiten die het best bij de vraag passen; de volgorde blijft die van het dossier.
+  const volgorde =
+    def.feitSleutels === 'alle' && totaalTekens > MAX_FEITEN_TEKENS
+      ? gekozen
+          .map((f, i) => ({ f, i, p: relevantie(def, f) }))
+          .sort((a, b) => b.p - a.p || a.i - b.i)
+      : gekozen.map((f, i) => ({ f, i, p: 0 }));
+  const uit: Array<{ f: Feit; i: number }> = [];
   let totaal = 0;
 
-  for (const f of gekozen) {
-    if (totaal + f.tekst.length > MAX_FEITEN_TEKENS) break;
+  for (const { f, i } of volgorde) {
+    if (totaal + f.tekst.length > MAX_FEITEN_TEKENS) {
+      if (def.feitSleutels === 'alle') continue; // een lang feit slaan we over; een kort feit verderop past misschien wel
+      break;
+    }
 
-    uit.push(f);
+    uit.push({ f, i });
     totaal += f.tekst.length;
   }
 
-  return uit;
+  return uit.sort((a, b) => a.i - b.i).map((x) => x.f);
 }
 
 // ───────────────────────── Schrijven ─────────────────────────

@@ -211,6 +211,50 @@ Deno.serve(async (req) => {
       return error ? null : data ?? [];
     },
 
+    // Voor de kaart per fonds: hoeveel vragen, of de lijst is bevestigd, hoeveel antwoorden in de nieuwste versie staan en de lijst met stukken. Geen teksten.
+    // Bestaan de kolommen nog niet (de migratie is nog niet gedraaid), dan geeft dit null en blijft de kaart zoals voorheen.
+    lijstVoortgang: async (userId: string, aanvraagIds: string[]) => {
+      const { data, error } = await admin.from(AANVRAGEN_TABEL).select('id, status, vragen, stukken').eq('user_id', userId).in('id', aanvraagIds.slice(0, 100));
+
+      if (error || !data) return null;
+
+      const uit: Record<string, unknown> = {};
+
+      await Promise.all(
+        data.map(async (r: any) => {
+          const lijst: any[] = r.vragen && Array.isArray(r.vragen.lijst) ? r.vragen.lijst : [];
+          const ids = new Set(lijst.map((v) => String(v?.id)));
+          let aantalAntwoorden = 0;
+
+          if (lijst.length) {
+            const { data: v } = await admin.from(VERSIES_TABEL).select('antwoorden').eq('aanvraag_id', r.id).eq('user_id', userId).order('nummer', { ascending: false }).limit(1).maybeSingle();
+            const a: any[] = v && Array.isArray(v.antwoorden) ? v.antwoorden : [];
+
+            aantalAntwoorden = a.filter((o) => ids.has(String(o?.id)) && String(o?.tekst ?? '').replace(/\[aanvullen:[^\]]*\]/gi, '').trim().length > 0).length;
+          }
+
+          uit[r.id] = {
+            status: r.status === 'definitief' ? 'definitief' : 'concept',
+            aantalVragen: lijst.length,
+            vragenBevestigd: Boolean(r.vragen && r.vragen.bevestigd),
+            aantalAntwoorden,
+            stukken: (Array.isArray(r.stukken) ? r.stukken : []).slice(0, 40).map((s: any) => ({
+              id: String(s?.id ?? ''),
+              tekst: String(s?.tekst ?? '').slice(0, 200),
+              bron: s?.bron,
+              sleutel: s?.sleutel ?? null,
+              maxLeeftijdMaanden: s?.maxLeeftijdMaanden ?? null,
+              nietVanToepassing: Boolean(s?.nietVanToepassing),
+              klaar: Boolean(s?.klaar),
+              documentNaam: String(s?.documentNaam ?? '').slice(0, 200),
+            })),
+          };
+        }),
+      );
+
+      return uit;
+    },
+
     leesAanvraag: async (userId: string, id: string) => {
       const { data, error } = await admin.from(AANVRAGEN_TABEL).select(AANVRAAG_KOLOMMEN).eq('id', id).eq('user_id', userId).maybeSingle();
 
@@ -335,9 +379,51 @@ Deno.serve(async (req) => {
       // Het actuele dekkingsplan, precies zoals het lid het ziet; lukt dit niet, dan blijft het weg uit de feiten en wordt de tekst er niet door geblokkeerd.
       const financiering = await leesFinanciering(token, projectId);
 
+      // De documenten van het lid: de projectdocumenten (niet vervangen) en de organisatiedocumenten, met de tekst die er bij het uploaden uit is gehaald.
+      // De begroting en het concept-dekkingsplan als bestand slaan we over: de actuele begroting en het dekkingsplan staan hierboven al, en die zijn leidend.
+      // Lukt het lezen niet, dan gaat het schrijven gewoon verder zonder documenten.
+      const documenten: Array<{ naam: string; soort: string; van: 'project' | 'organisatie'; tekst: string }> = [];
+
+      try {
+        const { data: pd } = await admin
+          .from('subsidie_kompas_knowledge_items')
+          .select('file_name, title, doc_type, extracted_text, created_at')
+          .eq('user_id', userId)
+          .eq('program_id', projectId)
+          .is('superseded_at', null)
+          .not('extracted_text', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(12);
+
+        for (const d of pd ?? []) {
+          if (d.doc_type === 'Begroting' || d.doc_type === 'Concept-dekkingsplan') continue;
+          if (String(d.extracted_text ?? '').trim().length < 80) continue;
+
+          documenten.push({ naam: String(d.title || d.file_name || 'Document'), soort: String(d.doc_type || ''), van: 'project', tekst: String(d.extracted_text) });
+        }
+
+        const { data: od } = await admin
+          .from('subsidie_kompas_knowledge_items')
+          .select('file_name, title, doc_type, extracted_text, created_at')
+          .eq('user_id', userId)
+          .is('program_id', null)
+          .not('extracted_text', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(8);
+
+        for (const d of od ?? []) {
+          if (String(d.extracted_text ?? '').trim().length < 80) continue;
+
+          documenten.push({ naam: String(d.title || d.file_name || 'Document'), soort: String(d.doc_type || ''), van: 'organisatie', tekst: String(d.extracted_text) });
+        }
+      } catch (_e) {
+        console.error('[aanvraag-assistent] documenten_lezen_mislukt');
+      }
+
       return {
         begroting: p.budget_lines ?? null,
         financiering,
+        documenten,
         project: {
           naam: p.name,
           omschrijving: p.description,

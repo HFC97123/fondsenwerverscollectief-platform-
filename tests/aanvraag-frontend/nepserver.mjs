@@ -127,6 +127,23 @@ export function maakServer(o = {}) {
     Object.assign(deps, {
       leesVragenStand: async (u, id) => { const a = eigenRij(u, id); return a ? { id: a.id, program_id: a.program_id, soort: a.soort, fonds_label: a.fonds_label || '', criteria: a.criteria || [], vragen: a.vragen || null, stukken: a.stukken || null, schrijf_maand: a.schrijf_maand || null, schrijf_aantal: a.schrijf_aantal || 0 } : null; },
       bewaarVragenStukken: async (u, id, velden) => { const a = eigenRij(u, id); if (!a) return false; Object.assign(a, velden); return true; },
+      lijstVoortgang: async (u, ids) => {
+        const uit = {};
+
+        for (const id of ids) {
+          const a = eigenRij(u, id);
+
+          if (!a) continue;
+
+          const lijst = a.vragen && Array.isArray(a.vragen.lijst) ? a.vragen.lijst : [];
+          const nieuwste = [...s.versies.values()].filter((v) => v.aanvraag_id === id).sort((x, y) => y.nummer - x.nummer)[0];
+          const aantal = nieuwste ? nieuwste.antwoorden.filter((o) => lijst.some((v) => v.id === o.id) && String(o.tekst || '').replace(/\[aanvullen:[^\]]*\]/gi, '').trim().length > 0).length : 0;
+
+          uit[id] = { status: a.status === 'definitief' ? 'definitief' : 'concept', aantalVragen: lijst.length, vragenBevestigd: Boolean(a.vragen && a.vragen.bevestigd), aantalAntwoorden: aantal, stukken: Array.isArray(a.stukken) ? a.stukken : [] };
+        }
+
+        return uit;
+      },
     });
   }
 

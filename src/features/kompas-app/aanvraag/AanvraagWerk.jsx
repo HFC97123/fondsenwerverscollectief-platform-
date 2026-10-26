@@ -7,7 +7,7 @@ import { Button } from '../../../shared/ui/index.js';
 import { Blok, Chip, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { beoordeelAanvraag, bewaarCriteria, haalAanvraag, haalBeoordeling, schrijfProjectplan } from '../../../data/services/aanvraagAssistent.js';
 import { haalOrganisatieDocumentenOp } from '../../../data/services/organisatiedocumenten.js';
-import { AanvraagStijl, Bezig, Keuzekaart, PrivaatfondsKaart, RuimteBlok, Stappen } from './Bouwstenen.jsx';
+import { AanvraagStijl, Bezig, Keuzekaart, PrivaatfondsKaart, RuimteBlok, Stappen, VierStappen } from './Bouwstenen.jsx';
 import BeoordelingResultaat from './BeoordelingResultaat.jsx';
 import FormulierBlok from './FormulierBlok.jsx';
 import VersieEditor from './VersieEditor.jsx';
@@ -24,9 +24,11 @@ import {
   soortLabel,
   tekenTekst,
   uitkomstLabel,
+  telStukken,
   uitkomstToon,
   verwijderEis,
   voegEisToe,
+  werkbladStappen,
   wijzigEis,
   zekerheidTekst,
   ZEKERHEID_TOON,
@@ -222,7 +224,7 @@ function CriteriaBlok({ criteria, onWijzig, onWeg, onToevoegen, gewijzigd, bewaa
 }
 
 // props: project, aanvraagId (mag leeg zijn als de criteria niet bewaard konden worden), fondsLabel, voorlopig (net opgehaald), assistent, store, onTerug
-export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel: startFonds, voorlopig, assistent, store, onTerug, onGewijzigd }) {
+export default function AanvraagWerk({ project, startStap = '', aanvraagId: startId, fondsLabel: startFonds, voorlopig, assistent, store, onTerug, onGewijzigd }) {
   const [aanvraagId] = useState(startId || '');
   const [aanvraag, setAanvraag] = useState(null);
   const [laden, setLaden] = useState(Boolean(startId));
@@ -236,8 +238,12 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
   const [resultaat, setResultaat] = useState(null); // { antwoord, datum }
   const [tekst, setTekst] = useState('');
   const [bevestigPlan, setBevestigPlan] = useState(false);
-  const [formulierWerk, setFormulierWerk] = useState(null); // { lijst, stukken } zodra het lid de aanvraag per vraag opent
-  const [formulierBevestigd, setFormulierBevestigd] = useState(false);
+  const [stap, setStap] = useState('vragenlijst'); // vragenlijst | antwoorden | stukken | controle
+  const [formulier, setFormulier] = useState({ geladen: false, weg: false, bevestigd: false, lijst: [], stukken: [] }); // wat FormulierBlok meldt; weg = de server kan dit niet (dan werkt de aanvraag zoals voorheen)
+  const [werkStatus, setWerkStatus] = useState(null); // wat het antwoordenscherm meldt: beantwoord, stukken, definitief, niet-opgeslagen
+  const editorRef = useRef(null);
+  const startStapRef = useRef(startStap);
+  const formulierBevestigd = formulier.bevestigd;
   const [orgDocs, setOrgDocs] = useState([]);
   const levend = useRef(true);
 
@@ -448,24 +454,6 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
     setTekst(r.tekst);
   };
 
-  if (formulierWerk) {
-    return (
-      <>
-        <AanvraagStijl />
-        <VersieEditor
-          aanvraagId={aanvraagId}
-          formulier={{ projectId: project.id, vragen: { lijst: formulierWerk.lijst }, stukken: formulierWerk.stukken, docs: documentenLijst(project.docs, orgDocs) }}
-          titel={`Aanvraag voor ${fondsLabel}`}
-          kop={`Aanvraag ${fondsLabel}`}
-          projectNaam={project.naam}
-          store={store}
-          onSluit={() => setFormulierWerk(null)}
-          onGewijzigd={onGewijzigd}
-        />
-      </>
-    );
-  }
-
   if (plan) {
     return (
       <>
@@ -511,31 +499,63 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
   const planRuimte = beoordelingRuimte; // een versie voor een fonds telt bij de beoordelingen
   const klaarOmTeKiezen = criteria.length > 0;
 
-  return (
-    <div data-testid="aa-werk">
-      <AanvraagStijl />
-      <Stappen actief={2} />
+  // FormulierBlok meldt hier zijn stand: weg (server kan het niet), bevestigd, en de lijst met vragen en stukken zodra die er zijn.
+  function zetFormulierStand(d) {
+    setFormulier((f) => ({
+      geladen: true,
+      weg: Boolean(d.weg),
+      bevestigd: Boolean(d.bevestigd),
+      lijst: Array.isArray(d.lijst) ? d.lijst : d.bevestigd ? f.lijst : [],
+      stukken: Array.isArray(d.stukken) ? d.stukken : f.stukken,
+    }));
 
-      <div className="fwk-wp-kolommen">
-        <div className="fwk-wp-stapel">
-          <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap;')}>
-            <Button variant="outline" size="s" onClick={onTerug}>
-              ← Alle aanvragen
-            </Button>
-            <strong data-testid="aa-fonds-naam" style={css('font-size: 17px;')}>
-              {fondsLabel}
-            </strong>
-            {aanvraag && aanvraag.laatsteUitkomst && <Chip toon={uitkomstToon(aanvraag.laatsteUitkomst)}>Laatst beoordeeld: {uitkomstLabel(aanvraag.laatsteUitkomst).toLowerCase()}</Chip>}
-          </div>
+    if (!d.bevestigd) setStap('vragenlijst');
+    // Open vanuit de kaart: meteen bij de stap die aan de beurt is (één keer, daarna beslist het lid zelf).
+    else if (startStapRef.current) {
+      const gewenst = startStapRef.current;
 
-          {!aanvraagId && (
-            <Melding toon="waarschuwing" testid="aa-niet-bewaard">
-              De criteria konden niet worden bewaard. U kunt ze nu nog gebruiken om een aanvraag te beoordelen, maar niet om een versie te schrijven. Haal de criteria later opnieuw op.
-            </Melding>
-          )}
+      startStapRef.current = '';
+      if (gewenst !== 'vragenlijst') setStap(gewenst);
+    }
+  }
 
-          <BronnenBlok bronnen={bronnen} inlogSignaal={voorlopig && voorlopig.inlogSignaal} beperkteLijst={voorlopig && voorlopig.beperkteLijst} />
+  const docsNu = documentenLijst(project.docs, orgDocs);
+  const toonStappen = formulier.geladen && !formulier.weg;
+  const stukTelling = telStukken(werkStatus ? [] : formulier.stukken, docsNu);
+  const werkStappen = werkbladStappen({
+    bevestigd: formulier.bevestigd,
+    aantalVragen: formulier.lijst.length,
+    beantwoord: werkStatus ? werkStatus.beantwoord : 0,
+    geschreven: werkStatus ? werkStatus.geschreven : 0,
+    stukkenTotaal: werkStatus ? werkStatus.stukkenTotaal : stukTelling.totaal,
+    stukkenKlaar: werkStatus ? werkStatus.stukkenKlaar : stukTelling.klaar,
+    definitief: Boolean(werkStatus && werkStatus.definitief),
+  });
+  const editorSleutel = formulier.lijst.map((v) => `${v.id}:${v.geenLimiet ? 'x' : v.maxTekens || 0}`).join('|');
 
+  // Een stap openen. Naar de vragenlijst gaan we pas nadat de tekst is bewaard, want het lid kan daar de vragen nog aanpassen.
+  const kiesStap = async (id) => {
+    if (id === stap) return;
+    if (id !== 'vragenlijst' && !formulier.bevestigd) return;
+
+    if (id === 'vragenlijst' && editorRef.current) {
+      const ok = await editorRef.current.bewaarNu();
+
+      if (!levend.current) return;
+      if (!ok) {
+        setFout('Uw tekst kon niet worden bewaard. Bewaar hem eerst bij Antwoorden voordat u de vragenlijst aanpast.');
+
+        return;
+      }
+    }
+
+    setFout('');
+    setStap(id);
+  };
+
+  const terugNaarFondsen = () => (editorRef.current && stap !== 'vragenlijst' ? editorRef.current.probeerSluiten() : onTerug());
+
+  const criteriaEl = (
           <CriteriaBlok
             criteria={criteria}
             gewijzigd={gewijzigd}
@@ -546,9 +566,9 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
             onWeg={(id) => setCriteria((c) => verwijderEis(c, id))}
             onToevoegen={(eis) => setCriteria((c) => voegEisToe(c, eis))}
           />
+  );
 
-          <FormulierBlok project={project} aanvraagId={aanvraagId} formulierStart={(voorlopig && voorlopig.formulierTekst) || ''} docs={documentenLijst(project.docs, orgDocs)} assistent={assistent} onGewijzigd={onGewijzigd} onStand={({ bevestigd }) => setFormulierBevestigd(bevestigd)} onOpen={setFormulierWerk} />
-
+  const keuzeEl = (
           <Blok titel="Wat wilt u nu doen?" testid="aa-keuze">
             <p className="fwk-aa-klein" style={css('margin: 0 0 16px;')}>
               Beide kan met dezelfde criteria. U kunt later het andere ook nog doen.
@@ -654,6 +674,88 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
               </div>
             )}
           </Blok>
+  );
+
+  // Met het aanvraagformulier staan de criteria en het beoordelen van een eigen tekst achter "Meer"; de vier stappen zijn dan de hoofdroute.
+  const meerEl = (
+    <details className="fwk-aa-meer" data-testid="aa-meer">
+      <summary>Criteria van het fonds en een eigen tekst laten beoordelen</summary>
+      <div className="fwk-wp-stapel" style={{ marginTop: 14 }}>
+        {criteriaEl}
+        {keuzeEl}
+      </div>
+    </details>
+  );
+
+  return (
+    <div data-testid="aa-werk">
+      <AanvraagStijl />
+      {formulier.weg && <Stappen actief={2} />}
+
+      <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px;')}>
+        <Button variant="outline" size="s" onClick={terugNaarFondsen}>
+          ← Alle fondsen
+        </Button>
+        <strong data-testid="aa-fonds-naam" style={css('font-size: 17px;')}>
+          {fondsLabel}
+        </strong>
+        {toonStappen && werkStatus && (
+          <Chip toon={werkStatus.definitief ? 'groen' : 'blauw'} testid="aa-versie-status">
+            {werkStatus.definitief ? 'Definitief' : 'Concept'}
+            {werkStatus.nummer ? ` · versie ${werkStatus.nummer}` : ''}
+          </Chip>
+        )}
+        {aanvraag && aanvraag.laatsteUitkomst && <Chip toon={uitkomstToon(aanvraag.laatsteUitkomst)}>Laatst beoordeeld: {uitkomstLabel(aanvraag.laatsteUitkomst).toLowerCase()}</Chip>}
+      </div>
+
+      {toonStappen && <VierStappen stappen={werkStappen} actief={stap} onKies={kiesStap} />}
+
+      {formulier.bevestigd && !formulier.weg && (
+        <div style={stap === 'vragenlijst' ? { display: 'none' } : undefined}>
+          <VersieEditor
+            key={editorSleutel}
+            ref={editorRef}
+            aanvraagId={aanvraagId}
+            formulier={{ projectId: project.id, vragen: { lijst: formulier.lijst }, stukken: formulier.stukken, docs: docsNu }}
+            stap={stap === 'vragenlijst' ? 'antwoorden' : stap}
+            zonderKop
+            onStatus={setWerkStatus}
+            titel={`Aanvraag voor ${fondsLabel}`}
+            kop={`Aanvraag ${fondsLabel}`}
+            projectNaam={project.naam}
+            store={store}
+            onSluit={onTerug}
+            onGewijzigd={onGewijzigd}
+          />
+        </div>
+      )}
+
+      <div className="fwk-wp-kolommen" style={stap === 'vragenlijst' ? undefined : { display: 'none' }}>
+        <div className="fwk-wp-stapel">
+          {!aanvraagId && (
+            <Melding toon="waarschuwing" testid="aa-niet-bewaard">
+              De criteria konden niet worden bewaard. U kunt ze nu nog gebruiken om een aanvraag te beoordelen, maar niet om een versie te schrijven. Haal de criteria later opnieuw op.
+            </Melding>
+          )}
+
+          <BronnenBlok bronnen={bronnen} inlogSignaal={voorlopig && voorlopig.inlogSignaal} beperkteLijst={voorlopig && voorlopig.beperkteLijst} />
+
+          <FormulierBlok project={project} aanvraagId={aanvraagId} formulierStart={(voorlopig && voorlopig.formulierTekst) || ''} docs={documentenLijst(project.docs, orgDocs)} assistent={assistent} onGewijzigd={onGewijzigd} onStand={zetFormulierStand} onOpen={(w) => { zetFormulierStand({ bevestigd: true, lijst: w.lijst, stukken: w.stukken }); setStap('antwoorden'); }} />
+
+
+          {formulier.weg ? (
+            <>
+              {criteriaEl}
+              {keuzeEl}
+            </>
+          ) : (
+            meerEl
+          )}
+          {fout && stap === 'vragenlijst' && formulier.bevestigd && (
+            <Melding toon="fout" testid="aa-werk-fout-stap">
+              {fout}
+            </Melding>
+          )}
         </div>
 
         <div className="fwk-wp-stapel">

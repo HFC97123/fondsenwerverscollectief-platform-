@@ -3,13 +3,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
-import { Blok, Chip, Leeg, Melding, Rij, Rijen } from '../../../shared/ui/werkplek.jsx';
+import { Blok, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { haalAanvragen } from '../../../data/services/aanvraagAssistent.js';
+import { haalOrganisatieDocumentenOp } from '../../../data/services/organisatiedocumenten.js';
 import { AanvraagStijl, Bezig, PrivaatfondsKaart, ProjectKeuze, RuimteBlok } from './Bouwstenen.jsx';
 import AanvraagWerk from './AanvraagWerk.jsx';
 import NieuweAanvraag from './NieuweAanvraag.jsx';
 import ProjectplanTab from './ProjectplanTab.jsx';
-import { aanvraagBadges, datumTekst, splitsAanvragen } from './aanvraagModel.js';
+import FondsKaart from './FondsKaart.jsx';
+import { documentenLijst, splitsAanvragen } from './aanvraagModel.js';
 
 // Eén tabblad "Aanvraag indienen": met metProjectplan staat het projectplan bovenaan en daaronder de fondsen waar het lid indient.
 // Het lid dient zelf in bij het fonds; Subsidie Kompas helpt met de tekst en de stukken.
@@ -19,6 +21,7 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
   const [lijst, setLijst] = useState(null);
   const [fout, setFout] = useState('');
   const [scherm, setScherm] = useState({ naam: 'lijst' });
+  const [orgDocs, setOrgDocs] = useState([]);
   const huidig = useRef('');
   const laatsteStart = useRef(null);
 
@@ -45,6 +48,22 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
     setScherm({ naam: 'lijst' });
     laad();
   }, [laad]);
+
+  // De bestanden uit het organisatieprofiel horen bij de stukken op de kaarten (ANBI-status, statuten, jaarverslag). Lukt dit niet, dan tellen alleen de projectbestanden.
+  useEffect(() => {
+    let weg = false;
+
+    Promise.resolve()
+      .then(() => haalOrganisatieDocumentenOp())
+      .then((l) => {
+        if (!weg && Array.isArray(l)) setOrgDocs(l);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      weg = true;
+    };
+  }, []);
 
   // Een verzoek vanuit het tabblad Projectplan: een nieuw fonds beginnen, of een bestaande aanvraag openen.
   useEffect(() => {
@@ -77,10 +96,11 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
   }
 
   if (scherm.naam === 'werk') {
-    return <AanvraagWerk key={scherm.aanvraagId || scherm.fondsLabel} project={project} aanvraagId={scherm.aanvraagId} fondsLabel={scherm.fondsLabel} voorlopig={scherm.voorlopig} assistent={assistent} store={store} onTerug={naarLijst} onGewijzigd={laad} />;
+    return <AanvraagWerk key={scherm.aanvraagId || scherm.fondsLabel} project={project} startStap={scherm.stap || ''} aanvraagId={scherm.aanvraagId} fondsLabel={scherm.fondsLabel} voorlopig={scherm.voorlopig} assistent={assistent} store={store} onTerug={naarLijst} onGewijzigd={laad} />;
   }
 
   const { fondsen } = splitsAanvragen(lijst);
+  const docsNu = documentenLijst(project.docs, orgDocs);
 
   const fondsenBlok = (
     <Blok
@@ -103,26 +123,13 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
           Nog geen aanvragen voor dit project.
         </Leeg>
       )}
-      <Rijen label="Aanvragen">
+      <div className="fwk-aa-kaarten" role="list" aria-label="Aanvragen">
         {fondsen.map((a) => (
-          <Rij
-            key={a.id}
-            testid="aa-rij-aanvraag"
-            titel={a.fondsLabel || 'Fonds'}
-            sub={`${a.aantalCriteria} ${a.aantalCriteria === 1 ? 'criterium' : 'criteria'} · bijgewerkt op ${datumTekst(a.bijgewerkt) || 'onbekende datum'}`}
-            onOpen={() => setScherm({ naam: 'werk', aanvraagId: a.id })}
-            eind={
-              <span className="fwk-aa-chips" style={css('margin: 0; justify-content: flex-end;')}>
-                {aanvraagBadges(a).map((b) => (
-                  <Chip key={b.tekst} toon={b.toon}>
-                    {b.tekst}
-                  </Chip>
-                ))}
-              </span>
-            }
-          />
+          <div key={a.id} role="listitem">
+            <FondsKaart aanvraag={a} docs={docsNu} onOpen={(aanvraag, stapId) => setScherm({ naam: 'werk', aanvraagId: aanvraag.id, stap: stapId || '' })} />
+          </div>
         ))}
-      </Rijen>
+      </div>
     </Blok>
   );
 

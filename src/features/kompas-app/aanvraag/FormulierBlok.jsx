@@ -87,6 +87,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
   useEffect(() => {
     if (!aanvraagId) {
       setFase('weg');
+      onStand({ bevestigd: false, weg: true });
 
       return undefined;
     }
@@ -101,7 +102,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
       // Kan de server dit niet (nog niet aangezet of niet bereikbaar), dan verdwijnt dit blok en werkt de aanvraag zoals voorheen.
       if (!r.ok) {
         setFase('weg');
-        onStand({ bevestigd: false });
+        onStand({ bevestigd: false, weg: true });
 
         return;
       }
@@ -113,7 +114,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
       if (v && Array.isArray(v.lijst) && v.lijst.length) {
         setLijst(v.lijst);
         setFase(v.bevestigd ? 'bevestigd' : 'controle');
-        onStand({ bevestigd: Boolean(v.bevestigd) });
+        onStand({ bevestigd: Boolean(v.bevestigd), lijst: v.lijst, stukken: Array.isArray(r.antwoord.stukken) ? r.antwoord.stukken : [] });
       } else {
         setFase('invoer');
         onStand({ bevestigd: false });
@@ -200,7 +201,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
 
     if (bevestig) {
       setFase('bevestigd');
-      onStand({ bevestigd: true });
+      onStand({ bevestigd: true, lijst: r.antwoord.vragen.lijst, stukken: r.antwoord.stukken });
     } else {
       setMelding('De vragenlijst is bewaard.');
     }
@@ -331,7 +332,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
         </ol>
         <div style={css('display: flex; gap: 10px; flex-wrap: wrap; align-items: center;')}>
           <Button onClick={() => onOpen({ lijst, stukken })} disabled={Boolean(bezig)} ariaLabel="Open uw aanvraag per vraag">
-            Open uw aanvraag per vraag →
+            Ga verder met de antwoorden →
           </Button>
           <Button variant="outline" onClick={pasAan} disabled={Boolean(bezig)} ariaLabel="Vragenlijst aanpassen">
             Vragenlijst aanpassen

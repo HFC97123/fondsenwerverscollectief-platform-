@@ -52,6 +52,45 @@ textarea.fwk-aa-veld { resize: vertical; }
 .fwk-aa-citaat { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid ${color.lijnGroenSterk}; background: ${color.achtergrond}; border-radius: 0 ${radius.s} ${radius.s} 0; font-family: ${font.tekst}; font-size: 13.5px; line-height: 1.5; color: ${color.tekstZacht}; overflow-wrap: anywhere; }
 .fwk-aa-citaat b { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: ${color.tekstLicht}; }
 .fwk-aa-bezig { display: inline-block; width: 16px; height: 16px; border: 2px solid ${color.lijnGroenSterk}; border-top-color: ${color.groen}; border-radius: 50%; animation: fwk-aa-draai .9s linear infinite; vertical-align: -3px; }
+.fwk-aa-vier { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 18px; padding: 0; list-style: none; border: 1px solid ${color.lijn}; border-radius: ${radius.xxl}; background: ${color.wit}; overflow: hidden; }
+.fwk-aa-vier > li { min-width: 0; border-right: 1px solid ${color.lijn}; }
+.fwk-aa-vier > li:last-child { border-right: none; }
+.fwk-aa-vier button { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; font-family: ${font.tekst}; font-size: 14px; font-weight: 800; color: ${color.tekstGrijs}; }
+.fwk-aa-vier button:focus-visible { outline: 2px solid ${color.groen}; outline-offset: -3px; }
+.fwk-aa-vier button[disabled] { cursor: default; opacity: .6; }
+.fwk-aa-vier-nr { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #EAEFF3; color: ${color.donkerblauw}; font-family: ${font.kop}; font-size: 14px; }
+.fwk-aa-vier small { display: block; font-size: 12px; font-weight: 600; color: ${color.tekstLicht}; }
+.fwk-aa-vier [data-staat="klaar"] { color: ${color.donkerblauw}; }
+.fwk-aa-vier [data-staat="klaar"] .fwk-aa-vier-nr { background: ${color.groen}; color: ${color.wit}; }
+.fwk-aa-vier [data-staat="nu"] { background: ${color.vlakGroen}; color: ${color.donkerblauw}; }
+.fwk-aa-vier [data-staat="nu"] .fwk-aa-vier-nr { background: ${color.donkerblauw}; color: ${color.wit}; }
+@media (max-width: 760px) { .fwk-aa-vier { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fwk-aa-vier > li:nth-child(2) { border-right: none; } .fwk-aa-vier > li:nth-child(-n+2) { border-bottom: 1px solid ${color.lijn}; } }
+.fwk-aa-vier-nr[data-klaar="true"] { background: ${color.groen}; color: ${color.wit}; }
+.fwk-aa-split { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 18px; align-items: start; }
+.fwk-aa-split > * { min-width: 0; }
+.fwk-aa-vraagknop { all: unset; box-sizing: border-box; width: 100%; display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid transparent; border-radius: ${radius.l}; cursor: pointer; font-family: ${font.tekst}; }
+.fwk-aa-vraagknop:focus-visible { outline: 2px solid ${color.groen}; outline-offset: 1px; }
+.fwk-aa-vraagknop[data-actief="true"] { background: ${color.vlakGroen}; border-color: ${color.lijnGroen}; }
+.fwk-aa-vraagtitel { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.35; color: ${color.donkerblauw}; overflow-wrap: anywhere; }
+.fwk-aa-vraagknop small { display: block; font-size: 12px; font-weight: 600; color: ${color.tekstLicht}; }
+@media (max-width: 860px) { .fwk-aa-split { grid-template-columns: minmax(0, 1fr); } }
+.fwk-aa-meer > summary { cursor: pointer; list-style: none; padding: 12px 16px; border: 1px solid ${color.lijn}; border-radius: ${radius.xl}; background: ${color.wit}; font-family: ${font.tekst}; font-size: 14px; font-weight: 800; color: ${color.donkerblauw}; }
+.fwk-aa-meer > summary::-webkit-details-marker { display: none; }
+.fwk-aa-meer > summary::before { content: '▸'; margin-right: 8px; color: ${color.tekstLicht}; }
+.fwk-aa-meer[open] > summary::before { content: '▾'; }
+.fwk-aa-meer > summary:focus-visible { outline: 2px solid ${color.groen}; outline-offset: 2px; }
+.fwk-aa-kaarten { display: flex; flex-direction: column; gap: 12px; }
+.fwk-aa-kaart { box-sizing: border-box; padding: 16px 18px; border: 1px solid ${color.lijn}; border-radius: ${radius.xl}; background: ${color.wit}; }
+.fwk-aa-kaart-titel { margin: 0 0 2px; font-family: ${font.tekst}; font-size: 16px; font-weight: 800; color: ${color.donkerblauw}; }
+.fwk-aa-mini { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.fwk-aa-mini > li { min-width: 0; font-family: ${font.tekst}; font-size: 12.5px; font-weight: 700; color: ${color.tekstLicht}; }
+.fwk-aa-mini > li > i { display: block; height: 6px; margin-bottom: 6px; border-radius: 999px; background: #E4EBE7; }
+.fwk-aa-mini > li > b { display: block; font-weight: 800; }
+.fwk-aa-mini > li > small { display: block; font-size: 12px; font-weight: 600; }
+.fwk-aa-mini > li[data-staat="klaar"] > i { background: ${color.groen}; }
+.fwk-aa-mini > li[data-staat="nu"] > i { background: ${color.donkerblauw}; }
+.fwk-aa-mini > li[data-staat="klaar"], .fwk-aa-mini > li[data-staat="nu"] { color: ${color.donkerblauw}; }
+@media (max-width: 560px) { .fwk-aa-mini { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @keyframes fwk-aa-draai { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .fwk-aa-bezig { animation: none; } }
 `;
@@ -127,6 +166,29 @@ export function Stappen({ actief }) {
           <li key={naam} className="fwk-aa-stap" data-staat={staat} aria-current={staat === 'nu' ? 'step' : undefined}>
             <span aria-hidden="true">{staat === 'klaar' ? '✓' : nr}</span>
             {naam}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// De vier stappen van een aanvraag per fonds. stappen: uit werkbladStappen(); actief: id van de stap waar het lid nu is; onKies(id) opent een stap (alleen als die open is).
+export function VierStappen({ stappen, actief, onKies }) {
+  return (
+    <ol className="fwk-aa-vier" aria-label="Stappen van deze aanvraag" data-testid="aa-vier-stappen">
+      {stappen.map((s) => {
+        const staat = s.id === actief ? 'nu' : s.klaar ? 'klaar' : 'later';
+
+        return (
+          <li key={s.id}>
+            <button type="button" data-staat={staat} data-testid={`aa-stap-${s.id}`} disabled={!s.open} aria-current={s.id === actief ? 'step' : undefined} onClick={() => onKies(s.id)}>
+              <span className="fwk-aa-vier-nr" aria-hidden="true">{s.klaar && s.id !== actief ? '✓' : s.nr}</span>
+              <span style={{ minWidth: 0 }}>
+                {s.naam}
+                <small>{s.sub}</small>
+              </span>
+            </button>
           </li>
         );
       })}

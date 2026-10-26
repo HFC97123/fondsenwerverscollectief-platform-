@@ -303,4 +303,34 @@ sectie('6. Antwoorden schrijven: één beoordeling per fonds');
   gelijk('modelstoring: 502 en het telt niet mee', [f.status, f.body.reden, faal.log.afgerond.filter((a) => !a.succes).length, faal.aanvragen.get(AANVRAAG).schrijf_maand], [502, 'ai-mislukt', 1, null]);
 }
 
+sectie('7. De kaart per fonds: voortgang in de lijst met aanvragen');
+{
+  const o = omgeving();
+  const rij = { id: AANVRAAG, program_id: PROJECT, soort: 'fonds', fonds_label: 'Cultuurfonds', criteria: [], criteria_bron: null, bronnen: [], plan: null, plan_bijgewerkt_op: null, laatste_beoordeling_id: null, laatste_uitkomst: null, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-02T00:00:00Z' };
+
+  o.deps.lijstAanvragen = async () => [rij];
+
+  const zonder = await verwerk(vraag({ mode: 'aanvragen', projectId: PROJECT }), o.deps);
+
+  check('zonder voortgangsfunctie: de lijst werkt gewoon, zonder voortgang', zonder.status === 200 && zonder.body.aanvragen.length === 1 && zonder.body.aanvragen[0].voortgang === undefined);
+
+  o.deps.lijstVoortgang = async (u, ids) => (u === USER && ids.includes(AANVRAAG) ? { [AANVRAAG]: { status: 'concept', aantalVragen: 3, vragenBevestigd: true, aantalAntwoorden: 2, stukken: [] } } : {});
+
+  const met = await verwerk(vraag({ mode: 'aanvragen', projectId: PROJECT }), o.deps);
+
+  gelijk('met voortgang: de kaart krijgt de tellingen', [met.status, met.body.aanvragen[0].voortgang && met.body.aanvragen[0].voortgang.aantalAntwoorden, met.body.aanvragen[0].voortgang && met.body.aanvragen[0].voortgang.vragenBevestigd], [200, 2, true]);
+
+  o.deps.lijstVoortgang = async () => { throw new Error('kolom bestaat niet'); };
+
+  const stuk = await verwerk(vraag({ mode: 'aanvragen', projectId: PROJECT }), o.deps);
+
+  check('een fout bij de voortgang breekt de lijst niet', stuk.status === 200 && stuk.body.aanvragen.length === 1 && stuk.body.aanvragen[0].voortgang === undefined);
+
+  o.deps.lijstVoortgang = async () => null;
+
+  const nul = await verwerk(vraag({ mode: 'aanvragen', projectId: PROJECT }), o.deps);
+
+  check('null (migratie nog niet gedraaid): lijst zonder voortgang', nul.status === 200 && nul.body.aanvragen[0].voortgang === undefined);
+}
+
 klaar('aanvraag-vragen');

@@ -167,4 +167,36 @@ sectie('8. Formulier: tekenlimieten en stukken');
   check('rare invoer breekt niets', M.telStukken(null, null).totaal === 0 && M.telAntwoorden(undefined, undefined).totaal === 0 && M.planUitVragen(null).secties.length === 0 && M.onderdelenVoorVragen(null, null).length === 0 && M.zoekDocument(null, null) === null);
 }
 
+sectie('9. De vier stappen van een aanvraag en de kaart per fonds');
+{
+  const nuDatum = new Date('2026-10-26T12:00:00Z');
+  const leeg = M.werkbladStappen();
+
+  gelijk('de vier stappen heten Vragenlijst, Antwoorden, Stukken en Controle', leeg.map((x) => x.naam), ['Vragenlijst', 'Antwoorden', 'Stukken', 'Controle']);
+  gelijk('zonder bevestigde vragenlijst is alleen stap 1 open', leeg.map((x) => x.open), [true, false, false, false]);
+  check('zonder bevestigde vragenlijst is niets klaar', leeg.every((x) => !x.klaar));
+
+  const bezig = M.werkbladStappen({ bevestigd: true, aantalVragen: 3, beantwoord: 1, geschreven: 2, stukkenTotaal: 4, stukkenKlaar: 2 });
+
+  gelijk('met een bevestigde lijst zijn alle stappen open', bezig.map((x) => x.open), [true, true, true, true]);
+  gelijk('de tekst onder de stappen telt vragen, geschreven antwoorden en stukken', bezig.map((x) => x.sub), ['3 vragen', '2 van 3 geschreven', '2 van 4 klaar', 'Klaar om in te dienen?']);
+  gelijk('stap 1 is klaar, 2 en 3 nog niet', bezig.map((x) => x.klaar), [true, false, false, false]);
+  check('een vraag meervoud/enkelvoud: "1 vraag"', M.werkbladStappen({ bevestigd: true, aantalVragen: 1 })[0].sub === '1 vraag');
+  check('geen stukken nodig telt als klaar', M.werkbladStappen({ bevestigd: true, aantalVragen: 1, stukkenTotaal: 0 })[2].klaar === true && M.werkbladStappen({ bevestigd: true, aantalVragen: 1 })[2].sub === 'Geen stukken nodig');
+
+  const alles = M.werkbladStappen({ bevestigd: true, aantalVragen: 2, beantwoord: 2, stukkenTotaal: 1, stukkenKlaar: 1, definitief: true });
+
+  check('alles klaar en definitief: ook de laatste stap is klaar', alles.every((x) => x.klaar) && alles[3].sub === 'Definitief gemaakt');
+  check('de volgende stap is de eerste die nog niet klaar is', M.volgendeStap(bezig).id === 'antwoorden' && M.volgendeStap(alles).id === 'controle' && M.volgendeStap(leeg).id === 'vragenlijst' && M.volgendeStap(null) === null);
+  check('definitief zonder complete antwoorden telt niet als klaar', M.werkbladStappen({ bevestigd: true, aantalVragen: 2, beantwoord: 1, definitief: true })[3].klaar === false);
+
+  const docs = [{ naam: 'anbi-beschikking.pdf', soort: 'ANBI-status', datum: '2026-09-01', bron: 'organisatie' }];
+  const voortgang = { status: 'concept', aantalVragen: 3, vragenBevestigd: true, aantalAntwoorden: 3, stukken: [{ id: 's1', tekst: 'ANBI-status', bron: 'standaard', sleutel: 'anbi', maxLeeftijdMaanden: null, nietVanToepassing: false, klaar: false, documentNaam: '' }, { id: 's2', tekst: 'Statuten', bron: 'standaard', sleutel: 'statuten', maxLeeftijdMaanden: null, nietVanToepassing: false, klaar: false, documentNaam: '' }] };
+  const kaart = M.stappenUitVoortgang(voortgang, docs, nuDatum);
+
+  gelijk('de kaart herkent stukken in de documentatie: 1 van 2 klaar', kaart.map((x) => x.sub), ['3 vragen', '3 van 3 geschreven', '1 van 2 klaar', 'Klaar om in te dienen?']);
+  check('de knop op de kaart wijst naar de stukken', M.volgendeStap(kaart).id === 'stukken' && /stukken/.test(M.STAP_KNOP.stukken));
+  check('zonder voortgang van de server geen stappen op de kaart', M.stappenUitVoortgang(null, docs) === null && M.stappenUitVoortgang(undefined, []) === null);
+}
+
 klaar('aanvraag-schermen-model');
