@@ -39,8 +39,27 @@ const CSS_DASHBOARD = `
 .fwk-db-actie:hover { border-color: #A8D5BA; }
 .fwk-db-actie a { color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 15px; font-weight: 800; text-decoration: none; }
 .fwk-db-actie a:hover { text-decoration: underline; }
-.fwk-db-projecten { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 760px) { .fwk-db-projecten { grid-template-columns: minmax(0, 1fr); } }
+.fwk-db-projecten { display: grid; grid-template-columns: repeat(var(--kol, 3), minmax(0, 1fr)); gap: 16px; }
+.fwk-db-vul { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; min-width: 0; min-height: 180px; padding: 22px 24px; border: 1.5px dashed #CFE0D6; border-radius: 22px; background: #F6F8F7; text-align: center; font-family: 'Mulish', sans-serif; font-size: 13.5px; color: #7B8985; }
+.fwk-db-vul:hover { border-color: #A8D5BA; background: #F1F7F3; }
+.fwk-db-vul a { color: #2C4A5E; font-size: 15px; font-weight: 800; text-decoration: none; }
+.fwk-db-vul a::after { content: ''; position: absolute; inset: 0; border-radius: 22px; }
+.fwk-db-vul[data-desktop="0"] { display: none; }
+@media (max-width: 980px) {
+  .fwk-db-projecten { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fwk-db-vul[data-desktop] { display: none; }
+  .fwk-db-vul[data-tablet="1"] { display: flex; }
+}
+@media (max-width: 640px) {
+  .fwk-db-projecten { grid-template-columns: minmax(0, 1fr); }
+  .fwk-db-vul[data-desktop], .fwk-db-vul[data-tablet="1"] { display: none; }
+}
+/* Kaarten naast elkaar even hoog en de onderdelen (naam, dekking, dossier, fondsen, deadline, knoppen) op dezelfde hoogte. */
+@supports (grid-template-rows: subgrid) {
+  .fwk-db-projecten { row-gap: 0; }
+  .fwk-db-project { display: grid !important; grid-row: span 7; grid-template-rows: subgrid; row-gap: 12px; margin-bottom: 16px; }
+  .fwk-db-vul { grid-row: span 7; margin-bottom: 16px; }
+}
 .fwk-db-project { position: relative; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; min-width: 0; padding: 22px 24px; border: 1px solid #E1EAE4; border-radius: 22px; background: #FFFFFF; }
 .fwk-db-project:hover { border-color: #A8D5BA; }
 .fwk-db-project h3 { margin: 0; font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E; overflow-wrap: anywhere; }
@@ -54,6 +73,9 @@ const CSS_DASHBOARD = `
 .fwk-db-uitnodiging { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px dashed #CFE0D6; border-radius: 14px; background: #F6F8F7; font-family: 'Mulish', sans-serif; font-size: 13.5px; color: #4B5C58; }
 .fwk-db-uitnodiging b { color: #2C4A5E; }
 .fwk-db-voet { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: auto; padding-top: 12px; border-top: 1px solid #EEF2EF; }
+.fwk-db-voet { flex-wrap: wrap; row-gap: 8px; }
+.fwk-db-voet > * { white-space: nowrap; }
+.fwk-db-voet > :last-child { margin-left: auto; }
 .fwk-db-boven { position: relative; z-index: 1; }
 .fwk-db-dl { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid #EEF2EF; }
 .fwk-db-dl:last-child { border-bottom: none; padding-bottom: 0; }
@@ -87,6 +109,26 @@ function Tegel({ label, waarde, sub, dringend = false, testid }) {
   );
 }
 
+// Projecten naast elkaar, altijd als nette rechthoek: 3 naast elkaar, behalve bij 1, 2 of 4 projecten (dan 2 per rij).
+// Blijft er op de laatste rij een plek leeg, dan vult een kaart 'Nieuw project' die plek op.
+export function projectKolommen(aantal) {
+  return aantal <= 2 || aantal === 4 ? 2 : 3;
+}
+
+function NieuwProjectKaart({ aantal }) {
+  const kol = projectKolommen(aantal);
+  const leegDesktop = (kol - (aantal % kol)) % kol;
+
+  if (!leegDesktop && aantal % 2 === 0) return null;
+
+  return (
+    <li className="fwk-db-vul" data-testid="dashboard-nieuw-project-kaart" data-desktop={leegDesktop ? '1' : '0'} data-tablet={aantal % 2 ? '1' : '0'}>
+      <a href="#/kompas/projecten?nieuw=1">+ Nieuw project</a>
+      <span>Start een volgend project; Subsidie Kompas helpt met begroting en fondsen.</span>
+    </li>
+  );
+}
+
 function ProjectKaart({ project, onBespreek }) {
   const d = project.dekking;
   const meta = [project.locatie, project.periode].filter(Boolean).join(' · ');
@@ -102,7 +144,7 @@ function ProjectKaart({ project, onBespreek }) {
           {project.naam}
         </a>
       </h3>
-      {meta && <div className="fwk-db-klein" style={css('margin-top: -8px;')}>{meta}</div>}
+      <div className="fwk-db-klein" style={css('margin-top: -8px;')}>{meta}</div>
 
       {d.heeftBegroting ? (
         <div>
@@ -316,6 +358,37 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* Uw projecten direct onder de tegels, over de volle breedte: kaarten naast elkaar, altijd als nette rechthoek. */}
+      <div style={css('margin-bottom: 26px;')}>
+        <Blok
+          testid="dashboard-projecten"
+          titel="Uw projecten"
+          aantal={data.projecten.length}
+          kaal
+          actie={
+            <a href="#/kompas/projecten" className="fwk-wp-link">
+              {data.projecten.length > MAX_PROJECTEN ? `Alle ${data.projecten.length} projecten` : 'Alle projecten'}
+            </a>
+          }
+        >
+          {getoond.length ? (
+            <ul className="fwk-db-projecten" style={{ '--kol': projectKolommen(getoond.length) }}>
+              {getoond.map((p) => (
+                <ProjectKaart key={p.id} project={p} onBespreek={bespreekProject} />
+              ))}
+              <NieuwProjectKaart aantal={getoond.length} />
+            </ul>
+          ) : (
+            <Leeg>
+              Nog geen actief project.{' '}
+              <a href="#/kompas/projecten?nieuw=1" className="fwk-wp-link">
+                Project aanmaken
+              </a>
+            </Leeg>
+          )}
+        </Blok>
+      </div>
+
       <div className="fwk-wp-kolommen">
         <div className="fwk-wp-stapel">
           <Blok testid="dashboard-acties" titel="Nu aan de slag" aantal={klaar ? acties.length : null} kaal>
@@ -345,32 +418,6 @@ export default function DashboardPage() {
             )}
           </Blok>
 
-          <Blok
-            testid="dashboard-projecten"
-            titel="Uw projecten"
-            aantal={data.projecten.length}
-            kaal
-            actie={
-              <a href="#/kompas/projecten" className="fwk-wp-link">
-                {data.projecten.length > MAX_PROJECTEN ? `Alle ${data.projecten.length} projecten` : 'Alle projecten'}
-              </a>
-            }
-          >
-            {getoond.length ? (
-              <ul className="fwk-db-projecten">
-                {getoond.map((p) => (
-                  <ProjectKaart key={p.id} project={p} onBespreek={bespreekProject} />
-                ))}
-              </ul>
-            ) : (
-              <Leeg>
-                Nog geen actief project.{' '}
-                <a href="#/kompas/projecten?nieuw=1" className="fwk-wp-link">
-                  Project aanmaken
-                </a>
-              </Leeg>
-            )}
-          </Blok>
         </div>
 
         <div className="fwk-wp-stapel">
