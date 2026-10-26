@@ -131,4 +131,40 @@ sectie('7. Statische controles op de schermen');
   check('de service gebruikt de functie aanvraag-assistent en niet subsidie-kompas', /AANVRAAG_FUNCTION = 'aanvraag-assistent'/.test(readFileSync('src/data/services/aanvraagAssistent.js', 'utf8')) && !/subsidie-kompas'/.test(readFileSync('src/data/services/aanvraagAssistent.js', 'utf8')));
 }
 
+sectie('8. Formulier: tekenlimieten en stukken');
+{
+  const v = (o) => ({ id: 'v1', tekst: 'Vraag', maxTekens: null, geenLimiet: false, ...o });
+  check('een vraag is klaar met een limiet of met "geen limiet", anders niet', M.limietOk(v({ maxTekens: 1500 })) && M.limietOk(v({ geenLimiet: true })) && !M.limietOk(v({})) && !M.limietOk(v({ maxTekens: 0 })) && !M.limietOk(v({ maxTekens: 1.5 })) && !M.limietOk(null));
+  gelijk('vragen zonder limiet worden geteld', M.vragenZonderLimiet([v({ maxTekens: 5 }), v({}), v({ geenLimiet: true }), v({})]), 2);
+  check('een limiet lezen: cijfers, punten en spaties mogen; letters, nul en te groot niet', M.leesLimiet('1500') === 1500 && M.leesLimiet('1.500') === 1500 && M.leesLimiet(' 800 ') === 800 && M.leesLimiet('') === null && M.leesLimiet('abc') === null && M.leesLimiet('0') === null && M.leesLimiet('999999') === null && M.leesLimiet('12,5') === null);
+  gelijk('een nieuwe vraag krijgt een vrije id, een nette tekst en begint zonder limiet', JSON.stringify(M.nieuweVraag([{ id: 'v1' }, { id: 'v3' }], '  Wat is uw plan?  ')), JSON.stringify({ id: 'v4', tekst: 'Wat is uw plan?', maxTekens: null, geenLimiet: false }));
+  check('de id van een nieuwe vraag of een nieuw stuk botst nooit met een bestaande', M.nieuweVraag([{ id: 'v1' }, { id: 'v2' }, { id: 'v3' }], 'x y z').id === 'v4' && M.nieuwStuk([{ id: 's2' }], 'Brief').id === 's3' && M.nieuwStuk([], 'Brief').id === 's1');
+
+  const lijst = { lijst: [v({ id: 'v1', tekst: 'Een', maxTekens: 100 }), v({ id: 'v2', tekst: 'Twee', geenLimiet: true }), v({ id: 'v3', tekst: 'Drie', maxTekens: 50 })] };
+  gelijk('de vragen worden onderdelen van het plan, met limiet', JSON.stringify(M.planUitVragen(lijst).secties.map((s) => [s.id, s.titel, s.maxTekens ?? null])), JSON.stringify([['v1', 'Een', 100], ['v2', 'Twee', null], ['v3', 'Drie', 50]]));
+  gelijk('limieten per vraag: "geen limiet" heeft er geen', JSON.stringify(M.limietenUitVragen(lijst)), JSON.stringify({ v1: 100, v3: 50 }));
+  const o = M.onderdelenVoorVragen([{ id: 'v3', titel: 'oud', tekst: 'C' }, { id: 'v1', titel: 'oud', tekst: 'A' }, { id: 'weg', titel: 'x', tekst: 'Z' }], lijst);
+  gelijk('opgeslagen antwoorden volgen de volgorde van de vragen; nieuwe vraag leeg, verwijderde vraag weg, titel = de vraag', JSON.stringify(o.map((x) => [x.id, x.titel, x.tekst])), JSON.stringify([['v1', 'Een', 'A'], ['v2', 'Twee', ''], ['v3', 'Drie', 'C']]));
+
+  const nu = new Date('2026-10-26T12:00:00Z');
+  const stuk = (o2) => ({ id: 's1', tekst: 'ANBI-status', bron: 'standaard', sleutel: 'anbi', maxLeeftijdMaanden: null, nietVanToepassing: false, klaar: false, documentNaam: '', ...o2 });
+  const docs = M.documentenLijst([{ naam: 'anbi-beschikking.pdf', soort: 'Overig', gemaakt: '2026-03-01T00:00:00Z' }, { naam: 'oud-jaarverslag.pdf', soort: 'Overig', gemaakt: '2024-01-01T00:00:00Z', vervangen: true }], [{ naam: 'Jaarverslag 2025.pdf', soort: 'Jaarverslag', aangemaakt: '2026-09-01T00:00:00Z' }, { naam: 'jaarrekening 2023.pdf', soort: 'Overig', aangemaakt: '2024-02-01T00:00:00Z' }]);
+  check('de documentenlijst voegt project en organisatie samen en laat vervangen bestanden weg', docs.length === 3 && docs.some((d) => d.bron === 'organisatie') && !docs.some((d) => /oud-jaarverslag/.test(d.naam)));
+  gelijk('ANBI-status wordt herkend in de documentatie', M.stukStatus(stuk({}), docs, nu).status, 'klaar');
+  gelijk('het jaarverslag wordt herkend op de soort (organisatieprofiel)', M.stukStatus(stuk({ sleutel: 'jaarverslag', maxLeeftijdMaanden: 12 }), docs, nu).status, 'klaar');
+  const oud = M.stukStatus(stuk({ sleutel: 'jaarrekening', maxLeeftijdMaanden: 12 }), docs, nu);
+  check('een bestand dat langer geleden is toegevoegd dan het fonds toestaat wordt "te oud" met een uitleg, niet stilzwijgend goedgekeurd', oud.status === 'te-oud' && /Controleer of het de nieuwste is/.test(oud.reden) && /jaarrekening 2023/.test(oud.reden));
+  gelijk('zonder bestand en niet afgevinkt: nog nodig', M.stukStatus(stuk({ sleutel: 'statuten' }), docs, nu).status, 'nodig');
+  gelijk('zelf afgevinkt: klaar', M.stukStatus(stuk({ sleutel: 'statuten', klaar: true }), docs, nu).status, 'klaar');
+  gelijk('niet van toepassing: telt niet mee', M.stukStatus(stuk({ nietVanToepassing: true }), docs, nu).status, 'nvt');
+  gelijk('een stuk zonder sleutel wordt niet geraden: nog nodig', M.stukStatus(stuk({ sleutel: null, tekst: 'Aanbevelingsbrief' }), docs, nu).status, 'nodig');
+  gelijk('een zelf gekoppeld bestand telt als klaar', M.stukStatus(stuk({ sleutel: null, tekst: 'Aanbevelingsbrief', documentNaam: 'brief.pdf' }), docs, nu).status, 'klaar');
+  const t = M.telStukken([stuk({}), stuk({ id: 's2', sleutel: 'statuten' }), stuk({ id: 's3', nietVanToepassing: true })], docs, nu);
+  gelijk('tellen: niet van toepassing telt niet mee', `${t.klaar}/${t.totaal}/${t.openstaand}`, '1/2/1');
+  const a = M.telAntwoorden([{ id: 'v1', tekst: 'Een goed antwoord.' }, { id: 'v2', tekst: '' }, { id: 'v3', tekst: 'Half. [aanvullen: het bedrag]' }, { id: 'v4', tekst: 'x'.repeat(60) }], { v4: 50 });
+  gelijk('antwoorden tellen: beantwoord, met gat, leeg, boven de limiet', `${a.beantwoord}/${a.metGat}/${a.leeg}/${a.overLimiet}`, '2/1/1/1');
+  check('de attentie over de tekenlimiet heeft de afgesproken woorden', /^Let op: veel fondsen hanteren een tekenlimiet per vraag\./.test(M.LIMIET_ATTENTIE) && /Zonder tekenlimiet kunnen wij u niet helpen\.$/.test(M.LIMIET_ATTENTIE));
+  check('rare invoer breekt niets', M.telStukken(null, null).totaal === 0 && M.telAntwoorden(undefined, undefined).totaal === 0 && M.planUitVragen(null).secties.length === 0 && M.onderdelenVoorVragen(null, null).length === 0 && M.zoekDocument(null, null) === null);
+}
+
 klaar('aanvraag-schermen-model');

@@ -6,6 +6,10 @@ export const PROJECT = '33333333-3333-4333-8333-333333333333';
 export const NU = new Date('2026-10-19T12:00:00Z');
 export const RICHTLIJN = 'De aanvraag moet een projectbegroting bevatten. Het project dient binnen twaalf maanden te starten.';
 export const AANVRAAG = 'Het project Samen Spelen start in januari 2027 en loopt twaalf maanden. Wij richten ons op kinderen van 6 tot 12 jaar in Rotterdam-Zuid. Onze aanpak bestaat uit wekelijkse sportlessen en een zomerkamp. De organisatie bestaat sinds 2015 en heeft de ANBI-status. Een overzicht van de kosten staat in bijlage twee.';
+export const FORMULIER = `1. Beschrijf de aanleiding en het doel van uw project (maximaal 1500 tekens)
+2. Wie is de doelgroep?
+3. Hoe wordt het project na afloop voortgezet?
+Bijlagen: een aanbevelingsbrief van de gemeente.`;
 export const PLANBRON = {
   project: { naam: 'Samen Spelen', omschrijving: 'Sport en spel voor kinderen in Rotterdam-Zuid.', doelgroep: 'Kinderen van 6 tot 12 jaar', doelstellingen: 'Kinderen bewegen meer en leren samenwerken.', activiteiten: 'Wekelijkse sportlessen en een zomerkamp.', begroting: 40000, gevraagd: 25000, regio: 'Rotterdam-Zuid', impact: 'Kinderen bewegen meer.', planning: 'Januari tot en met december 2027.' },
   info: { aanleiding: 'In de wijk zijn weinig plekken om veilig te spelen.', borging: 'De gemeente neemt de lessen na twee jaar over.' },
@@ -53,7 +57,7 @@ export function maakServer(o = {}) {
     roep: async (systeem, gebruiker) => {
       if (/Je schrijft één onderdeel/.test(systeem)) {
         const inv = JSON.parse(gebruiker);
-        return { inhoud: JSON.stringify({ tekst: `${inv.feiten[0].tekst} Daarmee bereiken we 4500 kinderen. [aanvullen: het aantal deelnemers]`, gebruikt: inv.feiten.map((f) => f.id), vragen: ['Hoeveel kinderen doen mee?'] }), usage: { prompt_tokens: 10, completion_tokens: 5 } };
+        return { inhoud: JSON.stringify({ tekst: `${inv.feiten[0].tekst} [aanvullen: het aantal deelnemers]`, gebruikt: inv.feiten.map((f) => f.id), vragen: ['Hoeveel kinderen doen mee?'] }), usage: { prompt_tokens: 10, completion_tokens: 5 } };
       }
       if (/Je zet de tekst van een bestaande projectbegroting om/.test(systeem)) {
         s.laatsteUpload = gebruiker;
@@ -70,6 +74,17 @@ export function maakServer(o = {}) {
           { kopje: 'activa', omschrijving: 'Voedselpakketten', aantal: null, eenheid: 'pakket', tarief: null, bedrag: 2500, natura: false, schatting: true },
           { kopje: 'communicatie', omschrijving: 'Flyers', aantal: null, tarief: null, bedrag: null },
         ] }), usage: { prompt_tokens: 900, completion_tokens: 200 } };
+      }
+      if (/Je haalt uit de tekst van het aanvraagformulier/.test(systeem)) {
+        s.vragenGelezen = (s.vragenGelezen || 0) + 1;
+        return { inhoud: JSON.stringify(s.opties.vragenUit || {
+          vragen: [
+            { vraag: 'Beschrijf de aanleiding en het doel van uw project.', bronstuk: 'Beschrijf de aanleiding en het doel van uw project (maximaal 1500 tekens)', maxTekens: 1500 },
+            { vraag: 'Wie is de doelgroep?', bronstuk: 'Wie is de doelgroep', maxTekens: null },
+            { vraag: 'Hoe wordt het project na afloop voortgezet?', bronstuk: 'Hoe wordt het project na afloop voortgezet', maxTekens: null },
+          ],
+          stukken: [{ stuk: 'Aanbevelingsbrief van de gemeente', bronstuk: 'een aanbevelingsbrief van de gemeente', maxLeeftijdMaanden: null }],
+        }), usage: { prompt_tokens: 20, completion_tokens: 10 } };
       }
       if (/Je haalt de eisen/.test(systeem)) {
         const bronnen = JSON.parse(gebruiker).bronnen;
@@ -102,6 +117,16 @@ export function maakServer(o = {}) {
       werkVersieBij: async (u, id, velden) => { const v = s.versies.get(id); if (!v || v.user_id !== u) return false; Object.assign(v, velden); return true; },
       verwijderVersie: async (u, id) => { const v = s.versies.get(id); if (!v || v.user_id !== u) return false; s.versies.delete(id); return true; },
       zetAanvraagStatus: async (u, id, velden) => { const a = eigen(u, id); if (!a) return false; a.status = velden.status; if ('definitieve_versie_id' in velden) a.definitieve_versie_id = velden.definitieve_versie_id ?? null; return true; },
+    });
+  }
+
+  // Vragenlijst en stukken van een formulier (bewaard op de aanvraag). Uit te zetten met { zonderVragen: true }.
+  if (!s.opties.zonderVragen) {
+    const eigenRij = (u, id) => { const r = s.tabel.get(id); return r && r.user_id === u ? r : null; };
+
+    Object.assign(deps, {
+      leesVragenStand: async (u, id) => { const a = eigenRij(u, id); return a ? { id: a.id, program_id: a.program_id, soort: a.soort, fonds_label: a.fonds_label || '', criteria: a.criteria || [], vragen: a.vragen || null, stukken: a.stukken || null, schrijf_maand: a.schrijf_maand || null, schrijf_aantal: a.schrijf_aantal || 0 } : null; },
+      bewaarVragenStukken: async (u, id, velden) => { const a = eigenRij(u, id); if (!a) return false; Object.assign(a, velden); return true; },
     });
   }
 

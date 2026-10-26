@@ -1,12 +1,15 @@
 // Eén aanvraag voor één fonds: de criteria controleren en aanpassen, en daarna kiezen: een versie voor dit fonds schrijven en/of een eigen aanvraag laten
 // beoordelen. De server bewaart de criteria, het plan en de laatste uitkomst per fonds. De aanvraagtekst die u laat beoordelen wordt niet bewaard; de versies die u zelf opslaat wel (zie VersieEditor).
+// Met het aanvraagformulier (FormulierBlok) wordt de aanvraag per vraag opgebouwd, met een checklist van stukken.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
 import { Blok, Chip, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { beoordeelAanvraag, bewaarCriteria, haalAanvraag, haalBeoordeling, schrijfProjectplan } from '../../../data/services/aanvraagAssistent.js';
+import { haalOrganisatieDocumentenOp } from '../../../data/services/organisatiedocumenten.js';
 import { AanvraagStijl, Bezig, Keuzekaart, PrivaatfondsKaart, RuimteBlok, Stappen } from './Bouwstenen.jsx';
 import BeoordelingResultaat from './BeoordelingResultaat.jsx';
+import FormulierBlok from './FormulierBlok.jsx';
 import VersieEditor from './VersieEditor.jsx';
 import {
   SOORTEN_KEUZE,
@@ -15,6 +18,7 @@ import {
   bronLabel,
   criteriaGewijzigd,
   datumTekst,
+  documentenLijst,
   heeftBeoordelingRuimte,
   nieuweEis,
   soortLabel,
@@ -232,6 +236,9 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
   const [resultaat, setResultaat] = useState(null); // { antwoord, datum }
   const [tekst, setTekst] = useState('');
   const [bevestigPlan, setBevestigPlan] = useState(false);
+  const [formulierWerk, setFormulierWerk] = useState(null); // { lijst, stukken } zodra het lid de aanvraag per vraag opent
+  const [formulierBevestigd, setFormulierBevestigd] = useState(false);
+  const [orgDocs, setOrgDocs] = useState([]);
   const levend = useRef(true);
 
   useEffect(() => {
@@ -267,6 +274,22 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
   useEffect(() => {
     laad();
   }, [laad]);
+
+  // De bestanden uit het organisatieprofiel (ANBI-status, statuten, jaarverslag) horen bij de checklist met stukken. Lukt dit niet, dan blijft de lijst gewoon afvinkbaar.
+  useEffect(() => {
+    let weg = false;
+
+    Promise.resolve()
+      .then(() => haalOrganisatieDocumentenOp())
+      .then((l) => {
+        if (!weg && Array.isArray(l)) setOrgDocs(l);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      weg = true;
+    };
+  }, []);
 
   const fondsLabel = (aanvraag && aanvraag.fondsLabel) || startFonds || '';
   const gewijzigd = criteriaGewijzigd(criteria, basis);
@@ -425,6 +448,24 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
     setTekst(r.tekst);
   };
 
+  if (formulierWerk) {
+    return (
+      <>
+        <AanvraagStijl />
+        <VersieEditor
+          aanvraagId={aanvraagId}
+          formulier={{ projectId: project.id, vragen: { lijst: formulierWerk.lijst }, stukken: formulierWerk.stukken, docs: documentenLijst(project.docs, orgDocs) }}
+          titel={`Aanvraag voor ${fondsLabel}`}
+          kop={`Aanvraag ${fondsLabel}`}
+          projectNaam={project.naam}
+          store={store}
+          onSluit={() => setFormulierWerk(null)}
+          onGewijzigd={onGewijzigd}
+        />
+      </>
+    );
+  }
+
   if (plan) {
     return (
       <>
@@ -506,52 +547,56 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
             onToevoegen={(eis) => setCriteria((c) => voegEisToe(c, eis))}
           />
 
+          <FormulierBlok project={project} aanvraagId={aanvraagId} formulierStart={(voorlopig && voorlopig.formulierTekst) || ''} docs={documentenLijst(project.docs, orgDocs)} assistent={assistent} onGewijzigd={onGewijzigd} onStand={({ bevestigd }) => setFormulierBevestigd(bevestigd)} onOpen={setFormulierWerk} />
+
           <Blok titel="Wat wilt u nu doen?" testid="aa-keuze">
             <p className="fwk-aa-klein" style={css('margin: 0 0 16px;')}>
               Beide kan met dezelfde criteria. U kunt later het andere ook nog doen.
             </p>
 
             <div className="fwk-aa-keuzes">
-              <Keuzekaart titel="Schrijf een versie voor dit fonds" accent testid="aa-kaart-schrijven">
-                <p>
-                  {vragen > 0
-                    ? (vragen === 1 ? 'Uw formulier heeft 1 vraag; die wordt 1 onderdeel. ' : `Uw ${vragen} formuliervragen worden ${vragen} onderdelen. `)
-                    : 'Zonder formuliervragen gebruiken we de standaardonderdelen: aanleiding, doelgroep, aanpak, resultaat, planning, organisatie, financiering en borging. '}
-                  We schrijven ze uit uw projectgegevens, documentatie en organisatieprofiel. Wat ontbreekt, zetten we als [aanvullen] met een vraag aan u.
-                </p>
+              {!formulierBevestigd && (
+                <Keuzekaart titel="Schrijf een versie voor dit fonds" accent testid="aa-kaart-schrijven">
+                  <p>
+                    {vragen > 0
+                      ? (vragen === 1 ? 'Uw formulier heeft 1 vraag; die wordt 1 onderdeel. ' : `Uw ${vragen} formuliervragen worden ${vragen} onderdelen. `)
+                      : 'Zonder formuliervragen gebruiken we de standaardonderdelen: aanleiding, doelgroep, aanpak, resultaat, planning, organisatie, financiering en borging. '}
+                    We schrijven ze uit uw projectgegevens, documentatie en organisatieprofiel. Wat ontbreekt, zetten we als [aanvullen] met een vraag aan u.
+                  </p>
 
-                {aanvraag && aanvraag.heeftPlan && (
-                  <div className="fwk-aa-klein">
-                    U heeft al een tekst voor dit fonds (bijgewerkt op {datumTekst(aanvraag.planBijgewerkt) || 'onbekende datum'}).{' '}
-                    <button type="button" className="fwk-wp-link" onClick={openPlan}>
-                      Openen
-                    </button>
-                  </div>
-                )}
+                  {aanvraag && aanvraag.heeftPlan && (
+                    <div className="fwk-aa-klein">
+                      U heeft al een tekst voor dit fonds (bijgewerkt op {datumTekst(aanvraag.planBijgewerkt) || 'onbekende datum'}).{' '}
+                      <button type="button" className="fwk-wp-link" onClick={openPlan}>
+                        Openen
+                      </button>
+                    </div>
+                  )}
 
-                {bevestigPlan && (
-                  <Melding toon="waarschuwing" testid="aa-bevestig-versie">
-                    <span>
-                      De AI schrijft een nieuwe aanzet. Uw opgeslagen versies blijven bewaard, en het telt als een van uw beoordelingen deze maand.
-                      <span style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;')}>
-                        <Button size="s" variant="dark" onClick={schrijf}>
-                          Ja, schrijf een nieuwe aanzet
-                        </Button>
-                        <Button size="s" variant="outline" onClick={() => setBevestigPlan(false)}>
-                          Annuleren
-                        </Button>
+                  {bevestigPlan && (
+                    <Melding toon="waarschuwing" testid="aa-bevestig-versie">
+                      <span>
+                        De AI schrijft een nieuwe aanzet. Uw opgeslagen versies blijven bewaard, en het telt als een van uw beoordelingen deze maand.
+                        <span style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;')}>
+                          <Button size="s" variant="dark" onClick={schrijf}>
+                            Ja, schrijf een nieuwe aanzet
+                          </Button>
+                          <Button size="s" variant="outline" onClick={() => setBevestigPlan(false)}>
+                            Annuleren
+                          </Button>
+                        </span>
                       </span>
-                    </span>
-                  </Melding>
-                )}
+                    </Melding>
+                  )}
 
-                <div className="fwk-aa-onder">
-                  <Button onClick={startSchrijven} disabled={Boolean(bezig) || !aanvraagId || !planRuimte} ariaLabel="Start schrijven">
-                    {aanvraag && aanvraag.heeftPlan ? 'Schrijf een nieuwe aanzet →' : 'Start schrijven →'}
-                  </Button>
-                  {!planRuimte && <span className="fwk-aa-klein">Deze maand is uw ruimte voor beoordelingen en versies op.</span>}
-                </div>
-              </Keuzekaart>
+                  <div className="fwk-aa-onder">
+                    <Button onClick={startSchrijven} disabled={Boolean(bezig) || !aanvraagId || !planRuimte} ariaLabel="Start schrijven">
+                      {aanvraag && aanvraag.heeftPlan ? 'Schrijf een nieuwe aanzet →' : 'Start schrijven →'}
+                    </Button>
+                    {!planRuimte && <span className="fwk-aa-klein">Deze maand is uw ruimte voor beoordelingen en versies op.</span>}
+                  </div>
+                </Keuzekaart>
+              )}
 
               <Keuzekaart titel="Beoordeel mijn aanvraag" testid="aa-kaart-beoordelen">
                 <p>Plak uw eigen tekst of upload het Word-bestand. Per criterium ziet u: gedekt, deels of ontbreekt, met een citaat uit uw tekst. We slaan uw aanvraagtekst niet op.</p>

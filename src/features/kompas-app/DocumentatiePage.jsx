@@ -48,7 +48,7 @@ import { Blok, Leeg, Melding, PaginaKop, Tabs, WerkPagina } from '../../shared/u
 // staan daar nu eenmalig, met dezelfde Word-generator en begrotings-Excel.
 import ExportMenu from '../../shared/ui/ExportMenu.jsx';
 import { opgeslagenDocumentExport } from './exportBronnen.js';
-// Aanvraag-assistent (Pro/Premium): het tabblad Projectplan en indienen. Het verschijnt alleen als de server de functie voor dit lid aanzet.
+// Aanvraag-assistent (Pro/Premium): het tabblad Aanvraag indienen. Het verschijnt alleen als de server de functie voor dit lid aanzet.
 import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
 import AanvragenTab from './aanvraag/AanvragenTab.jsx';
 import BegrotingTab from './begroting/BegrotingTab.jsx';
@@ -68,8 +68,8 @@ function leesProjectUitUrl() {
   return m ? decodeURIComponent(m[1]) : '';
 }
 
-// Indienen heeft drie tabbladen: Projectplan en indienen (het projectplan en de fondsen waar het lid indient), Projectdossier en Projectdocumentatie (de bestanden).
-// ?tab=plan, inhoud of bestanden kiest het tabblad (?tab=aanvragen, de oude naam, opent ook Projectplan en indienen); zonder tab opent de pagina altijd op Projectplan en indienen (ook met ?project=<id>).
+// Indienen heeft drie tabbladen: Aanvraag indienen (de aanvraag inclusief projectplan, per fonds), Projectdossier en Projectdocumentatie (de bestanden).
+// ?tab=plan, inhoud of bestanden kiest het tabblad (?tab=aanvragen, de oude naam, opent ook Aanvraag indienen); zonder tab opent de pagina altijd op Aanvraag indienen (ook met ?project=<id>).
 // Het projectdossier is het laatste tabblad en opent dus alleen als er expliciet om gevraagd wordt (?tab=inhoud).
 function leesTabUitUrl() {
   const h = huidigeHash();
@@ -193,7 +193,7 @@ export default function DocumentatiePage() {
           ) : (
             <>
               <p>Het projectdossier is de inhoud waarmee Subsidie Kompas teksten en aanvragen voor een project schrijft. Wat daar niet staat, verzint Subsidie Kompas niet.</p>
-              {assistent.beschikbaar && <p>Onder Projectplan en indienen schrijft u uw projectplan en houdt u per fonds de criteria, uw versie en de beoordeling van uw eigen tekst bij elkaar. U dient zelf in bij het fonds; wij helpen met de tekst en de stukken.</p>}
+              {assistent.beschikbaar && <p>Onder Aanvraag indienen schrijft u uw projectplan en uw aanvraag per fonds, met de vragen van het formulier, een checklist van stukken en de beoordeling van uw eigen tekst. U dient zelf in bij het fonds; wij helpen met de tekst en de stukken.</p>}
               <p>Projectdocumentatie zijn de bestanden bij uw projecten: wat u uploadt en wat Subsidie Kompas voor u opmaakte.</p>
             </>
           )
@@ -205,7 +205,7 @@ export default function DocumentatiePage() {
           tabs={[
             ...(assistent.beschikbaar
               ? [
-                  { id: 'plan', label: 'Projectplan en indienen' },
+                  { id: 'plan', label: 'Aanvraag indienen' },
                 ]
               : []),
             { id: 'inhoud', label: 'Projectdossier' },

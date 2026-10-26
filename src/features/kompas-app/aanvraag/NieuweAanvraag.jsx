@@ -65,7 +65,7 @@ export default function NieuweAanvraag({ project, fondsStart = '', websiteStart 
     onKlaar({
       aanvraagId: r.antwoord.aanvraagId || '',
       fondsLabel: fonds.trim(),
-      voorlopig: { eisen: r.antwoord.eisen || [], bronnen: r.antwoord.bronnen || [], inlogSignaal: Boolean(r.antwoord.inlogSignaal), beperkteLijst: Boolean(r.antwoord.beperkteLijst), opgeslagen: r.antwoord.opgeslagen !== false },
+      voorlopig: { eisen: r.antwoord.eisen || [], bronnen: r.antwoord.bronnen || [], inlogSignaal: Boolean(r.antwoord.inlogSignaal), beperkteLijst: Boolean(r.antwoord.beperkteLijst), opgeslagen: r.antwoord.opgeslagen !== false, formulierTekst: formulierOk ? formulier : '' },
     });
   };
 

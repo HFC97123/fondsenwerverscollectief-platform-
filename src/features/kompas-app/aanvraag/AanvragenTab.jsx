@@ -11,7 +11,7 @@ import NieuweAanvraag from './NieuweAanvraag.jsx';
 import ProjectplanTab from './ProjectplanTab.jsx';
 import { aanvraagBadges, datumTekst, splitsAanvragen } from './aanvraagModel.js';
 
-// Eén tabblad "Projectplan en indienen": met metProjectplan staat het projectplan bovenaan en daaronder de fondsen waar het lid indient.
+// Eén tabblad "Aanvraag indienen": met metProjectplan staat het projectplan bovenaan en daaronder de fondsen waar het lid indient.
 // Het lid dient zelf in bij het fonds; Subsidie Kompas helpt met de tekst en de stukken.
 // start: { fonds?, aanvraagId?, nonce } (alleen nog nodig als een ander scherm direct een aanvraag wil openen).
 export default function AanvragenTab({ project, projecten, onKiesProject, store, assistent, start, metProjectplan = false, onNaarProjectinhoud }) {

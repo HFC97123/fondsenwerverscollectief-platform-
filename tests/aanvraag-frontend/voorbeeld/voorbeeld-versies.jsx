@@ -23,7 +23,7 @@ function Pagina() {
 
   return (
     <WerkPagina testid="documenten">
-      <PaginaKop titel="Projectplan en indienen" meta="Kinderkunst Zaandam" />
+      <PaginaKop titel="Indienen" meta="Kinderkunst Zaandam" />
       <AanvragenTab project={project} projecten={[project]} onKiesProject={() => {}} store={{ orgProfile: { name: 'Stichting Kinderkunst' } }} assistent={assistent} start={{ aanvraagId: rij.id, nonce: 1 }} />
     </WerkPagina>
   );

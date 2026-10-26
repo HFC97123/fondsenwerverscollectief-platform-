@@ -34,6 +34,23 @@ sectie('1. Wat naar de server gaat');
   gelijk('plan voor een fonds', aanroepen.at(-1).body, { mode: 'plan-schrijven', projectId: 'p1', aanvraagId: 'a1' });
   await S.bewaarCriteria({ aanvraagId: 'a1', criteria: 'geen lijst' });
   gelijk('criteria bewaren: altijd een lijst', aanroepen.at(-1).body.criteria, []);
+  await S.haalVragen('a1');
+  gelijk('vragen ophalen', aanroepen.at(-1).body, { mode: 'vragen', aanvraagId: 'a1' });
+  await S.leesFormulier({ projectId: 'p1', aanvraagId: 'a1', formulierTekst: '1. Een vraag' });
+  gelijk('formulier lezen: alleen de tekst gaat mee, geen bestand', aanroepen.at(-1).body, { mode: 'vragen-lezen', projectId: 'p1', aanvraagId: 'a1', formulierTekst: '1. Een vraag' });
+  const voor = aanroepen.length;
+  const leeg = await S.leesFormulier({ projectId: 'p1', aanvraagId: 'a1', formulierTekst: '' });
+  check('formulier lezen zonder tekst gaat niet naar de server', leeg.ok === false && leeg.reden === 'ongeldig' && aanroepen.length === voor);
+  await S.bewaarVragen({ aanvraagId: 'a1', vragen: [{ id: 'v1', tekst: 'Een vraag', maxTekens: 800, geenLimiet: false }], bevestig: true, stukken: [{ id: 's1', tekst: 'ANBI-status' }] });
+  gelijk('vragen bevestigen: de lijst, bevestig en de stukken', aanroepen.at(-1).body, { mode: 'vragen-bewaren', aanvraagId: 'a1', vragen: [{ id: 'v1', tekst: 'Een vraag', maxTekens: 800, geenLimiet: false }], bevestig: true, stukken: [{ id: 's1', tekst: 'ANBI-status' }] });
+  await S.bewaarVragen({ aanvraagId: 'a1', stukken: [] });
+  gelijk('alleen stukken bewaren stuurt geen vragen mee', aanroepen.at(-1).body, { mode: 'vragen-bewaren', aanvraagId: 'a1', stukken: [] });
+  await S.bewaarVragen({ aanvraagId: 'a1', vragen: [{ id: 'v1', tekst: 'Een vraag', maxTekens: null, geenLimiet: false }] });
+  check('zonder bevestig vraagt de service nooit om bevestigen', aanroepen.at(-1).body.bevestig === false);
+  await S.schrijfAntwoorden({ projectId: 'p1', aanvraagId: 'a1' });
+  gelijk('antwoorden schrijven voor alle vragen: geen vraagIds', aanroepen.at(-1).body, { mode: 'antwoorden-schrijven', projectId: 'p1', aanvraagId: 'a1' });
+  await S.schrijfAntwoorden({ projectId: 'p1', aanvraagId: 'a1', vraagIds: ['v2'] });
+  gelijk('antwoorden schrijven voor één vraag', aanroepen.at(-1).body.vraagIds, ['v2']);
   check('niets van abonnement of limieten gaat vanuit de client mee', aanroepen.every((a) => !/tier|limiet|abonnement|uitkomst|zekerheid/i.test(JSON.stringify(Object.keys(a.body)))));
 }
 

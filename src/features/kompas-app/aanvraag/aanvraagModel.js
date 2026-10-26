@@ -338,3 +338,145 @@ export function onderdelenNaarTekst(onderdelen, titel = 'Aanvraag') {
 }
 
 export const versieNaam = (v) => (v ? `Versie ${v.nummer}${v.naam && String(v.naam).trim() && v.naam !== `Versie ${v.nummer}` ? ` · ${String(v.naam).trim()}` : ''}` : '');
+
+// ───────────── Formulier: vragen met tekenlimiet en stukken (checklist) ─────────────
+
+export const MAX_LIMIET_TEKENS = 200000;
+export const MAX_VRAGEN = 40;
+export const MAX_STUKKEN = 30;
+
+export const LIMIET_ATTENTIE = 'Let op: veel fondsen hanteren een tekenlimiet per vraag. Wij kunnen alleen antwoorden voor u schrijven als u die tekenlimiet aan ons doorgeeft. Zonder tekenlimiet kunnen wij u niet helpen.';
+
+// Een vraag is klaar voor de bevestiging als ze een tekenlimiet heeft (geheel getal) of het lid zegt dat dit fonds geen limiet heeft.
+export const limietOk = (v) => Boolean(v) && (v.geenLimiet === true || (Number.isInteger(v.maxTekens) && v.maxTekens >= 1 && v.maxTekens <= MAX_LIMIET_TEKENS));
+export const vragenZonderLimiet = (lijst) => (Array.isArray(lijst) ? lijst : []).filter((v) => !limietOk(v)).length;
+
+// Tekst uit een invoerveld naar een limiet: alleen cijfers (punten en spaties mogen), anders null.
+export function leesLimiet(invoer) {
+  const t = String(invoer == null ? '' : invoer).replace(/[\s.]/g, '');
+
+  if (!/^\d{1,6}$/.test(t)) return null;
+
+  const n = Number(t);
+
+  return n >= 1 && n <= MAX_LIMIET_TEKENS ? n : null;
+}
+
+const volgendId = (lijst, voorvoegsel) => {
+  const ids = new Set((Array.isArray(lijst) ? lijst : []).map((x) => x && x.id));
+  let n = (Array.isArray(lijst) ? lijst.length : 0) + 1;
+
+  while (ids.has(`${voorvoegsel}${n}`)) n += 1;
+
+  return `${voorvoegsel}${n}`;
+};
+
+export function nieuweVraag(lijst, tekst) {
+  return { id: volgendId(lijst, 'v'), tekst: schoonTekst(tekst).slice(0, 500), maxTekens: null, geenLimiet: false };
+}
+
+export function nieuwStuk(lijst, tekst) {
+  return { id: volgendId(lijst, 's'), tekst: schoonTekst(tekst).slice(0, 200), bron: 'lid', sleutel: null, maxLeeftijdMaanden: null, nietVanToepassing: false, klaar: false, documentNaam: '' };
+}
+
+// De vragen als onderdelen van een aanvraag: dezelfde vorm als het plan van de AI, zodat het bewerkscherm er één werkwijze voor heeft.
+export function planUitVragen(vragen) {
+  const lijst = vragen && Array.isArray(vragen.lijst) ? vragen.lijst : [];
+
+  return { secties: lijst.map((v) => ({ id: v.id, titel: v.tekst, tekst: '', vragen: [], ...(v.maxTekens ? { maxTekens: v.maxTekens } : {}) })) };
+}
+
+// De opgeslagen onderdelen in de volgorde van de vragenlijst, met de vraag als titel. Een nieuwe vraag begint leeg; een verwijderde vraag valt weg.
+export function onderdelenVoorVragen(onderdelen, vragen) {
+  const per = new Map((Array.isArray(onderdelen) ? onderdelen : []).filter((o) => o && o.id != null).map((o) => [String(o.id), o]));
+  const lijst = vragen && Array.isArray(vragen.lijst) ? vragen.lijst : [];
+
+  return lijst.map((v) => ({ id: v.id, titel: v.tekst, tekst: per.has(v.id) ? String(per.get(v.id).tekst || '') : '' }));
+}
+
+export function limietenUitVragen(vragen) {
+  const uit = {};
+
+  for (const v of vragen && Array.isArray(vragen.lijst) ? vragen.lijst : []) if (v && !v.geenLimiet && Number.isFinite(v.maxTekens) && v.maxTekens > 0) uit[v.id] = v.maxTekens;
+
+  return uit;
+}
+
+// ── Stukken ──
+
+const SOORT_PER_SLEUTEL = { anbi: ['anbi'], statuten: ['statuten'], jaarrekening: ['jaarrekening'], jaarverslag: ['jaarverslag'] };
+
+const kleinLetters = (t) => String(t == null ? '' : t).toLowerCase();
+
+function leeftijdMaanden(datum, nu) {
+  const d = new Date(datum);
+  const n = nu instanceof Date ? nu : new Date(nu);
+
+  if (!Number.isFinite(d.getTime()) || !Number.isFinite(n.getTime())) return null;
+
+  return (n.getFullYear() - d.getFullYear()) * 12 + (n.getMonth() - d.getMonth()) - (n.getDate() < d.getDate() ? 1 : 0);
+}
+
+// Alle documenten die een lid heeft, als één lijst: de bestanden van het project en die van het organisatieprofiel. Vervangen bestanden tellen niet mee.
+export function documentenLijst(projectDocs, orgDocs) {
+  const een = (d, bron) => ({ naam: String((d && d.naam) || ''), soort: String((d && d.soort) || ''), datum: (d && (d.gemaakt || d.aangemaakt)) || '', bron });
+
+  return [
+    ...(Array.isArray(projectDocs) ? projectDocs : []).filter((d) => d && d.naam && !d.vervangen).map((d) => een(d, 'project')),
+    ...(Array.isArray(orgDocs) ? orgDocs : []).filter((d) => d && d.naam).map((d) => een(d, 'organisatie')),
+  ];
+}
+
+// Staat dit stuk al in de documentatie? Alleen de vier standaardstukken (ANBI-status, statuten, jaarrekening, jaarverslag) worden automatisch herkend, op de naam of de soort
+// van het bestand. Andere stukken koppelt het lid zelf (documentNaam) of vinkt het zelf af.
+export function zoekDocument(stuk, docs) {
+  const woorden = SOORT_PER_SLEUTEL[stuk && stuk.sleutel];
+
+  if (!woorden) return null;
+
+  const gevonden = (Array.isArray(docs) ? docs : []).filter((d) => woorden.some((w) => kleinLetters(d.naam).includes(w) || kleinLetters(d.soort).includes(w)));
+
+  if (!gevonden.length) return null;
+
+  // Het nieuwste bestand eerst.
+  return [...gevonden].sort((a, b) => String(b.datum).localeCompare(String(a.datum)))[0];
+}
+
+// Toestand van één stuk: 'nvt' | 'klaar' | 'te-oud' | 'nodig'. 'te-oud': het bestand in de documentatie is langer geleden toegevoegd dan het fonds toestaat;
+// de toevoegdatum is niet de datum van het stuk zelf, dus de tekst vraagt het lid dat te controleren.
+export function stukStatus(stuk, docs, nu = new Date()) {
+  if (!stuk) return { status: 'nodig', document: null, reden: '' };
+  if (stuk.nietVanToepassing) return { status: 'nvt', document: null, reden: '' };
+
+  const lijst = Array.isArray(docs) ? docs : [];
+  const gekozen = stuk.documentNaam ? lijst.find((d) => d.naam === stuk.documentNaam) || { naam: stuk.documentNaam, datum: '', bron: 'project' } : null;
+  const doc = gekozen || zoekDocument(stuk, lijst);
+
+  if (doc) {
+    const oud = stuk.maxLeeftijdMaanden ? leeftijdMaanden(doc.datum, nu) : null;
+
+    if (oud !== null && oud > stuk.maxLeeftijdMaanden) return { status: 'te-oud', document: doc, reden: `Het bestand ${doc.naam} is ${oud} maanden geleden toegevoegd. Het fonds wil dit stuk niet ouder dan ${stuk.maxLeeftijdMaanden} maanden. Controleer of het de nieuwste is.` };
+
+    return { status: 'klaar', document: doc, reden: '' };
+  }
+
+  return stuk.klaar ? { status: 'klaar', document: null, reden: '' } : { status: 'nodig', document: null, reden: '' };
+}
+
+export function telStukken(stukken, docs, nu = new Date()) {
+  const lijst = (Array.isArray(stukken) ? stukken : []).filter((s) => s && !s.nietVanToepassing);
+  const klaar = lijst.filter((s) => stukStatus(s, docs, nu).status === 'klaar').length;
+
+  return { totaal: lijst.length, klaar, openstaand: lijst.length - klaar };
+}
+
+// Hoeveel vragen hebben tekst, en hoeveel staan boven hun limiet?
+export function telAntwoorden(onderdelen, limieten) {
+  const lijst = Array.isArray(onderdelen) ? onderdelen : [];
+  const beantwoord = lijst.filter((o) => onderdeelTekens(o.tekst) > 0 && aantalAanvullen(o.tekst) === 0).length;
+  const metGat = lijst.filter((o) => onderdeelTekens(o.tekst) > 0 && aantalAanvullen(o.tekst) > 0).length;
+  const leeg = lijst.filter((o) => onderdeelTekens(o.tekst) === 0).length;
+  const overLimiet = lijst.filter((o) => o.id != null && limieten && limieten[o.id] && onderdeelTekens(o.tekst) > limieten[o.id]).length;
+
+  return { totaal: lijst.length, beantwoord, metGat, leeg, overLimiet };
+}

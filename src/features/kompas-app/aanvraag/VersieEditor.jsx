@@ -1,16 +1,18 @@
 // Een aanvraag voor één fonds bewerken: per onderdeel een tekstvak, opslaan als versie (maximaal 20), concept of definitief, en downloaden om zelf in te dienen.
 // Wij dienen nooit iets in: het lid downloadt de tekst en dient zelf in bij het fonds. Versies kosten geen beoordeling van de maandruimte.
 // Kan de server (nog) geen versies bewaren, dan toont dit scherm het plan zoals voorheen: alleen lezen, kopiëren of downloaden.
+// Met 'formulier' (de vragenlijst van het fonds met tekenlimieten) is elk onderdeel een vraag uit het formulier: per vraag schrijven, een tekenteller en een checklist met stukken.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
 import ExportMenu from '../../../shared/ui/ExportMenu.jsx';
 import { bouwDocumentModel } from '../../../shared/export/exportModel.js';
 import { Blok, Chip, Melding } from '../../../shared/ui/werkplek.jsx';
-import { bewaarVersie, haalVersie, haalVersies, verwijderVersie, wijzigVersie } from '../../../data/services/aanvraagAssistent.js';
+import { bewaarVersie, bewaarVragen, haalVersie, haalVersies, schrijfAntwoorden, verwijderVersie, wijzigVersie } from '../../../data/services/aanvraagAssistent.js';
 import { Bezig } from './Bouwstenen.jsx';
 import PlanEditor from './PlanEditor.jsx';
-import { aantalAanvullen, datumTekst, limietenUitPlan, onderdelenGelijk, onderdelenLeeg, onderdelenNaarTekst, onderdelenUitPlan, onderdelenUitVersie, onderdeelTekens, versieNaam } from './aanvraagModel.js';
+import StukkenLijst from './StukkenLijst.jsx';
+import { aantalAanvullen, datumTekst, limietenUitPlan, onderdelenGelijk, onderdelenLeeg, onderdelenNaarTekst, onderdelenUitPlan, onderdelenUitVersie, onderdelenVoorVragen, onderdeelTekens, planUitVragen, telAntwoorden, telStukken, versieNaam } from './aanvraagModel.js';
 
 async function kopieer(tekst) {
   try {
@@ -22,7 +24,7 @@ async function kopieer(tekst) {
   }
 }
 
-function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding }) {
+function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding, nummer = false, schrijf = null }) {
   const tekens = onderdeelTekens(onderdeel.tekst);
   const over = Boolean(limiet) && tekens > limiet;
   const nog = aantalAanvullen(onderdeel.tekst);
@@ -31,7 +33,7 @@ function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding }) {
   return (
     <div style={css('margin-bottom: 22px;')} data-testid="aa-onderdeel">
       <label htmlFor={veldId} className="fwk-aa-label" style={css('display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;')}>
-        <span>{onderdeel.titel || `Onderdeel ${index + 1}`}</span>
+        <span>{nummer ? `${index + 1}. ` : ''}{onderdeel.titel || `Onderdeel ${index + 1}`}</span>
         <span data-testid="aa-onderdeel-telling" style={css(over ? 'color: inherit; font-weight: 800;' : '')}>
           {tekens === 0 ? 'Nog leeg' : limiet ? `${tekens.toLocaleString('nl-NL')} van ${limiet.toLocaleString('nl-NL')} tekens` : `${tekens.toLocaleString('nl-NL')} tekens`}
         </span>
@@ -41,8 +43,15 @@ function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding }) {
       <div className="fwk-aa-chips" style={css('align-items: center;')}>
         {over && <Chip toon="rood">Boven de limiet van het fonds, haal {(tekens - limiet).toLocaleString('nl-NL')} tekens weg</Chip>}
         {nog > 0 && <Chip toon="oranje">{nog === 1 ? '1 plek om in te vullen' : `${nog} plekken om in te vullen`}</Chip>}
-        {tekens > 0 && (
+        {schrijf && (
           <span style={css('margin-left: auto;')}>
+            <Button variant={tekens === 0 ? 'dark' : 'outline'} size="s" disabled={schrijf.uit} ariaLabel={`${tekens === 0 ? 'Schrijf een concept' : 'Schrijf opnieuw'}: ${onderdeel.titel || `onderdeel ${index + 1}`}`} onClick={schrijf.onKlik}>
+              {tekens === 0 ? 'Schrijf concept' : 'Schrijf opnieuw'}
+            </Button>
+          </span>
+        )}
+        {tekens > 0 && (
+          <span style={css(schrijf ? '' : 'margin-left: auto;')}>
             <Button variant="outline" size="s" ariaLabel={`Kopieer de tekst van ${onderdeel.titel || `onderdeel ${index + 1}`}`} onClick={async () => onMelding((await kopieer(onderdeel.tekst)) ? `De tekst van "${onderdeel.titel}" is gekopieerd.` : 'Kopiëren lukte niet. Selecteer de tekst en kopieer hem zelf.')}>
               Kopieer tekst
             </Button>
@@ -62,7 +71,9 @@ function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding }) {
 }
 
 // plan: het plan van de server (voor de eerste tekst, de limieten en de vragen aan het lid). nieuwePlan: het plan is zojuist door de AI geschreven.
-export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {} }) {
+// formulier: { projectId, vragen: { lijst }, stukken, docs } voor een aanvraag die per vraag van het formulier is opgebouwd; dan wordt 'plan' niet gebruikt.
+export default function VersieEditor({ aanvraagId, plan: planProp, formulier = null, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {} }) {
+  const plan = formulier ? planUitVragen(formulier.vragen) : planProp;
   const [fase, setFase] = useState('laden'); // laden | klaar | zonder
   const [versies, setVersies] = useState([]);
   const [aanvraagStatus, setAanvraagStatus] = useState('concept');
@@ -77,6 +88,9 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
   const [melding, setMelding] = useState('');
   const [vraag, setVraag] = useState(null); // { soort: 'sluiten' | 'terugzetten' | 'verwijderen', versie? }
   const [hernoem, setHernoem] = useState(null); // string tijdens het hernoemen
+  const [stukken, setStukken] = useState(formulier && Array.isArray(formulier.stukken) ? formulier.stukken : []);
+  const [aanvullenVragen, setAanvullenVragen] = useState({}); // id -> vragen aan het lid, uit het laatste schrijven
+  const [herschrijf, setHerschrijf] = useState(''); // id van het antwoord waarvoor om bevestiging wordt gevraagd
   const levend = useRef(true);
 
   const limieten = limietenUitPlan(plan);
@@ -85,6 +99,8 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
   for (const s of plan && Array.isArray(plan.secties) ? plan.secties : []) {
     if (s && s.id != null && Array.isArray(s.vragen)) vragenPerId[String(s.id)] = s.vragen;
   }
+
+  for (const [id, v] of Object.entries(aanvullenVragen)) vragenPerId[id] = v;
 
   useEffect(() => {
     levend.current = true;
@@ -134,14 +150,28 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
 
       if (weg || !levend.current) return;
 
-      if (!a) {
+      if (!a && !formulier) {
         setFase('zonder');
+
+        return;
+      }
+
+      if (!a) {
+        // Zonder versies kan de aanvraag per vraag nog wel geschreven worden; opslaan lukt dan alleen niet.
+        const leeg = onderdelenUitPlan(plan);
+
+        setHuidig(null);
+        setOnderdelen(leeg);
+        setBasis(leeg);
+        setFout('De versies kunnen nu niet worden opgehaald of bewaard. U kunt wel schrijven en kopiëren.');
+        setFase('klaar');
 
         return;
       }
 
       const planOnderdelen = onderdelenUitPlan(plan);
       const nieuwste = Array.isArray(a.versies) && a.versies.length ? a.versies[0] : null;
+      const naarVragen = (o) => (formulier ? onderdelenVoorVragen(o, formulier.vragen) : o);
 
       if (nieuwste && !nieuwePlan) {
         const v = await haalVersie(nieuwste.id);
@@ -149,11 +179,14 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
         if (weg || !levend.current) return;
 
         if (v.ok) {
-          const o = onderdelenUitVersie(v.antwoord.versie.antwoorden);
+          const uitVersie = onderdelenUitVersie(v.antwoord.versie.antwoorden);
+          const o = naarVragen(uitVersie);
 
           setHuidig(v.antwoord.versie);
           setOnderdelen(o);
           setBasis(o);
+          // De vragenlijst kan sinds deze versie zijn aangepast: dan staat er een nieuwe stand in het scherm die nog niet is opgeslagen.
+          setOnopgeslagen(formulier ? !onderdelenGelijk(o, uitVersie) : false);
           setFase('klaar');
 
           return;
@@ -184,13 +217,13 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
     setFout(r && r.melding ? r.melding : 'Dit lukte nu niet. Probeer het later opnieuw.');
   };
 
-  // Geeft de opgeslagen versie terug, of null als het niet lukte.
-  const bewaar = async () => {
+  // Geeft de opgeslagen versie terug, of null als het niet lukte. 'ond' is de tekst die bewaard wordt (standaard wat nu in het scherm staat).
+  const bewaar = async (ond = onderdelen, nieuweVersie = false) => {
     setFout('');
     setMelding('');
     setBezig('Uw tekst wordt opgeslagen.');
 
-    const r = await bewaarVersie({ aanvraagId, versieId: huidig ? huidig.id : '', antwoorden: onderdelen });
+    const r = await bewaarVersie({ aanvraagId, versieId: huidig && !nieuweVersie ? huidig.id : '', antwoorden: ond });
 
     if (!levend.current) return null;
 
@@ -205,13 +238,86 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
     const v = r.antwoord.versie;
 
     setHuidig(v);
-    setBasis(onderdelen);
+    setBasis(ond);
     setOnopgeslagen(false);
     await leesLijst();
     onGewijzigd();
     setMelding(r.antwoord.nieuw ? `Opgeslagen als versie ${v.nummer}.` : `Versie ${v.nummer} is bijgewerkt.`);
 
     return v;
+  };
+
+  // Per vraag (of voor alle lege vragen) een concept laten schrijven. Het resultaat wordt meteen als nieuwe versie bewaard. Alle antwoorden voor één fonds tellen
+  // in een maand als één beoordeling; de server zegt of dit meetelde.
+  const schrijf = async (ids) => {
+    if (!formulier || !ids.length) return;
+
+    setHerschrijf('');
+    setFout('');
+    setMelding('');
+
+    // Tekst die nog niet was bewaard blijft zo als versie bestaan, ook als het nieuwe concept het vervangt.
+    if (onopgeslagen && !onderdelenLeeg(onderdelen)) {
+      const eerst = await bewaar();
+
+      if (!eerst) return;
+    }
+
+    setBezig(ids.length === 1 ? 'Het antwoord wordt geschreven.' : 'De antwoorden worden geschreven. Dit kan een minuut duren.');
+
+    const r = await schrijfAntwoorden({ projectId: formulier.projectId, aanvraagId, vraagIds: ids });
+
+    if (!levend.current) return;
+
+    setBezig('');
+
+    if (!r.ok) {
+      zegFout(r);
+
+      return;
+    }
+
+    const per = new Map((Array.isArray(r.antwoord.antwoorden) ? r.antwoord.antwoorden : []).map((x) => [x.id, x]));
+    const nieuw = onderdelen.map((o) => (per.has(o.id) ? { ...o, tekst: String(per.get(o.id).tekst || '') } : o));
+
+    setAanvullenVragen((cur) => {
+      const uit = { ...cur };
+
+      for (const [id, x] of per) uit[id] = Array.isArray(x.vragen) ? x.vragen : [];
+
+      return uit;
+    });
+    setOnderdelen(nieuw);
+    setOnopgeslagen(true);
+
+    // Vervangt het nieuwe concept een antwoord waar al tekst in stond, dan komt het in een nieuwe versie, zodat de eerdere tekst bewaard blijft.
+    const overschrijft = onderdelen.some((o) => per.has(o.id) && onderdeelTekens(o.tekst) > 0);
+    const v = await bewaar(nieuw, overschrijft);
+
+    if (!levend.current) return;
+
+    const n = per.size;
+    const geschreven = n === 1 ? '1 antwoord geschreven' : `${n} antwoorden geschreven`;
+    const kosten = r.antwoord.telde ? `Dit telde als 1 beoordeling van deze maand${Number.isFinite(r.antwoord.resterend) ? `; u heeft er nog ${r.antwoord.resterend}` : ''}.` : 'Dit fonds telde deze maand al mee, dus dit kostte niets extra.';
+
+    setFout('');
+    setMelding(v ? `${geschreven} en opgeslagen als versie ${v.nummer}. ${kosten}` : `${geschreven}, maar het opslaan lukte niet. ${kosten}`);
+    onGewijzigd();
+  };
+
+  const wijzigStukken = async (nieuweLijst) => {
+    const vorige = stukken;
+
+    setStukken(nieuweLijst);
+
+    const r = await bewaarVragen({ aanvraagId, stukken: nieuweLijst });
+
+    if (!levend.current) return;
+
+    if (!r.ok) {
+      setStukken(vorige);
+      zegFout(r);
+    }
   };
 
   const terugNaarOpgeslagen = () => {
@@ -316,7 +422,7 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
 
     // De oude versie blijft ongemoeid; de tekst staat nu als nieuwe, nog niet opgeslagen versie in het scherm.
     setHuidig(null);
-    setOnderdelen(onderdelenUitVersie(r.antwoord.versie.antwoorden));
+    setOnderdelen(formulier ? onderdelenVoorVragen(onderdelenUitVersie(r.antwoord.versie.antwoorden), formulier.vragen) : onderdelenUitVersie(r.antwoord.versie.antwoorden));
     setOnopgeslagen(true);
     setMelding(`De tekst van versie ${versie.nummer} staat nu in het scherm. Sla op om er een nieuwe versie van te maken.`);
   };
@@ -381,6 +487,10 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
   const leeg = onderdelenLeeg(onderdelen);
   const kanOpslaan = (!huidig || onopgeslagen) && !leeg && !bezig;
   const vol = versies.length >= maxVersies;
+  const leegIds = formulier ? onderdelen.filter((o) => onderdeelTekens(o.tekst) === 0 && o.id != null).map((o) => o.id) : [];
+  const docs = formulier && Array.isArray(formulier.docs) ? formulier.docs : [];
+  const tellingAntwoorden = formulier ? telAntwoorden(onderdelen, limieten) : null;
+  const tellingStukken = formulier ? telStukken(stukken, docs) : null;
 
   let statusTekst = 'Alles is opgeslagen';
 
@@ -430,10 +540,25 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
 
       <div className="fwk-wp-kolommen">
         <div className="fwk-wp-stapel">
-          <Blok titel="Uw tekst" testid="aa-versie-tekst">
+          <Blok
+            titel={formulier ? 'Uw aanvraag' : 'Uw tekst'}
+            aantal={formulier ? onderdelen.length || undefined : undefined}
+            testid="aa-versie-tekst"
+            actie={
+              formulier && leegIds.length > 0 ? (
+                <Button size="s" variant="dark" disabled={Boolean(bezig)} onClick={() => schrijf(leegIds)} ariaLabel="Schrijf een concept voor alle lege vragen">
+                  Schrijf een concept voor alle lege vragen
+                </Button>
+              ) : undefined
+            }
+          >
             <p className="fwk-aa-klein" style={css('margin: 0 0 16px;')}>
-              {nieuwePlan ? 'Dit is een nieuwe aanzet van de AI. ' : 'Dit is uw tekst. '}
-              Wat we niet wisten, staat als <mark className="fwk-aa-markering">[aanvullen]</mark>. U beslist en past het aan; wij dienen niets voor u in.
+              {formulier
+                ? 'Dit zijn de vragen uit het formulier van het fonds, in dezelfde volgorde. Wij schrijven een concept uit uw projectgegevens, begroting en dekkingsplan. Wat we niet weten, staat als '
+                : nieuwePlan
+                  ? 'Dit is een nieuwe aanzet van de AI. Wat we niet wisten, staat als '
+                  : 'Dit is uw tekst. Wat we niet wisten, staat als '}
+              <mark className="fwk-aa-markering">[aanvullen]</mark>. {formulier ? 'U kopieert het antwoord daarna zelf in het formulier van het fonds. Alle antwoorden voor dit fonds tellen in een maand samen als één beoordeling. U beslist en past het aan; wij dienen niets voor u in.' : 'U beslist en past het aan; wij dienen niets voor u in.'}
             </p>
 
             {opHuidigeDefinitief && !onopgeslagen && <Melding toon="info">Dit is de definitieve versie. Past u iets aan en slaat u op, dan wordt dat een nieuw concept en blijft deze versie bewaard.</Melding>}
@@ -446,7 +571,35 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
             <div style={css('margin-top: 14px;')}>
               {onderdelen.length === 0 && <p className="fwk-aa-klein">Er is nog geen tekst om te bewerken. Laat eerst een versie schrijven.</p>}
               {onderdelen.map((o, i) => (
-                <Onderdeel key={`${o.id || 'onderdeel'}-${i}`} onderdeel={o} index={i} limiet={o.id != null ? limieten[o.id] : undefined} vragen={o.id != null && vragenPerId[o.id] ? vragenPerId[o.id] : []} onTekst={wijzigTekst} onMelding={setMelding} />
+                <div key={`${o.id || 'onderdeel'}-${i}`}>
+                  <Onderdeel
+                    onderdeel={o}
+                    index={i}
+                    limiet={o.id != null ? limieten[o.id] : undefined}
+                    vragen={o.id != null && vragenPerId[o.id] ? vragenPerId[o.id] : []}
+                    onTekst={wijzigTekst}
+                    onMelding={setMelding}
+                    nummer={Boolean(formulier)}
+                    schrijf={formulier && o.id != null ? { uit: Boolean(bezig), onKlik: () => (onderdeelTekens(o.tekst) > 0 ? setHerschrijf(o.id) : schrijf([o.id])) } : null}
+                  />
+                  {formulier && herschrijf === o.id && (
+                    <div style={css('margin: -10px 0 22px;')}>
+                      <Melding toon="waarschuwing" testid="aa-herschrijf-vraag">
+                        <span>
+                          Het antwoord wordt vervangen door een nieuw concept. Wat u nu heeft, blijft bewaard in een versie.
+                          <span style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;')}>
+                            <Button size="s" variant="dark" onClick={() => schrijf([o.id])}>
+                              Ja, schrijf opnieuw
+                            </Button>
+                            <Button size="s" variant="outline" onClick={() => setHerschrijf('')}>
+                              Annuleren
+                            </Button>
+                          </span>
+                        </span>
+                      </Melding>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
 
@@ -458,7 +611,7 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
                 <Button variant="outline" size="s" onClick={terugNaarOpgeslagen} disabled={!onopgeslagen || Boolean(bezig)}>
                   Terug naar opgeslagen
                 </Button>
-                <Button size="s" onClick={bewaar} disabled={!kanOpslaan} ariaLabel="Opslaan als versie">
+                <Button size="s" onClick={() => bewaar()} disabled={!kanOpslaan} ariaLabel="Opslaan als versie">
                   Opslaan
                 </Button>
               </span>
@@ -492,6 +645,36 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
         </div>
 
         <div className="fwk-wp-stapel">
+          {formulier && (
+            <>
+              <Blok titel="Stukken om mee te sturen" testid="aa-versie-stukken" actie={<Chip toon={tellingStukken.openstaand ? 'oranje' : 'groen'}>{tellingStukken.totaal === 0 ? 'Geen stukken' : `${tellingStukken.klaar} van ${tellingStukken.totaal} klaar`}</Chip>}>
+                <p className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
+                  Bijna elk fonds vraagt om bijlagen. Staat een stuk al in uw projectdocumentatie of organisatieprofiel, dan herkennen wij het. Anders vinkt u het zelf af.
+                </p>
+                <StukkenLijst stukken={stukken} docs={docs} onWijzig={wijzigStukken} />
+              </Blok>
+
+              <Blok titel="Klaar om in te dienen?" testid="aa-versie-klaar">
+                <ul className="fwk-aa-lijst" style={css('padding: 0; margin: 0;')}>
+                  {[
+                    tellingAntwoorden.leeg === 0
+                      ? ['groen', '✓', tellingAntwoorden.totaal === 1 ? 'De vraag heeft een antwoord' : `Alle ${tellingAntwoorden.totaal} vragen hebben een antwoord`]
+                      : ['oranje', '!', tellingAntwoorden.leeg === 1 ? '1 vraag heeft nog geen antwoord' : `${tellingAntwoorden.leeg} vragen hebben nog geen antwoord`],
+                    ...(tellingAntwoorden.metGat > 0 ? [['oranje', '!', tellingAntwoorden.metGat === 1 ? '1 antwoord heeft nog een plek om in te vullen' : `${tellingAntwoorden.metGat} antwoorden hebben nog plekken om in te vullen`]] : []),
+                    ...(tellingAntwoorden.overLimiet > 0 ? [['rood', '✕', tellingAntwoorden.overLimiet === 1 ? '1 antwoord is boven de tekenlimiet' : `${tellingAntwoorden.overLimiet} antwoorden zijn boven de tekenlimiet`]] : []),
+                    tellingStukken.openstaand === 0 ? ['groen', '✓', 'Alle stukken zijn klaar'] : ['oranje', '!', tellingStukken.openstaand === 1 ? '1 stuk ontbreekt nog' : `${tellingStukken.openstaand} stukken ontbreken nog`],
+                  ].map(([toon, teken, tekst]) => (
+                    <li key={tekst} style={css('display: flex; align-items: center; gap: 10px; padding: 6px 0; border: none; font-size: 15px;')} data-testid="aa-klaar-punt">
+                      <Chip toon={toon}>{teken}</Chip>
+                      <span>{tekst}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="fwk-aa-klein" style={css('margin: 10px 0 0;')}>U downloadt de antwoorden en de stukken en dient zelf in bij het fonds. Wij dienen nooit iets voor u in.</p>
+              </Blok>
+            </>
+          )}
+
           <Blok titel="Concept of definitief" testid="aa-versie-definitief" actie={<Chip toon={definitief ? 'groen' : 'blauw'}>{definitief ? 'Definitief' : 'Concept'}</Chip>}>
             <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
               Werkt u nog aan de tekst? Dan is het een concept. Is hij af, maak hem dan definitief: die versie blijft bewaard en u downloadt hem om zelf in te dienen. Terug naar concept kan altijd.

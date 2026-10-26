@@ -22,7 +22,7 @@ const check = (naam, waar, detail = '') => { if (waar) stand.ok += 1; else { sta
 const sectie = (t) => console.log(`\n== ${t}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const { USER, PROJECT, NU, RICHTLIJN, AANVRAAG, PLANBRON, maakServer } = await import('./nepserver.mjs');
+const { USER, PROJECT, NU, RICHTLIJN, AANVRAAG, FORMULIER, PLANBRON, maakServer } = await import('./nepserver.mjs');
 
 // ── Een kleine pagina zoals Documenten: tabs, maandstatus en doorsturen van Projectplan naar Aanvragen ──────────────────────────────────
 function Harnas({ store }) {
@@ -381,6 +381,109 @@ sectie('10. Bewerken, opslaan en versies');
   const Z = maakServer({ zonderVersies: true });
   await openAanvraagEnSchrijf(Z);
   check('zonder versie-opslag toont het scherm het plan zoals voorheen (alleen lezen)', await wacht(() => $('[data-testid="aa-plan"]')) && !$('[data-testid="aa-versie-editor"]') && $$('[data-testid="aa-plan-sectie"]').length === 1);
+  await opruimen();
+}
+
+sectie('11. Aanvraag indienen: formulier, tekenlimieten, antwoorden per vraag en checklist met stukken');
+{
+  const docsLid = [
+    { naam: 'anbi-beschikking.pdf', soort: 'Overig', gemaakt: new Date().toISOString() },
+    { naam: 'jaarrekening-2020.pdf', soort: 'Overig', gemaakt: '2021-02-01T10:00:00Z' },
+  ];
+
+  async function openWerk(server, optiesProject = {}) {
+    client.__reset();
+    client.__zetSupabase(server.supabase);
+    await server.supabase.functions.invoke('aanvraag-assistent', { body: { mode: 'eisen-ophalen', projectId: PROJECT, fondsLabel: 'Stichting Voorbeeldfonds', formulierTekst: `1. Beschrijf uw project. ${RICHTLIJN}` } });
+    const rij = [...server.s.tabel.values()].find((x) => x.soort === 'fonds');
+    const project = { id: PROJECT, naam: 'Samen Spelen', docs: docsLid, ...optiesProject };
+
+    function HarnasFormulier() {
+      const assistent = useAanvraagAssistent(true);
+
+      if (!assistent.klaar) return <div>laden</div>;
+
+      return <AanvragenTab project={project} projecten={[project]} onKiesProject={() => {}} store={{ orgProfile: { name: 'Stichting Samen Spelen' } }} assistent={assistent} start={{ aanvraagId: rij.id, nonce: 1 }} />;
+    }
+
+    await act(async () => { root.render(<HarnasFormulier />); });
+    await wacht(() => $('[data-testid="aa-werk"]'));
+
+    return rij;
+  }
+
+  const F = maakServer();
+  const rij = await openWerk(F);
+
+  check('het blok voor het formulier staat op het scherm, met de tekenlimiet-attentie', await wacht(() => $('[data-testid="aa-formulier-blok"]')) && /Zonder tekenlimiet kunnen wij u niet helpen/.test($('[data-testid="aa-limiet-attentie"]').textContent));
+  check('de attentie noemt dat wij alleen antwoorden schrijven als de limiet is doorgegeven', /Let op: veel fondsen hanteren een tekenlimiet per vraag/.test(tekst()) && /alleen antwoorden voor u schrijven als u die tekenlimiet aan ons doorgeeft/.test(tekst()));
+  check('zonder tekst is de knop uit', knop('Maak een vragenlijst en een lijst met stukken').disabled === true);
+
+  await typ($('[data-testid="aa-formulier-tekst"]'), FORMULIER);
+  await klik(knop('Maak een vragenlijst en een lijst met stukken'));
+  check('het formulier wordt omgezet in een vragenlijst (3 vragen)', await wacht(() => $$('[data-testid="aa-vraag-rij"]').length === 3));
+  check('de limiet uit het formulier (1500) staat al bij vraag 1; de andere twee missen hem', $('[aria-label="Tekenlimiet van vraag 1"]').value === '1500' && $('[aria-label="Tekenlimiet van vraag 2"]').value === '' && /Tekenlimiet ontbreekt bij 2 vragen/.test(tekst()));
+  check('Bevestigen kan nog niet zolang een limiet ontbreekt', knop('Bevestig de vragenlijst').disabled === true && /Vul bij elke vraag de tekenlimiet in/.test(tekst()));
+  check('de lijst met stukken heeft de vier standaardstukken en het stuk uit het formulier', $$('[data-testid="aa-stuk"]').length === 5 && /ANBI-status/.test(tekst()) && /Aanbevelingsbrief van de gemeente/.test(tekst()) && /Uit uw formulier/.test(tekst()));
+  check('het lezen van het formulier is bewaard als voorstel (nog niet bevestigd), zonder het bestand', F.s.tabel.get(rij.id).vragen && F.s.tabel.get(rij.id).vragen.bevestigd === false && F.s.tabel.get(rij.id).vragen.lijst.length === 3 && !JSON.stringify(F.s.tabel.get(rij.id)).includes('Bijlagen: een aanbevelingsbrief'));
+
+  await typ($('[aria-label="Tekenlimiet van vraag 2"]'), '1000');
+  await klik($('[aria-label="Dit fonds heeft geen limiet voor vraag 3"]'));
+  check('met een limiet of "geen limiet" bij elke vraag staat de bevestiging open', await wacht(() => knop('Bevestig de vragenlijst').disabled === false) && /Alle tekenlimieten ingevuld/.test(tekst()));
+  await klik(knop('Bevestig de vragenlijst'));
+  check('bevestigen bewaart de lijst als bevestigd, met de limieten', await wacht(() => F.s.tabel.get(rij.id).vragen.bevestigd === true) && F.s.tabel.get(rij.id).vragen.lijst.map((v) => `${v.maxTekens}/${v.geenLimiet}`).join() === '1500/false,1000/false,null/true');
+  check('daarna toont het blok een samenvatting en de oude schrijfkaart is weg', await wacht(() => $('[data-testid="aa-vragen-samenvatting"]')) && /geen limiet/.test($('[data-testid="aa-vragen-samenvatting"]').textContent) && !$('[data-testid="aa-kaart-schrijven"]') && !!$('[data-testid="aa-kaart-beoordelen"]'));
+
+  await klik(knop('Open uw aanvraag per vraag'));
+  check('de aanvraag opent per vraag: 3 antwoordvakken met nummer en nog leeg', await wacht(() => $$('[data-testid="aa-onderdeel"]').length === 3) && $$('[data-testid="aa-onderdeel"] textarea').every((t) => t.value === '') && /1\. Beschrijf de aanleiding/.test(tekst()) && /Nog leeg/.test(tekst()));
+  check('de checklist met stukken en "Klaar om in te dienen?" staan ernaast', !!$('[data-testid="aa-versie-stukken"]') && !!$('[data-testid="aa-versie-klaar"]') && /3 vragen hebben nog geen antwoord/.test(tekst()));
+
+  const gebruikVoor = F.s.gebruik.length;
+  await klik(knop('Schrijf een concept: Beschrijf de aanleiding'));
+  check('Schrijf concept bij vraag 1 vult alleen dat antwoord en slaat het op als versie 1', await wacht(() => F.s.versies.size === 1) && $$('[data-testid="aa-onderdeel"] textarea')[0].value.length > 10 && $$('[data-testid="aa-onderdeel"] textarea')[1].value === '' && $$('[data-testid="aa-onderdeel"] textarea')[2].value === '');
+  check('het scherm meldt dat dit als 1 beoordeling telde', await wacht(() => $('[data-testid="aa-versie-melding"]')) && /1 antwoord geschreven en opgeslagen als versie 1/.test(tekst()) && /telde als 1 beoordeling van deze maand/.test(tekst()));
+  check('de server onthield het fonds en de maand', F.s.tabel.get(rij.id).schrijf_maand === '2026-10' && F.s.tabel.get(rij.id).schrijf_aantal === 1);
+
+  await klik(knop('Schrijf een concept voor alle lege vragen'));
+  check('Schrijf alle lege vragen vult de andere twee', await wacht(() => $$('[data-testid="aa-onderdeel"] textarea').every((t) => t.value.length > 10)));
+  check('het tweede keer schrijven voor hetzelfde fonds kost niets extra', await wacht(() => /kostte niets extra/.test(tekst())) && F.s.gebruik.filter((x) => x.actie === 'aanvraag_antwoorden').length === 2 && F.s.tabel.get(rij.id).schrijf_aantal === 3);
+  check('alle lege vragen zijn gevuld: de knop voor alle lege vragen is weg', !knop('Schrijf een concept voor alle lege vragen'));
+  check('er is niets ingediend: alleen de twee schrijfacties zijn gelogd', F.s.gebruik.length === gebruikVoor + 2 && F.s.beoordelingen.size === 0);
+
+  check('stukken: ANBI-status is herkend in de documentatie, jaarrekening is te oud, de rest is nog nodig', $$('[data-testid="aa-stuk"][data-status="klaar"]').length === 1 && $$('[data-testid="aa-stuk"][data-status="te-oud"]').length === 1 && $$('[data-testid="aa-stuk"][data-status="nodig"]').length === 3 && /In uw projectdocumentatie: anbi-beschikking\.pdf/.test(tekst()));
+  check('de tekst bij een te oud bestand vraagt het lid het te controleren', /Controleer of het de nieuwste is/.test(tekst()) && /1 van 5 klaar/.test($('[data-testid="aa-stukken-telling"]').textContent));
+
+  await klik($('[aria-label="Ik heb dit klaar: Statuten"]'));
+  check('Statuten afvinken wordt bewaard en telt mee', await wacht(() => (F.s.tabel.get(rij.id).stukken || []).some((x) => x.sleutel === 'statuten' && x.klaar === true)) && /2 van 5 klaar/.test($('[data-testid="aa-stukken-telling"]').textContent));
+  await klik(knop('Niet van toepassing: Aanbevelingsbrief'));
+  check('een stuk op niet van toepassing zetten haalt het uit de telling', await wacht(() => /2 van 4 klaar/.test($('[data-testid="aa-stukken-telling"]').textContent)) && (F.s.tabel.get(rij.id).stukken || []).some((x) => x.nietVanToepassing === true));
+  check('Klaar om in te dienen? toont de stand: antwoorden compleet, stukken ontbreken nog', /Alle 3 vragen hebben een antwoord/.test($('[data-testid="aa-versie-klaar"]').textContent) && /2 stukken ontbreken nog/.test($('[data-testid="aa-versie-klaar"]').textContent) && /Wij dienen nooit iets voor u in/.test($('[data-testid="aa-versie-klaar"]').textContent));
+
+  await typ($$('[data-testid="aa-onderdeel"] textarea')[0], 'x'.repeat(1600));
+  check('boven de tekenlimiet: waarschuwing bij het antwoord en in de stand', /Boven de limiet van het fonds, haal 100 tekens weg/.test(tekst()) && /1 antwoord is boven de tekenlimiet/.test($('[data-testid="aa-versie-klaar"]').textContent));
+
+  await klik(knop('Schrijf opnieuw: Beschrijf de aanleiding'));
+  check('opnieuw schrijven vraagt eerst om bevestiging', await wacht(() => $('[data-testid="aa-herschrijf-vraag"]')));
+  await klik(knop('Ja, schrijf opnieuw'));
+  check('na bevestigen staat er een nieuw concept en blijft de tekst van het lid bewaard in een eerdere versie', await wacht(() => $$('[data-testid="aa-onderdeel"] textarea')[0].value.length > 10 && $$('[data-testid="aa-onderdeel"] textarea')[0].value.length < 1600) && [...F.s.versies.values()].some((v) => v.antwoorden.some((a) => a.tekst === 'x'.repeat(1600))));
+
+  await klik(knop('Terug naar het fonds'));
+  check('terug op het fondsscherm staat de bevestigde vragenlijst er nog', await wacht(() => $('[data-testid="aa-vragen-samenvatting"]')) && $$('[data-testid="aa-vragen-samenvatting"] li').length === 3);
+  await opruimen();
+
+  // Het formulier bevat geen vragen: eerlijke melding, niets bewaard.
+  const W = maakServer({ vragenUit: { vragen: [], stukken: [] } });
+  const rijW = await openWerk(W);
+  await wacht(() => $('[data-testid="aa-formulier-tekst"]'));
+  await typ($('[data-testid="aa-formulier-tekst"]'), FORMULIER);
+  await klik(knop('Maak een vragenlijst en een lijst met stukken'));
+  check('zonder gevonden vragen: een duidelijke melding en geen vragenlijst bewaard', await wacht(() => /Wij vonden geen vragen/.test(tekst())) && !W.s.tabel.get(rijW.id).vragen && $$('[data-testid="aa-vraag-rij"]').length === 0);
+  await opruimen();
+
+  // Een server zonder deze functie: het blok verdwijnt en alles werkt zoals voorheen.
+  const Z = maakServer({ zonderVragen: true });
+  await openWerk(Z);
+  check('zonder formulierfunctie op de server verdwijnt het blok en blijft de oude schrijfkaart', await wacht(() => $('[data-testid="aa-kaart-schrijven"]')) && !$('[data-testid="aa-formulier-blok"]'));
   await opruimen();
 }
 

@@ -67,8 +67,8 @@ check('projectpagina: tabbladen Projectprofiel, Documenten, Gesprekken; geen Pro
 check('projectpagina stuurt oude tab-links door', /adviesDoorverwijzing\(huidigeHash\(\), projectId\)/.test(pd));
 const dp = src('src/features/kompas-app/DocumentatiePage.jsx');
 check('Documenten: kop heet Begroting en dekkingsplan of Indienen; Projectinhoud heet Projectdossier', /titel=\{sectie === 'begroting' \? 'Begroting en dekkingsplan' : 'Indienen'\}/.test(dp) && /label: 'Projectdossier'/.test(dp) && !/label: 'Projectinhoud'/.test(dp));
-check('Indienen: drie tabbladen in de volgorde Projectplan en indienen, Projectdossier, Projectdocumentatie', dp.indexOf("label: 'Projectplan en indienen'") < dp.indexOf("label: 'Projectdossier'") && dp.indexOf("label: 'Projectdossier'") < dp.indexOf("label: 'Projectdocumentatie'") && !/label: 'Fondsen indienen'/.test(dp));
-check('Indienen opent op Projectplan en indienen (ook met de oude ?tab=aanvragen), niet op het projectdossier', /return !m \|\| m\[1\] === 'aanvragen' \? 'plan' : m\[1\];/.test(dp) && !/\? 'inhoud' : 'bestanden'/.test(dp));
+check('Indienen: drie tabbladen in de volgorde Aanvraag indienen, Projectdossier, Projectdocumentatie', dp.indexOf("label: 'Aanvraag indienen'") < dp.indexOf("label: 'Projectdossier'") && dp.indexOf("label: 'Projectdossier'") < dp.indexOf("label: 'Projectdocumentatie'") && !/label: 'Fondsen indienen'/.test(dp));
+check('Indienen opent op Aanvraag indienen (ook met de oude ?tab=aanvragen), niet op het projectdossier', /return !m \|\| m\[1\] === 'aanvragen' \? 'plan' : m\[1\];/.test(dp) && !/\? 'inhoud' : 'bestanden'/.test(dp));
 check('Documenten volgt de hash (stap en project uit de balk)', /addEventListener\('hashchange', volg\)/.test(dp));
 const ap = src('src/features/kompas-app/advies/AdviesPage.jsx');
 check('Fondsmatching: projectgegevens met Aanpassen en + Nieuw project (zelfde formulier als Projecten), daaronder de projectfinanciering', /ProjectBewerkFormulier/.test(ap) && /advies-nieuw-project/.test(ap) && /<ProjectfinancieringTab/.test(ap));

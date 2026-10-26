@@ -2,7 +2,7 @@
 // schrijven, een eigen aanvraag beoordelen, aanvragen bewaren). De client bepaalt hier niets: geen abonnement, geen limiet, geen uitkomst. Elke fout
 // levert { ok: false, reden, melding } op; er wordt nooit een uitzondering gegooid.
 // De aanvraagtekst van het lid wordt alleen meegestuurd om te beoordelen; de server bewaart haar niet. Uitzondering: versies. Wat het lid zelf als versie
-// opslaat (concept of definitief) bewaart de server voor haar, maximaal 20 per aanvraag. Versies kosten geen maandruimte.
+// opslaat (concept of definitief) bewaart de server voor haar, maximaal 20 per aanvraag. Versies kosten geen maandruimte. Ook de vragenlijst en de lijst met stukken van een formulier (niet het bestand zelf) worden bewaard.
 import { supabase } from '../client.js';
 
 export const AANVRAAG_FUNCTION = 'aanvraag-assistent';
@@ -141,6 +141,35 @@ export function wijzigVersie({ versieId, actie, naam = '' }) {
 
 export function verwijderVersie(versieId) {
   return isTekst(versieId) ? roep({ mode: 'versie-verwijderen', versieId }) : ongeldig();
+}
+
+// ── Formulier: vragen en stukken (checklist), en antwoorden per vraag schrijven. ──
+// Het bestand van het formulier gaat nooit mee: alleen de tekst die het lid zelf aanlevert; de server bewaart alleen de vragen en de lijst met stukken.
+export function haalVragen(aanvraagId) {
+  return isTekst(aanvraagId) ? roep({ mode: 'vragen', aanvraagId }) : ongeldig();
+}
+
+// De tekst van het formulier (uit Word, PDF of geplakt) omzetten in een voorstel voor de vragenlijst en de lijst met stukken. Telt als één formulier lezen.
+export function leesFormulier({ projectId, aanvraagId, formulierTekst }) {
+  return isTekst(projectId) && isTekst(aanvraagId) && isTekst(formulierTekst) ? roep({ mode: 'vragen-lezen', projectId, aanvraagId, formulierTekst: String(formulierTekst) }) : ongeldig();
+}
+
+// vragen: de lijst [{ id, tekst, maxTekens, geenLimiet }]; bevestig: true vraagt de server om de lijst te bevestigen (elke vraag heeft een limiet of 'geen limiet').
+// stukken: [{ id, tekst, bron, sleutel, maxLeeftijdMaanden, nietVanToepassing, klaar, documentNaam }]. Elk van de twee mag ontbreken.
+export function bewaarVragen({ aanvraagId, vragen, bevestig = false, stukken }) {
+  if (!isTekst(aanvraagId)) return ongeldig();
+
+  return roep({
+    mode: 'vragen-bewaren',
+    aanvraagId,
+    ...(vragen !== undefined ? { vragen, bevestig: bevestig === true } : {}),
+    ...(stukken !== undefined ? { stukken } : {}),
+  });
+}
+
+// Schrijft per vraag een concept uit de projectgegevens. Zonder vraagIds voor alle vragen. Alle antwoorden voor één fonds tellen in een maand als één beoordeling.
+export function schrijfAntwoorden({ projectId, aanvraagId, vraagIds = [] }) {
+  return isTekst(projectId) && isTekst(aanvraagId) ? roep({ mode: 'antwoorden-schrijven', projectId, aanvraagId, ...(Array.isArray(vraagIds) && vraagIds.length ? { vraagIds } : {}) }) : ongeldig();
 }
 
 // Een eerder bewaarde beoordeling terugzien. Leest rechtstreeks uit de eigen tabel (RLS: alleen eigen rijen); niets wordt aangepast.
