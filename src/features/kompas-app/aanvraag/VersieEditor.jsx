@@ -502,7 +502,7 @@ export default function VersieEditor({ aanvraagId, plan, opgeslagen = true, nieu
                   Maak definitief
                 </Button>
               ) : null}
-              <ExportMenu toegestaan uitlijnen="rechts" onMelding={setMelding} ariaLabel="Download voor indienen" bouwModel={bouwModel} />
+              <ExportMenu toegestaan formaten={['docx', 'pdf']} uitlijnen="rechts" onMelding={setMelding} ariaLabel="Download voor indienen" bouwModel={bouwModel} />
             </div>
             {opHuidigeDefinitief && !onopgeslagen && (
               <div style={css('margin-top: 10px;')}>
