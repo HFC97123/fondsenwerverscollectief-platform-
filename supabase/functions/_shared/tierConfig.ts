@@ -37,7 +37,7 @@ export interface OnlineAanvullenConfig {
 
 export interface BeoordelingConfig {
   // AI-beoordeling met bewijs (fondsBeoordeling.ts): hoeveel van de best gerangschikte kandidaten de AI leest, de buffer waarop de korte lijst stopt
-  // (aandeel van de projectbegroting) en of er een "net niet"-lijst bij hoort. De bovengrens van de som (Pro 120%, Premium 140%) staat in `maxFactorLijst`.
+  // (aandeel van de projectbegroting) en of er een "net niet"-lijst bij hoort. De bovengrens van de som (Pro 120%, Premium 160%, van de financieringsbehoefte) staat in `maxFactorLijst`.
   maxKandidaten: number;
   dekkingsdoelLijst: number;
   maxFactorLijst: number; // bovengrens van de som van de geschatte bijdragen, als aandeel van de projectbegroting
@@ -118,7 +118,7 @@ const PRO: TierConfig = {
   onlineAanvullen: null,
   aanvullenVelden: 'indien-nodig',
   premiumHint: true,
-  beoordeling: { maxKandidaten: 25, dekkingsdoelLijst: 1.0, maxFactorLijst: 1.2, netNietLijst: false },
+  beoordeling: { maxKandidaten: 25, dekkingsdoelLijst: 1.2, maxFactorLijst: 1.2, netNietLijst: false },
   maandBudgetObservatieEur: 7,
   aanvraagAssistent: {
     beoordelingenPerMaand: 6,
@@ -149,7 +149,7 @@ const PREMIUM: TierConfig = {
   onlineAanvullen: { maxKandidaten: 5 },
   aanvullenVelden: 'alle-ontbrekende',
   premiumHint: false,
-  beoordeling: { maxKandidaten: 40, dekkingsdoelLijst: 1.4, maxFactorLijst: 1.4, netNietLijst: true },
+  beoordeling: { maxKandidaten: 40, dekkingsdoelLijst: 1.6, maxFactorLijst: 1.6, netNietLijst: true },
   maandBudgetObservatieEur: 14,
   // Beoordelingen per maand = per project x aantal projecten: 10 per project, 3 projecten met een plan, dus 30 (Aisya, 21 oktober 2026). Elke aanvraag per fonds
   // krijgt de actuele begroting en het actuele dekkingsplan mee. Voor nu verder hetzelfde als Pro. De uitbreidingen (rijke editor, AI-paneel, dekkingsoverzicht, commissieblik) staan
