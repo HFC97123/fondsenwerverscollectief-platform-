@@ -124,7 +124,7 @@ function Samenvatting({ uit, projectId, onSluiten, onActieplanOpnieuw, actieplan
           ))}
           {uit.suggesties.map((x) => (
             <li key={x.naam} data-testid="voorstel-opgeslagen-suggestie" data-status={x.status}>
-              <strong>{x.naam}</strong>: {x.status === 'opgeslagen' ? 'op uw lijst gezet, zonder bedrag. In uw actieplan staat een actie klaar: contact opnemen met het fonds' : x.status === 'bestaat-al' ? 'stond al op uw lijst' : 'kon niet worden toegevoegd'}
+              <strong>{x.naam}</strong>: {x.status === 'opgeslagen' ? 'op uw lijst gezet, zonder bedrag. In uw actieplan staat een actie klaar.' : x.status === 'bestaat-al' ? 'stond al op uw lijst' : 'kon niet worden toegevoegd'}
               {x.fundingId && x.status !== 'mislukt' && (
                 <>
                   {' · '}
