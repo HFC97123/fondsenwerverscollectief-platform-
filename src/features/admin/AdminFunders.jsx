@@ -8,6 +8,7 @@
 // dagelijkse beheertaak is.
 // Alle databasecommunicatie loopt via data/services/adminFunders.js.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import AdminOnlineGescand from './AdminOnlineGescand.jsx';
 import { css } from '../../shared/lib/css.js';
 import {
   ACCESS_TIERS,
@@ -892,6 +893,9 @@ export default function AdminFunders({ notify }) {
       </div>
 
       <div style={css('height: 22px;')} />
+
+      {/* Herinnering voor de maandelijkse aanvulronde: online gevonden fondsen die nog niet in de database staan. */}
+      <AdminOnlineGescand notify={notify} />
 
       <AdminToolbar search={search} onSearchChange={setSearch} searchPlaceholder="Zoek op naam…" />
 
