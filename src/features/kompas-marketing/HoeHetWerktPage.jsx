@@ -418,9 +418,14 @@ export default function HoeHetWerktPage() {
           </div>
 
           <div style={css('display: flex; gap: 12px; flex-wrap: wrap;')}>
-            <a href="#/subsidie-kompas" style={css('padding: 15px 30px; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px; white-space: nowrap;')}>
+            {/* Naar de abonnementen hierboven, waar Pro 7 dagen en Premium 24 uur gratis te proberen is. */}
+            <button
+              type="button"
+              onClick={naarAbonnementen}
+              style={css("cursor: pointer; padding: 15px 30px; border: none; background: #4E9A6C; color: #FFFFFF; border-radius: 999px; font-family: 'Mulish', sans-serif; font-weight: 700; font-size: 16px; white-space: nowrap;")}
+            >
               Gratis starten
-            </a>
+            </button>
             <a href="#/kompas/faq" style={css('padding: 15px 28px; border: 1px solid rgba(255,255,255,0.4); color: #FFFFFF; border-radius: 999px; font-weight: 700; font-size: 16px; white-space: nowrap;')}>
               Veelgestelde vragen
             </a>
