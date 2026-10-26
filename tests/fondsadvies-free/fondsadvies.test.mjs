@@ -283,7 +283,8 @@ sectie('Test 7: tier-isolatie');
     const t = alleSysteemTeksten(r.hoofd);
     uitkomst[naam] = { t, blok: blokVan(r.hoofd), extracties: r.extracties.length, status: r.status };
     check(`7b ${naam}: HTTP 200`, r.status === 200);
-    check(`7b ${naam}: precies één extractie-aanroep (zelfde engine)`, r.extracties.length === 1, String(r.extracties.length));
+    // Pro/Premium: naast de criteria-extractie ook het projectdossier (gegevens uit de chat gaan naar het project); Free/admin alleen de criteria.
+    check(`7b ${naam}: precies één criteria-extractie (zelfde engine)${naam === 'Pro' || naam === 'Premium' ? ' plus het projectdossier' : ''}`, r.extracties.length === (naam === 'Pro' || naam === 'Premium' ? 2 : 1), String(r.extracties.length));
     check(`7b ${naam}: FONDSADVIES-BEOORDELING-blok aanwezig`, Boolean(blokVan(r.hoofd)));
     check(`7b ${naam}: geen ruwe database-context (geen opvulregeling/strays)`, namenIn(t, [STRAY1, STRAY2, 'Opvulregeling', 'Sportclub Impuls']).length === 0);
   }

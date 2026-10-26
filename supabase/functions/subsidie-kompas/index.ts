@@ -236,6 +236,7 @@ const DOSSIER_VELDEN = [
   'impact',
   'partners',
   'begroting',
+  'eigenBijdrage',
   'schrijfstijl',
   'fondsKeuze',
   'documentinstructies',
@@ -1816,6 +1817,8 @@ NIVEAUS - houd deze strikt gescheiden:
 - "schrijfstijl": alleen een blijvende schrijfvoorkeur voor het hele project (bijvoorbeeld warm en mensgericht, zakelijk, resultaatgericht).
 - "documentinstructies": wensen die alleen voor dit ene document of deze ene fondsaanvraag gelden (bijvoorbeeld maximaal twee pagina's, schrijf voor Fonds X, een bepaalde hoofdstukindeling, extra nadruk voor dat ene fonds).
 - "fondsKeuze": voor welk fonds het document bedoeld is.
+- "begroting": de totale projectbegroting, als bedrag (bijvoorbeeld "€ 85.000").
+- "eigenBijdrage": het deel van de begroting dat al gedekt of toegezegd is (eigen bijdrage of al toegezegde financiering), als bedrag. Noemt het lid alleen hoeveel er nog geworven moet worden, dan is de eigen bijdrage de begroting min dat bedrag; zet die alleen als beide bedragen door het lid zijn genoemd.
 - Alle andere velden gaan over het project zelf. Zet een document- of fondswens NOOIT in een ander veld, en gegevens over de organisatie als geheel (rechtsvorm, ANBI, missie) horen niet in dit dossier.
 
 De toegestane velden zijn uitsluitend: ${veldenLijst}.
@@ -9743,7 +9746,9 @@ Deno.serve(async (req) => {
     let projectDossier: Record<string, string> | null = dossierBestaand;
     let projectDossierBronnen: Record<string, string> = {};
 
-    if (modus === 'projectplan' && bevatMogelijkNieuweInfo) {
+    // Sinds oktober 2026 ook bij een financieringsvraag (Pro/Premium): wat het lid in de chat over het project vertelt (begroting, eigen bijdrage,
+    // doelgroep, locatie, ...) komt in het project terecht en voedt zo de fondsmatching.
+    if ((modus === 'projectplan' || (fondsadviesEngineActief && magOrganisatiegeheugen)) && bevatMogelijkNieuweInfo) {
       try {
         const { dossier, bronnen: bronnenNu, usage: dossierUsage, mislukt: dossierMislukt } = await projectdossierUitGesprek(
           apiKey,
@@ -9983,7 +9988,7 @@ Deno.serve(async (req) => {
               }
             }
 
-            if (modus === 'projectplan' && bevatMogelijkNieuweInfo) {
+            if ((modus === 'projectplan' || (fondsadviesEngineActief && magOrganisatiegeheugen)) && bevatMogelijkNieuweInfo) {
               try {
                 const {
                   dossier,
