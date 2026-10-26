@@ -84,6 +84,8 @@ check('S7a. herkomst per veld: lid -> gesprek, bevestigd -> gesprek-bevestigd', 
 check('S7b. bedrag uit tekst wordt veilig een getal ("€ 85.000" -> 85000)', m.velden.begroting === '85000');
 const amb = K.dossierNaarProjectVelden({ begroting: 'tussen 50.000 en 90.000 euro' }, { begroting: 'lid' });
 check('S7c. ambigu bedrag wordt niet gegokt', !('begroting' in amb.velden));
+const eigen = K.dossierNaarProjectVelden({ begroting: '€ 85.000', eigenBijdrage: 'we hebben zelf 15.000 euro' }, { begroting: 'lid', eigenBijdrage: 'lid' });
+check('A2b. begroting en eigen bijdrage uit de chat gaan als bedrag naar het project', eigen.velden.begroting === '85000' && eigen.velden.eigenBijdrage === '15000' && eigen.bronnen.eigenBijdrage, JSON.stringify(eigen));
 const prof = K.dossierNaarProjectVelden({ doelgroep: 'kinderen' }, { doelgroep: 'profiel' });
 check('S7d. gegevens die alleen uit het profiel komen worden niet als nieuw overgenomen', !('doelgroep' in prof.velden));
 
