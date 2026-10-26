@@ -11,7 +11,9 @@
 //   - De maandgrens is atomair: vlak vóór de AI-aanroep reserveert de server een plek (deps.reserveer, één database-stap met een slot per gebruiker) en rondt die
 //     daarna af (deps.rondAf). Zo komen twee gelijktijdige verzoeken er niet allebei door, en een mislukte aanroep telt niet mee. De teller hangt aan het account.
 //   - Een beoordeling zonder één geldig oordeel (modelstoring) wordt niet opgeslagen en telt niet mee voor de maandgrens.
-//   - Er wordt niets van de aanvraagtekst bewaard of gelogd. Opgeslagen wordt de uitkomst: eisen, status per eis, korte citaten en verbeteringen.
+//   - De tekst die het lid ter beoordeling aanbiedt, wordt niet bewaard of gelogd. Opgeslagen wordt de uitkomst: eisen, status per eis, korte citaten en verbeteringen.
+//   - Uitzondering (Aisya, 26-10-2026): de versies die het lid zelf bewaart (concept of definitief) worden bewaard in subsidie_kompas_aanvraag_versies. Alleen het lid zelf
+//     leest ze; ze verdwijnen met de aanvraag, het project of het account. Opslaan en versiebeheer kosten geen maandruimte; maximaal 20 versies per aanvraag.
 import {
   beoordeelAanvraag,
   berekenUitkomst,
@@ -40,9 +42,9 @@ export const MAX_FONDSLABEL = 200;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag' | 'begroting-voorstel' | 'begroting-upload';
+export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag' | 'begroting-voorstel' | 'begroting-upload' | 'versies' | 'versie' | 'versie-bewaren' | 'versie-wijzigen' | 'versie-verwijderen';
 
-const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag', 'begroting-voorstel', 'begroting-upload'];
+const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag', 'begroting-voorstel', 'begroting-upload', 'versies', 'versie', 'versie-bewaren', 'versie-wijzigen', 'versie-verwijderen'];
 
 // Het algemene projectplan telt per rollend jaar (aantal verschillende projecten); een verwijderd project geeft zijn plek niet terug.
 export const PLAN_VENSTER_MAANDEN = 12;
@@ -87,6 +89,80 @@ export interface AanvraagSchrijf {
   laatste_beoordeling_id?: string | null;
   laatste_uitkomst?: string | null;
 }
+
+// Een bewaarde versie van het plan of van de antwoorden van het lid. antwoorden = lijst van onderdelen { id, titel, tekst }.
+export interface VersieRij {
+  id: string;
+  aanvraag_id: string;
+  nummer: number;
+  naam: string;
+  status: 'concept' | 'definitief';
+  herkomst: 'ai' | 'lid';
+  antwoorden?: unknown[]; // ontbreekt in de lijst (die is licht)
+  beoordeling_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// De stand van een aanvraag voor het versiebeheer.
+export interface VersieStand {
+  id: string;
+  soort: 'algemeen' | 'fonds';
+  status: 'concept' | 'definitief';
+  definitieve_versie_id: string | null;
+}
+
+export const MAX_VERSIES = 20;
+export const MAX_ONDERDELEN = 60;
+export const MAX_ONDERDEEL_TEKENS = 20_000;
+export const MAX_TOTAAL_TEKENS = 50_000;
+export const MAX_VERSIENAAM = 120;
+const ONDERDEEL_ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
+
+export interface Onderdeel {
+  id: string | null;
+  titel: string;
+  tekst: string;
+}
+
+// Maakt van wat de client stuurt een veilige lijst onderdelen. Geen geldige lijst = null.
+export function schoneOnderdelen(invoer: unknown, maxTotaal: number = MAX_TOTAAL_TEKENS): Onderdeel[] | null {
+  if (!Array.isArray(invoer) || invoer.length < 1 || invoer.length > MAX_ONDERDELEN) return null;
+
+  const uit: Onderdeel[] = [];
+  const gezien = new Set<string>();
+  let totaal = 0;
+
+  for (const item of invoer) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+
+    const ruwId = (item as any).id;
+    const id = ruwId === null || ruwId === undefined || ruwId === '' ? null : typeof ruwId === 'string' && ONDERDEEL_ID_RE.test(ruwId) ? ruwId : undefined;
+
+    if (id === undefined) return null;
+    if (id !== null) {
+      if (gezien.has(id)) return null;
+      gezien.add(id);
+    }
+
+    const titel = tekstVeld((item as any).titel, 300).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+    const tekstRuw = (item as any).tekst;
+
+    if (typeof tekstRuw !== 'string' || tekstRuw.length > MAX_ONDERDEEL_TEKENS) return null;
+
+    const tekst = tekstVeld(tekstRuw, MAX_ONDERDEEL_TEKENS).replace(/\r\n?/g, '\n');
+
+    totaal += tekst.length + titel.length;
+
+    if (totaal > maxTotaal) return null;
+
+    uit.push({ id, titel, tekst });
+  }
+
+  return uit;
+}
+
+const heeftInhoud = (o: Onderdeel[]) => o.some((x) => x.tekst.trim().length > 0);
 
 export interface ProfielRij {
   subscription_tier?: unknown;
@@ -155,6 +231,14 @@ export interface HandlerDeps {
   // De begroting die er al staat, de eigen bijdrage en het dekkingsplan zoals het lid het ziet (zelfde functie als het scherm). null = niet te lezen: dan blijft de sluitcontrole weg.
   leesBegrotingStand?(userId: string, projectId: string, token: string): Promise<{ regels: unknown; eigenBijdrage: unknown; financiering: unknown[] | null } | null>;
   slaBeoordelingOp(rij: BeoordelingRij): Promise<string | null>; // id van de nieuwe rij, of null bij mislukken
+  // Versiebeheer (alleen gefilterd op de gebruiker uit het token). Optioneel: ontbreekt een functie, dan antwoordt de server dat versies tijdelijk niet beschikbaar zijn.
+  leesVersieStand?(userId: string, aanvraagId: string): Promise<VersieStand | null | 'storing'>; // null = niet gevonden (of van iemand anders)
+  lijstVersies?(userId: string, aanvraagId: string): Promise<VersieRij[] | null>; // zonder antwoorden; nieuwste eerst; null = storing
+  leesVersie?(userId: string, versieId: string): Promise<VersieRij | null | 'storing'>;
+  maakVersie?(rij: { user_id: string; aanvraag_id: string; naam: string; status: 'concept' | 'definitief'; herkomst: 'ai' | 'lid'; antwoorden: Onderdeel[] }): Promise<VersieRij | null>; // kent het volgende nummer toe; null bij mislukken
+  werkVersieBij?(userId: string, versieId: string, velden: { naam?: string; antwoorden?: Onderdeel[]; status?: 'concept' | 'definitief' }): Promise<boolean>;
+  verwijderVersie?(userId: string, versieId: string): Promise<boolean>;
+  zetAanvraagStatus?(userId: string, aanvraagId: string, velden: { status: 'concept' | 'definitief'; definitieve_versie_id?: string | null }): Promise<boolean>;
   haalPagina(url: string): Promise<PaginaUitkomst>;
   roep: ModelAanroep;
   meldGebruik(melding: GebruikMelding): Promise<void>; // gooit nooit
@@ -348,6 +432,174 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     if (!bewaard) return fout(503, 'opslag', 'De criteria konden nu niet worden bewaard. Probeer het later opnieuw.');
 
     return { status: 200, body: { ok: true, aanvraagId: bewaard, criteria: schoon } };
+  }
+
+  // ── versies: bewaren, ophalen, definitief maken, verwijderen (geen maandruimte) ────────────────────────────
+  if (modus === 'versies' || modus === 'versie' || modus === 'versie-bewaren' || modus === 'versie-wijzigen' || modus === 'versie-verwijderen') {
+    if (!deps.leesVersieStand || !deps.lijstVersies || !deps.leesVersie || !deps.maakVersie || !deps.werkVersieBij || !deps.verwijderVersie || !deps.zetAanvraagStatus) {
+      return fout(503, 'versies', 'Versies zijn tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+    }
+
+    const NIET_BESCHIKBAAR = fout(503, 'opslag', 'De versies zijn nu niet beschikbaar. Probeer het later opnieuw.');
+    const samenvatVersie = (v: VersieRij) => ({ id: v.id, aanvraagId: v.aanvraag_id, nummer: v.nummer, naam: v.naam, status: v.status, herkomst: v.herkomst, heeftBeoordeling: Boolean(v.beoordeling_id), gemaakt: v.created_at, bijgewerkt: v.updated_at });
+    const idVan = (x: unknown) => (typeof x === 'string' && UUID_RE.test(x) ? x.toLowerCase() : '');
+
+    // Alles wat per versie gebeurt, begint bij de versie en de aanvraag waar hij bij hoort.
+    const laadVersie = async (versieId: string) => {
+      const versie = await deps.leesVersie!(userId, versieId);
+
+      if (versie === 'storing') return { antwoord: NIET_BESCHIKBAAR } as const;
+      if (!versie) return { antwoord: fout(404, 'versie', 'Deze versie is niet gevonden.') } as const;
+
+      const stand = await deps.leesVersieStand!(userId, versie.aanvraag_id);
+
+      if (stand === 'storing') return { antwoord: NIET_BESCHIKBAAR } as const;
+      if (!stand) return { antwoord: fout(404, 'versie', 'Deze versie is niet gevonden.') } as const;
+
+      return { versie, stand } as const;
+    };
+
+    if (modus === 'versies') {
+      const aanvraagId = idVan(body.aanvraagId);
+
+      if (!aanvraagId) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+      const stand = await deps.leesVersieStand(userId, aanvraagId);
+
+      if (stand === 'storing') return NIET_BESCHIKBAAR;
+      if (!stand) return fout(404, 'aanvraag', 'Deze aanvraag is niet gevonden.');
+
+      const lijst = await deps.lijstVersies(userId, aanvraagId);
+
+      if (lijst === null) return NIET_BESCHIKBAAR;
+
+      return { status: 200, body: { ok: true, aanvraagId, aanvraagStatus: stand.status, definitieveVersieId: stand.definitieve_versie_id, maxVersies: MAX_VERSIES, versies: lijst.map(samenvatVersie) } };
+    }
+
+    if (modus === 'versie') {
+      const versieId = idVan(body.versieId);
+
+      if (!versieId) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+      const g = await laadVersie(versieId);
+
+      if ('antwoord' in g) return g.antwoord;
+
+      return { status: 200, body: { ok: true, versie: { ...samenvatVersie(g.versie), antwoorden: Array.isArray(g.versie.antwoorden) ? g.versie.antwoorden : [] }, aanvraagStatus: g.stand.status, definitieveVersieId: g.stand.definitieve_versie_id } };
+    }
+
+    if (modus === 'versie-bewaren') {
+      const aanvraagId = idVan(body.aanvraagId);
+      const versieId = body.versieId === undefined || body.versieId === null || body.versieId === '' ? '' : idVan(body.versieId);
+
+      if (!aanvraagId || (body.versieId && !versieId)) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+      const onderdelen = schoneOnderdelen(body.antwoorden, Math.min(config.maxAanvraagTekens, MAX_TOTAAL_TEKENS));
+
+      if (!onderdelen) return fout(400, 'ongeldig-antwoorden', 'De tekst kon niet worden bewaard: te veel of te lange onderdelen.');
+
+      const naam = tekstVeld(body.naam, MAX_VERSIENAAM).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+      const stand = await deps.leesVersieStand(userId, aanvraagId);
+
+      if (stand === 'storing') return NIET_BESCHIKBAAR;
+      if (!stand) return fout(404, 'aanvraag', 'Deze aanvraag is niet gevonden.');
+
+      let basis: VersieRij | null = null;
+
+      if (versieId) {
+        const v = await deps.leesVersie(userId, versieId);
+
+        if (v === 'storing') return NIET_BESCHIKBAAR;
+        if (!v || v.aanvraag_id !== aanvraagId) return fout(404, 'versie', 'Deze versie is niet gevonden.');
+
+        basis = v;
+      }
+
+      // Een concept wordt op zijn plaats bijgewerkt; een definitieve versie blijft zoals hij is en er komt een nieuw concept naast.
+      if (basis && basis.status === 'concept') {
+        const gelukt = await deps.werkVersieBij(userId, basis.id, { antwoorden: onderdelen, ...(naam ? { naam } : {}) });
+
+        if (!gelukt) return NIET_BESCHIKBAAR;
+
+        return { status: 200, body: { ok: true, versie: { ...samenvatVersie({ ...basis, naam: naam || basis.naam, updated_at: deps.nu().toISOString() }) }, nieuw: false } };
+      }
+
+      const lijst = await deps.lijstVersies(userId, aanvraagId);
+
+      if (lijst === null) return NIET_BESCHIKBAAR;
+
+      // Is het maximum bereikt, dan gaat het oudste concept weg dat niet de definitieve versie is. Zijn er alleen definitieve versies, dan stopt het hier.
+      if (lijst.length >= MAX_VERSIES) {
+        const weg = [...lijst].filter((v) => v.status === 'concept' && v.id !== stand.definitieve_versie_id && v.id !== (basis ? basis.id : '')).sort((a, b) => a.nummer - b.nummer)[0];
+
+        if (!weg) return fout(409, 'versies-vol', `Er zijn al ${MAX_VERSIES} versies en die zijn allemaal definitief. Verwijder eerst een oude versie.`);
+        if (!(await deps.verwijderVersie(userId, weg.id))) return NIET_BESCHIKBAAR;
+      }
+
+      const nieuw = await deps.maakVersie({ user_id: userId, aanvraag_id: aanvraagId, naam, status: 'concept', herkomst: 'lid', antwoorden: onderdelen });
+
+      if (!nieuw) return NIET_BESCHIKBAAR;
+
+      // Wie verder werkt na een definitieve versie, is weer bezig met een concept.
+      if (stand.status === 'definitief') await deps.zetAanvraagStatus(userId, aanvraagId, { status: 'concept' });
+
+      return { status: 200, body: { ok: true, versie: samenvatVersie(nieuw), nieuw: true } };
+    }
+
+    if (modus === 'versie-wijzigen') {
+      const versieId = idVan(body.versieId);
+      const actie = body.actie;
+
+      if (!versieId || !['hernoem', 'definitief', 'concept'].includes(actie)) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+      const g = await laadVersie(versieId);
+
+      if ('antwoord' in g) return g.antwoord;
+
+      const { versie, stand } = g;
+
+      if (actie === 'hernoem') {
+        const naam = tekstVeld(body.naam, MAX_VERSIENAAM).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+
+        if (!naam) return fout(400, 'ongeldig', 'Geef de versie een naam.');
+        if (!(await deps.werkVersieBij(userId, versie.id, { naam }))) return NIET_BESCHIKBAAR;
+
+        return { status: 200, body: { ok: true, versie: samenvatVersie({ ...versie, naam }) } };
+      }
+
+      if (actie === 'definitief') {
+        const volledig = await deps.leesVersie(userId, versie.id);
+
+        if (volledig === 'storing' || !volledig) return NIET_BESCHIKBAAR;
+
+        const onderdelen = schoneOnderdelen(volledig.antwoorden, MAX_TOTAAL_TEKENS * 2);
+
+        if (!onderdelen || !heeftInhoud(onderdelen)) return fout(400, 'leeg', 'Een lege versie kan niet definitief worden. Schrijf eerst de tekst.');
+
+        if (!(await deps.werkVersieBij(userId, versie.id, { status: 'definitief' }))) return NIET_BESCHIKBAAR;
+        if (!(await deps.zetAanvraagStatus(userId, versie.aanvraag_id, { status: 'definitief', definitieve_versie_id: versie.id }))) return NIET_BESCHIKBAAR;
+
+        return { status: 200, body: { ok: true, versie: samenvatVersie({ ...versie, status: 'definitief' }), aanvraagStatus: 'definitief', definitieveVersieId: versie.id } };
+      }
+
+      // Terug naar concept: de definitieve versie blijft bewaard; wie verder schrijft, maakt een nieuwe versie.
+      if (!(await deps.zetAanvraagStatus(userId, versie.aanvraag_id, { status: 'concept' }))) return NIET_BESCHIKBAAR;
+
+      return { status: 200, body: { ok: true, versie: samenvatVersie(versie), aanvraagStatus: 'concept', definitieveVersieId: stand.definitieve_versie_id } };
+    }
+
+    // versie-verwijderen
+    const versieId = idVan(body.versieId);
+
+    if (!versieId) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+    const g = await laadVersie(versieId);
+
+    if ('antwoord' in g) return g.antwoord;
+    if (g.stand.definitieve_versie_id === g.versie.id) return fout(409, 'definitief', 'De definitieve versie kunt u niet verwijderen. Maak eerst een andere versie definitief.');
+    if (!(await deps.verwijderVersie(userId, g.versie.id))) return NIET_BESCHIKBAAR;
+
+    return { status: 200, body: { ok: true, verwijderd: g.versie.id } };
   }
 
   // ── eisen-ophalen ─────────────────────────────────────────────────────────────────────────────────────────

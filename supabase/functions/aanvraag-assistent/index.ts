@@ -20,6 +20,9 @@ const MAX_OUTPUT_TOKENS = 4000;
 const BEOORDELINGEN_TABEL = 'subsidie_kompas_aanvraag_beoordelingen';
 const MAX_LIMIET = 1_000_000; // de database-functie neemt een gewoon getal; een onbegrensde (admin-)limiet wordt hier begrensd
 const AANVRAGEN_TABEL = 'subsidie_kompas_aanvragen';
+const VERSIES_TABEL = 'subsidie_kompas_aanvraag_versies';
+const VERSIE_LIJST_KOLOMMEN = 'id, aanvraag_id, nummer, naam, status, herkomst, beoordeling_id, created_at, updated_at';
+const VERSIE_KOLOMMEN = `${VERSIE_LIJST_KOLOMMEN}, antwoorden`;
 const AANVRAAG_KOLOMMEN = 'id, program_id, soort, fonds_label, criteria, criteria_bron, bronnen, plan, plan_bijgewerkt_op, laatste_beoordeling_id, laatste_uitkomst, created_at, updated_at';
 
 // Organisatieprofiel: kolom in de database naar het veld dat het plan gebruikt (zelfde vertaling als eigenOrganisatieprofiel in subsidie-kompas).
@@ -227,6 +230,74 @@ Deno.serve(async (req) => {
       }
 
       return data?.id ? String(data.id) : null;
+    },
+
+    // Versiebeheer: alleen via deze functie (service role), altijd gefilterd op de gebruiker uit het token. Er wordt nooit iets van de tekst gelogd.
+    leesVersieStand: async (userId: string, aanvraagId: string) => {
+      const { data, error } = await admin.from(AANVRAGEN_TABEL).select('id, soort, status, definitieve_versie_id').eq('id', aanvraagId).eq('user_id', userId).maybeSingle();
+
+      if (error) return 'storing' as const;
+
+      return data ?? null;
+    },
+
+    lijstVersies: async (userId: string, aanvraagId: string) => {
+      const { data, error } = await admin.from(VERSIES_TABEL).select(VERSIE_LIJST_KOLOMMEN).eq('aanvraag_id', aanvraagId).eq('user_id', userId).order('nummer', { ascending: false }).limit(50);
+
+      return error ? null : data ?? [];
+    },
+
+    leesVersie: async (userId: string, versieId: string) => {
+      const { data, error } = await admin.from(VERSIES_TABEL).select(VERSIE_KOLOMMEN).eq('id', versieId).eq('user_id', userId).maybeSingle();
+
+      if (error) return 'storing' as const;
+
+      return data ?? null;
+    },
+
+    // Het volgende nummer is het hoogste nummer plus één; de unieke sleutel (aanvraag, nummer) vangt twee gelijktijdige verzoeken op, dan proberen we het opnieuw.
+    maakVersie: async (rij: Record<string, unknown>) => {
+      for (let poging = 0; poging < 3; poging += 1) {
+        const { data: laatste, error: leesFout } = await admin.from(VERSIES_TABEL).select('nummer').eq('aanvraag_id', rij.aanvraag_id).order('nummer', { ascending: false }).limit(1);
+
+        if (leesFout) return null;
+
+        const nummer = (laatste && laatste[0] ? Number(laatste[0].nummer) : 0) + 1;
+        const { data, error } = await admin.from(VERSIES_TABEL).insert({ ...rij, nummer }).select(VERSIE_LIJST_KOLOMMEN).single();
+
+        if (!error) return data;
+        if (error.code !== '23505') {
+          console.error('[aanvraag-assistent] versie_opslaan_mislukt');
+
+          return null;
+        }
+      }
+
+      return null;
+    },
+
+    werkVersieBij: async (userId: string, versieId: string, velden: Record<string, unknown>) => {
+      const { error } = await admin.from(VERSIES_TABEL).update(velden).eq('id', versieId).eq('user_id', userId);
+
+      if (error) console.error('[aanvraag-assistent] versie_bijwerken_mislukt');
+
+      return !error;
+    },
+
+    verwijderVersie: async (userId: string, versieId: string) => {
+      const { error } = await admin.from(VERSIES_TABEL).delete().eq('id', versieId).eq('user_id', userId);
+
+      if (error) console.error('[aanvraag-assistent] versie_verwijderen_mislukt');
+
+      return !error;
+    },
+
+    zetAanvraagStatus: async (userId: string, aanvraagId: string, velden: Record<string, unknown>) => {
+      const { error } = await admin.from(AANVRAGEN_TABEL).update(velden).eq('id', aanvraagId).eq('user_id', userId);
+
+      if (error) console.error('[aanvraag-assistent] aanvraagstatus_mislukt');
+
+      return !error;
     },
 
     // Wat het plan van dit lid weet: het project (alleen eigen, niet gearchiveerd), de Projectdocumentatie en het organisatieprofiel.

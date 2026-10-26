@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 let status = 0;
 
-for (const b of ['module', 'handler', 'plan']) {
+for (const b of ['module', 'handler', 'plan', 'versies']) {
   await build({
     entryPoints: [`tests/aanvraag-assistent/${b}.test.mjs`],
     outfile: `tests/aanvraag-assistent/.build/${b}.bundle.mjs`,

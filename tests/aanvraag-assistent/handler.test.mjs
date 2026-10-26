@@ -561,9 +561,12 @@ sectie('5. De Edge Function zelf (statische controles)');
   check('de service-role-sleutel verlaat de functie niet (geen console.log van sleutels of body)', !/console\.(log|error)\([^)]*(serviceKey|apiKey|bodyText|aanvraagTekst)/.test(code));
   check('de maandgrens loopt via de atomaire database-functies, niet via kompas_gebruik_log', /aanvraag_verbruik_reserveer/.test(code) && /aanvraag_verbruik_rond_af/.test(code) && /aanvraag_verbruik_tel/.test(code) && !/kompas_gebruik_log/.test(code));
   check('het tokengebruik van de Responses API wordt vertaald (tokensUitUsage), anders blijft het op 0', /tokensUitUsage\(data\?\.usage\)/.test(code) && /prompt_tokens:\s*tokens\.input/.test(code));
-  check('geen verwijdering (delete) in de functie', !/\.delete\(/.test(code));
+  // Sinds 26-10-2026 mag het lid zijn eigen bewaarde versies verwijderen (alleen die tabel, altijd gefilterd op de gebruiker uit het token).
+  check('verwijderen kan alleen een eigen versie (één delete, op de versietabel, gefilterd op de gebruiker)', (code.match(/\.delete\(/g) ?? []).length === 1 && /\.from\(VERSIES_TABEL\)\.delete\(\)\.eq\('id', versieId\)\.eq\('user_id', userId\)/.test(code));
   check('websites alleen via de veilige ophaalfunctie, geen losse fetch naar gebruikers-URL\'s', /safeFetchPublicPage/.test(code) && (code.match(/fetch\(/g) ?? []).length === 1);
-  check('de functie schrijft alleen naar de beoordelingen en de aanvragen (en de gebruiksmeter via legGebruik)', (code.match(/\.insert\(/g) ?? []).length === 1 && (code.match(/\.upsert\(/g) ?? []).length === 1 && !/\.update\(/.test(code) && /BEOORDELINGEN_TABEL/.test(code) && /AANVRAGEN_TABEL/.test(code));
+  check('de functie schrijft alleen naar de beoordelingen, de aanvragen en de versies (en de gebruiksmeter via legGebruik)', (code.match(/\.insert\(/g) ?? []).length === 2 && (code.match(/\.upsert\(/g) ?? []).length === 1 && /BEOORDELINGEN_TABEL/.test(code) && /AANVRAGEN_TABEL/.test(code) && /VERSIES_TABEL/.test(code));
+  check('elke wijziging van een bestaande rij (update) filtert op de gebruiker uit het token', (code.match(/\.update\(/g) ?? []).length === 2 && (code.match(/\.update\([^\n]*\.eq\('user_id', userId\)/g) ?? []).length === 2);
+  check('een versie krijgt nooit een eigenaar uit de client (user_id komt uit het token)', /maakVersie\(\{ user_id: userId,/.test(readFileSync('supabase/functions/_shared/aanvraagHandler.ts', 'utf8')));
   check('elke aanvragenquery filtert op de gebruiker uit het token', (code.match(/\.from\(AANVRAGEN_TABEL\)[\s\S]*?\.eq\('user_id', userId\)/g) ?? []).length >= 2);
   check('het plan leest alleen het eigen, niet-gearchiveerde project', /\.eq\('user_id', userId\)\.is\('archived_at', null\)/.test(code));
 }
