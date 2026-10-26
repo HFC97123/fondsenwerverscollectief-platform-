@@ -210,7 +210,7 @@ function BelangrijksteFonds({ regels, nu }) {
             </span>
           </div>
           <div style={css(`${TEKST} font-size: 13.5px;`)}>
-            {dagen != null && dagen >= 0 ? `Aanvraag indienen vóór ${formatDatum(top.deadline)} (${dagenTekst(dagen)}).` : 'Toets passendheid, kansrijkheid en indiendatum of vergaderdatum met de financier.'}
+            {dagen != null && dagen >= 0 ? `Aanvraag indienen vóór ${formatDatum(top.deadline)} (${dagenTekst(dagen)}).` : 'Toets kansrijkheid en indiendatum of vergaderdatum met de financier.'}
           </div>
         </div>
       )}

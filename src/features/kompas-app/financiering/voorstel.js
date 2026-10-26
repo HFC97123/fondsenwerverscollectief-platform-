@@ -371,11 +371,11 @@ export function beoordeelProject({ project, antwoorden, documentBedragen } = {})
 // 2. Terugplannen van acties vanaf een geverifieerde fondsdeadline
 // ---------------------------------------------------------------------------
 
-// Eerste stap van elk plan zonder betrouwbare deadline (opdracht Aisya, 25-10-2026: passendheid, kansrijkheid en indien- of vergaderdatum toetsen;
+// Eerste stap van elk plan zonder betrouwbare deadline (opdracht Aisya, 25-10-2026: kansrijkheid en indien- of vergaderdatum toetsen;
 // nooit "bron controleren": de bron staat erbij en controleren is de verantwoordelijkheid van het lid, geen actie). Eén vaste titel, zodat de planningsmotor, dit vangnet en het ontdubbelen dezelfde
 // stap herkennen.
 export function navragenTitel(naam) {
-  return `Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met ${naam}`.slice(0, MAX.titel);
+  return `Kansrijkheid en indiendatum of vergaderdatum toetsen met ${naam}`.slice(0, MAX.titel);
 }
 
 // Herkomst van een actiedatum: uit de bron, berekend uit een bekende deadline of termijn, of een voorlopige planningsaanname.
@@ -393,7 +393,7 @@ export function verificatieActie(regel, vandaag) {
     datumType: DATUM_TYPE.STREEF,
     externeDeadline: null,
     prioriteit: 'high',
-    toelichting: 'Er is nog geen indiendatum bekend. Toets met de financier of uw project past en kansrijk is, wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn) en hoe lang de behandeling duurt.',
+    toelichting: 'Er is nog geen indiendatum bekend. Toets met de financier of uw project kansrijk is, wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn) en hoe lang de behandeling duurt.',
     automatisch: true,
     fase: 'navragen',
     datumHerkomst: 'aanname',

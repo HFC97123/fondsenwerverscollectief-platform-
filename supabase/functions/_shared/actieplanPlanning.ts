@@ -312,7 +312,7 @@ export function planFinancier(naam: string, planningIn: PlanningBron | null | un
     const afgeleid = (iso: string, wat: string): DatumInfo => ({ datum: iso, herkomst: 'berekend', bron: `${wat}, teruggerekend vanaf ${deadlineInfo.bron}` });
     const startBron = (iso: string): DatumInfo => afgeleid(iso, kortTijd ? `start voorbereiding nu, door de korte tijd samengedrukt in ${beschikbaar} dagen` : `start ${P} dagen (6 weken) vóór de deadline`);
 
-    maak('passendheid', `Passendheid van ${naam} beoordelen`, 'high', `${kortZin}Lees de actuele voorwaarden, doelgroep en werkgebied en noteer wat niet past of onduidelijk is.`, startBron(op(0)));
+    maak('passendheid', `Kansrijkheid van ${naam} beoordelen`, 'high', `${kortZin}Lees de actuele voorwaarden, doelgroep en werkgebied en noteer wat niet past of onduidelijk is.`, startBron(op(0)));
     maak('adviseur', `Subsidieadviseur raadplegen over ${naam}: go/no-go en aanpak`, 'high', 'Bespreek of de aanvraag kans maakt, hoe u haar het best opbouwt en welke stukken nodig zijn.', startBron(op(0)));
 
     if (contactOk) {
@@ -344,8 +344,8 @@ export function planFinancier(naam: string, planningIn: PlanningBron | null | un
             ? `De status is "${status}".`
             : 'Er is geen betrouwbare aanvraagdeadline bekend.';
 
-    maak('navragen', navragenTitel(naam), 'high', `${reden} Toets met de financier of uw project past en kansrijk is, en wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn).${termijnTekst ? ` Volgens onze bron: "${termijnTekst}".` : ''}`, start);
-    maak('passendheid', `Passendheid van ${naam} beoordelen`, 'high', 'Lees de actuele voorwaarden, doelgroep en werkgebied en noteer wat niet past of onduidelijk is.', start);
+    maak('navragen', navragenTitel(naam), 'high', `${reden} Toets met de financier of uw project kansrijk is, en wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn).${termijnTekst ? ` Volgens onze bron: "${termijnTekst}".` : ''}`, start);
+    maak('passendheid', `Kansrijkheid van ${naam} beoordelen`, 'high', 'Lees de actuele voorwaarden, doelgroep en werkgebied en noteer wat niet past of onduidelijk is.', start);
     maak('adviseur', `Subsidieadviseur raadplegen over ${naam}: go/no-go en aanpak`, 'high', 'Bespreek of de aanvraag kans maakt en hoe u haar het best opbouwt.', start);
 
     if (modus === 'doorlopend' && T0) {

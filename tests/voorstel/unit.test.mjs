@@ -160,7 +160,7 @@ const anderDatum = v(voorstel({ regels: [regelOnline({ deadline: { status: 'geve
 gelijk('online datum die niet in het fragment staat: te verifiëren', anderDatum.voorstel.regels[0].deadline.status, 'te-verifieren');
 check('datumInFragment kent gangbare Nederlandse notaties', ['15 november 2026', '15-11-2026', '15/11/2026', '15.11.2026', '2026-11-15', '15 nov 2026', '15 november 2026.'].every((f) => datumInFragment('2026-11-15', `Sluiting: ${f}`)) && !datumInFragment('2026-11-15', 'Sluiting 16 november 2026') && !datumInFragment('2026-11-15', '') && !datumInFragment('2026-02-30', '30 februari 2026'));
 const verif = v(voorstel({ regels: [regelDb({ deadline: null })] }), recordZonder);
-gelijk('zonder geverifieerde deadline komt er automatisch een verificatietaak (geen verzonnen datum)', verif.voorstel.acties.map((a) => [a.titel, a.automatisch, a.externeDeadline]), [['Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met Regeling A', true, null]]);  // sinds ronde 4: de planningsmotor begint zonder betrouwbare deadline met navragen
+gelijk('zonder geverifieerde deadline komt er automatisch een verificatietaak (geen verzonnen datum)', verif.voorstel.acties.map((a) => [a.titel, a.automatisch, a.externeDeadline]), [['Kansrijkheid en indiendatum of vergaderdatum toetsen met Regeling A', true, null]]);  // sinds ronde 4: de planningsmotor begint zonder betrouwbare deadline met navragen
 gelijk('verificatietaak: interne streefdatum over 7 dagen, hoge prioriteit', [verif.voorstel.acties[0].datum, verif.voorstel.acties[0].datumType, verif.voorstel.acties[0].prioriteit], ['2026-10-19', 'streef', 'high']);
 check('geen tweede verificatietaak als het model die zelf al gaf', (() => { const a = verificatieActie({ sleutel: `r:regeling:${U1}`, naam: 'Regeling A' }, VANDAAG); return v(voorstel({ regels: [regelDb({ deadline: null })], acties: [{ ...a, regelSleutel: `r:regeling:${U1}` }] }), recordZonder).voorstel.acties.length === 1; })());
 const cofRec = v(voorstel(), ctx({ bekendeBronnen: bk({ cofinanciering: 'Minimaal 20% eigen financiering' }) }));
@@ -190,7 +190,7 @@ gelijk('terugplannen (slank): indienen op de deadline en de uitslag ongeveer 3 m
 check('terugplannen: externe deadline staat bij het indienen, datums zijn streefdatums', pl[0].externeDeadline === '2026-12-01' && pl[1].externeDeadline === null && pl.every((a) => a.datumType === 'streef'));
 const krap = plantTerug({ sleutel: sl, naam: 'Regeling A', deadline: { status: 'geverifieerd', datum: '2026-10-20' } }, VANDAAG);
 check('weinig tijd: indienen nooit vóór vandaag en niet na de deadline, de uitslag komt erna', krap.every((a) => a.datum >= VANDAAG) && krap[0].datum <= '2026-10-20' && krap[1].datum > krap[0].datum);
-gelijk('terugplannen zonder geverifieerde deadline: alleen een verificatietaak', plantTerug({ sleutel: sl, naam: 'Regeling A', deadline: { status: 'te-verifieren', datum: null } }, VANDAAG).map((a) => a.automatisch && a.titel), ['Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met Regeling A']);  // sinds ronde 4
+gelijk('terugplannen zonder geverifieerde deadline: alleen een verificatietaak', plantTerug({ sleutel: sl, naam: 'Regeling A', deadline: { status: 'te-verifieren', datum: null } }, VANDAAG).map((a) => a.automatisch && a.titel), ['Kansrijkheid en indiendatum of vergaderdatum toetsen met Regeling A']);  // sinds ronde 4
 
 console.log('== totalen en schalen');
 const goed = v(voorstel({ regels: [regelDb({ bedrag: 20000 }), regelDb({ id: U2, naam: 'Regeling B', bedrag: 30000 })] })).voorstel;

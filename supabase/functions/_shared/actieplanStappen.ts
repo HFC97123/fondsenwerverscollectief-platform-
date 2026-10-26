@@ -40,7 +40,7 @@ export interface PlantUitkomst {
 // Plan voor één regel, slank (opdracht Aisya, 24-10-2026):
 //   - Is er een eerstvolgende indiendatum bekend (uit onze database), dan twee acties: indienen op die datum en de uitslag. Is er geen
 //     behandeltermijn of beoordelingsmoment bekend, dan geldt: uitslag binnen ongeveer 3 maanden na indienen.
-//   - Is er geen indiendatum bekend, dan één actie: passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met het fonds.
+//   - Is er geen indiendatum bekend, dan één actie: kansrijkheid en indiendatum of vergaderdatum toetsen met het fonds.
 // De volledige planningsmotor (planFinancier) blijft de datums en de samenvatting voor de interface leveren.
 export function plantRegel(regel: ContractRegel, vandaag: string, opties: PlantOpties = {}): PlantUitkomst {
   const geverifieerd = Boolean(regel.deadline && regel.deadline.status === 'geverifieerd' && regel.deadline.datum && isEchteDatum(regel.deadline.datum));
@@ -94,7 +94,7 @@ export function plantRegel(regel: ContractRegel, vandaag: string, opties: PlantO
         datum,
         externeDeadline: null,
         prioriteit: 'high',
-        toelichting: 'Er is nog geen indiendatum bekend. Toets met de financier of uw project past en kansrijk is, wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn) en hoe lang de behandeling duurt.',
+        toelichting: 'Er is nog geen indiendatum bekend. Toets met de financier of uw project kansrijk is, wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn) en hoe lang de behandeling duurt.',
         fase: 'navragen',
         datumHerkomst: datum ? 'aanname' : null,
         datumBron: datum ? 'eigen streefdatum' : null,
@@ -109,10 +109,10 @@ export function plantActies(regel: ContractRegel, vandaag: string, opties: Plant
   return plantRegel(regel, vandaag, opties).acties;
 }
 
-// Een online gevonden financier (staat niet in onze database): geen deadline of bedrag bekend, dus één stap: passendheid en indiendatum toetsen.
+// Een online gevonden financier (staat niet in onze database): geen deadline of bedrag bekend, dus één stap: kansrijkheid en indiendatum toetsen.
 // De titel is dezelfde als bij een financier zonder indiendatum, zodat een tweede poging hem als dubbel herkent.
 export function plantOnlineActies(naam: string, url: string | null, vandaag: string): Array<{ titel: string; datum: string | null; prioriteit: 'high' | 'normal' | 'low'; toelichting: string }> {
   const bron = url ? ` Gevonden via ${url}.` : '';
 
-  return [{ titel: navragenTitel(naam).slice(0, MAX_TITEL), datum: plusDagen(vandaag, 7), prioriteit: 'high', toelichting: `Toets met de financier of uw project past en kansrijk is, wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn) en hoe lang de behandeling duurt.${bron}` }];
+  return [{ titel: navragenTitel(naam).slice(0, MAX_TITEL), datum: plusDagen(vandaag, 7), prioriteit: 'high', toelichting: `Toets met de financier of uw project kansrijk is, wanneer u kunt indienen (indiendatum, vergaderdatum of indientermijn) en hoe lang de behandeling duurt.${bron}` }];
 }

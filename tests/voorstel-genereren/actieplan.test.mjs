@@ -52,14 +52,14 @@ sectie('1. Regel zonder bekende deadline: concrete eigen stappen, geen verzonnen
   const t = takenVan(f);
   const alle = w.db.actions;
 
-  const contactTitel = 'Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met Landelijk Muziekpodium';
+  const contactTitel = 'Kansrijkheid en indiendatum of vergaderdatum toetsen met Landelijk Muziekpodium';
 
   check('opgeslagen en actieplan klaar', uit.status === 200 && uit.json.actieplan.status === 'klaar' && t.length === 1, JSON.stringify(uit.json?.actieplan));
   check('slank: zonder bekende indiendatum één actie "contact opnemen met het fonds"', t.length === 1 && t[0].title === contactTitel, alle.map((x) => x.title).join(' | '));
   check('geen deadline bekend: de datum is hooguit een eigen streefdatum vanaf vandaag', t.every((x) => !x.due_date || x.due_date >= vandaag));
   check('geen enkele stap doet alsof er een deadline van de financier is', t.every((x) => !/deadline van de financier is/i.test(x.notes || '')));
   check('stappen zijn gekoppeld aan de regel', t.every((x) => x.funding_id === f.id));
-  check('geen losse stappen meer voor bron controleren, passendheid of adviseur', !alle.some((x) => /zelf controleren|Passendheid van .* beoordelen|Subsidieadviseur|Projectstukken/.test(x.title)));
+  check('geen losse stappen meer voor bron controleren, passendheid of adviseur', !alle.some((x) => /zelf controleren|(?:Passendheid|Kansrijkheid) van .* beoordelen|Subsidieadviseur|Projectstukken/.test(x.title)));
   const retry = await opslaan([r('regeling', A3, 10000)], { alleenActies: true });
   check('opnieuw proberen: dezelfde titels, geen dubbelen', retry.json.actieplan.aangemaakt === 0 && w.db.actions.length === alle.length);
 }
@@ -71,7 +71,7 @@ sectie('2. Regel zonder grenzen en zonder bedrag: eigen stappen voor wat ontbree
   wereld({ ...pool([zonderGrenzen]) });
   await opslaan([r('regeling', id(0xa4), null)]);
   const t = takenVan(fundingVan(id(0xa4)) || {});
-  check('geen bijdragegrenzen of bedrag: toch alleen de ene contactactie', t.length === 1 && /^Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met Grenzeloos Fonds/.test(t[0].title), t.map((x) => x.title).join(' | '));
+  check('geen bijdragegrenzen of bedrag: toch alleen de ene contactactie', t.length === 1 && /^Kansrijkheid en indiendatum of vergaderdatum toetsen met Grenzeloos Fonds/.test(t[0].title), t.map((x) => x.title).join(' | '));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -103,7 +103,7 @@ sectie('4. Online suggestie: bruikbare beoordelingsroute, onzekere status behoud
   const taken = (f) => takenVan(f);
 
   check('suggesties opgeslagen als Interessant, zonder bedrag, "nog niet gecontroleerd"', op.length === 2 && op.every((f) => f.status === 'interesting' && f.requested_amount === null && /nog niet gecontroleerd/.test(f.notes)));
-  check('elke suggestie krijgt één stap: contact opnemen', op.every((f) => taken(f).length === 1) && /^Passendheid, kansrijkheid en indiendatum of vergaderdatum toetsen met Online Fonds BV - Kleine Regeling/.test(taken(op[0])[0].title));
+  check('elke suggestie krijgt één stap: contact opnemen', op.every((f) => taken(f).length === 1) && /^Kansrijkheid en indiendatum of vergaderdatum toetsen met Online Fonds BV - Kleine Regeling/.test(taken(op[0])[0].title));
   check('de stap noemt de financier en de bron, geen deadline of bedrag verzonnen', taken(op[0]).every((x) => x.title.includes('Online Fonds BV - Kleine Regeling')) && /online\.example\.nl/.test(taken(op[0])[0].notes));
   check('datums zijn eigen streefdata vanaf vandaag', op.every((f) => taken(f).every((x) => x.due_date >= vandaag)));
   check('antwoord bevat fundingId voor regels en suggesties (voor Bespreek met Subsidiekompas)', uit.json.regels.every((x) => /^[0-9a-f-]{36}$/.test(x.fundingId || '')) && uit.json.suggesties.every((x) => /^[0-9a-f-]{36}$/.test(x.fundingId || '')), JSON.stringify(uit.json.suggesties));
