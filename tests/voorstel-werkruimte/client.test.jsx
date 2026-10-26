@@ -16,7 +16,6 @@ const W = await import('../../src/features/kompas-app/financiering/voorstelWerk.
 const B = await import('../../src/features/kompas-app/financiering/bronStatus.js');
 const S = await import('../../src/data/services/voorstelGenereren.js');
 const { default: VoorstelWerkruimte } = await import('../../src/features/kompas-app/financiering/VoorstelWerkruimte.jsx');
-const { default: FondsMatchKaart } = await import('../../src/features/kompas-app/chat/FondsMatchKaart.jsx');
 const { readFileSync } = await import('node:fs');
 const { join } = await import('node:path');
 
@@ -765,65 +764,8 @@ sectie('11. Fouten, hint, documenten, online suggesties');
   check('regel die al in het plan staat wordt niet opnieuw gecontroleerd', s5.log.filter(([n]) => n === 'controleer').length === 0);
 }
 
-sectie('12. Chat-ingang (FondsMatchKaart): dezelfde voorbereiding, geen directe opslag');
-{
-  const items = [
-    { type: 'regeling', id: ID1, naam: 'Regeling 1', gever: 'Gever 1', deadline: '2026-12-01', waarom: ['Past'] },
-    { type: 'regeling', id: ID2, naam: 'Regeling 2', gever: 'Gever 2', deadline: null, waarom: ['Past'] },
-  ];
-  const lijst = { projectId: PID, items, intentie: 'scan' };
-  const s = maakServer();
-  s.houdVast(ID1);
-  let gewijzigd = 0;
-  await toon(<FondsMatchKaart lijst={lijst} berichtId="m1" projectNaam="Project" projecten={[]} onGewijzigd={() => { gewijzigd += 1; }} voorstelAan diensten={s.diensten} />);
-  check('kaart: knoppen noemen voorbereiden/controleren, niet "direct toevoegen"', /Controleren en toevoegen/.test(q('[data-testid="fm-toevoegen"]').textContent) && /voorbereiden voor het dekkingsplan/.test(q('[data-testid="fm-alles-toevoegen"]').textContent));
-  await klik(q('[data-testid="fm-alles-toevoegen"]'));
-  await rust(60);
-  check('geen directe opslag; chat-voorbereiding geopend', !!q('[data-testid="fm-voorbereiding"]') && s.fundings.size === 0 && client.log.andere.length === 0);
-  check('chat-ingang: startpunt aangeroepen met type + id, niet genereren', s.log[0][0] === 'startpunt' && !s.log.some(([n]) => n === 'genereer'));
-  check('dezelfde werkruimte, ingang chat', q('[data-testid="voorstel-werkruimte"]').dataset.ingang === 'chat' && !q('[data-testid="voorstel-start-knop"]'));
-  check('dezelfde preview: 2 regels met Controleren… / Gecontroleerd en dezelfde buffertekst', qa('[data-testid="voorstel-rij"]').length === 2 && statussen()[0] === 'controleren' && /Buffer voor afwijzingen: 10%/.test(q('[data-testid="voorstel-buffer"]').textContent));
-  check('chat: alles aangevinkt, bedragen leeg (lid kiest zelf)', qa('[data-testid="voorstel-kies"]').every((c) => c.checked) && qa('[data-testid="voorstel-bedrag"]').every((c) => c.value === ''));
-  s.geefVrij(ID1);
-  await rust(60);
-  check('statussen komen binnen per regel', statussen().join() === 'gecontroleerd,gecontroleerd');
-  await typ(qa('[data-testid="voorstel-bedrag"]')[0], '12.000');
-  await klik(q('[data-testid="voorstel-opslaan"]'));
-  await rust();
-  const c = opslagCalls(s)[0];
-  check('opslaan via dezelfde server-opslag: type/id/bedrag, bedrag leeg = null', JSON.stringify(c.regels) === JSON.stringify([{ type: 'regeling', id: ID1, bedrag: 12000 }, { type: 'regeling', id: ID2, bedrag: null }]), JSON.stringify(c.regels));
-  check('server bewaart regels en maakt taken', s.fundings.size === 2 && s.taken.size === 2 && q('[data-testid="voorstel-actieplan"]').dataset.status === 'klaar');
-  check('kaart-items staan nu op "toegevoegd" en project wordt ververst', qa('[data-testid="fm-item"]').every((i) => i.dataset.status !== 'klaar') && gewijzigd >= 1, qa('[data-testid="fm-item"]').map((i) => i.dataset.status).join());
-  await klik(q('[data-testid="voorstel-sluiten"]'));
-  check('sluiten: voorbereiding weg', !q('[data-testid="fm-voorbereiding"]'));
-  // Dezelfde regels via de project-ingang -> dezelfde opgeslagen rijen en taken
-  const sP = maakServer();
-  await toon(werkruimte(sP));
-  await klik(q('[data-testid="voorstel-start-knop"]'));
-  await rust(80);
-  await typ(qa('[data-testid="voorstel-bedrag"]')[0], '12.000');
-  await klik(qa('[data-testid="voorstel-kies"]')[1]);
-  await klik(qa('[data-testid="voorstel-kies"]')[1]);
-  await typ(qa('[data-testid="voorstel-bedrag"]')[1], '30.000');
-  await klik(q('[data-testid="voorstel-opslaan"]'));
-  await rust();
-  check('beide ingangen: dezelfde financieringsregels en dezelfde taken in de opslag', [...sP.fundings.keys()].sort().join() === [...s.fundings.keys()].sort().join() && [...sP.taken.keys()].sort().join() === [...s.taken.keys()].sort().join());
-  await klik(q('[data-testid="voorstel-sluiten"]'));
-}
-{
-  // Chat: server weigert (alles gefilterd) -> melding + opnieuw proberen, niets opgeslagen
-  const items = [{ type: 'regeling', id: ID1, naam: 'Regeling 1', gever: 'G', deadline: null, waarom: [] }];
-  const s = maakServer({ start: null });
-  await toon(<FondsMatchKaart lijst={{ projectId: PID, items, intentie: 'scan' }} berichtId="m2" projectNaam="Project" projecten={[]} voorstelAan diensten={s.diensten} />);
-  await klik(q('[data-testid="fm-toevoegen"]'));
-  await rust(60);
-  check('chat-ingang mislukt: melding en knop opnieuw proberen, niets opgeslagen', /Geen van deze financiers/.test(q('[data-testid="voorstel-fout"]').textContent) && !!q('[data-testid="voorstel-opnieuw"]') && s.fundings.size === 0);
-  s.diensten.startpunt = async () => ({ ok: true, antwoord: startpuntAntwoord() });
-  await klik(q('[data-testid="voorstel-opnieuw"]'));
-  await rust(80);
-  check('opnieuw proberen werkt', qa('[data-testid="voorstel-rij"]').length === 2);
-  await weg();
-}
+// Sectie 12 (chat-ingang via FondsMatchKaart) vervalt: de keuzekaart in de chat zet een fonds sinds oktober 2026 direct in het dekkingsplan
+// (zie tests/fase5/kaart.test.jsx). De voorbereiding met bedragen en actieplan loopt via de projectpagina.
 
 sectie('12b. Bespreek met Subsidiekompas per regel, vervolgacties voor online suggesties en herstel met suggesties');
 {

@@ -61,7 +61,7 @@ const aanroepen2 = [];
 await fm.voegItemsToe({ items: lijst.items, projectId: PROJ, projecten, huidig: { [`regeling:${U(3)}`]: 'toegevoegd', [`fonds:${U(4)}`]: 'staat-al' }, voegToe: async (a) => { aanroepen2.push(a); return { ok: true }; } });
 check('2e: items die al toegevoegd zijn of al in het dekkingsplan staan worden niet nogmaals verstuurd', aanroepen2.length === 1 && aanroepen2[0].bron.id === U(7));
 check('2f: beginStatussen respecteert staatAl uit de server', fm.beginStatussen([item(3, { staatAl: true }), item(4)])[`regeling:${U(3)}`] === 'staat-al' && fm.beginStatussen([item(4)])[`regeling:${U(4)}`] === 'klaar');
-check('2g: telStatussen/samenvatting', fm.samenvattingTekst({ toegevoegd: 3, staatAl: 1, mislukt: 0 }) === '3 toegevoegd aan projectfinanciering · 1 stond er al in' && fm.kopTekst(4) === '4 kansrijke financiers gevonden' && fm.kopTekst(1) === '1 kansrijke financier gevonden');
+check('2g: telStatussen/samenvatting', fm.samenvattingTekst({ toegevoegd: 3, staatAl: 1, mislukt: 0 }) === '3 toegevoegd aan het dekkingsplan · 1 stond er al in' && fm.kopTekst(4) === '4 passende fondsen' && fm.kopTekst(1) === '1 passend fonds');
 
 // de echte service-keten: ongeldig project / bron wordt geweigerd vóór er een insert gebeurt
 const toev = await import(pathToFileURL(join(uit, 'fondsMatches.mjs')).href);

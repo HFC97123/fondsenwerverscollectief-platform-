@@ -1,5 +1,6 @@
 // Toevoegen aan projectfinanciering: de ENE use-case voor "voeg deze regeling of dit fonds toe aan een project".
-// Gebruikt door de toevoegdialoog op Deadlines (en door niets anders): er is nergens een tweede insert-pad.
+// Gebruikt door de toevoegdialoog op Deadlines en de fondsenkaart in de chat. Daarnaast één pad voor een financier op naam
+// (een fonds dat niet in onze database staat): voegOnlineToeAanProjectfinanciering, via voegFinancierToe.
 //
 // Wat hier bewust NIET gebeurt: namen, deadlines of bedragen van de bron kopiëren. Er gaat alleen een
 // verwijzing (scheme_id óf funder_id) plus het optionele gevraagde bedrag en de startstatus de database in.
@@ -7,7 +8,7 @@
 // de controles hier zijn alleen voor een vriendelijke melding.
 import { getDeadlineAccess } from '../../../data/services/deadlines.js';
 import { isEchtId } from '../../../data/services/projecten.js';
-import { haalDekkingsplan, voegRegelToe } from '../../../data/services/projectFinanciering.js';
+import { haalDekkingsplan, voegFinancierToe, voegRegelToe } from '../../../data/services/projectFinanciering.js';
 import { leesBedragInvoer } from './dekkingsplan.js';
 
 export const STARTSTATUS = 'interesting';
@@ -76,4 +77,51 @@ export async function voegToeAanProjectfinanciering({ projectId, bron, bedragTek
   });
 
   return res.ok ? { ok: true, id: res.id, projectId } : { ok: false, reden: res.reden || 'fout' };
+}
+
+// Naam waaronder een fonds zonder database-id in het dekkingsplan komt: "Gever - Regeling", of alleen de naam.
+export function naamVoorOnlineFinancier(bron) {
+  const naam = String((bron && bron.naam) || '').trim();
+  const gever = String((bron && bron.funder) || '').trim();
+
+  return (gever && naam && gever !== naam ? `${gever} - ${naam}` : naam || gever).slice(0, 200);
+}
+
+const vergelijkNaam = (v) => String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+// Een fonds dat niet in onze database staat (bijvoorbeeld uit het onderzoek van Subsidie Kompas) op naam toevoegen, met startstatus
+// Interessant, zonder bedrag. De bronlink gaat mee als notitie. Staat er al een regel op naam met dezelfde naam, dan 'bestaat-al'.
+// -> { ok: true, id, projectId } | { ok: false, reden: 'geen-project' | 'geen-bron' | 'bestaat-al' | 'geen-sessie' | 'fout' | ... }
+export async function voegOnlineToeAanProjectfinanciering({ projectId, bron, projecten, voegToe = voegFinancierToe, haal = haalDekkingsplan }) {
+  if (!toevoegbareProjecten(projecten).some((p) => p.id === projectId)) {
+    return { ok: false, reden: 'geen-project' };
+  }
+
+  const naam = naamVoorOnlineFinancier(bron);
+
+  if (!naam) {
+    return { ok: false, reden: 'geen-bron' };
+  }
+
+  try {
+    const huidig = await haal(projectId);
+    const namen = [naam, String((bron && bron.naam) || '')].map(vergelijkNaam).filter(Boolean);
+
+    if (!huidig.error && Array.isArray(huidig.regels) && huidig.regels.some((r) => r && !r.scheme_id && !r.funder_id && namen.includes(vergelijkNaam(r.bron_naam || r.financier_naam)))) {
+      return { ok: false, reden: 'bestaat-al' };
+    }
+  } catch (e) {
+    // Niet te controleren: gewoon toevoegen.
+  }
+
+  const url = String((bron && bron.url) || '');
+  const res = await voegToe({
+    projectId,
+    naam,
+    status: STARTSTATUS,
+    deadline: /^\d{4}-\d{2}-\d{2}$/.test(String((bron && bron.deadline) || '')) ? bron.deadline : null,
+    notitie: /^https:\/\//i.test(url) ? `Bron: ${url}` : '',
+  });
+
+  return res && res.ok ? { ok: true, id: res.id, projectId } : { ok: false, reden: (res && res.reden) || 'fout' };
 }
