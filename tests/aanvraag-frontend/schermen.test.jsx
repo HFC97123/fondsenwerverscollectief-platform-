@@ -288,5 +288,101 @@ sectie('9. Eén tabblad: projectplan en fondsen waar het lid indient');
   await opruimen();
 }
 
+sectie('10. Bewerken, opslaan en versies');
+{
+  async function openAanvraagEnSchrijf(server) {
+    client.__reset();
+    client.__zetSupabase(server.supabase);
+    await server.supabase.functions.invoke('aanvraag-assistent', { body: { mode: 'eisen-ophalen', projectId: PROJECT, fondsLabel: 'Stichting Voorbeeldfonds', formulierTekst: `1. Beschrijf uw project. ${RICHTLIJN}` } });
+    const rij = [...server.s.tabel.values()].find((x) => x.soort === 'fonds');
+    const project = { id: PROJECT, naam: 'Samen Spelen' };
+
+    function HarnasWerk() {
+      const assistent = useAanvraagAssistent(true);
+
+      if (!assistent.klaar) return <div>laden</div>;
+
+      return <AanvragenTab project={project} projecten={[project]} onKiesProject={() => {}} store={{ orgProfile: { name: 'Stichting Samen Spelen' } }} assistent={assistent} start={{ aanvraagId: rij.id, nonce: 1 }} />;
+    }
+
+    await act(async () => { root.render(<HarnasWerk />); });
+    await wacht(() => $('[data-testid="aa-werk"]') && knop('Start schrijven'));
+    await klik(knop('Start schrijven'));
+
+    return rij;
+  }
+
+  const V = maakServer();
+  const rij = await openAanvraagEnSchrijf(V);
+  check('na het schrijven opent het bewerkscherm met een tekstvak per onderdeel (1 formuliervraag = 1 onderdeel)', await wacht(() => $('[data-testid="aa-versie-editor"]')) && $$('[data-testid="aa-onderdeel"] textarea').length === 1);
+  check('nog niets opgeslagen: staat er eerlijk bij en Opslaan is aan', /Nog geen versie opgeslagen/.test(tekst()) && knop('Opslaan als versie').disabled === false && V.s.versies.size === 0);
+  check('het plan staat nog niet als alleen-lezen tekst op het scherm', !$('[data-testid="aa-plan"]'));
+
+  const gebruikVoor = V.s.gebruik.length;
+  const eerste = $$('[data-testid="aa-onderdeel"] textarea')[0];
+  await typ(eerste, 'Onze eigen tekst over de aanleiding.');
+  check('typen toont "Niet opgeslagen" en de tekenteller telt mee', /Niet opgeslagen/.test(tekst()) && /36 tekens/.test($$('[data-testid="aa-onderdeel-telling"]')[0].textContent));
+  await klik(knop('Opslaan als versie'));
+  check('opslaan maakt versie 1 als concept met de eigen tekst', await wacht(() => V.s.versies.size === 1) && [...V.s.versies.values()][0].status === 'concept' && [...V.s.versies.values()][0].antwoorden[0].tekst === 'Onze eigen tekst over de aanleiding.');
+  check('het scherm zegt: alles is opgeslagen, Concept, versie 1', await wacht(() => /Alles is opgeslagen/.test(tekst())) && /Concept · versie 1/.test($('[data-testid="aa-versie-status"]').textContent));
+  check('de lijst met versies toont versie 1', await wacht(() => $$('[data-testid="aa-versie-rij"]').length === 1));
+
+  await typ($$('[data-testid="aa-onderdeel"] textarea')[0], 'Tweede tekst.');
+  await klik(knop('Opslaan als versie'));
+  check('opnieuw opslaan werkt het concept bij: nog steeds 1 versie', await wacht(() => [...V.s.versies.values()][0].antwoorden[0].tekst === 'Tweede tekst.') && V.s.versies.size === 1);
+
+  await typ($$('[data-testid="aa-onderdeel"] textarea')[0], 'Weggooien.');
+  await klik(knop('Terug naar opgeslagen'));
+  check('Terug naar opgeslagen zet de tekst terug', $$('[data-testid="aa-onderdeel"] textarea')[0].value === 'Tweede tekst.' && /Alles is opgeslagen/.test(tekst()));
+
+  await klik(knop('Maak definitief'));
+  check('Maak definitief: de versie en de aanvraag zijn definitief', await wacht(() => rij && V.s.tabel.get(rij.id).status === 'definitief') && [...V.s.versies.values()][0].status === 'definitief' && /Definitief · versie 1/.test($('[data-testid="aa-versie-status"]').textContent));
+  check('de definitieve versie heeft geen Verwijderen, wel Terug naar concept en Download voor indienen', !knop('Verwijder versie 1') && !!knop('Terug naar concept') && !!knop('Download voor indienen'));
+  check('definitief maken en opslaan kosten geen maandruimte en geen model', V.s.gebruik.length === gebruikVoor);
+
+  await typ($$('[data-testid="aa-onderdeel"] textarea')[0], 'Verder geschreven na definitief.');
+  await klik(knop('Opslaan als versie'));
+  check('verder schrijven op een definitieve versie maakt een nieuw concept (versie 2) en laat versie 1 ongemoeid', await wacht(() => V.s.versies.size === 2) && [...V.s.versies.values()][0].antwoorden[0].tekst === 'Tweede tekst.' && V.s.tabel.get(rij.id).status === 'concept');
+  check('versie 1 blijft de definitieve, versie 2 is het concept', await wacht(() => /Concept · versie 2/.test($('[data-testid="aa-versie-status"]').textContent)) && $$('[data-testid="aa-versie-rij"]').length === 2);
+
+  await typ($$('[data-testid="aa-onderdeel"] textarea')[0], 'Niet bewaard.');
+  await klik(knop('Terugzetten'));
+  check('terugzetten met niet-opgeslagen tekst vraagt eerst of het mag', await wacht(() => $('[data-testid="aa-versie-vraag-terugzetten"]')));
+  await klik(knop('Annuleren'));
+  check('annuleren laat de tekst staan', !$('[data-testid="aa-versie-vraag-terugzetten"]') && $$('[data-testid="aa-onderdeel"] textarea')[0].value === 'Niet bewaard.');
+  await klik(knop('Terug naar opgeslagen'));
+  await klik(knop('Terugzetten'));
+  check('terugzetten zonder wijzigingen laadt de oude tekst als nieuwe, nog niet opgeslagen versie', await wacht(() => $$('[data-testid="aa-onderdeel"] textarea')[0].value === 'Tweede tekst.') && /Niet opgeslagen/.test(tekst()) && V.s.versies.size === 2);
+  await klik(knop('Opslaan als versie'));
+  check('opslaan maakt er versie 3 van; de oude versies zijn niet overschreven', await wacht(() => V.s.versies.size === 3) && [...V.s.versies.values()].map((v) => v.nummer).sort().join() === '1,2,3');
+
+  await klik(knop('Verwijder versie 2'));
+  check('verwijderen vraagt eerst om bevestiging', await wacht(() => $('[data-testid="aa-versie-vraag-verwijderen"]')) && V.s.versies.size === 3);
+  await klik(knop('Ja, verwijder'));
+  check('na bevestigen is versie 2 weg, de andere zijn er nog', await wacht(() => V.s.versies.size === 2) && [...V.s.versies.values()].map((v) => v.nummer).sort().join() === '1,3');
+
+  await klik(knop('Deze versie een naam geven'));
+  await typ($('[aria-label="Naam van de versie"]'), 'Voor het bestuur');
+  await klik(knop('Bewaar naam'));
+  check('een versie hernoemen werkt', await wacht(() => [...V.s.versies.values()].some((v) => v.naam === 'Voor het bestuur')) && /Voor het bestuur/.test(tekst()));
+
+  await typ($$('[data-testid="aa-onderdeel"] textarea')[0], 'Nog niet bewaard.');
+  await klik(knop('Terug naar het fonds'));
+  check('sluiten met niet-opgeslagen tekst vraagt wat u wilt doen', await wacht(() => $('[data-testid="aa-versie-vraag-sluiten"]')) && !!$('[data-testid="aa-versie-editor"]'));
+  await klik(knop('Verder werken'));
+  check('verder werken laat u in het scherm', !$('[data-testid="aa-versie-vraag-sluiten"]') && !!$('[data-testid="aa-versie-editor"]'));
+  await klik(knop('Terug naar het fonds'));
+  await klik(knop('Sluiten zonder opslaan'));
+  check('sluiten zonder opslaan brengt u terug naar het fonds', await wacht(() => !$('[data-testid="aa-versie-editor"]') && $('[data-testid="aa-werk"]')));
+  check('onderweg is er niets ingediend of beoordeeld: geen model, geen extra beoordelingen', V.s.beoordelingen.size === 0);
+  await opruimen();
+
+  // Zonder versies op de server (nog niet uitgerold): het plan blijft zoals voorheen, alleen lezen.
+  const Z = maakServer({ zonderVersies: true });
+  await openAanvraagEnSchrijf(Z);
+  check('zonder versie-opslag toont het scherm het plan zoals voorheen (alleen lezen)', await wacht(() => $('[data-testid="aa-plan"]')) && !$('[data-testid="aa-versie-editor"]') && $$('[data-testid="aa-plan-sectie"]').length === 1);
+  await opruimen();
+}
+
 console.log(`\naanvraag-schermen: ${stand.ok} OK, ${stand.fout} FAIL`);
 process.exit(stand.fout ? 1 : 0);

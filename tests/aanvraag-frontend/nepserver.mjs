@@ -82,6 +82,29 @@ export function maakServer(o = {}) {
     meldGebruik: async (m) => { s.gebruik.push(m); },
   };
 
+  // Versies (concept/definitief): een geheugenversie van de tabel, met dezelfde vorm als de echte opslag. Uit te zetten met { zonderVersies: true }.
+  if (!s.opties.zonderVersies) {
+    s.versies = new Map();
+    let vteller = 0;
+    const eigen = (u, id) => { const r = s.tabel.get(id); return r && r.user_id === u ? r : null; };
+
+    Object.assign(deps, {
+      leesVersieStand: async (u, id) => { const a = eigen(u, id); return a ? { id: a.id, soort: a.soort, status: a.status || 'concept', definitieve_versie_id: a.definitieve_versie_id || null } : null; },
+      lijstVersies: async (u, id) => (eigen(u, id) ? [...s.versies.values()].filter((v) => v.aanvraag_id === id).map(({ antwoorden, ...rest }) => rest).sort((x, y) => y.nummer - x.nummer) : []),
+      leesVersie: async (u, id) => { const v = s.versies.get(id); return v && v.user_id === u ? { ...v } : null; },
+      maakVersie: async (rij) => {
+        vteller += 1;
+        const nummer = Math.max(0, ...[...s.versies.values()].filter((v) => v.aanvraag_id === rij.aanvraag_id).map((v) => v.nummer)) + 1;
+        const v = { id: `99999999-9999-4999-8999-${String(vteller).padStart(12, '0')}`, aanvraag_id: rij.aanvraag_id, user_id: rij.user_id, nummer, naam: rij.naam, status: rij.status, herkomst: rij.herkomst, antwoorden: rij.antwoorden, beoordeling_id: null, created_at: '2026-10-26T10:00:00Z', updated_at: '2026-10-26T12:00:00Z' };
+        s.versies.set(v.id, v);
+        return { ...v };
+      },
+      werkVersieBij: async (u, id, velden) => { const v = s.versies.get(id); if (!v || v.user_id !== u) return false; Object.assign(v, velden); return true; },
+      verwijderVersie: async (u, id) => { const v = s.versies.get(id); if (!v || v.user_id !== u) return false; s.versies.delete(id); return true; },
+      zetAanvraagStatus: async (u, id, velden) => { const a = eigen(u, id); if (!a) return false; a.status = velden.status; if ('definitieve_versie_id' in velden) a.definitieve_versie_id = velden.definitieve_versie_id ?? null; return true; },
+    });
+  }
+
   const supabase = {
     functions: {
       invoke: async (naam, opties) => {

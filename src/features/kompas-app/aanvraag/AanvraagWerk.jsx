@@ -1,5 +1,5 @@
 // Eén aanvraag voor één fonds: de criteria controleren en aanpassen, en daarna kiezen: een versie voor dit fonds schrijven en/of een eigen aanvraag laten
-// beoordelen. De server bewaart de criteria, het plan en de laatste uitkomst per fonds. De aanvraagtekst die u laat beoordelen wordt niet bewaard.
+// beoordelen. De server bewaart de criteria, het plan en de laatste uitkomst per fonds. De aanvraagtekst die u laat beoordelen wordt niet bewaard; de versies die u zelf opslaat wel (zie VersieEditor).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
@@ -7,7 +7,7 @@ import { Blok, Chip, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { beoordeelAanvraag, bewaarCriteria, haalAanvraag, haalBeoordeling, schrijfProjectplan } from '../../../data/services/aanvraagAssistent.js';
 import { AanvraagStijl, Bezig, Keuzekaart, PrivaatfondsKaart, RuimteBlok, Stappen } from './Bouwstenen.jsx';
 import BeoordelingResultaat from './BeoordelingResultaat.jsx';
-import PlanEditor from './PlanEditor.jsx';
+import VersieEditor from './VersieEditor.jsx';
 import {
   SOORTEN_KEUZE,
   aanvraagTekstStatus,
@@ -325,7 +325,7 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
       return;
     }
 
-    setPlan({ plan: r.antwoord.plan, opgeslagen: r.antwoord.opgeslagen !== false });
+    setPlan({ plan: r.antwoord.plan, opgeslagen: r.antwoord.opgeslagen !== false, nieuw: true });
     onGewijzigd();
     laad();
   };
@@ -355,7 +355,7 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
       return;
     }
 
-    setPlan({ plan: r.antwoord.aanvraag.plan, opgeslagen: true });
+    setPlan({ plan: r.antwoord.aanvraag.plan, opgeslagen: true, nieuw: false });
   };
 
   const beoordeel = async () => {
@@ -429,7 +429,7 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
     return (
       <>
         <AanvraagStijl />
-        <PlanEditor plan={plan.plan} opgeslagen={plan.opgeslagen} titel={`Projectplan voor ${fondsLabel}`} kop={`Versie voor ${fondsLabel}`} projectNaam={project.naam} store={store} onSluit={() => setPlan(null)} />
+        <VersieEditor aanvraagId={aanvraagId} plan={plan.plan} opgeslagen={plan.opgeslagen} nieuwePlan={plan.nieuw} titel={`Aanvraag voor ${fondsLabel}`} kop={`Aanvraag ${fondsLabel}`} projectNaam={project.naam} store={store} onSluit={() => setPlan(null)} onGewijzigd={onGewijzigd} />
       </>
     );
   }
@@ -522,7 +522,7 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
 
                 {aanvraag && aanvraag.heeftPlan && (
                   <div className="fwk-aa-klein">
-                    U heeft al een versie (bijgewerkt op {datumTekst(aanvraag.planBijgewerkt) || 'onbekende datum'}).{' '}
+                    U heeft al een tekst voor dit fonds (bijgewerkt op {datumTekst(aanvraag.planBijgewerkt) || 'onbekende datum'}).{' '}
                     <button type="button" className="fwk-wp-link" onClick={openPlan}>
                       Openen
                     </button>
@@ -532,10 +532,10 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
                 {bevestigPlan && (
                   <Melding toon="waarschuwing" testid="aa-bevestig-versie">
                     <span>
-                      Een nieuwe versie vervangt de huidige en telt als een van uw beoordelingen deze maand.
+                      De AI schrijft een nieuwe aanzet. Uw opgeslagen versies blijven bewaard, en het telt als een van uw beoordelingen deze maand.
                       <span style={css('display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;')}>
                         <Button size="s" variant="dark" onClick={schrijf}>
-                          Ja, schrijf een nieuwe versie
+                          Ja, schrijf een nieuwe aanzet
                         </Button>
                         <Button size="s" variant="outline" onClick={() => setBevestigPlan(false)}>
                           Annuleren
@@ -547,7 +547,7 @@ export default function AanvraagWerk({ project, aanvraagId: startId, fondsLabel:
 
                 <div className="fwk-aa-onder">
                   <Button onClick={startSchrijven} disabled={Boolean(bezig) || !aanvraagId || !planRuimte} ariaLabel="Start schrijven">
-                    {aanvraag && aanvraag.heeftPlan ? 'Schrijf een nieuwe versie →' : 'Start schrijven →'}
+                    {aanvraag && aanvraag.heeftPlan ? 'Schrijf een nieuwe aanzet →' : 'Start schrijven →'}
                   </Button>
                   {!planRuimte && <span className="fwk-aa-klein">Deze maand is uw ruimte voor beoordelingen en versies op.</span>}
                 </div>

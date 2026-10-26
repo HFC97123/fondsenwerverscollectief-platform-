@@ -291,3 +291,50 @@ export function eerstAanpakken(punten, gekoppeld, max = 5) {
 
 // Hoeveel onderdelen worden het plan voor dit fonds? Dezelfde regel als op de server: elke vraag van het lid (verplicht of criterium) is een onderdeel.
 export const aantalFormulierVragen = (criteria) => (Array.isArray(criteria) ? criteria : []).filter((e) => e && e.bronType === 'lid' && (e.soort === 'verplicht' || e.soort === 'criterium') && schoonTekst(e.tekst)).length;
+
+// ───────────── Versies en bewerken (concept/definitief) ─────────────
+
+// Tekens van een onderdeel zoals het fonds ze telt: zonder [aanvullen: ...]-markeringen, witruimte samengevoegd.
+export const onderdeelTekens = (tekst) => String(tekst == null ? '' : tekst).replace(/\[aanvullen:[^\]]*\]/gi, '').replace(/\s+/g, ' ').trim().length;
+
+// Aantal plekken dat nog is in te vullen in één tekst.
+export const aantalAanvullen = (tekst) => (String(tekst == null ? '' : tekst).match(/\[aanvullen:[^\]]*\]/gi) || []).length;
+
+// Onderdelen zoals de server ze bewaart: { id, titel, tekst }. Een plan van de AI levert zijn secties; niets anders gaat mee.
+export function onderdelenUitPlan(plan) {
+  const secties = plan && Array.isArray(plan.secties) ? plan.secties : [];
+
+  return secties.map((s) => ({ id: s && s.id != null ? String(s.id) : null, titel: schoonTekst(s && s.titel), tekst: String((s && s.tekst) || '') }));
+}
+
+export function onderdelenUitVersie(antwoorden) {
+  return (Array.isArray(antwoorden) ? antwoorden : []).map((a) => ({ id: a && a.id != null ? String(a.id) : null, titel: schoonTekst(a && a.titel), tekst: String((a && a.tekst) || '') }));
+}
+
+// Limiet per onderdeel komt uit het plan (de server bewaart de limiet niet bij de versie): { [id]: maxTekens }.
+export function limietenUitPlan(plan) {
+  const uit = {};
+
+  for (const s of plan && Array.isArray(plan.secties) ? plan.secties : []) {
+    if (s && s.id != null && Number.isFinite(Number(s.maxTekens)) && Number(s.maxTekens) > 0) uit[String(s.id)] = Number(s.maxTekens);
+  }
+
+  return uit;
+}
+
+export const onderdelenGelijk = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
+export const onderdelenLeeg = (lijst) => !(Array.isArray(lijst) && lijst.some((o) => String(o.tekst || '').trim()));
+
+// Tekst zoals ze naar Word of PDF gaat (ook het formaat van "Download voor indienen").
+export function onderdelenNaarTekst(onderdelen, titel = 'Aanvraag') {
+  const delen = [`# ${schoonTekst(titel) || 'Aanvraag'}`];
+
+  for (const o of Array.isArray(onderdelen) ? onderdelen : []) {
+    delen.push(`## ${schoonTekst(o.titel)}`);
+    delen.push(String(o.tekst || '').trim() || '[aanvullen: dit onderdeel]');
+  }
+
+  return delen.join('\n\n');
+}
+
+export const versieNaam = (v) => (v ? `Versie ${v.nummer}${v.naam && String(v.naam).trim() && v.naam !== `Versie ${v.nummer}` ? ` · ${String(v.naam).trim()}` : ''}` : '');

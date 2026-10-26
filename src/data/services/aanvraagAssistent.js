@@ -1,7 +1,8 @@
 // Aanvraag-assistent (Pro/Premium): praat met de Edge Function 'aanvraag-assistent' (criteria van een fonds ophalen, een versie voor een fonds
 // schrijven, een eigen aanvraag beoordelen, aanvragen bewaren). De client bepaalt hier niets: geen abonnement, geen limiet, geen uitkomst. Elke fout
 // levert { ok: false, reden, melding } op; er wordt nooit een uitzondering gegooid.
-// De aanvraagtekst van het lid wordt alleen meegestuurd om te beoordelen; de server bewaart haar niet.
+// De aanvraagtekst van het lid wordt alleen meegestuurd om te beoordelen; de server bewaart haar niet. Uitzondering: versies. Wat het lid zelf als versie
+// opslaat (concept of definitief) bewaart de server voor haar, maximaal 20 per aanvraag. Versies kosten geen maandruimte.
 import { supabase } from '../client.js';
 
 export const AANVRAAG_FUNCTION = 'aanvraag-assistent';
@@ -109,6 +110,37 @@ export function leesBegrotingUpload({ projectId, tekst }) {
 // Voortgangsmeter voor het algemene projectplan: hoeveel van de kerninformatie staat erin, wat mist er, en is dit project al geschreven?
 export function haalPlanGereedheid(projectId) {
   return isTekst(projectId) ? roep({ mode: 'plan-gereedheid', projectId }) : ongeldig();
+}
+
+// ── Versies van een aanvraag (concept/definitief). Kosten geen maandruimte en gebruiken geen model. ──
+export function haalVersies(aanvraagId) {
+  return isTekst(aanvraagId) ? roep({ mode: 'versies', aanvraagId }) : ongeldig();
+}
+
+export function haalVersie(versieId) {
+  return isTekst(versieId) ? roep({ mode: 'versie', versieId }) : ongeldig();
+}
+
+// antwoorden: [{ id, titel, tekst }]. Zonder versieId: een nieuwe versie. Met versieId: die concept-versie bijwerken (een definitieve wordt een nieuw concept).
+export function bewaarVersie({ aanvraagId, versieId = '', antwoorden, naam = '' }) {
+  if (!isTekst(aanvraagId)) return ongeldig();
+
+  return roep({
+    mode: 'versie-bewaren',
+    aanvraagId,
+    ...(isTekst(versieId) ? { versieId } : {}),
+    antwoorden: Array.isArray(antwoorden) ? antwoorden : [],
+    ...(isTekst(naam) ? { naam } : {}),
+  });
+}
+
+// actie: 'hernoem' (met naam) | 'definitief' | 'concept'
+export function wijzigVersie({ versieId, actie, naam = '' }) {
+  return isTekst(versieId) && isTekst(actie) ? roep({ mode: 'versie-wijzigen', versieId, actie, ...(isTekst(naam) ? { naam } : {}) }) : ongeldig();
+}
+
+export function verwijderVersie(versieId) {
+  return isTekst(versieId) ? roep({ mode: 'versie-verwijderen', versieId }) : ongeldig();
 }
 
 // Een eerder bewaarde beoordeling terugzien. Leest rechtstreeks uit de eigen tabel (RLS: alleen eigen rijen); niets wordt aangepast.
