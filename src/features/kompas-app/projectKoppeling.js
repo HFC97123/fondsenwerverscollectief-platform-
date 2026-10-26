@@ -32,6 +32,7 @@ export const DOSSIER_NAAR_PROJECT = {
   impact: 'impact',
   partners: 'partners',
   begroting: 'begroting',
+  eigenBijdrage: 'eigenBijdrage',
   schrijfstijl: 'schrijfvoorkeur',
 };
 
@@ -68,6 +69,7 @@ const INHOUD_DOSSIERVELDEN = [
   'impact',
   'partners',
   'begroting',
+  'eigenBijdrage',
 ];
 
 // Expliciet verzoek om iets projectmatigs te maken. Een los brainstormbericht
@@ -162,7 +164,7 @@ export function dossierNaarProjectVelden(dossier, dossierBronnen) {
     const bron = bronType === 'bevestigd' ? BRON_GESPREK_BEVESTIGD : BRON_GESPREK;
     let uitkomst = String(waarde).trim();
 
-    if (projectVeld === 'begroting') {
+    if (projectVeld === 'begroting' || projectVeld === 'eigenBijdrage') {
       const bedrag = bedragUitTekst(uitkomst);
 
       if (!bedrag) {
@@ -341,6 +343,7 @@ export const PROJECTVELD_LABELS = {
   partners: 'partners',
   resultaten: 'resultaten',
   begroting: 'begroting',
+  eigenBijdrage: 'eigen bijdrage',
   schrijfvoorkeur: 'schrijfvoorkeur',
 };
 

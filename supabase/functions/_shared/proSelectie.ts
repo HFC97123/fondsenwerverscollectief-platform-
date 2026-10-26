@@ -18,8 +18,9 @@ import { algemeenPremiumVolgorde, isAlgemeenPremium } from './algemeenPremium.ts
 
 export const PRO_MAX_FACTOR = 1.2; // bovengrens van de som van de geschatte bijdragen, als aandeel van de projectbegroting
 export const PRO_DEKKINGSDOEL = 1.0; // genoeg potentiële dekking: de lijst stopt zodra de som de begroting haalt
-export const PREMIUM_DEKKINGSDOEL = 1.4; // Premium plant een ruimere buffer (afwijzingen en lagere toekenningen): de lijst gaat door tot 140% en blijft daar ook onder
-export const PREMIUM_MAX_FACTOR = 1.4; // bovengrens van de som voor Premium (Pro: 120%)
+export const PRO_LIJST_DOEL = 1.2; // de chatlijst voor Pro gaat door tot 120% van de financieringsbehoefte (buffer voor afwijzingen) en niet verder
+export const PREMIUM_DEKKINGSDOEL = 1.6; // Premium plant een ruimere buffer (afwijzingen en lagere toekenningen): de lijst gaat door tot 160% en blijft daar ook onder
+export const PREMIUM_MAX_FACTOR = 1.6; // bovengrens van de som voor Premium (Pro: 120%)
 export const TWIJFEL_AFTREK = 10; // sterkte-aftrek bij een AI-oordeel "twijfel": zekere fondsen gaan voor, maar het fonds valt niet af
 export const NET_NIET_MAX = 5; // maximaal aantal "net niet"-fondsen in de uitleg (alleen Premium)
 export const PRO_STERK = 80; // sterkte vanaf waar een fonds zonder bedrag nog voor onderzoek wordt genoemd (alleen bij een tekort)
@@ -84,7 +85,8 @@ export interface NetNiet {
 
 export interface ProResultaat {
   uitkomst: 'voldoende' | 'tekort' | 'zonder-begroting' | 'geen-geschikt';
-  begroting: number | null;
+  begroting: number | null; // basis voor doel, maximum en dekking: de financieringsbehoefte als die bekend is, anders de projectbegroting
+  basis?: 'behoefte' | 'begroting';
   maximum: number | null; // bovengrens van de som: 120% van de begroting (Pro) of 140% (Premium)
   regels: ProRegel[];
   totaal: number; // som van onderbouwde schattingen in de lijst
@@ -307,6 +309,9 @@ function regelVan(k: ProKandidaat, b: Beoordeling, s: Schatting, o: FondsOordeel
 export function selecteerProLijst(inv: {
   kandidaten: readonly ProKandidaat[];
   begroting: number | null;
+  // Nog te financieren bedrag (begroting min eigen bijdrage, toegekend en aangevraagd). Is het bekend, dan is dit de basis voor doel, maximum en
+  // dekking; de begroting blijft de basis voor het schatten van een bijdrage ("maximaal x% van de projectkosten").
+  behoefte?: number | null;
   uitgebreid?: boolean;
   oordelen?: ReadonlyMap<string, FondsOordeel> | null;
   aiActief?: boolean; // de AI-beoordeling heeft gedraaid: fondsen zonder geldig oordeel krijgen een kanttekening
@@ -314,7 +319,10 @@ export function selecteerProLijst(inv: {
   maxFactor?: number; // bovengrens als aandeel van de begroting (Pro 1,2; Premium 1,4)
   algemeenPremium?: { seed: string }; // alleen Premium: zorg dat er een algemeen Premium-fonds in de lijst staat; seed laat de keuze per project afwisselen
 }): ProResultaat {
-  const begroting = typeof inv.begroting === 'number' && inv.begroting > 0 ? Math.round(inv.begroting) : null;
+  const projectBegroting = typeof inv.begroting === 'number' && inv.begroting > 0 ? Math.round(inv.begroting) : null;
+  const behoefte = typeof inv.behoefte === 'number' && inv.behoefte > 0 ? Math.round(inv.behoefte) : null;
+  const begroting = behoefte ?? projectBegroting; // basis voor doel, maximum en dekking
+  const basis: 'behoefte' | 'begroting' = behoefte !== null ? 'behoefte' : 'begroting';
   const factor = typeof inv.maxFactor === 'number' && inv.maxFactor >= PRO_MAX_FACTOR && inv.maxFactor <= 2 ? inv.maxFactor : PRO_MAX_FACTOR;
   const maximum = begroting !== null ? Math.round(begroting * factor) : null;
   const uitgebreid = inv.uitgebreid === true;
@@ -357,7 +365,7 @@ export function selecteerProLijst(inv: {
       o,
       s: k.bedragenVerborgen
         ? { bedrag: null, grond: null, onderbouwing: 'De bijdragegegevens van dit fonds zijn in uw abonnement niet zichtbaar; er wordt geen bedrag geschat.', voorbehoud: [] }
-        : schatBijdrage({ min: k.min, max: k.max, teksten: k.toelichtingen, begroting }),
+        : schatBijdrage({ min: k.min, max: k.max, teksten: k.toelichtingen, begroting: projectBegroting }),
     });
   }
 
@@ -366,7 +374,7 @@ export function selecteerProLijst(inv: {
 
   const netNiet: NetNiet[] = netNietAlle.slice(0, NET_NIET_MAX).map(({ sterkte: _s, ...rest }) => rest);
   const maak = (g: { k: ProKandidaat; b: Beoordeling; s: Schatting; o: FondsOordeel | null }) => regelVan(g.k, g.b, g.s, g.o);
-  const leeg: ProResultaat = { uitkomst: 'geen-geschikt', begroting, maximum, regels: [], totaal: 0, dekkingPercentage: begroting !== null ? 0 : null, tekort: begroting ?? 0, overgeslagen: [], nietGeschikt, extraGeschikt: 0, uitgebreid, netNiet, aiActief };
+  const leeg: ProResultaat = { uitkomst: 'geen-geschikt', begroting, basis, maximum, regels: [], totaal: 0, dekkingPercentage: begroting !== null ? 0 : null, tekort: begroting ?? 0, overgeslagen: [], nietGeschikt, extraGeschikt: 0, uitgebreid, netNiet, aiActief };
 
   if (!geschikt.length) return leeg;
 
@@ -439,6 +447,7 @@ export function selecteerProLijst(inv: {
   return {
     uitkomst: totaal >= begroting * PRO_DEKKINGSDOEL ? 'voldoende' : regels.length ? 'tekort' : 'geen-geschikt',
     begroting,
+    basis,
     maximum,
     regels,
     totaal,
@@ -457,6 +466,7 @@ export function selecteerProLijst(inv: {
 // Wat het taalmodel in de chat mag presenteren: de server levert de feiten en de volgorde; het model schrijft er geen bedragen of fondsen bij.
 export interface ProProjectUitleg {
   begroting: number | null;
+  behoefte?: number | null;
   disciplines: string[];
   werkgebieden: string[];
   doelgroepen: string[];
@@ -468,7 +478,7 @@ export function proPresentatieBlok(res: ProResultaat, project: ProProjectUitleg,
   const r: string[] = [];
 
   r.push(`${premium ? 'PREMIUM' : 'PRO'}-SELECTIE (server-side berekend; dit is de definitieve, korte lijst. Presenteer UITSLUITEND deze fondsen, in deze volgorde, en neem alle bedragen, totalen en percentages LETTERLIJK over. Voeg geen fondsen, bedragen of berekeningen toe en wijzig niets.)`);
-  r.push(`Opening (neem kort over): de selectie is gebaseerd op een projectbegroting van ${project.begroting !== null ? euro(project.begroting) : 'een nog onbekend bedrag'}, disciplines: ${lijst(project.disciplines)}; werkgebied: ${lijst(project.werkgebieden)}; doelgroep: ${lijst(project.doelgroepen)}.`);
+  r.push(`Achtergrond voor de opening (niet opsommen; hooguit één korte zin, bijvoorbeeld "Hier zou ik me eerst op richten:"): de selectie is gebaseerd op een projectbegroting van ${project.begroting !== null ? euro(project.begroting) : 'een nog onbekend bedrag'}${typeof project.behoefte === 'number' && project.behoefte > 0 ? ` en een financieringsbehoefte van ${euro(project.behoefte)}` : ''}, disciplines: ${lijst(project.disciplines)}; werkgebied: ${lijst(project.werkgebieden)}; doelgroep: ${lijst(project.doelgroepen)}.`);
 
   if (!res.regels.length) {
     r.push('Er is geen fonds dat op discipline, werkgebied en doelgroep samen voldoende aansluit. Zeg dat eerlijk, noem geen fondsen en stel een gerichte vraag om het project scherper te krijgen.');
@@ -476,6 +486,7 @@ export function proPresentatieBlok(res: ProResultaat, project: ProProjectUitleg,
     return r.join('\n');
   }
 
+  r.push('Vorm: kort en beknopt, in etappes. Opening: één korte zin. Per fonds één regel met alleen de naam en de geschatte bijdrage. De uitleg, voorwaarden, citaten en onzekerheden hieronder zijn achtergrond: geef ze pas als het lid naar een fonds vraagt. Sluit af met het totaal (één regel) en één korte zin dat het schattingen zijn.');
   res.regels.forEach((x, i) => {
     r.push(
       [
@@ -492,17 +503,20 @@ export function proPresentatieBlok(res: ProResultaat, project: ProProjectUitleg,
   });
 
   if (res.begroting !== null) {
-    r.push(`Onderaan (neem letterlijk over): totaal geschatte bijdragen ${euro(res.totaal)}; dekking ${res.dekkingPercentage}% van de projectbegroting (${euro(res.begroting)}); ${res.tekort > 0 ? `resterend tekort ${euro(res.tekort)}` : 'geen resterend tekort'}. Het maximum voor de som van de schattingen is ${euro(res.maximum as number)} (${Math.round(((res.maximum as number) / res.begroting) * 100)}% van de begroting, een buffer en geen doel).`);
+    const basisNaam = res.basis === 'behoefte' ? 'financieringsbehoefte' : 'projectbegroting';
+
+    r.push(`Onderaan (neem letterlijk over): totaal geschatte bijdragen ${euro(res.totaal)}; dekking ${res.dekkingPercentage}% van de ${basisNaam} (${euro(res.begroting)}); ${res.tekort > 0 ? `resterend tekort ${euro(res.tekort)}` : 'geen resterend tekort'}.`);
+    r.push(`Intern, nooit noemen: het maximum voor de som van de schattingen is ${euro(res.maximum as number)} (${Math.round(((res.maximum as number) / res.begroting) * 100)}% van de ${res.basis === 'behoefte' ? 'behoefte' : 'begroting'}, een buffer en geen doel). Noem dit maximum, dit percentage en de manier waarop de lijst is samengesteld nooit in het antwoord.`);
   } else {
-    r.push('Onderaan: de projectbegroting is niet bekend, dus er is geen dekking berekend. Vraag het lid de projectbegroting in te vullen.');
+    r.push('Onderaan: de financieringsbehoefte is niet bekend, dus er is geen dekking berekend. Vraag in één zin hoeveel er nog gefinancierd moet worden.');
   }
 
-  r.push('Zeg onderaan dat dit schattingen zijn en geen toezeggingen: een fonds beslist zelf en kan minder of niets toekennen.');
+  r.push('Zeg onderaan in één korte zin dat dit schattingen zijn en geen toezeggingen.');
 
   if (res.uitkomst === 'tekort') r.push('Er zijn te weinig geschikte fondsen met een onderbouwde schatting om de begroting volledig te dekken. Noem het resterende tekort en vul de lijst NIET aan met zwakke matches.');
   if (res.overgeslagen.length) r.push(`Niet opgenomen omdat de som dan boven het maximum uitkomt: ${res.overgeslagen.map((o) => o.naam).join(', ')}. Noem ze niet.`);
   if (premium && res.netNiet.length) {
-    r.push(`Net niet (neem na de lijst kort over als apart kopje "Net niet", elk fonds met de ene reden waarom het afviel; het zijn GEEN aanbevelingen, geef er geen bedragen bij en tel ze niet mee):\n${res.netNiet.map((n) => `- ${n.naam}${n.funderNaam && n.funderNaam !== n.naam ? ` (${n.funderNaam})` : ''}: ${n.reden}${n.citaat ? ` Bron (letterlijk): "${n.citaat}"` : ''}`).join('\n')}`);
+    r.push(`Net niet (achtergrond: noem deze alleen als het lid vraagt waarom een fonds ontbreekt of om alternatieven; het zijn GEEN aanbevelingen, geef er geen bedragen bij en tel ze niet mee):\n${res.netNiet.map((n) => `- ${n.naam}${n.funderNaam && n.funderNaam !== n.naam ? ` (${n.funderNaam})` : ''}: ${n.reden}${n.citaat ? ` Bron (letterlijk): "${n.citaat}"` : ''}`).join('\n')}`);
   }
 
   if (!res.uitgebreid && res.extraGeschikt > 0) r.push('Er zijn mogelijk nog andere geschikte fondsen. Noem geen aantal en geen namen; als het lid om meer vraagt, wordt de lijst uitgebreid.');

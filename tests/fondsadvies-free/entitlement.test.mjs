@@ -415,6 +415,10 @@ sectie('I. Onbekend extern fonds (niet in de database): niet automatisch geblokk
     const t = modelBlok(r);
     check(`I niveau 3 (${tier}): het onbekende fonds staat onder "ONLINE GEVONDEN" en in de bronnen`, /ONLINE GEVONDEN FONDSEN EN REGELINGEN/.test(t) && t.includes('Wijkimpuls Armoede') && r.json.sources.some((b) => b.url === 'https://onbekendwijkfonds.test/impuls'));
     if (tier !== 'premium') check(`I niveau 3 (${tier}): het exclusieve fonds ontbreekt tegelijk`, bevatX(alleModelInput()).length === 0);
+    const reg = world.rpcLog.filter((x) => x.naam === 'kompas_online_gescand_registreer');
+    const rijen = reg.flatMap((x) => x.args?.p_rijen || []);
+    check(`I niveau 3 (${tier}): het onbekende fonds komt op de werklijst "nieuw gescand" (zonder gegevens van het lid)`, rijen.some((x) => x.gever === 'Onbekend Wijkfonds Amsterdam' && x.regeling === 'Wijkimpuls Armoede' && x.bron === 'chat' && x.koppeling === 'geen') && rijen.every((x) => !('user_id' in x) && !('profile_id' in x)), JSON.stringify(rijen).slice(0, 300));
+    check(`I niveau 3 (${tier}): geen exclusief fonds op de werklijst`, bevatX(JSON.stringify(rijen)).length === 0);
   }
   // Een bestaande match met alleen een Premium-record is dus ook geen reden om te blokkeren
   {

@@ -229,17 +229,21 @@ sectie('8. Net-niet-lijst en Premium-dekkingsdoel');
   check('de net-niet-lijst is begrensd en op sterkte gesorteerd', r.netNiet.length === NET_NIET_MAX && r.netNiet[0].naam === 'Net0' && r.netNiet[4].naam === 'Net4');
   check('niets geschikt over: eerlijke uitkomst, geen opvulling', r.regels.length === 0 && r.uitkomst === 'geen-geschikt');
 
-  // Premium gaat door tot 140%, Pro stopt bij 100% (maximum 120%).
+  // Premium gaat door tot 160%, Pro stopt standaard bij 100% (maximum 120%); de chat geeft Pro het doel 120% mee.
   const k = [kand('Een', { score: 95, ...bedrag(60000, 100000) }), kand('Twee', { score: 90, ...bedrag(20000, 40000) }), kand('Drie', { score: 85, ...bedrag(5000, 15000) }), kand('Vier', { score: 80, ...bedrag(10000, 30000) }), kand('Vijf', { score: 75, ...bedrag(10000, 20000) })]; // 80.000 + 30.000 + 10.000 + 20.000 + 15.000
   const pro = selecteerProLijst({ kandidaten: k, begroting: 100000 });
   const prem = selecteerProLijst({ kandidaten: k, begroting: 100000, dekkingsdoel: PREMIUM_DEKKINGSDOEL, maxFactor: PREMIUM_MAX_FACTOR });
   const premZonderMax = selecteerProLijst({ kandidaten: k, begroting: 100000, dekkingsdoel: PREMIUM_DEKKINGSDOEL });
 
   check('Pro stopt zodra de begroting gedekt is (110.000 na twee fondsen)', pro.regels.length === 2 && pro.totaal === 110000, `${pro.regels.length} ${pro.totaal}`);
-  check('Premium gaat door tot 140%: Een, Twee, Drie en Vier = 140.000, en stopt dan (Vijf past er niet meer bij)', prem.regels.length === 4 && prem.totaal === 140000 && prem.maximum === 140000, `${prem.regels.length} ${prem.totaal}`);
-  check('Premium blijft onder het maximum van 140%, ook met meer kandidaten', prem.totaal <= 140000 && !prem.regels.some((r) => r.naam === 'Vijf'));
+  check('Premium gaat door tot 160%: alle vijf (155.000) passen onder het maximum van 160.000', prem.regels.length === 5 && prem.totaal === 155000 && prem.maximum === 160000, `${prem.regels.length} ${prem.totaal}`);
+  check('Premium blijft onder het maximum van 160%', prem.totaal <= 160000);
+  const pro120 = selecteerProLijst({ kandidaten: k, begroting: 100000, dekkingsdoel: 1.2 });
+  check('Pro met doel 120% (zoals de chat): stopt pas bij 120% en nooit erboven', pro120.totaal >= 110000 && pro120.totaal <= 120000 && pro120.maximum === 120000, `${pro120.regels.length} ${pro120.totaal}`);
+  const metBehoefte = selecteerProLijst({ kandidaten: k, begroting: 100000, behoefte: 50000, dekkingsdoel: 1.2 });
+  check('met een bekende financieringsbehoefte is die de basis (maximum 120% van 50.000 = 60.000)', metBehoefte.maximum === 60000 && metBehoefte.totaal <= 60000 && metBehoefte.basis === 'behoefte' && metBehoefte.begroting === 50000, `${metBehoefte.maximum} ${metBehoefte.totaal}`);
   check('Pro blijft op maximum 120% en stopt bij 100%', pro.maximum === 120000 && pro.totaal <= 120000);
-  check('de constanten: Premium-doel 1,4 en maximum 1,4', PREMIUM_DEKKINGSDOEL === 1.4 && PREMIUM_MAX_FACTOR === 1.4);
+  check('de constanten: Premium-doel 1,6 en maximum 1,6', PREMIUM_DEKKINGSDOEL === 1.6 && PREMIUM_MAX_FACTOR === 1.6);
   check('een doel boven het maximum wordt teruggebracht: zonder Premium-maximum blijft het bij Pro-gedrag', premZonderMax.totaal === pro.totaal && premZonderMax.maximum === 120000);
   check('het uitkomstlabel "voldoende" geldt vanaf 100%, ook als het Premium-doel van 140% nog niet is gehaald', selecteerProLijst({ kandidaten: [k[0], k[1]], begroting: 100000, dekkingsdoel: PREMIUM_DEKKINGSDOEL, maxFactor: PREMIUM_MAX_FACTOR }).uitkomst === 'voldoende');
 }
@@ -266,8 +270,8 @@ sectie('10. Tier-configuratie');
   const prem = tierConfigVoor('premium');
   const free = tierConfigVoor('free');
 
-  check('Pro: beste 25, stopt bij 100%, maximum 120%, geen net-niet-lijst', pro.beoordeling?.maxKandidaten === 25 && pro.beoordeling.dekkingsdoelLijst === 1 && pro.beoordeling.maxFactorLijst === 1.2 && pro.beoordeling.netNietLijst === false);
-  check('Premium: beste 40, doel en maximum 140%, met net-niet-lijst', prem.beoordeling?.maxKandidaten === 40 && prem.beoordeling.dekkingsdoelLijst === 1.4 && prem.beoordeling.maxFactorLijst === 1.4 && prem.beoordeling.netNietLijst === true);
+  check('Pro: beste 25, doel en maximum 120%, geen net-niet-lijst', pro.beoordeling?.maxKandidaten === 25 && pro.beoordeling.dekkingsdoelLijst === 1.2 && pro.beoordeling.maxFactorLijst === 1.2 && pro.beoordeling.netNietLijst === false);
+  check('Premium: beste 40, doel en maximum 160%, met net-niet-lijst', prem.beoordeling?.maxKandidaten === 40 && prem.beoordeling.dekkingsdoelLijst === 1.6 && prem.beoordeling.maxFactorLijst === 1.6 && prem.beoordeling.netNietLijst === true);
   check('Free krijgt geen AI-beoordeling', free.beoordeling === null);
   check('onbekende tier valt op Free (geen AI-beoordeling)', tierConfigVoor('boem').beoordeling === null && tierConfigVoor(undefined).beoordeling === null);
 }

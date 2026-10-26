@@ -61,7 +61,7 @@ sectie('1. Vlag uit (standaard): niets verandert');
   const typfout = await run(PRO, { env: { FONDS_BEOORDELING: 'true' } });
 
   check('Pro zonder vlag: wel de korte lijst, géén AI-beoordeling', pro.systeem.includes('PRO-SELECTIE') && pro.aanroepen.length === 0 && !/Bevestigd in de bron/.test(pro.blok));
-  check('Premium zonder vlag: geen korte lijst en geen AI-beoordeling (bestaande werking)', !prem.systeem.includes('PREMIUM-SELECTIE') && !prem.systeem.includes('PRO-SELECTIE') && prem.aanroepen.length === 0);
+  check('Premium zonder vlag: wel de korte Premium-lijst (160%), géén AI-beoordeling', prem.systeem.includes('PREMIUM-SELECTIE') && !prem.systeem.includes('PRO-SELECTIE') && prem.aanroepen.length === 0 && !/Bevestigd in de bron/.test(prem.blok));
   check('een typefout in de vlag ("true") opent niets', typfout.aanroepen.length === 0);
 }
 
@@ -113,7 +113,7 @@ sectie('4. Premium met vlag: dezelfde motor, ruimere buffer, exclusieve fondsen 
   check('Pro: de tekst van het Premium-fonds gaat NOOIT naar het beoordelingsmodel', !pro.prompts.includes('Vertrouwelijk fonds') && !pro.prompts.includes('Premium Kinderfonds'));
   check('Pro: de bedragen van het Premium-fonds komen nergens voor', !/30\.000|70\.000 .*Premium/.test(pro.blok.split('Premium Kinderfonds')[1] || ''));
   check('Premium: de net-niet-lijst noemt het afgevallen fonds met reden en bron', /Net niet/.test(prem.blok) && /Global Children Foundation[^\n]*project is al gestart[^\n]*geen projecten die al gestart zijn/.test(prem.blok), prem.blok.slice(-700));
-  check('Premium: de som blijft onder 140% van de begroting (€ 280.000) en het blok noemt dat maximum', (() => { const m = prem.blok.match(/totaal geschatte bijdragen (€ [\d.]+)/); return Boolean(m) && Number(m[1].replace(/[^\d]/g, '')) <= 280000 && /€ 280\.000 \(140% van de begroting/.test(prem.blok); })());
+  check('Premium: de som blijft onder 160% (€ 320.000); het maximum staat alleen als interne regel in het blok', (() => { const m = prem.blok.match(/totaal geschatte bijdragen (€ [\d.]+)/); return Boolean(m) && Number(m[1].replace(/[^\d]/g, '')) <= 320000 && /Intern, nooit noemen: [^\n]*€ 320\.000 \(160% van de begroting/.test(prem.blok); })());
   check('Pro noemt nog steeds 120% (€ 240.000) als maximum', /€ 240\.000 \(120% van de begroting/.test(pro.blok));
   check('het "Net niet"-deel blijft in het antwoord staan (de nabewerking filtert het niet weg als negatief voorbeeld)', prem.antwoord.includes('Global Children Foundation past niet'), prem.antwoord.slice(0, 300));
   check('controle: zonder net-niet-lijst filtert de bestaande nabewerking zo\'n zin nog steeds weg', !zonderNetNiet.antwoord.includes('Global Children Foundation past niet'), zonderNetNiet.antwoord.slice(0, 300));
