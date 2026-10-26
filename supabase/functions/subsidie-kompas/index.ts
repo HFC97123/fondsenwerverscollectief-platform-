@@ -5674,6 +5674,50 @@ function verwerkWebKandidaten(
   };
 }
 
+// Wat online voor een lid is gevonden en (nog) niet als zodanig in de database staat, wordt vastgelegd in kompas_online_gescand:
+// een werklijst voor de maandelijkse aanvulronde (controleren en daarna voorgoed opnemen). Alleen publieke fondsgegevens, nooit wie
+// er zocht. Kandidaten die bij een bevestigd databaserecord of een expliciet exclusief fonds horen, worden overgeslagen.
+// Best effort: een fout hier verandert niets aan het antwoord.
+async function registreerOnlineGescand(
+  admin: any,
+  webKandidaten: WebKandidaat[],
+  geclassificeerd: { klasse: WebKlasse; exclusief: ExclusiefStatus }[],
+  bron: 'chat' | 'voorstel',
+): Promise<void> {
+  try {
+    if (!admin || !Array.isArray(webKandidaten) || !webKandidaten.length) return;
+
+    const rijen = webKandidaten
+      .map((wk, i) => ({ wk, c: geclassificeerd[i] }))
+      .filter(({ wk, c }) => wk && wk.gever && c && c.klasse !== 'bevestigd' && c.exclusief !== 'ja')
+      .slice(0, 25)
+      .map(({ wk, c }) => ({
+        gever: String(wk.gever).trim().slice(0, 200),
+        regeling: wk.regeling ? String(wk.regeling).trim().slice(0, 200) : null,
+        website: wk.website ? String(wk.website).slice(0, 500) : null,
+        url: wk.url ? String(wk.url).slice(0, 1000) : null,
+        status_online: wk.status && wk.status !== 'onbekend' ? wk.status : null,
+        deadline: /^\d{4}-\d{2}-\d{2}$/.test(String(wk.deadline || '')) ? wk.deadline : null,
+        bedrag_min: typeof wk.bedragMin === 'number' && Number.isFinite(wk.bedragMin) ? wk.bedragMin : null,
+        bedrag_max: typeof wk.bedragMax === 'number' && Number.isFinite(wk.bedragMax) ? wk.bedragMax : null,
+        samenvatting: wk.samenvatting ? String(wk.samenvatting).slice(0, 2000) : null,
+        themas: (wk.themas || []).map(String).slice(0, 20),
+        doelgroepen: (wk.doelgroepen || []).map(String).slice(0, 20),
+        werkgebieden: (wk.werkgebieden || []).map(String).slice(0, 20),
+        koppeling: c.klasse,
+        bron,
+      }));
+
+    if (!rijen.length) return;
+
+    const { error } = await admin.rpc('kompas_online_gescand_registreer', { p_rijen: rijen });
+
+    if (error) console.error('[subsidie-kompas] online_gescand_registreren_mislukt');
+  } catch (_e) {
+    console.error('[subsidie-kompas] online_gescand_registreren_fout');
+  }
+}
+
 function beoordeelPool(alle: { bron: Kandidaat['bron']; row: any }[], criteriaRuw: FondsCriteria, vandaag: string = vandaagIso()) {
   const criteria = breidThemasUit(criteriaRuw);
   const signalen = matchSignalenUitCriteria(criteria);
@@ -6467,6 +6511,7 @@ async function freeFondsadvies(
   // gezamenlijke pool; de centrale laag (onderdrukExclusief) verwijdert voor Free/Pro de
   // exclusieve fondsen op basis van identiteit, vóór de engine.
   const gekoppeld = verwerkWebKandidaten(web.kandidaten, dbPool, exclusiviteit);
+  await registreerOnlineGescand(admin, web.kandidaten, gekoppeld.geclassificeerd, 'chat');
 
   // Pro: de aanvrager speelt geen rol in selectie en ranking en het totaal gevraagde bedrag sluit geen fonds uit (elk fonds draagt een deel bij; de
   // bijdrage wordt per fonds geschat). Free, Premium en admin blijven ongewijzigd.
@@ -7308,6 +7353,7 @@ async function draaiEngineVoorProject(
   if (!pool) return null;
 
   const gekoppeld = verwerkWebKandidaten(web.kandidaten, pool, b.exclusiviteit);
+  await registreerOnlineGescand(admin, web.kandidaten, gekoppeld.geclassificeerd, 'voorstel');
   const selectie = selecteerFreeFondsadvies(gekoppeld.alle, b.criteria, b.tier, b.isAdmin, undefined, b.vandaag, b.exclusiviteit);
   const ctx = nieuweEntitlementCtx(false, b.exclusiviteit);
   // Het niveau komt per kandidaat van de entitlementlaag (bron van waarheid); alles wat de engine relevant vond, niet alleen de top.
