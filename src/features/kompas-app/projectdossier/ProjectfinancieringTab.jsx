@@ -669,7 +669,7 @@ export default function ProjectfinancieringTab({ project, financiering, dekking,
                     regel={r}
                     bron={bronVoorRegel(r, bronRijen)}
                     details={details}
-                    kans={r.bronType !== 'financier' && r.bronStatus === 'zichtbaar' && details ? kansrijkheid(details, store.orgProfile || {}, store.projects) : null}
+                    kans={r.bronType !== 'financier' && r.bronStatus === 'zichtbaar' && details ? kansrijkheid(details, store.orgProfile || {}, store.projects, { aanbevolen: true, project }) : null}
                     nieuw={nieuweIds.includes(r.id)}
                     open={Boolean(openRegels[r.id])}
                     onToggle={(v) => setOpenRegels((cur) => ({ ...cur, [r.id]: v }))}

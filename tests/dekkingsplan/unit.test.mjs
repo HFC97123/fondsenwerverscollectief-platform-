@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { kansrijkheid } from '../../src/features/kompas-app/financiering/kansrijkheid.js';
 import { berekenDekking, dekkingVanProject, regelUitRpc, isKomendeDeadline } from '../../src/features/kompas-app/financiering/dekkingsplan.js';
 import {
   leidActiesAf, actieVoorRegel, actiesVoorProject, opvolgDatum, periodeVoorDagen, groepeerPerPeriode, filterOpProject,
@@ -186,6 +187,32 @@ const bron = readFileSync('src/features/kompas-app/financiering/acties.js', 'utf
 check('geen fetch, supabase of storage in acties.js', !/fetch\(|supabase|localStorage|sessionStorage|XMLHttpRequest/.test(bron));
 check('geen React-import', !/from 'react'/.test(bron));
 check('importeert alleen uit dekkingsplan.js', (bron.match(/from '([^']+)'/g) || []).every((x) => x.includes('./dekkingsplan.js')));
+
+
+// ============================================================ 11. "Waarom het past": een fonds uit de lijst van het project is nooit negatief
+console.log('\n== 11. Waarom het past: vergelijking met het project, positief bij een fonds uit de lijst');
+{
+  const fonds = { themasNamen: ['Kunst en cultuur'], doelgroepenNamen: ['Kinderen en jongeren'], werkgebiedenNamen: ['Noord-Holland'], status: 'Open' };
+  const proj = { discipline: ['Kunst en cultuur'], doelgroep: ['Kinderen en jongeren'], regio: 'Zaandam', gevraagd: '20000' };
+  const profielAnders = { themes: ['Sport'], region: 'Groningen' };
+  const k = kansrijkheid(fonds, profielAnders, [proj], { aanbevolen: true, project: proj });
+
+  check('het project telt, niet het organisatieprofiel: goede match ondanks een ander profiel', k.label === 'Goede match' && /disciplines Kunst en cultuur sluiten aan bij uw project/.test(k.tekst) && !/profiel/.test(k.tekst));
+  check('de doelgroep van het project wordt ook genoemd', /doelgroepen Kinderen en jongeren sluiten aan/.test(k.tekst));
+  check('een ander werkgebied (Zaandam tegenover Noord-Holland) wordt niet als afwijkend gemeld', !/wijkt af/.test(k.tekst));
+
+  const anders = kansrijkheid({ themasNamen: ['Sport'], werkgebiedenNamen: ['Limburg'], status: 'Open' }, {}, [proj], { aanbevolen: true, project: proj });
+
+  check('sluit niets aan: nooit "niet passend", wel de uitleg dat het uit de matching komt', anders.label === 'Past bij uw project' && !/niet passend|sluiten niet aan|wijkt af/i.test(anders.label + anders.tekst));
+
+  const uitgeput = kansrijkheid({ ...fonds, status: 'Budget uitgeput', bedragMax: 5000 }, {}, [proj], { aanbevolen: true, project: proj });
+
+  check('echte aandachtspunten blijven onder "Let op", zonder negatief label', uitgeput.label === 'Goede match' && /Let op: het budget is voor deze ronde uitgeput, uw gevraagde bedrag ligt boven het maximum/.test(uitgeput.tekst));
+
+  const oud = kansrijkheid({ themasNamen: ['Sport'], werkgebiedenNamen: ['Limburg'] }, { themes: ['Kunst'], region: 'Zaandam' }, []);
+
+  check('zonder opties werkt het oude gedrag voor de deadlinepagina nog', ['Waarschijnlijk niet passend', 'Mogelijk passend', 'Goede match'].includes(oud.label) && /uw profiel/.test(oud.tekst));
+}
 
 console.log(`\n${ok} OK, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);
