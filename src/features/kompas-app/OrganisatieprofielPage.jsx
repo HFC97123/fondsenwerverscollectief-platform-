@@ -72,6 +72,29 @@ function raadDocSoort(naam) {
   return 'Overig';
 }
 
+// Welke documenten passen hier: zichtbaar als pop-up bij aanwijzen (hover) of focus van "Relevante documenten" en de uploadknop,
+// in plaats van een vaste uitleg op de pagina.
+const CSS_DOC_TIP = `
+.fwk-doctip { position: relative; display: inline-block; }
+.fwk-doctip .fwk-doctip-pop { display: none; position: absolute; left: 0; top: calc(100% + 8px); z-index: 20; width: min(320px, 80vw); box-sizing: border-box; padding: 12px 14px; border: 1px solid #D5E6DB; border-radius: 14px; background: #FFFFFF; box-shadow: 0 10px 30px rgba(44, 74, 94, 0.14); font-size: 13.5px; line-height: 1.55; color: #4B5C58; font-weight: 400; }
+.fwk-doctip:hover .fwk-doctip-pop, .fwk-doctip:focus-within .fwk-doctip-pop { display: block; }
+.fwk-doctip-pop ul { margin: 6px 0 8px; padding-left: 18px; }
+`;
+
+function DocTip({ id = 'fwk-doctip-tekst' }) {
+  return (
+    <div className="fwk-doctip-pop" role="tooltip" id={id || undefined} data-testid="org-doctip">
+      <strong style={css('color: #2C4A5E;')}>Welke documenten kunt u uploaden?</strong>
+      <ul>
+        {ORG_DOC_SOORTEN.filter((x) => x !== 'Overig').map((x) => (
+          <li key={x}>{x === 'ANBI-status' ? 'ANBI-beschikking' : x}</li>
+        ))}
+      </ul>
+      Subsidie Kompas leest de stukken en vult uw organisatieprofiel automatisch aan. Wat u zelf al hebt ingevuld, wordt niet overschreven.
+    </div>
+  );
+}
+
 // Kleine, discrete herkomstregel onder een veld - alleen zichtbaar als het
 // veld daadwerkelijk een waarde heeft. Transparantie-eis: waar komt dit
 // vandaan (handmatig/website/document/gesprek), en de mogelijkheid om het te
@@ -118,6 +141,7 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
   const [documentBezig, setDocumentBezig] = useState(false);
   const [analyseVoorstel, setAnalyseVoorstel] = useState(null);
   const [analyseFout, setAnalyseFout] = useState('');
+  const [docMelding, setDocMelding] = useState('');
 
   useEffect(() => {
     let actief = true;
@@ -197,9 +221,35 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
     });
   };
 
-  // Upload + lokale tekst-extractie (mammoth/pdfjs voor .docx/.pdf, gewone
-  // tekst voor .txt/.md/.csv). Het bestand zelf wordt niet automatisch
-  // geanalyseerd - dat is een aparte, expliciete stap per document hieronder.
+  // Na het uploaden leest de AI het document meteen. Lege velden in het profiel worden automatisch ingevuld (herkomst: document);
+  // een veld dat al een andere waarde heeft wordt nooit stil overschreven, maar als voorstel getoond om te bevestigen.
+  const vulAutomatischIn = async (doc, huidig) => {
+    if (!doc.tekst || !doc.tekst.trim()) {
+      return { ingevuld: [], voorstel: {} };
+    }
+
+    const { velden: ruweVelden, error } = await extractOrganisatieVelden({ text: doc.tekst, fileName: doc.naam });
+
+    if (error) {
+      return { ingevuld: [], voorstel: {}, fout: error };
+    }
+
+    const velden = zichtbareVelden(ruweVelden);
+    const leeg = (k) => !String(huidig[k] == null ? '' : huidig[k]).trim();
+    const nieuw = Object.fromEntries(Object.entries(velden).filter(([k, v]) => String(v || '').trim() && leeg(k)));
+    const anders = Object.fromEntries(
+      Object.entries(velden).filter(([k, v]) => String(v || '').trim() && !leeg(k) && String(huidig[k]).trim().toLowerCase() !== String(v).trim().toLowerCase()),
+    );
+
+    if (Object.keys(nieuw).length) {
+      store.overnemenOrgVelden(nieuw, 'document', doc.id);
+      Object.assign(huidig, nieuw);
+    }
+
+    return { ingevuld: Object.keys(nieuw), voorstel: anders };
+  };
+
+  // Upload + lokale tekst-extractie (mammoth/pdfjs voor .docx/.pdf, gewone tekst voor .txt/.md/.csv), daarna automatisch invullen (zie hierboven).
   const uploadDocument = async (e) => {
     const files = Array.prototype.slice.call(e.target.files || []);
 
@@ -211,6 +261,10 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
 
     setDocumentBezig(true);
     setAnalyseFout('');
+    setDocMelding('');
+
+    const huidig = { ...(store.orgProfile || {}) };
+    const meldingen = [];
 
     for (const file of files) {
       const tekst = await extraheerTekst(file);
@@ -218,14 +272,41 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
       const res = await uploadOrganisatieDocument({ file, soort, tekst });
 
       if (res.id) {
-        setDocumenten((cur) => [
-          { id: res.id, naam: file.name, soort, mimeType: file.type, pad: res.pad, tekst, aangemaakt: new Date().toISOString() },
-          ...(cur || []),
-        ]);
+        const doc = { id: res.id, naam: file.name, soort, mimeType: file.type, pad: res.pad, tekst, aangemaakt: new Date().toISOString() };
+
+        setDocumenten((cur) => [doc, ...(cur || [])]);
+
+        if (!tekst || !tekst.trim()) {
+          meldingen.push(`Uit "${file.name}" kon geen tekst worden gelezen.`);
+          continue;
+        }
+
+        const uit = await vulAutomatischIn(doc, huidig);
+
+        if (uit.ingevuld.length) {
+          meldingen.push(`Uit "${file.name}" ingevuld: ${uit.ingevuld.map((k) => (VELDEN.find((f) => f.n === k) || { l: k }).l.toLowerCase()).join(', ')}.`);
+        } else if (!uit.fout && !Object.keys(uit.voorstel).length) {
+          meldingen.push(`In "${file.name}" stond geen nieuwe informatie voor het profiel.`);
+        }
+
+        if (Object.keys(uit.voorstel).length) {
+          setAnalyseVoorstel({
+            bronType: 'document',
+            bronRef: doc.id,
+            bronLabel: `"${doc.naam}" (wijkt af van wat er nu staat)`,
+            velden: uit.voorstel,
+            gekozen: Object.fromEntries(Object.keys(uit.voorstel).map((k) => [k, false])),
+          });
+        }
+
+        if (uit.fout) {
+          meldingen.push(`"${file.name}" is opgeslagen, maar kon nu niet worden gelezen door de AI. Probeer "Opnieuw analyseren".`);
+        }
       }
     }
 
     setDocumentBezig(false);
+    setDocMelding(meldingen.join(' '));
   };
 
   const verwijderDocument = async (doc) => {
@@ -349,20 +430,21 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
         <Herkomst bron={bronnen.website} onWis={() => store.clearOrgField('website')} />
 
       <div style={css('margin-top: 20px; padding-top: 20px; border-top: 1px solid #E1EAE4;')}>
-        <div style={css('margin-bottom: 8px; font-size: 14px; font-weight: 800; color: #2C4A5E;')}>
-          Relevante documenten
+        <style>{CSS_DOC_TIP}</style>
+        <div className="fwk-doctip" style={css('margin-bottom: 10px;')}>
+          <span tabIndex={0} aria-describedby="fwk-doctip-tekst" style={css('font-size: 14px; font-weight: 800; color: #2C4A5E; cursor: help; border-bottom: 1px dotted #7B8985;')}>
+            Relevante documenten
+          </span>
+          <DocTip />
         </div>
-        <details style={css('margin-bottom: 12px; font-size: 14px; color: #4B5C58;')}>
-          <summary style={css('cursor: pointer; font-weight: 700; color: #4B5C58;')}>Welke documenten?</summary>
-          <div style={css('margin-top: 6px; line-height: 1.6;')}>{ORG_DOC_SOORTEN.filter((x) => x !== 'Overig').join(', ')}</div>
-        </details>
 
+        <span className="fwk-doctip">
         <label
           style={css(
             'position: relative; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; min-height: 44px; padding: 0 18px; border: 1px solid #2C4A5E; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-weight: 700; font-size: 13.5px;',
           )}
         >
-          {documentBezig ? 'Bezig met uploaden…' : '+ Document uploaden'}
+          {documentBezig ? 'Bezig met uploaden en lezen…' : '+ Document uploaden'}
           <input
             type="file"
             multiple
@@ -372,6 +454,14 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
             style={css('position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden;')}
           />
         </label>
+        <DocTip id={null} />
+        </span>
+
+        {docMelding && (
+          <div role="status" data-testid="org-doc-melding" style={css('margin-top: 12px; font-size: 14px; font-weight: 700; color: #3E7F59;')}>
+            {docMelding}
+          </div>
+        )}
 
         {documenten === null && (
           <div style={css('margin-top: 16px; font-size: 14px; color: #7B8985;')}>Documenten laden…</div>
@@ -400,7 +490,7 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
                   </div>
                 </div>
                 <Button variant="outline" onClick={() => analyseerDocument(doc)} disabled={!doc.tekst}>
-                  Laten analyseren
+                  Opnieuw analyseren
                 </Button>
                 <button
                   type="button"
