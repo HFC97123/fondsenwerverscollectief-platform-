@@ -96,6 +96,8 @@ export interface TierConfig {
   // Alleen Pro: na het voorstel melden hoeveel passende fondsen alleen in Premium zichtbaar zijn (uitsluitend een AANTAL, nooit een naam of
   // detail van zo'n fonds). Pas getoond als het aantal groter dan nul is en klopt met wat de engine voor dit project vond.
   premiumHint: boolean;
+  // Alleen Premium: de mix bevat altijd minstens één van de algemene Premium-fondsen (zie algemeenPremium.ts), mits de engine er een passend vindt.
+  algemeenPremium: boolean;
   // Null = geen AI-beoordeling (Free).
   beoordeling: BeoordelingConfig | null;
   // Intern observatiebudget per gebruiker per maand in euro. UITSLUITEND meten: nooit blokkeren, afremmen, melden of een paywall.
@@ -118,6 +120,7 @@ const PRO: TierConfig = {
   onlineAanvullen: null,
   aanvullenVelden: 'indien-nodig',
   premiumHint: true,
+  algemeenPremium: false,
   beoordeling: { maxKandidaten: 25, dekkingsdoelLijst: 1.0, maxFactorLijst: 1.2, netNietLijst: false },
   maandBudgetObservatieEur: 7,
   aanvraagAssistent: {
@@ -149,6 +152,7 @@ const PREMIUM: TierConfig = {
   onlineAanvullen: { maxKandidaten: 5 },
   aanvullenVelden: 'alle-ontbrekende',
   premiumHint: false,
+  algemeenPremium: true,
   beoordeling: { maxKandidaten: 40, dekkingsdoelLijst: 1.4, maxFactorLijst: 1.4, netNietLijst: true },
   maandBudgetObservatieEur: 14,
   // Beoordelingen per maand = per project x aantal projecten: 10 per project, 3 projecten met een plan, dus 30 (Aisya, 21 oktober 2026). Elke aanvraag per fonds
@@ -183,6 +187,7 @@ const FREE: TierConfig = {
   onlineAanvullen: null,
   aanvullenVelden: 'geen',
   premiumHint: false,
+  algemeenPremium: false,
   beoordeling: null,
   maandBudgetObservatieEur: null,
   aanvraagAssistent: null,

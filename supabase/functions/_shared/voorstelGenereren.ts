@@ -20,6 +20,7 @@ import type { ContractUitkomst, ContractVoorstel } from './voorstelContract.js';
 import { filterOpEntitlement } from './voorstelVerificatie.ts';
 import type { ServerRecord } from './voorstelVerificatie.ts';
 import { OPTIONEEL_ONDERDEEL, OPTIONEEL_TEKST, isServiceclub } from './serviceclubs.ts';
+import { isAlgemeenPremium } from './algemeenPremium.ts';
 import { BEDRAG_INDICATIE_TEKST, BEDRAG_INDICATIE_TEKST_ZONDER_BEDRAG, realistischBedrag, selecteerDekkingsmix, selecteerZonderBedrag } from './dekkingsmix.ts';
 import type { MixKandidaat, MixNiveau, MixResultaat } from './dekkingsmix.ts';
 import type { TierConfig } from './tierConfig.ts';
@@ -260,6 +261,7 @@ export function kandidaatNaarMix(k: EngineKandidaat, niveau: MixNiveau): MixKand
     cofinanciering: tekst(row.cofinanciering, 200) || null,
     // Serviceclub (lokale vermelding of internationaal clubfonds zoals de Rotary Global Grant): telt mee maar staat onderaan, als "optioneel te onderzoeken".
     ...(isServiceclub(row) ? { optioneel: true } : {}),
+    ...(isAlgemeenPremium(naam) ? { algemeenPremium: true } : {}),
     ...(k.geografie?.lokaal === true ? { lokaal: true } : {}),
   };
 }
@@ -536,7 +538,10 @@ export function valideerActiesGegroepeerd(raw: Record<string, unknown>, ctx: Rec
 export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
   const perSleutel = new Map(inv.kandidaten.map((k) => [k.mix.sleutel, k]));
   const zonder = inv.zonderBedrag === true;
-  const lijstZonder = zonder ? selecteerZonderBedrag({ kandidaten: inv.kandidaten.map((k) => k.mix), config: inv.config }) : null;
+  // Staat er al een algemeen Premium-fonds in het dekkingsplan van het lid, dan hoeft er geen extra bij (en kiest de mix er geen voor).
+  const algemeenAlInPlan = inv.bestaandeRegels.some((r) => isAlgemeenPremium(r.naam) || isAlgemeenPremium(r.financierNaam));
+  const mixProjectId = algemeenAlInPlan ? undefined : inv.projectId;
+  const lijstZonder = zonder ? selecteerZonderBedrag({ kandidaten: inv.kandidaten.map((k) => k.mix), config: inv.config, projectId: mixProjectId }) : null;
   const mix: MixResultaat = lijstZonder
     ? {
         uitkomst: lijstZonder.regels.length ? 'bedrag-onbekend' : 'geen-kandidaten',
@@ -561,7 +566,7 @@ export function bouwVoorstel(inv: GenereerInvoer): GenereerUitkomst {
         afgewezen: lijstZonder.afgewezen,
         melding: lijstZonder.regels.length ? null : MELDING_GEEN_PASSENDE_FINANCIERS,
       }
-    : selecteerDekkingsmix({ kandidaten: inv.kandidaten.map((k) => k.mix), gat: gatVan(inv.dekking), config: inv.config });
+    : selecteerDekkingsmix({ kandidaten: inv.kandidaten.map((k) => k.mix), gat: gatVan(inv.dekking), config: inv.config, projectId: mixProjectId });
   const regelVan = (m: { sleutel: string; type: 'regeling' | 'fonds'; id: string; naam: string; bedrag: number | null; uitleg: string; onzekerheden: string[]; optioneel?: boolean }, reserve: boolean) => {
     const e = perSleutel.get(m.sleutel)?.engine;
     const rec = inv.records.find((r) => r.type === m.type && String(r.id).toLowerCase() === m.id);

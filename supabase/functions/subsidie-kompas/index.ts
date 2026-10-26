@@ -6377,6 +6377,8 @@ async function bouwProSelectie(
     aiActief,
     dekkingsdoel: ai?.tier === 'premium' ? ai.config.dekkingsdoelLijst || PREMIUM_DEKKINGSDOEL : undefined,
     maxFactor: ai?.tier === 'premium' ? ai.config.maxFactorLijst || PREMIUM_MAX_FACTOR : undefined,
+    // Premium: altijd een algemeen Premium-fonds in de lijst als de engine er een passend vindt; de seed laat de keuze per project afwisselen.
+    algemeenPremium: ai?.tier === 'premium' ? { seed: [eersteGebied, ...disciplines, begroting ?? ''].join('|') } : undefined,
   });
   const getoond = resultaat.regels.map((r) => perSleutel.get(r.sleutel)).filter((k): k is Kandidaat => Boolean(k));
   const netNietZichtbaar = ai?.config.netNietLijst === true;

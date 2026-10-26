@@ -155,5 +155,24 @@ sectie('8. Onbekende bijdragen en te weinig geschikte fondsen');
   check('"meer tonen" (uitgebreid) geeft alle geschikte fondsen', selecteerProLijst({ kandidaten: k, begroting: 20000, uitgebreid: true }).regels.length === 4);
 }
 
+sectie('8. Premium: altijd een algemeen Premium-fonds in de lijst (26-10-2026)');
+{
+  const sterkeLijst = [1, 2, 3, 4, 5, 6].map((n) => kand(`Sterk ${n}`, { score: 95 - n, min: 20000, max: 90000 }));
+  const algemeen = (naam, o = {}) => kand(naam, { score: 70, themaNiveau: 'secundair', min: 20000, max: 60000, ...o });
+  const vier = ["Stichting 't Trekpaert", 'Stichting Pieter Bastiaan', 'Stichting Cordius', 'Stichting Virtutis Opus'].map((n) => algemeen(n));
+  const heeft = (res) => res.regels.some((r) => vier.some((v) => v.sleutel === r.sleutel));
+  const zonder = selecteerProLijst({ kandidaten: [...sterkeLijst, ...vier], begroting: 100000, dekkingsdoel: 1.4, maxFactor: 1.4 });
+  const met = selecteerProLijst({ kandidaten: [...sterkeLijst, ...vier], begroting: 100000, dekkingsdoel: 1.4, maxFactor: 1.4, algemeenPremium: { seed: 'a' } });
+
+  check('zonder de regel (Pro) staat er geen algemeen fonds in een lijst vol sterkere fondsen', !heeft(zonder));
+  check('met de regel staat er minstens één, gewoon meetellend met zijn geschatte bedrag (de rest van de lijst vult zich daarna op de gewone manier)', heeft(met) && met.regels.filter((r) => vier.some((v) => v.sleutel === r.sleutel)).every((r) => r.telt && r.schatting > 0));
+  check('de som blijft onder het maximum (140%) en klopt met de regels', met.totaal <= 140000 && met.totaal === met.regels.reduce((t, r) => t + (r.telt ? r.schatting : 0), 0), String(met.totaal));
+  const eersten = new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'].map((seed) => selecteerProLijst({ kandidaten: [...sterkeLijst, ...vier], begroting: 100000, dekkingsdoel: 1.4, maxFactor: 1.4, algemeenPremium: { seed } }).regels.find((r) => vier.some((v) => v.sleutel === r.sleutel))?.naam));
+
+  check('afwisseling: bij gelijke score komen meerdere van de vier voorbij', eersten.size >= 2, [...eersten].join(' | '));
+  check('past geen enkel (geografisch uitgesloten): geen algemeen fonds, geen misfit', !heeft(selecteerProLijst({ kandidaten: [...sterkeLijst, ...vier.map((v) => ({ ...v, werkgebied: { status: 'ineligible', sterkte: null, reden: 'x', notitie: null } }))], begroting: 100000, dekkingsdoel: 1.4, maxFactor: 1.4, algemeenPremium: { seed: 'a' } })));
+  check('staat er al een in de lijst, dan komt er geen tweede bij', (() => { const r = selecteerProLijst({ kandidaten: [{ ...vier[0], score: 99 }, ...sterkeLijst, ...vier.slice(1)], begroting: 100000, dekkingsdoel: 1.4, maxFactor: 1.4, algemeenPremium: { seed: 'a' } }); return r.regels.filter((x) => vier.some((v) => v.sleutel === x.sleutel)).length >= 1; })());
+}
+
 console.log(`\nrekenen: ${stand.ok} OK, ${stand.fout} FOUT`);
 process.exit(stand.fout ? 1 : 0);

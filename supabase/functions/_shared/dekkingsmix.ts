@@ -18,6 +18,7 @@
 import { tierMagRecord } from './tierConfig.ts';
 import type { TierConfig } from './tierConfig.ts';
 import { OPTIONEEL_TEKST } from './serviceclubs.ts';
+import { algemeenPremiumVolgorde } from './algemeenPremium.ts';
 
 export type MixNiveau = 'verborgen' | 'publiek' | 'volledig';
 
@@ -35,6 +36,7 @@ export interface MixKandidaat {
   cofinanciering?: string | null; // tekst; wordt niet doorgerekend maar als onzekerheid meegegeven
   lokaal?: boolean; // werkgebied is specifiek de plaats of regio van het project: komt vóór de landelijke financiers
   optioneel?: boolean; // serviceclub-vermelding: telt mee in de dekking maar staat helemaal onderaan (zie serviceclubs.ts)
+  algemeenPremium?: boolean; // een van de algemene Premium-fondsen die in de Premium-mix altijd minstens één keer meedoen (zie algemeenPremium.ts)
   band?: string | null; // naam van de bandbreedte (bandbreedtes_bijdrage), bijvoorbeeld '€10.000–€25.000'; alleen gebruikt als er geen eigen minimum is
 }
 
@@ -276,7 +278,7 @@ export function lokaalVoorrang<T extends MixKandidaat>(lijst: T[], maxRegels: nu
 
 // Het bedrag van het project is (nog) onbekend: geen mix en geen bedragen, wel de sterkste passende financiers op volgorde van score. Zelfde
 // poorten als selecteerDekkingsmix; het aantal is begrensd door de mix-grootte van het abonnement. Nooit een bedrag verzinnen.
-export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]; config: TierConfig }): { regels: MixKandidaat[]; afgewezen: MixResultaat['afgewezen'] } {
+export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]; config: TierConfig; projectId?: string }): { regels: MixKandidaat[]; afgewezen: MixResultaat['afgewezen'] } {
   if (!inv.config.dekkingsplan || inv.config.maxRegelsInMix <= 0) return { regels: [], afgewezen: [] };
 
   const { geschikt, afgewezen } = filterGeschikt(inv.kandidaten, inv.config);
@@ -284,9 +286,19 @@ export function selecteerZonderBedrag(inv: { kandidaten: readonly MixKandidaat[]
   geschikt.sort(volgorde);
   geschikt.splice(0, geschikt.length, ...lokaalVoorrang(geschikt, inv.config.maxRegelsInMix));
 
-  for (const k of geschikt.slice(inv.config.maxRegelsInMix)) afgewezen.push({ sleutel: k.sleutel, code: 'mix-vol' });
+  const max = inv.config.maxRegelsInMix;
+  let regels = geschikt.slice(0, max);
 
-  return { regels: geschikt.slice(0, inv.config.maxRegelsInMix), afgewezen };
+  // Premium: staat er geen algemeen Premium-fonds bij de gekozen regels, dan komt de best passende op de laatste plaats (de zwakste valt af).
+  if (inv.config.algemeenPremium === true && inv.projectId !== undefined && !regels.some((k) => k.algemeenPremium === true)) {
+    const keuze = algemeenPremiumVolgorde(geschikt.filter((k) => k.algemeenPremium === true && !k.optioneel), inv.projectId, (k) => k.score, (k) => k.naam)[0];
+
+    if (keuze) regels = [...regels.slice(0, Math.max(0, max - 1)), keuze];
+  }
+
+  for (const k of geschikt) if (!regels.includes(k)) afgewezen.push({ sleutel: k.sleutel, code: 'mix-vol' });
+
+  return { regels, afgewezen };
 }
 
 // Breedte van een scoreband bij Premium (rangschikOpBijdrage): kandidaten binnen dezelfde band van 10 punten worden op bijdrage gerangschikt.
@@ -294,7 +306,7 @@ const SCOREBAND = 10;
 
 // Selecteert de kleinste sterke mix. `kandidaten` komen uit de engine (al door de entitlementlaag). Volgorde van de invoer is niet
 // bepalend: er wordt hier deterministisch op score (aflopend) en naam gesorteerd.
-export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[]; gat: unknown; config: TierConfig }): MixResultaat {
+export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[]; gat: unknown; config: TierConfig; projectId?: string }): MixResultaat {
   const { config } = inv;
   const gat = getal(inv.gat) ?? 0;
   const doelBedrag = Math.ceil(Math.round(gat * config.dekkingsdoel * 100) / 100); // zelfde afronding als toegestaneSom in het contract
@@ -346,36 +358,61 @@ export function selecteerDekkingsmix(inv: { kandidaten: readonly MixKandidaat[];
     ],
   });
 
-  const mix: MixRegel[] = [];
-  const inMix = new Set<string>();
-  let som = 0;
+  // Eén ronde mixen over een volgorde. Apart gehouden, zodat dezelfde ronde nog eens kan met een algemeen Premium-fonds vooraan.
+  const mixRonde = (lijst: readonly MixKandidaat[]) => {
+    const uit = { mix: [] as MixRegel[], inMix: new Set<string>(), som: 0, afgewezen: [] as MixResultaat['afgewezen'] };
 
-  for (const k of geschikt) {
-    // Doel gehaald: STOP met mixen. De alternatieven worden hierna apart gekozen (ze tellen niet mee).
-    if (som >= doelBedrag) break;
+    for (const k of lijst) {
+      // Doel gehaald: STOP met mixen. De alternatieven worden hierna apart gekozen (ze tellen niet mee).
+      if (uit.som >= doelBedrag) break;
 
-    if (mix.length >= config.maxRegelsInMix) {
-      afgewezen.push({ sleutel: k.sleutel, code: 'mix-vol' });
-      continue;
+      if (uit.mix.length >= config.maxRegelsInMix) {
+        uit.afgewezen.push({ sleutel: k.sleutel, code: 'mix-vol' });
+        continue;
+      }
+
+      const b = realistischBedrag({ gat, nodig: doelBedrag - uit.som, min: k.min, max: k.max, bandOnder: bandOndergrens(k.band), maxAandeel: config.maxAandeelPerFonds });
+
+      if (b.bedrag === null) {
+        uit.afgewezen.push({ sleutel: k.sleutel, code: b.afwijsCode as AfwijsCode });
+        continue;
+      }
+
+      // Een minimum van het fonds mag de mix nooit boven het dekkingsdoel tillen (het contract weigert dat): dan deze overslaan.
+      if (uit.som + b.bedrag > doelBedrag) {
+        uit.afgewezen.push({ sleutel: k.sleutel, code: 'boven-doel' });
+        continue;
+      }
+
+      uit.mix.push(regelVan(k, b));
+      uit.inMix.add(k.sleutel);
+      uit.som += b.bedrag;
     }
 
-    const b = realistischBedrag({ gat, nodig: doelBedrag - som, min: k.min, max: k.max, bandOnder: bandOndergrens(k.band), maxAandeel: config.maxAandeelPerFonds });
+    return uit;
+  };
 
-    if (b.bedrag === null) {
-      afgewezen.push({ sleutel: k.sleutel, code: b.afwijsCode as AfwijsCode });
-      continue;
+  let ronde = mixRonde(geschikt);
+
+  // Premium: staat er geen algemeen Premium-fonds in de mix, dan krijgt het best passende er één vooraan, met een gewoon bedrag dat meetelt in de dekking.
+  // Lukt dat niet (geen bedrag te bepalen, of het past niet binnen het doel), dan het volgende; past geen enkel, dan blijft de mix zoals ze was.
+  if (config.algemeenPremium === true && inv.projectId !== undefined && !ronde.mix.some((m) => geschikt.find((k) => k.sleutel === m.sleutel)?.algemeenPremium === true)) {
+    const kandidaten = algemeenPremiumVolgorde(geschikt.filter((k) => k.algemeenPremium === true && !k.optioneel), inv.projectId, (k) => k.score, (k) => k.naam);
+
+    for (const keuze of kandidaten) {
+      const nieuw = mixRonde([keuze, ...geschikt.filter((k) => k !== keuze)]);
+
+      if (nieuw.inMix.has(keuze.sleutel)) {
+        ronde = nieuw;
+        break;
+      }
     }
-
-    // Een minimum van het fonds mag de mix nooit boven het dekkingsdoel tillen (het contract weigert dat): dan deze overslaan.
-    if (som + b.bedrag > doelBedrag) {
-      afgewezen.push({ sleutel: k.sleutel, code: 'boven-doel' });
-      continue;
-    }
-
-    mix.push(regelVan(k, b));
-    inMix.add(k.sleutel);
-    som += b.bedrag;
   }
+
+  const { mix, inMix } = ronde;
+  const som = ronde.som;
+
+  afgewezen.push(...ronde.afgewezen);
 
   const bereikt = som >= doelBedrag;
   // Alternatieven: de volgende passende financiers, voor als een aanvraag wordt afgewezen. Alleen als het gat gedekt is (anders valt er niets te

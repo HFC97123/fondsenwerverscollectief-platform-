@@ -14,6 +14,7 @@
 
 import type { WerkgebiedOordeel, Sterkte } from './werkgebied.ts';
 import type { FondsOordeel } from './fondsBeoordeling.ts';
+import { algemeenPremiumVolgorde, isAlgemeenPremium } from './algemeenPremium.ts';
 
 export const PRO_MAX_FACTOR = 1.2; // bovengrens van de som van de geschatte bijdragen, als aandeel van de projectbegroting
 export const PRO_DEKKINGSDOEL = 1.0; // genoeg potentiële dekking: de lijst stopt zodra de som de begroting haalt
@@ -311,6 +312,7 @@ export function selecteerProLijst(inv: {
   aiActief?: boolean; // de AI-beoordeling heeft gedraaid: fondsen zonder geldig oordeel krijgen een kanttekening
   dekkingsdoel?: number; // stopt de lijst zodra de som dit aandeel van de begroting haalt (Pro 1,0; Premium 1,4)
   maxFactor?: number; // bovengrens als aandeel van de begroting (Pro 1,2; Premium 1,4)
+  algemeenPremium?: { seed: string }; // alleen Premium: zorg dat er een algemeen Premium-fonds in de lijst staat; seed laat de keuze per project afwisselen
 }): ProResultaat {
   const begroting = typeof inv.begroting === 'number' && inv.begroting > 0 ? Math.round(inv.begroting) : null;
   const factor = typeof inv.maxFactor === 'number' && inv.maxFactor >= PRO_MAX_FACTOR && inv.maxFactor <= 2 ? inv.maxFactor : PRO_MAX_FACTOR;
@@ -382,25 +384,44 @@ export function selecteerProLijst(inv: {
     return { ...leeg, uitkomst: 'zonder-begroting', regels: regels.length ? regels : geschikt.slice(0, 3).map(maak), extraGeschikt: Math.max(0, geschikt.length - Math.max(regels.length, 3)), tekort: 0 };
   }
 
-  const regels: ProRegel[] = [];
-  const overgeslagen: ProResultaat['overgeslagen'] = [];
-  const gekozen = new Set<string>();
-  let totaal = 0;
-
   // 1. Fondsen mét onderbouwde schatting, sterkste eerst, tot het dekkingsdoel gehaald is en nooit boven het maximum.
-  for (const g of geschikt) {
-    if (g.s.bedrag === null) continue;
-    if (totaal >= begroting * doel) break;
+  const kiesRonde = (lijst: typeof geschikt) => {
+    const uit = { regels: [] as ProRegel[], overgeslagen: [] as ProResultaat['overgeslagen'], gekozen: new Set<string>(), totaal: 0 };
 
-    if (totaal + g.s.bedrag > (maximum as number)) {
-      overgeslagen.push({ sleutel: g.k.sleutel, naam: g.k.naam, reden: `zou de som boven het maximum van ${euro(maximum as number)} brengen (schatting ${euro(g.s.bedrag)})` });
-      continue;
+    for (const g of lijst) {
+      if (g.s.bedrag === null) continue;
+      if (uit.totaal >= begroting * doel) break;
+
+      if (uit.totaal + g.s.bedrag > (maximum as number)) {
+        uit.overgeslagen.push({ sleutel: g.k.sleutel, naam: g.k.naam, reden: `zou de som boven het maximum van ${euro(maximum as number)} brengen (schatting ${euro(g.s.bedrag)})` });
+        continue;
+      }
+
+      uit.regels.push(maak(g));
+      uit.gekozen.add(g.k.sleutel);
+      uit.totaal += g.s.bedrag;
     }
 
-    regels.push(maak(g));
-    gekozen.add(g.k.sleutel);
-    totaal += g.s.bedrag;
+    return uit;
+  };
+
+  let ronde = kiesRonde(geschikt);
+
+  // Premium: staat er geen algemeen Premium-fonds in de lijst (zie algemeenPremium.ts), dan krijgt het best passende er één vooraan met zijn gewone geschatte bedrag.
+  // Lukt dat niet (geen bedrag, of het past niet onder het maximum), dan het volgende; past geen enkel, dan blijft de lijst zoals ze was.
+  if (inv.algemeenPremium && !geschikt.some((g) => ronde.gekozen.has(g.k.sleutel) && isAlgemeenPremium(g.k.naam))) {
+    for (const keuze of algemeenPremiumVolgorde(geschikt.filter((g) => isAlgemeenPremium(g.k.naam) && g.s.bedrag !== null), inv.algemeenPremium.seed, (g) => g.b.sterkte, (g) => g.k.naam)) {
+      const nieuw = kiesRonde([keuze, ...geschikt.filter((g) => g !== keuze)]);
+
+      if (nieuw.gekozen.has(keuze.k.sleutel)) {
+        ronde = nieuw;
+        break;
+      }
+    }
   }
+
+  const { regels, overgeslagen, gekozen } = ronde;
+  let totaal = ronde.totaal;
 
   // 2. Blijft er een tekort, dan nog de STERKE fondsen zonder bedrag, om te onderzoeken. Ze tellen niet mee in de berekende dekking.
   if (totaal < begroting * PRO_DEKKINGSDOEL) {
