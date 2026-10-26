@@ -55,6 +55,8 @@ export function actieUitRij(r) {
     // Alleen aanwezig na de voorstel-migratie; tot die tijd undefined/leeg.
     voorstelSleutel: r.voorstel_sleutel || null,
     bronDeadlineBijVoorstel: r.bron_deadline_bij_voorstel ? tekst(r.bron_deadline_bij_voorstel).slice(0, 10) : '',
+    // De fase van het voorstel: navragen (contact), indienen of besluit (uitslag); leeg bij een eigen taak.
+    fase: r.planning_fase || '',
     gemaakt: r.created_at || '',
     bijgewerkt: r.updated_at || '',
   };

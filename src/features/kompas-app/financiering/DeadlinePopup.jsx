@@ -135,7 +135,7 @@ export default function DeadlinePopup() {
           {tonen.map((r) => (
             <li key={`${r.id}-${r.datum}`} data-testid="deadline-popup-regel">
               <div style={css('font-size: 15px; font-weight: 800; color: #2C4A5E;')}>{r.naam}</div>
-              <div style={css('font-size: 13.5px; color: #6D7C77;')}>
+              <div style={css('font-size: 13.5px; color: #687974;')}>
                 {r.soort === 'fonds' ? 'Sluit op ' : ''}
                 {formatDatum(r.datum)} · nog {popupTekstDagen(r.dagen)} · {r.projectNaam}
               </div>
@@ -155,7 +155,7 @@ export default function DeadlinePopup() {
             type="button"
             data-testid="deadline-popup-later"
             onClick={sluit}
-            style={css('cursor: pointer; min-height: 42px; padding: 0 18px; border: 1px solid #CFDDD5; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-family: inherit; font-size: 14px; font-weight: 800;')}
+            style={css('cursor: pointer; min-height: 42px; padding: 0 18px; border: 1px solid #D5E0D9; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-family: inherit; font-size: 14px; font-weight: 800;')}
           >
             Sluiten
           </button>

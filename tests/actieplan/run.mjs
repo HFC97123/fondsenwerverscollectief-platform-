@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 let status = 0;
 
-for (const naam of ['unit', 'samen']) {
+for (const naam of ['unit', 'samen', 'overzicht']) {
 await build({
   entryPoints: [`tests/actieplan/${naam}.test.mjs`],
   outfile: `tests/actieplan/.build/${naam}.bundle.mjs`,

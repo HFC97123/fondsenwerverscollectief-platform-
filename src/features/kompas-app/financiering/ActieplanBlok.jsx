@@ -10,6 +10,7 @@ import { HelpKnop } from '../../../shared/ui/werkplek.jsx';
 import { isEchtId } from '../../../data/services/projecten.js';
 import { useDekkingsplannen } from './useProjectFinanciering.js';
 import { useActieplan } from './useActieplan.js';
+import { ActieplanNu } from './ActieplanNu.jsx';
 import { bouwActiesEnDeadlines, groepeerActiesEnDeadlines, telOpen, SOORT, DATUM_SOORT } from './actiesEnDeadlines.js';
 import { dagenTot, dagenTekst, formatDatum } from './dekkingsplan.js';
 import {
@@ -29,15 +30,15 @@ import {
 const TEKST = "font-family: 'Mulish', sans-serif; font-size: 14px; line-height: 1.55; color: #4B5C58;";
 const LABEL = "font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #7B8985;";
 const INVOER =
-  "box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #CFDDD5; border-radius: 10px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; color: #2E3A38;";
-const KNOP = "cursor: pointer; min-height: 40px; padding: 0 16px; border: 1px solid #CFDDD5; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800;";
+  "box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #D5E0D9; border-radius: 10px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 14px; color: #2E3A38;";
+const KNOP = "cursor: pointer; min-height: 40px; padding: 0 16px; border: 1px solid #D5E0D9; border-radius: 999px; background: #FFFFFF; color: #2C4A5E; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800;";
 const KNOP_PRIMAIR = "cursor: pointer; min-height: 40px; padding: 0 18px; border: none; border-radius: 999px; background: #2C4A5E; color: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800;";
 const KNOP_TEKST = "cursor: pointer; min-height: 36px; padding: 0 6px; border: none; background: none; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 700;";
 
 const PRIORITEIT_STIJL = {
-  high: 'background: #FBE9E5; color: #9E3B2C;',
-  normal: 'background: #EAF3EE; color: #2F6D47;',
-  low: 'background: #EEF1F0; color: #5D6B67;',
+  high: 'background: #FDF6F5; color: #9E3B2C;',
+  normal: 'background: #EAF4EE; color: #2F6D47;',
+  low: 'background: #EEF1F0; color: #687974;',
 };
 
 const SOORT_LABEL = { taak: 'Opgeslagen taak', afgeleid: 'Afgeleid uit dekkingsplan' };
@@ -51,7 +52,7 @@ function SoortLabel({ soort }) {
     <span
       data-testid="ap-soort"
       data-soort={soort}
-      style={css(`display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid ${soort === SOORT.TAAK ? '#CFDDD5' : '#E1D5F0'}; background: ${soort === SOORT.TAAK ? '#F7F9F8' : '#F4EFFA'}; color: ${soort === SOORT.TAAK ? '#4B5C58' : '#5B3F8A'}; font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800;`)}
+      style={css(`display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid ${soort === SOORT.TAAK ? '#D5E0D9' : '#E1D5F0'}; background: ${soort === SOORT.TAAK ? '#F7F9F8' : '#F4EFFA'}; color: ${soort === SOORT.TAAK ? '#4B5C58' : '#5B3F8A'}; font-family: 'Mulish', sans-serif; font-size: 11.5px; font-weight: 800;`)}
     >
       {SOORT_LABEL[soort]}
     </span>
@@ -236,7 +237,7 @@ function Taak({ item, financiers, regelNaam, nu, onWijzig, onVerwijder, projectN
           <div data-testid="ap-taak-titel" style={css(`${TEKST} font-size: 15px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere; ${klaar ? 'text-decoration: line-through;' : ''}`)}>
             {taak.titel}
           </div>
-          <div style={css(`${TEKST} font-size: 13px; color: #6D7C77; margin-top: 2px; overflow-wrap: anywhere;`)}>
+          <div style={css(`${TEKST} font-size: 13px; color: #687974; margin-top: 2px; overflow-wrap: anywhere;`)}>
             {[projectNaam, regelNaam || taak.financier, ...datums].filter(Boolean).join(' · ') || 'Geen financier of deadline'}
             {taak.bron === 'chat' && <span data-testid="ap-bron-chat"> · voorgesteld door Subsidie Kompas{item.aangepastDoorLid ? ', door u aangepast' : ''}</span>}
           </div>
@@ -375,7 +376,7 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
       )}
 
       {beschikbaar && taken.length === 0 && !open && (
-        <div data-testid="ap-leeg" style={css(`${TEKST} padding: 16px 18px; border: 1px dashed #CFDDD5; border-radius: 14px; color: #7B8985;`)}>
+        <div data-testid="ap-leeg" style={css(`${TEKST} padding: 16px 18px; border: 1px dashed #D5E0D9; border-radius: 14px; color: #7B8985;`)}>
           Nog geen eigen taken bij dit project. Voeg een actie toe, bijvoorbeeld “vooroverleg plannen met Fonds A”, of maak een afgeleide actie tot taak.
         </div>
       )}
@@ -394,7 +395,7 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
                 <div key={i.sleutel} data-testid="ap-afgeleid-actie" data-soort="afgeleid" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border: 1px solid #E8E0F2; border-radius: 12px; background: #FBF9FD;')}>
                   <div style={css('min-width: 0; flex: 1 1 240px;')}>
                     <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{i.titel}</div>
-                    <div style={css(`${TEKST} font-size: 13px; color: #6D7C77; overflow-wrap: anywhere;`)}>{[i.regelNaam, i.reden].filter(Boolean).join(' · ')}</div>
+                    <div style={css(`${TEKST} font-size: 13px; color: #687974; overflow-wrap: anywhere;`)}>{[i.regelNaam, i.reden].filter(Boolean).join(' · ')}</div>
                   </div>
                   <SoortLabel soort={SOORT.AFGELEID} />
                   <Chip prioriteit={i.prioriteit} />
@@ -427,7 +428,7 @@ export function ActieplanVoorProject({ project, regels }) {
   return <ActieplanBlok project={project} regels={regels} plan={plan} nu={nu} koptekst />;
 }
 
-const FILTER_STIJL = "box-sizing: border-box; min-height: 40px; padding: 6px 12px; border: 1px solid #CFDDD5; border-radius: 999px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 700; color: #2C4A5E;";
+const FILTER_STIJL = "box-sizing: border-box; min-height: 40px; padding: 6px 12px; border: 1px solid #D5E0D9; border-radius: 999px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 700; color: #2C4A5E;";
 
 const fondsVan = (i) => i.regelNaam || (i.taak && i.taak.financier) || '';
 
@@ -476,11 +477,12 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
     return r && r.naam ? r.naam : null;
   };
 
-  const maakTaak = async (a) => {
+  const maakTaak = async (a, extra = {}) => {
     const taakInvoer = afgeleidNaarTaak(a.afgeleid);
 
-    await plan.voegToe({ ...taakInvoer, financier: taakInvoer.fundingId ? '' : taakInvoer.financier, bron: 'user' });
+    return plan.voegToe({ ...taakInvoer, financier: taakInvoer.fundingId ? '' : taakInvoer.financier, bron: 'user', ...extra });
   };
+  const inBeeld = useMemo(() => (kiesProject ? actief.filter((p) => p.id === kiesProject) : actief), [actief, kiesProject]);
 
   const voegToe = async (w) => {
     const regel = regelsVan(kiesProject).find((r) => r.bronStatus === 'zichtbaar' && r.naam && w.financier && r.naam.trim().toLowerCase() === w.financier.trim().toLowerCase());
@@ -491,13 +493,15 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
   return (
     <div data-testid="actieplan-overzicht" style={css('display: flex; flex-direction: column; gap: 14px; min-width: 0;')}>
       {actief.length === 0 && (
-        <div data-testid="ap-geen-projecten" style={css(`${TEKST} padding: 26px 24px; border: 1px dashed #CFDDD5; border-radius: 16px; background: #FFFFFF;`)}>
+        <div data-testid="ap-geen-projecten" style={css(`${TEKST} padding: 26px 24px; border: 1px dashed #D5E0D9; border-radius: 16px; background: #FFFFFF;`)}>
           U heeft nog geen actief project. Maak er een aan bij <a href="#/kompas/projecten" style={css('color: #4E9A6C; font-weight: 800;')}>Projecten</a>; het actieplan van uw projecten staat dan hier.
         </div>
       )}
       {actief.length > 0 && status === 'laden' && <div style={css(`${TEKST} color: #7B8985;`)}>Uw actieplannen worden geladen…</div>}
       {actief.length > 0 && status !== 'laden' && (
         <>
+          <ActieplanNu items={zichtbaar} projecten={inBeeld} nu={nu} plan={plan} beschikbaar={beschikbaar} maakTaak={maakTaak} naamVanProject={naamVanProject} fondsVan={fondsVan} />
+          <div style={css(`${LABEL} margin-top: 8px;`)}>Alle acties</div>
           <div style={css('display: flex; gap: 10px; flex-wrap: wrap; align-items: center;')}>
             <select data-testid="ap-filter-project" aria-label="Project" value={kiesProject} onChange={(e) => { setKiesProject(e.target.value); setKiesFonds(''); }} style={css(FILTER_STIJL)}>
               <option value="">Alle projecten</option>
@@ -538,7 +542,7 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
           )}
 
           {zichtbaar.length === 0 && (
-            <div data-testid="ap-leeg" style={css(`${TEKST} padding: 16px 18px; border: 1px dashed #CFDDD5; border-radius: 14px; color: #7B8985;`)}>
+            <div data-testid="ap-leeg" style={css(`${TEKST} padding: 16px 18px; border: 1px dashed #D5E0D9; border-radius: 14px; color: #7B8985;`)}>
               Geen acties voor deze keuze.
             </div>
           )}
@@ -562,10 +566,10 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
                       onVerwijder={plan.verwijder}
                     />
                   ) : (
-                    <div key={i.sleutel} data-testid="ap-afgeleid-actie" data-soort="afgeleid" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border: 1px dashed #CFDDD5; border-radius: 12px; background: #FFFFFF;')}>
+                    <div key={i.sleutel} data-testid="ap-afgeleid-actie" data-soort="afgeleid" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border: 1px dashed #D5E0D9; border-radius: 12px; background: #FFFFFF;')}>
                       <div style={css('min-width: 0; flex: 1 1 240px;')}>
                         <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{i.titel}</div>
-                        <div style={css(`${TEKST} font-size: 13px; color: #6D7C77; overflow-wrap: anywhere;`)}>{[kiesProject ? '' : naamVanProject(i.projectId), i.regelNaam, i.reden].filter(Boolean).join(' · ')}</div>
+                        <div style={css(`${TEKST} font-size: 13px; color: #687974; overflow-wrap: anywhere;`)}>{[kiesProject ? '' : naamVanProject(i.projectId), i.regelNaam, i.reden].filter(Boolean).join(' · ')}</div>
                       </div>
                       <SoortLabel soort={SOORT.AFGELEID} />
                       <Chip prioriteit={i.prioriteit} />
