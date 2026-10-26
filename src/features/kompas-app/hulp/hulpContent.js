@@ -42,7 +42,7 @@ export const RONDLEIDING = [
   {
     id: 'indienen',
     titel: 'Stap 4 · Indienen',
-    tekst: 'Vul het projectdossier aan. Daarna maakt Subsidie Kompas een projectplan op maat van het fonds en beoordeelt het uw aanvraag voordat u indient.',
+    tekst: 'Maak een projectplan op maat, laat uw aanvraag per fonds beoordelen voordat u indient en vul het projectdossier aan.',
     link: { href: '#/kompas/documentatie', tekst: 'Naar indienen' },
   },
   {
@@ -119,12 +119,12 @@ export const VRAGEN = [
     id: 'projectdossier',
     vraag: 'Wat is het projectdossier en waarom vul ik het in?',
     antwoord: 'Het projectdossier bevat de uitgebreide informatie over uw project. Hoe completer het is, hoe beter het projectplan op maat en de beoordeling per fonds worden. De groene balk laat zien hoeveel u al heeft ingevuld.',
-    links: [{ href: '#/kompas/documentatie', tekst: 'Naar het projectdossier' }],
+    links: [{ href: '#/kompas/documentatie?tab=inhoud', tekst: 'Naar het projectdossier' }],
   },
   {
     id: 'projectplan',
     vraag: 'Hoe krijg ik een projectplan of een beoordeling?',
-    antwoord: 'Ga naar Subsidieadvies › Indienen. Vul eerst het projectdossier aan. Daarna kunt u onder Projectplan en Aanvragen een plan op maat van het fonds laten maken en uw aanvraag laten beoordelen voordat u indient.',
+    antwoord: 'Ga naar Subsidieadvies › Indienen. Vul eerst het projectdossier aan. Daarna kunt u onder Projectplan en Fondsen indienen een plan op maat van het fonds laten maken en uw aanvraag laten beoordelen voordat u indient.',
     links: [{ href: '#/kompas/documentatie', tekst: 'Naar indienen' }],
   },
   {

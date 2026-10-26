@@ -29,7 +29,7 @@ const src = (p) => readFileSync(join(root, p), 'utf8');
 check('vijf stappen: Overzicht, fondsmatching, Begroting en dekkingsplan, Actieplan, Indienen', L.STAPPEN.map((s) => s.label).join('|') === 'Overzicht|Fondsmatching|Begroting en dekkingsplan|Actieplan|Indienen');
 check('overzicht linkt naar /kompas/advies', L.stapHref('overzicht', P) === `#/kompas/advies?project=${P}`);
 check('Fondsmatching (fondsen) linkt naar /kompas/advies/fondsen', L.stapHref('fondsen', P) === `#/kompas/advies/fondsen?project=${P}`);
-check('begroting en indienen zijn de bestaande pagina Documenten met het juiste tabblad', L.stapHref('begroting', P) === `#/kompas/documentatie?tab=begroting&project=${P}` && L.stapHref('indienen', P) === `#/kompas/documentatie?tab=inhoud&project=${P}`);
+check('begroting en indienen zijn de bestaande pagina Documenten met het juiste tabblad', L.stapHref('begroting', P) === `#/kompas/documentatie?tab=begroting&project=${P}` && L.stapHref('indienen', P) === `#/kompas/documentatie?tab=plan&project=${P}`);
 check('deadlines is de bestaande pagina Deadlines (het actieplan), met het project in de link', L.stapHref('deadlines', P) === '#/kompas/deadlines?project=' + P && L.stapHref('deadlines', '') === '#/kompas/deadlines');
 check('zonder project geen lege ?project=', L.stapHref('fondsen', '') === '#/kompas/advies/fondsen' && L.stapHref('begroting', '') === '#/kompas/documentatie?tab=begroting');
 
@@ -67,7 +67,8 @@ check('projectpagina: tabbladen Projectprofiel, Documenten, Gesprekken; geen Pro
 check('projectpagina stuurt oude tab-links door', /adviesDoorverwijzing\(huidigeHash\(\), projectId\)/.test(pd));
 const dp = src('src/features/kompas-app/DocumentatiePage.jsx');
 check('Documenten: kop heet Begroting en dekkingsplan of Indienen; Projectinhoud heet Projectdossier', /titel=\{sectie === 'begroting' \? 'Begroting en dekkingsplan' : 'Indienen'\}/.test(dp) && /label: 'Projectdossier'/.test(dp) && !/label: 'Projectinhoud'/.test(dp));
-check('Indienen: tabbladen Projectdossier, Projectplan, Aanvragen, Bestanden in deze volgorde', dp.indexOf("label: 'Projectdossier'") < dp.indexOf("label: 'Projectplan'") && dp.indexOf("label: 'Projectplan'") < dp.indexOf("label: 'Aanvragen'") && dp.indexOf("label: 'Aanvragen'") < dp.indexOf("label: 'Bestanden'"));
+check('Indienen: vier tabbladen in de volgorde Projectplan, Fondsen indienen, Projectdossier, Projectdocumentatie', dp.indexOf("label: 'Projectplan'") < dp.indexOf("label: 'Fondsen indienen'") && dp.indexOf("label: 'Fondsen indienen'") < dp.indexOf("label: 'Projectdossier'") && dp.indexOf("label: 'Projectdossier'") < dp.indexOf("label: 'Projectdocumentatie'"));
+check('Indienen opent op Projectplan, niet op het projectdossier', /return m \? m\[1\] : 'plan';/.test(dp) && !/\? 'inhoud' : 'bestanden'/.test(dp));
 check('Documenten volgt de hash (stap en project uit de balk)', /addEventListener\('hashchange', volg\)/.test(dp));
 const ap = src('src/features/kompas-app/advies/AdviesPage.jsx');
 check('Fondsmatching: projectgegevens met Aanpassen en + Nieuw project (zelfde formulier als Projecten), daaronder de projectfinanciering', /ProjectBewerkFormulier/.test(ap) && /advies-nieuw-project/.test(ap) && /<ProjectfinancieringTab/.test(ap));

@@ -468,7 +468,7 @@ export default function DashboardPage() {
             testid="dashboard-documenten"
             titel="Recente documenten"
             actie={
-              <a href="#/kompas/documentatie" className="fwk-wp-link">
+              <a href="#/kompas/documentatie?tab=bestanden" className="fwk-wp-link">
                 Alle documenten
               </a>
             }

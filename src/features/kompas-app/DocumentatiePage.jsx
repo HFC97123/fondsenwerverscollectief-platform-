@@ -69,15 +69,14 @@ function leesProjectUitUrl() {
   return m ? decodeURIComponent(m[1]) : '';
 }
 
-// ?tab=inhoud of ?tab=bestanden kiest het tabblad; zonder tab opent een link met ?project=<id> (vanuit het project) de
-// projectinhoud van dat project, en de pagina zelf de bestanden.
+// Indienen heeft vier tabbladen: Projectplan, Fondsen indienen, Projectdossier en Projectdocumentatie (de bestanden).
+// ?tab=plan, aanvragen, inhoud of bestanden kiest het tabblad; zonder tab opent de pagina altijd op Projectplan (ook met ?project=<id>).
+// Het projectdossier is het laatste tabblad en opent dus alleen als er expliciet om gevraagd wordt (?tab=inhoud).
 function leesTabUitUrl() {
   const h = huidigeHash();
   const m = /[?&]tab=(inhoud|bestanden|plan|aanvragen|begroting)(&|$)/.exec(h);
 
-  if (m) return m[1];
-
-  return /[?&]project=/.test(h) ? 'inhoud' : 'bestanden';
+  return m ? m[1] : 'plan';
 }
 
 function zetProjectInUrl(id) {
@@ -107,11 +106,11 @@ export default function DocumentatiePage() {
   const projecten = useMemo(() => (store.projects || []).filter((p) => isEchtId(p.id) && !p.gearchiveerd), [store.projects]);
   const projectId = projecten.some((p) => p.id === gekozen) ? gekozen : projecten.length ? projecten[0].id : '';
 
-  // Een link naar Projectplan of Aanvragen toont, zolang de functie er niet is (of nog laadt), gewoon de bestanden.
+  // Een link naar Projectplan of Fondsen indienen toont, als de functie er voor dit lid niet is, het projectdossier.
   // Het tabblad Begroting bestaat alleen als de database de kolom voor begrotingsregels heeft (budgetRegels is dan een lijst, ook een lege).
   const begrotingBeschikbaar = projecten.some((p) => Array.isArray(p.budgetRegels));
   const vraagtAssistent = tab === 'plan' || tab === 'aanvragen';
-  const tabActief = (vraagtAssistent && assistent.klaar && !assistent.beschikbaar) || (tab === 'begroting' && !begrotingBeschikbaar) ? 'bestanden' : tab;
+  const tabActief = vraagtAssistent && assistent.klaar && !assistent.beschikbaar ? 'inhoud' : tab === 'begroting' && !begrotingBeschikbaar ? 'bestanden' : tab;
 
   const kiesProject = useCallback((id) => {
     setGekozen(id);
@@ -196,8 +195,8 @@ export default function DocumentatiePage() {
           ) : (
             <>
               <p>Het projectdossier is de inhoud waarmee Subsidie Kompas teksten en aanvragen voor een project schrijft. Wat daar niet staat, verzint Subsidie Kompas niet.</p>
-              {assistent.beschikbaar && <p>Onder Projectplan schrijft u een algemeen plan of een plan voor één fonds. Onder Aanvragen houdt u per fonds de criteria, uw versie en de beoordeling van uw eigen tekst bij elkaar.</p>}
-              <p>Bestanden zijn de documenten bij uw projecten: wat u uploadt en wat Subsidie Kompas voor u opmaakte.</p>
+              {assistent.beschikbaar && <p>Onder Projectplan schrijft u een algemeen plan of een plan voor één fonds. Onder Fondsen indienen houdt u per fonds de criteria, uw versie en de beoordeling van uw eigen tekst bij elkaar.</p>}
+              <p>Projectdocumentatie zijn de bestanden bij uw projecten: wat u uploadt en wat Subsidie Kompas voor u opmaakte.</p>
             </>
           )
         }
@@ -206,14 +205,14 @@ export default function DocumentatiePage() {
       {sectie === 'indienen' && (
         <Tabs
           tabs={[
-            { id: 'inhoud', label: 'Projectdossier' },
             ...(assistent.beschikbaar
               ? [
                   { id: 'plan', label: 'Projectplan' },
-                  { id: 'aanvragen', label: 'Aanvragen' },
+                  { id: 'aanvragen', label: 'Fondsen indienen' },
                 ]
               : []),
-            { id: 'bestanden', label: 'Bestanden', aantal: alle.length },
+            { id: 'inhoud', label: 'Projectdossier' },
+            { id: 'bestanden', label: 'Projectdocumentatie', aantal: alle.length },
           ]}
           actief={tabActief}
           onKies={setTab}
@@ -265,7 +264,7 @@ export default function DocumentatiePage() {
         <BegrotingTab key={projectId} project={projecten.find((p) => p.id === projectId) || null} projecten={projecten} onKiesProject={kiesProject} store={store} />
       )}
 
-      {tab === 'inhoud' &&
+      {tabActief === 'inhoud' &&
         (projecten.length > 0 ? (
           <ProjectinformatiePaneel projecten={projecten} projectId={projectId} onKies={kiesProject} store={store} />
         ) : (
