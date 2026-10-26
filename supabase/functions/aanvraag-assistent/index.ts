@@ -232,6 +232,22 @@ Deno.serve(async (req) => {
       return data?.id ? String(data.id) : null;
     },
 
+    // Formulier: de vragen met hun tekenlimiet en de lijst met stukken van één aanvraag. Alleen via deze functie, altijd gefilterd op de gebruiker uit het token.
+    // Het formulier zelf wordt niet bewaard, en er wordt nooit iets van de tekst gelogd.
+    leesVragenStand: async (userId: string, aanvraagId: string) => {
+      const { data, error } = await admin.from(AANVRAGEN_TABEL).select('id, program_id, soort, fonds_label, criteria, vragen, stukken, schrijf_maand, schrijf_aantal').eq('id', aanvraagId).eq('user_id', userId).maybeSingle();
+
+      if (error) return 'storing' as const;
+
+      return data ? { ...data, schrijf_aantal: Number(data.schrijf_aantal) || 0 } : null;
+    },
+
+    bewaarVragenStukken: async (userId: string, aanvraagId: string, velden: Record<string, unknown>) => {
+      const { error } = await admin.from(AANVRAGEN_TABEL).update({ ...velden, updated_at: new Date().toISOString() }).eq('id', aanvraagId).eq('user_id', userId);
+
+      return !error;
+    },
+
     // Versiebeheer: alleen via deze functie (service role), altijd gefilterd op de gebruiker uit het token. Er wordt nooit iets van de tekst gelogd.
     leesVersieStand: async (userId: string, aanvraagId: string) => {
       const { data, error } = await admin.from(AANVRAGEN_TABEL).select('id, soort, status, definitieve_versie_id').eq('id', aanvraagId).eq('user_id', userId).maybeSingle();

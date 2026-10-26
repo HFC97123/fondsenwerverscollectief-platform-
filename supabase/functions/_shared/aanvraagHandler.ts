@@ -14,6 +14,9 @@
 //   - De tekst die het lid ter beoordeling aanbiedt, wordt niet bewaard of gelogd. Opgeslagen wordt de uitkomst: eisen, status per eis, korte citaten en verbeteringen.
 //   - Uitzondering (Aisya, 26-10-2026): de versies die het lid zelf bewaart (concept of definitief) worden bewaard in subsidie_kompas_aanvraag_versies. Alleen het lid zelf
 //     leest ze; ze verdwijnen met de aanvraag, het project of het account. Opslaan en versiebeheer kosten geen maandruimte; maximaal 20 versies per aanvraag.
+//   - Het aanvraagformulier (Word, PDF of geplakt) wordt nooit bewaard: alleen de vragen met hun tekenlimiet en de lijst met stukken. Zonder tekenlimiet per vraag (of de
+//     keuze "dit fonds heeft geen limiet") bevestigt de server de lijst niet en schrijft hij geen antwoorden. Alle antwoorden voor één fonds tellen samen als één beoordeling
+//     van de maand; opnieuw schrijven binnen dat fonds in dezelfde maand kost niets extra (met een bovengrens).
 import {
   beoordeelAanvraag,
   berekenUitkomst,
@@ -33,6 +36,23 @@ import {
 import { maakBegrotingVoorstel, MAX_TEKENS_VOORSTEL } from './begrotingVoorstel.ts';
 import { sluitNaToevoegen } from './begrotingSluit.ts';
 import { leesBegrotingUpload, MAX_TEKENS_UPLOAD, MIN_TEKENS_UPLOAD } from './begrotingUpload.ts';
+import {
+  bouwVragenBericht,
+  leesVragen,
+  maandSleutel,
+  MAX_FORMULIER_TEKENS,
+  MAX_HERSCHRIJVEN_PER_MAAND,
+  MAX_VRAGEN,
+  normaliseer,
+  schoneStukken,
+  schoneVragen,
+  sectiesUitVragen,
+  standaardStukken,
+  VRAGEN_SYSTEEM,
+  type Stuk,
+  type VragenLijst,
+  type VragenUitkomst,
+} from './aanvraagVragen.ts';
 import { tierConfigVoor } from './tierConfig.ts';
 import { bouwFeiten, fondsSleutel, MIN_FEITEN, planGereedheid, schrijfPlan, sectiesUitCriteria, STANDAARD_SECTIES, type PlanBron } from './projectplan.ts';
 
@@ -42,9 +62,9 @@ export const MAX_FONDSLABEL = 200;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag' | 'begroting-voorstel' | 'begroting-upload' | 'versies' | 'versie' | 'versie-bewaren' | 'versie-wijzigen' | 'versie-verwijderen';
+export type Modus = 'status' | 'eisen-ophalen' | 'criteria-bewaren' | 'beoordelen' | 'plan-schrijven' | 'plan-gereedheid' | 'aanvragen' | 'aanvraag' | 'begroting-voorstel' | 'begroting-upload' | 'versies' | 'versie' | 'versie-bewaren' | 'versie-wijzigen' | 'versie-verwijderen' | 'vragen' | 'vragen-lezen' | 'vragen-bewaren' | 'antwoorden-schrijven';
 
-const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag', 'begroting-voorstel', 'begroting-upload', 'versies', 'versie', 'versie-bewaren', 'versie-wijzigen', 'versie-verwijderen'];
+const MODI: readonly Modus[] = ['status', 'eisen-ophalen', 'criteria-bewaren', 'beoordelen', 'plan-schrijven', 'plan-gereedheid', 'aanvragen', 'aanvraag', 'begroting-voorstel', 'begroting-upload', 'versies', 'versie', 'versie-bewaren', 'versie-wijzigen', 'versie-verwijderen', 'vragen', 'vragen-lezen', 'vragen-bewaren', 'antwoorden-schrijven'];
 
 // Het algemene projectplan telt per rollend jaar (aantal verschillende projecten); een verwijderd project geeft zijn plek niet terug.
 export const PLAN_VENSTER_MAANDEN = 12;
@@ -112,6 +132,19 @@ export interface VersieStand {
   definitieve_versie_id: string | null;
 }
 
+// De vragen van het formulier en de lijst met stukken (checklist) van één aanvraag, plus de teller waarmee "alle antwoorden voor één fonds = één beoordeling" werkt.
+export interface VragenStand {
+  id: string;
+  program_id: string;
+  soort: 'algemeen' | 'fonds';
+  fonds_label: string;
+  criteria: unknown[];
+  vragen: VragenLijst | null;
+  stukken: Stuk[] | null;
+  schrijf_maand: string | null; // 'JJJJ-MM' van de maand waarin dit fonds al als beoordeling is meegeteld
+  schrijf_aantal: number; // aantal antwoorden dat in die maand al is geschreven
+}
+
 export const MAX_VERSIES = 20;
 export const MAX_ONDERDELEN = 60;
 export const MAX_ONDERDEEL_TEKENS = 20_000;
@@ -174,7 +207,7 @@ export interface ProfielRij {
 export interface GebruikMelding {
   userId: string;
   tier: string;
-  actie: 'aanvraag_eisen' | 'aanvraag_beoordeling' | 'aanvraag_plan' | 'aanvraag_begroting';
+  actie: 'aanvraag_eisen' | 'aanvraag_beoordeling' | 'aanvraag_plan' | 'aanvraag_begroting' | 'aanvraag_vragen' | 'aanvraag_antwoorden';
   projectId?: string | null;
   model: string;
   inputTokens: number;
@@ -239,6 +272,9 @@ export interface HandlerDeps {
   werkVersieBij?(userId: string, versieId: string, velden: { naam?: string; antwoorden?: Onderdeel[]; status?: 'concept' | 'definitief' }): Promise<boolean>;
   verwijderVersie?(userId: string, versieId: string): Promise<boolean>;
   zetAanvraagStatus?(userId: string, aanvraagId: string, velden: { status: 'concept' | 'definitief'; definitieve_versie_id?: string | null }): Promise<boolean>;
+  // Formulier: vragen en stukken. Optioneel: ontbreekt een functie, dan antwoordt de server dat het tijdelijk niet beschikbaar is.
+  leesVragenStand?(userId: string, aanvraagId: string): Promise<VragenStand | null | 'storing'>; // null = niet gevonden (of van iemand anders)
+  bewaarVragenStukken?(userId: string, aanvraagId: string, velden: { vragen?: VragenLijst; stukken?: Stuk[]; schrijf_maand?: string; schrijf_aantal?: number }): Promise<boolean>;
   haalPagina(url: string): Promise<PaginaUitkomst>;
   roep: ModelAanroep;
   meldGebruik(melding: GebruikMelding): Promise<void>; // gooit nooit
@@ -600,6 +636,219 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     if (!(await deps.verwijderVersie(userId, g.versie.id))) return NIET_BESCHIKBAAR;
 
     return { status: 200, body: { ok: true, verwijderd: g.versie.id } };
+  }
+
+  // ── formulier: vragen en stukken, en antwoorden schrijven ──────────────────────────────────────────────────
+  if (modus === 'vragen' || modus === 'vragen-lezen' || modus === 'vragen-bewaren' || modus === 'antwoorden-schrijven') {
+    if (!deps.leesVragenStand || !deps.bewaarVragenStukken) return fout(503, 'vragen', 'Het formulier en de stukken zijn tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+
+    const NIET_BESCHIKBAAR = fout(503, 'opslag', 'Dit is nu niet beschikbaar. Probeer het later opnieuw.');
+    const idVan = (x: unknown) => (typeof x === 'string' && UUID_RE.test(x) ? x.toLowerCase() : '');
+    const aanvraagId = idVan(body.aanvraagId);
+
+    if (!aanvraagId) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+    const stand = await deps.leesVragenStand(userId, aanvraagId);
+
+    if (stand === 'storing') return NIET_BESCHIKBAAR;
+    if (!stand || stand.soort !== 'fonds') return fout(404, 'aanvraag', 'Deze aanvraag is niet gevonden.');
+
+    if (modus === 'vragen') {
+      return { status: 200, body: { ok: true, aanvraagId, vragen: stand.vragen, stukken: stand.stukken && stand.stukken.length ? stand.stukken : standaardStukken() } };
+    }
+
+    if (modus === 'vragen-bewaren') {
+      const velden: { vragen?: VragenLijst; stukken?: Stuk[] } = {};
+
+      if (body.vragen !== undefined) {
+        const bevestig = body.bevestig === true;
+        const vragen = schoneVragen(body.vragen, bevestig);
+
+        if (!vragen) {
+          return bevestig && Array.isArray(body.vragen) && schoneVragen(body.vragen, false)
+            ? fout(400, 'limiet', 'Vul bij elke vraag de tekenlimiet in, of geef aan dat dit fonds geen limiet heeft. Zonder tekenlimiet kunnen wij geen antwoord voor u schrijven.')
+            : fout(400, 'ongeldig', 'De vragenlijst klopt niet. Controleer de vragen en probeer het opnieuw.');
+        }
+
+        velden.vragen = vragen;
+      }
+
+      if (body.stukken !== undefined) {
+        const stukken = schoneStukken(body.stukken);
+
+        if (!stukken) return fout(400, 'ongeldig', 'De lijst met stukken klopt niet. Controleer de lijst en probeer het opnieuw.');
+
+        velden.stukken = stukken;
+      }
+
+      if (velden.vragen === undefined && velden.stukken === undefined) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+      if (!(await deps.bewaarVragenStukken(userId, aanvraagId, velden))) return NIET_BESCHIKBAAR;
+
+      return { status: 200, body: { ok: true, aanvraagId, vragen: velden.vragen ?? stand.vragen, stukken: velden.stukken ?? (stand.stukken && stand.stukken.length ? stand.stukken : standaardStukken()) } };
+    }
+
+    // Beide modi hieronder gebruiken het model en horen bij een project van het lid.
+    const pid = idVan(body.projectId);
+
+    if (!pid) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+    if (stand.program_id !== pid) return fout(404, 'aanvraag', 'Deze aanvraag is niet gevonden.');
+
+    const check = await deps.projectIsVanGebruiker(pid, userId);
+
+    if (check === null) return fout(503, 'project', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+    if (check !== true) return fout(404, 'project', 'Dit project is niet gevonden.');
+
+    // ── vragen-lezen: het formulier (Word, PDF of geplakt) omzetten in een vragenlijst en een lijst met stukken ─────────────
+    if (modus === 'vragen-lezen') {
+      const formulier = tekstVeld(body.formulierTekst, MAX_FORMULIER_TEKENS + 1).trim();
+
+      if (formulier.length > MAX_FORMULIER_TEKENS) return fout(413, 'richtlijn-te-lang', 'De tekst van het formulier is te lang. Plak alleen de vragen.');
+      if (formulier.length < 20) return fout(400, 'geen-bron', 'Plak de vragen van het formulier of voeg het bestand toe.');
+
+      const gebruikt = await deps.telRijen(userId, 'eisen', sinds);
+
+      if (gebruikt === null) return fout(503, 'telling', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+      if (gebruikt >= config.eisenOphalenPerMaand) return fout(429, 'maand-op', 'U heeft deze maand het maximum aantal formulieren en criterialijsten gelezen. Volgende maand is er weer ruimte.', { limiet: config.eisenOphalenPerMaand });
+
+      const plek = await deps.reserveer(userId, 'eisen', config.eisenOphalenPerMaand, sinds);
+
+      if (!plek.ok) {
+        if (plek.reden === 'maand-op') return fout(429, 'maand-op', 'U heeft deze maand het maximum aantal formulieren en criterialijsten gelezen. Volgende maand is er weer ruimte.', { limiet: config.eisenOphalenPerMaand });
+
+        return reserveerWeigering(plek.reden);
+      }
+
+      let uitkomst: VragenUitkomst | null = null;
+      let usage = { prompt_tokens: 0, completion_tokens: 0 };
+
+      try {
+        const antwoord = await deps.roep(VRAGEN_SYSTEEM, bouwVragenBericht(formulier));
+
+        if (antwoord) {
+          usage = { prompt_tokens: Number(antwoord.usage?.prompt_tokens ?? 0) || 0, completion_tokens: Number(antwoord.usage?.completion_tokens ?? 0) || 0 };
+
+          try {
+            uitkomst = leesVragen(JSON.parse(antwoord.inhoud || '{}'), formulier);
+          } catch (_e) {
+            uitkomst = null;
+          }
+        }
+      } catch (e) {
+        await deps.rondAf(plek.id, userId, false).catch(() => undefined);
+        throw e;
+      }
+
+      const gelukt = Boolean(uitkomst && uitkomst.vragen.length > 0);
+
+      await deps.rondAf(plek.id, userId, gelukt).catch(() => undefined);
+      await deps.meldGebruik({ userId, tier: tierLabel, actie: 'aanvraag_vragen', projectId: pid, model: deps.modelNaam, inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens, duurMs: Date.now() - start, succes: gelukt });
+
+      if (!uitkomst) return fout(502, 'ai-mislukt', 'Het formulier kon nu niet worden gelezen. Probeer het later opnieuw; er is niets verbruikt van uw maandruimte.');
+      if (!uitkomst.vragen.length) return fout(422, 'geen-vragen', 'Wij vonden geen vragen in deze tekst. Controleer of u de vragen van het formulier heeft geplakt, of voeg ze zelf toe.', { statistiek: uitkomst.stat });
+
+      // Stukken die het lid al had blijven staan; nieuwe uit dit formulier komen erbij.
+      const bestaand = stand.stukken && stand.stukken.length ? stand.stukken : [];
+      let stukken: Stuk[] = uitkomst.stukken;
+
+      if (bestaand.length) {
+        const sleutels = new Set(bestaand.map((s) => normaliseer(s.tekst)));
+        const erbij = uitkomst.stukken.filter((s) => !sleutels.has(normaliseer(s.tekst)) && !(s.sleutel && bestaand.some((b) => b.sleutel === s.sleutel)));
+
+        stukken = schoneStukken([...bestaand, ...erbij.map((s, i) => ({ ...s, id: `s${bestaand.length + i + 1}` }))]) ?? bestaand;
+      }
+
+      const vragen: VragenLijst = { bevestigd: false, lijst: uitkomst.vragen };
+      const opgeslagen = await deps.bewaarVragenStukken(userId, aanvraagId, { vragen, stukken });
+
+      return { status: 200, body: { ok: true, aanvraagId, opgeslagen, vragen, stukken, statistiek: uitkomst.stat, resterend: Math.max(0, config.eisenOphalenPerMaand - plek.gebruikt - 1) } };
+    }
+
+    // ── antwoorden-schrijven: per vraag een concept uit projectgegevens, documentatie, begroting en dekkingsplan ──────────────
+    if (!stand.vragen || !stand.vragen.bevestigd || !stand.vragen.lijst.length) {
+      return fout(409, 'vragen-niet-bevestigd', 'Bevestig eerst de vragenlijst en de tekenlimieten. Zonder tekenlimiet kunnen wij geen antwoord voor u schrijven.');
+    }
+
+    const gevraagd = Array.isArray(body.vraagIds) ? (body.vraagIds as unknown[]).filter((x): x is string => typeof x === 'string' && /^v\d{1,3}$/.test(x)).slice(0, MAX_VRAGEN) : [];
+    const bekend = new Set(stand.vragen.lijst.map((v) => v.id));
+
+    if (gevraagd.some((x) => !bekend.has(x))) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+    const defs = sectiesUitVragen(stand.vragen.lijst, gevraagd.length ? Array.from(new Set(gevraagd)) : undefined);
+
+    if (!defs.length) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+    // Alle antwoorden voor één fonds tellen samen als één beoordeling van de maand, ook als een antwoord later opnieuw wordt geschreven.
+    const maand = maandSleutel(deps.nu());
+    const gratis = stand.schrijf_maand === maand;
+    const eerder = gratis ? stand.schrijf_aantal : 0;
+    const maandOp = () =>
+      fout(
+        429,
+        'maand-op',
+        tier === 'pro' && !isAdmin
+          ? `U heeft deze maand al ${config.beoordelingenPerMaand} keer een aanvraag laten beoordelen of schrijven. Volgende maand is er weer ruimte; met Premium kunt u er meer per maand doen.`
+          : `U heeft deze maand al ${config.beoordelingenPerMaand} keer een aanvraag laten beoordelen of schrijven. Volgende maand is er weer ruimte.`,
+        { limiet: config.beoordelingenPerMaand, resterend: 0 },
+      );
+
+    if (gratis && eerder + defs.length > MAX_HERSCHRIJVEN_PER_MAAND) {
+      return fout(429, 'herschrijven-op', 'U heeft dit fonds deze maand al heel vaak laten schrijven. Werk de antwoorden zelf verder bij, of probeer het volgende maand opnieuw.', { limiet: MAX_HERSCHRIJVEN_PER_MAAND });
+    }
+
+    if (!gratis) {
+      const gebruiktFonds = await deps.telRijen(userId, 'beoordelingen', sinds);
+
+      if (gebruiktFonds === null) return fout(503, 'telling', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
+      if (!maandRuimte(config, 'beoordeling', gebruiktFonds).toegestaan) return maandOp();
+    }
+
+    const bron = await deps.leesPlanBron(userId, pid, token);
+
+    if (!bron) return fout(503, 'project', 'Uw projectgegevens konden nu niet worden gelezen. Probeer het later opnieuw.');
+
+    const feiten = bouwFeiten(bron);
+
+    if (feiten.length < MIN_FEITEN) {
+      return fout(422, 'te-weinig-info', 'Er staat nog te weinig in uw projectgegevens en projectdocumentatie om antwoorden op te baseren. Vul eerst de aanleiding, de doelgroep, de doelstelling en de activiteiten in.', { aantalFeiten: feiten.length });
+    }
+
+    const { aandachtspunten } = sectiesUitCriteria(Array.isArray(stand.criteria) ? (stand.criteria as any[]) : []);
+    const plek = gratis ? null : await deps.reserveer(userId, 'beoordelingen', config.beoordelingenPerMaand, sinds);
+
+    if (plek && !plek.ok) return plek.reden === 'maand-op' ? maandOp() : reserveerWeigering(plek.reden);
+
+    let geschreven: Awaited<ReturnType<typeof schrijfPlan>>;
+
+    try {
+      geschreven = await schrijfPlan({ secties: defs, feiten, aandachtspunten, roep: deps.roep });
+    } catch (e) {
+      if (plek && plek.ok) await deps.rondAf(plek.id, userId, false).catch(() => undefined);
+      throw e;
+    }
+
+    const gelukt = geschreven.modelAangeroepen && geschreven.stat.secties - geschreven.stat.zonderFeiten - geschreven.stat.mislukt > 0;
+
+    if (plek && plek.ok) await deps.rondAf(plek.id, userId, gelukt).catch(() => undefined);
+
+    await deps.meldGebruik({ userId, tier: tierLabel, actie: 'aanvraag_antwoorden', projectId: pid, model: deps.modelNaam, inputTokens: geschreven.usage.prompt_tokens, outputTokens: geschreven.usage.completion_tokens, duurMs: Date.now() - start, succes: gelukt });
+
+    if (!gelukt) return fout(502, 'ai-mislukt', 'De antwoorden zijn nu niet gelukt. Probeer het later opnieuw; er is niets verbruikt van uw maandruimte.', { statistiek: geschreven.stat });
+
+    // Onthoud dat dit fonds deze maand al is meegeteld. Lukt dat niet, dan krijgt het lid de antwoorden toch.
+    await deps.bewaarVragenStukken(userId, aanvraagId, { schrijf_maand: maand, schrijf_aantal: eerder + defs.length }).catch(() => false);
+
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        aanvraagId,
+        antwoorden: geschreven.secties.map((s) => ({ id: s.id, titel: s.titel, tekst: s.tekst, status: s.status, vragen: s.vragen, aantalAanvullen: s.aantalAanvullen, herkomst: s.herkomst, ...(s.maxTekens ? { maxTekens: s.maxTekens, overLimiet: Boolean(s.overLimiet) } : {}) })),
+        statistiek: geschreven.stat,
+        telde: !gratis,
+        resterend: plek && plek.ok ? Math.max(0, config.beoordelingenPerMaand - plek.gebruikt - 1) : null,
+        limiet: config.beoordelingenPerMaand,
+      },
+    };
   }
 
   // ── eisen-ophalen ─────────────────────────────────────────────────────────────────────────────────────────
