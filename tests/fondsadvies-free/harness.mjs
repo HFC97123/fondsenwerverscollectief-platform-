@@ -177,12 +177,12 @@ export async function laadModule(bron, tag) {
   src = src.replace("import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';", 'const createClient = globalThis.__createClient;');
   const sharedUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../supabase/functions/_shared') + path.sep).href;
   // De gebouwde module staat in tmp: dynamische imports uit ../_shared/ moeten naar de echte map wijzen (Node 22 leest .ts met type-stripping).
-  src = src.replace(/import\(\s*'\.\.\/_shared\/(?=bronControle|proSelectie|werkgebied|locatieVerfijning|fondsBeoordeling|tierConfig|gebruikLog)/g, `import('${sharedUrl}`);
+  src = src.replace(/import\(\s*'\.\.\/_shared\/(?=bronControle|plaatsen|proSelectie|werkgebied|locatieVerfijning|fondsBeoordeling|tierConfig|gebruikLog)/g, `import('${sharedUrl}`);
   const { code } = await esbuild.transform(src, { loader: 'ts', format: 'esm', target: 'es2022' });
   const uit = path.join(os.tmpdir(), `fondsadvies-test-${process.pid}`, `${tag}.mjs`);
   fs.mkdirSync(path.dirname(uit), { recursive: true });
   // Exporteer alleen wat in deze versie bestaat (de oude basislijn kent de nieuwe functies niet).
-  const namen = ['applyEntitlementsAndSanitize', 'nieuweEntitlementCtx', 'parseVerkennerUitvoer', 'losWebKandidaatOp', 'bouwDbIndex', 'verwerkWebKandidaten', 'bouwVerborgenNaamLijst', 'verwijderVerborgenIdentiteiten', 'bouwSubsidieregelingTekst', 'bouwFunderAlgemeneTekst', 'bouwFunderDeadlineTekst', 'bouwExterneTekst', 'bouwVerkoopzin', 'selecteerFreeFondsadvies', 'beoordeelKandidaat', 'isFondsadviesVraag', 'leesFondsCriteria', 'criteriaVoldoende', 'bouwFreeAdviesBlok', 'beoordeelPool', 'pasRechtenToe', 'bepaalRechten', 'magZien', 'beoordeelGeografie', 'focusConflict', 'heeftFinancieringsIntentie', 'isZichtbaarVoorTier', 'bouwExclusiviteitIndex', 'exclusiviteitVan', 'bepaalNiveau', 'onderdrukExclusief', 'laadExclusiviteit', 'kenmerkenVan'];
+  const namen = ['applyEntitlementsAndSanitize', 'nieuweEntitlementCtx', 'parseVerkennerUitvoer', 'losWebKandidaatOp', 'bouwDbIndex', 'verwerkWebKandidaten', 'bouwVerborgenNaamLijst', 'verwijderVerborgenIdentiteiten', 'bouwSubsidieregelingTekst', 'bouwFunderAlgemeneTekst', 'bouwFunderDeadlineTekst', 'bouwExterneTekst', 'bouwVerkoopzin', 'selecteerFreeFondsadvies', 'beoordeelKandidaat', 'isFondsadviesVraag', 'leesFondsCriteria', 'criteriaVoldoende', 'bouwFreeAdviesBlok', 'beoordeelPool', 'pasRechtenToe', 'bepaalRechten', 'magZien', 'beoordeelGeografie', 'focusConflict', 'heeftFinancieringsIntentie', 'isZichtbaarVoorTier', 'bouwExclusiviteitIndex', 'exclusiviteitVan', 'bepaalNiveau', 'onderdrukExclusief', 'laadExclusiviteit', 'kenmerkenVan', 'laadPlaatsen', 'projectRegios'];
   const aanwezig = namen.filter((n) => new RegExp(`function ${n}\\b`).test(code));
   const exports = aanwezig.length ? `\nexport { ${aanwezig.join(', ')} };\n` : '\n';
   fs.writeFileSync(uit, code + exports);

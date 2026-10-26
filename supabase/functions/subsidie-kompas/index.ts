@@ -3403,6 +3403,51 @@ REGIOS: ${taxonomie.regios.join(' | ')}`;
   }
 }
 
+// Welke provincie hoort bij de plaats van het project (zie _shared/plaatsen.ts). Dynamisch geladen, zoals de andere _shared-modules: index.ts importeert
+// _shared niet statisch (chat-opstart onaangetast). Lukt het laden niet, dan blijft alles werken als voorheen (zonder provincie-afleiding).
+type PlaatsenModule = {
+  plaatsenUitTekst: (t: unknown) => { gevonden: { plaats: string; gemeente: string; provincie: string }[]; vaag: string[] };
+  provincieVanNaam: (t: unknown) => string | null;
+  ligtInZinnen: (t: unknown[]) => string[];
+};
+let PLAATSEN: PlaatsenModule | null = null;
+
+async function laadPlaatsen(): Promise<void> {
+  if (PLAATSEN) return;
+
+  try {
+    PLAATSEN = (await import('../_shared/plaatsen.ts')) as PlaatsenModule;
+  } catch (e) {
+    console.warn('[subsidie-kompas] plaatsenlijst niet geladen', (e as Error)?.message ?? e);
+  }
+}
+
+// Provincies en gemeenten van de plaatsen in de locatie en de werkgebieden van het project (per criteria-object onthouden).
+const PLAATS_CACHE = new WeakMap<object, { provincies: string[]; gemeenten: string[] }>();
+
+function plaatsenVanProject(criteria: FondsCriteria): { provincies: string[]; gemeenten: string[] } {
+  const leeg = { provincies: [] as string[], gemeenten: [] as string[] };
+
+  if (!PLAATSEN) return leeg;
+
+  const gecached = PLAATS_CACHE.get(criteria);
+
+  if (gecached) return gecached;
+
+  const uit = { provincies: [] as string[], gemeenten: [] as string[] };
+
+  for (const t of [criteria.locatieTekst, ...criteria.regios]) {
+    for (const g of PLAATSEN.plaatsenUitTekst(t).gevonden) {
+      if (!uit.provincies.includes(g.provincie)) uit.provincies.push(g.provincie);
+      if (!uit.gemeenten.includes(g.gemeente)) uit.gemeenten.push(g.gemeente);
+    }
+  }
+
+  PLAATS_CACHE.set(criteria, uit);
+
+  return uit;
+}
+
 // Plaatsen waarvoor de database zelf een eigen regio kent. De regio-LABEL van
 // een regeling kan onjuist zijn (bijv. de Haagse regeling staat als
 // "Landelijk" geclassificeerd); daarom wordt, naast de regio-labels, ook de
@@ -3512,6 +3557,11 @@ function projectRegios(criteria: FondsCriteria): Set<string> {
 
     if (plaats?.provincie) uit.add(normaliseerTekst(plaats.provincie));
   }
+
+  // Plaatsen die niet in de vaste lijst hierboven staan (Zaandam, Almere, Zwolle, ...): de provincie en de gemeente via de plaatsenlijst.
+  const lijst = plaatsenVanProject(criteria);
+
+  for (const x of [...lijst.provincies, ...lijst.gemeenten]) uit.add(normaliseerTekst(x));
 
   return uit;
 }
@@ -3992,6 +4042,23 @@ function beoordeelCaribischeGeografie(naam: string, funderNaam: string, regios: 
   return uit('ineligible', `werkgebied (${regios.join(', ')}) ligt buiten het Caribische deel van het Koninkrijk`);
 }
 
+// De provincies (kleine letters) waarin het project ligt, volgens de taxonomie-regio's en de plaatsenlijst.
+function projectProvincies(criteria: FondsCriteria): Set<string> {
+  const uit = new Set<string>();
+
+  if (!PLAATSEN) return uit;
+
+  for (const r of [...criteria.regios, criteria.locatieTekst]) {
+    const p = PLAATSEN.provincieVanNaam(r);
+
+    if (p) uit.add(normaliseerTekst(p));
+  }
+
+  for (const p of plaatsenVanProject(criteria).provincies) uit.add(normaliseerTekst(p));
+
+  return uit;
+}
+
 function beoordeelGeografie(naam: string, funderNaam: string, row: any, regios: string[], criteria: FondsCriteria): Geografie {
   const projRegios = projectRegios(criteria);
   const locatieBekend = projRegios.size > 0 || Boolean(normaliseerTekst(criteria.locatieTekst));
@@ -4027,7 +4094,11 @@ function beoordeelGeografie(naam: string, funderNaam: string, row: any, regios: 
 
   // Het werkgebied (label) bevat alleen andere regio's dan die van het project. "Regionaal" of "Provinciaal" naast een genoemde plaats of regio (Amsterdam + Regionaal)
   // betekent: de regio rond die plaats; het maakt het werkgebied dus niet landelijk.
-  if (projRegios.size && specifiek.length && !heeftLandelijk && !heeftInternationaal && !labels.some((r) => projRegios.has(r))) {
+  // Ligt een werkgebied (Amsterdam) in dezelfde provincie als het project (Zaandam), dan is het geen zekere afwijzing maar iets om te controleren.
+  const zelfdeProvincie = projectProvincies(criteria);
+  const alleenBuurPlaatsen = zelfdeProvincie.size > 0 && specifiek.every((r) => projRegios.has(r) || (PLAATSEN?.provincieVanNaam(r) != null && zelfdeProvincie.has(normaliseerTekst(PLAATSEN.provincieVanNaam(r)))));
+
+  if (projRegios.size && specifiek.length && !heeftLandelijk && !heeftInternationaal && !labels.some((r) => projRegios.has(r)) && !alleenBuurPlaatsen) {
     return uit('ineligible', 'regio sluit niet aan');
   }
 
@@ -4664,7 +4735,9 @@ function beoordeelKandidaat(
 function matchSignalenUitCriteria(c: FondsCriteria): MatchSignalen {
   const regiosUitgebreid = Array.from(new Set([...c.regios, ...c.regios.map((r) => NL_PLAATSEN.find((p) => p.naam === r)?.provincie).filter(Boolean) as string[]]));
 
-  return { themas: c.themas, doelgroepen: c.doelgroepen, werkgebied: regiosUitgebreid.join(', '), gevraagdBedrag: c.gevraagdBedrag };
+  const metProvincies = Array.from(new Set([...regiosUitgebreid, ...plaatsenVanProject(c).provincies]));
+
+  return { themas: c.themas, doelgroepen: c.doelgroepen, werkgebied: metProvincies.join(', '), gevraagdBedrag: c.gevraagdBedrag };
 }
 
 // Beoordeelt de VOLLEDIGE pool (alle toegangsniveaus) en bepaalt daarna pas
@@ -6255,7 +6328,9 @@ async function bouwProSelectie(
           doelgroepen,
           werkgebieden: landWerkgebieden,
           // Waar de plaats van het project ligt (provincie), zodat "Amsterdam" niet als iets anders dan Noord-Holland wordt gelezen.
-          ligtIn: Array.from(new Set([eersteGebied, ...criteria.regios, criteria.locatieTekst].flatMap((t) => NL_PLAATSEN.filter((p) => p.provincie && p.provincie !== p.naam && p.re.test(String(t ?? ''))).map((p) => `${p.naam} ligt in de provincie ${p.provincie}`)))).slice(0, 4),
+          ligtIn: PLAATSEN
+            ? PLAATSEN.ligtInZinnen([eersteGebied, ...criteria.regios, criteria.locatieTekst])
+            : Array.from(new Set([eersteGebied, ...criteria.regios, criteria.locatieTekst].flatMap((t) => NL_PLAATSEN.filter((p) => p.provincie && p.provincie !== p.naam && p.re.test(String(t ?? ''))).map((p) => `${p.naam} ligt in de provincie ${p.provincie}`)))).slice(0, 4),
         },
         kandidaten: top.map((x) => ({ sleutel: x.c.sleutel, naam: x.c.naam, tekst: tekstVan(x.c) })),
         cache: ai.cache,
@@ -7583,6 +7658,9 @@ Deno.serve(async (req) => {
   if (!apiKey) {
     return json({ error: 'De assistent is niet geconfigureerd.' }, 500);
   }
+
+  // De plaatsenlijst (plaats -> provincie) voor de matching; mislukt het laden, dan werkt alles als voorheen.
+  await laadPlaatsen();
 
   const url = Deno.env.get('SUPABASE_URL')!;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
