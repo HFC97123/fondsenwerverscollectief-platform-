@@ -199,4 +199,19 @@ sectie('9. De vier stappen van een aanvraag en de kaart per fonds');
   check('zonder voortgang van de server geen stappen op de kaart', M.stappenUitVoortgang(null, docs) === null && M.stappenUitVoortgang(undefined, []) === null);
 }
 
+sectie('Alvast verzamelen: korte lijst voor de zijkant');
+{
+  const docsA = [{ naam: 'anbi-beschikking.pdf', soort: 'ANBI-status', datum: '2026-09-01', bron: 'organisatie' }];
+  const standaard = M.alvastLijst([], docsA, new Date('2026-10-26'));
+
+  gelijk('zonder lijst van het fonds: de vier standaardstukken, jaarverslag eerst', standaard.map((x) => x.tekst), ['Jaarverslag, niet ouder dan 1 jaar', 'ANBI-status', 'Statuten', 'Jaarrekening, niet ouder dan 1 jaar']);
+  check('de ANBI-status is al herkend in de documentatie, de rest is nog nodig', standaard.find((x) => x.tekst === 'ANBI-status').status === 'klaar' && standaard.filter((x) => x.status === 'nodig').length === 3);
+  gelijk('ook zonder stukken en zonder documenten (null) komt de standaardlijst terug', M.alvastLijst(null, null).length, 4);
+
+  const eigen = [{ id: 's1', tekst: 'Aanbevelingsbrief', bron: 'formulier', nietVanToepassing: false, klaar: true }, { id: 's2', tekst: 'Statuten', bron: 'standaard', sleutel: 'statuten', nietVanToepassing: true }];
+  const lijstFonds = M.alvastLijst(eigen, [], new Date('2026-10-26'));
+
+  check('met een lijst van het fonds geldt die lijst, zonder wat niet van toepassing is', lijstFonds.length === 1 && lijstFonds[0].tekst === 'Aanbevelingsbrief' && lijstFonds[0].status === 'klaar');
+}
+
 klaar('aanvraag-schermen-model');

@@ -491,6 +491,17 @@ sectie('11. Aanvraag indienen: formulier, tekenlimieten, antwoorden per vraag en
   await klik($('[data-testid="aa-stap-antwoorden"]'));
   check('terug bij Antwoorden staat het antwoord er nog', $('[data-testid="aa-onderdeel"] textarea').value.length > 10);
 
+  // Alvast verzamelen: een korte checklist in de zijkant bij stap 1, 2 en 4 (niet bij stap 3, daar staat de volledige lijst).
+  check('stap 2: de zijkant toont "Alvast verzamelen" met de stukken van dit fonds (niet van toepassing valt weg)', !!$('[data-testid="aa-alvast"]') && $$('[data-testid="aa-alvast-stuk"]').length === 4 && $$('[data-testid="aa-alvast-stuk"][data-status="klaar"]').length === 2);
+  check('de zijkant laat zien wat al gevonden is en wat nog gecontroleerd moet worden', /Gevonden: anbi-beschikking\.pdf/.test($('[data-testid="aa-alvast"]').textContent) && /Controleer of dit de nieuwste is/.test($('[data-testid="aa-alvast"]').textContent));
+  await klik($('[data-testid="aa-alvast-naar-stukken"]'));
+  check('"Naar stap 3: Stukken" opent de volledige lijst, en daar staat het kaartje niet dubbel', await wacht(() => $('[data-testid="aa-versie-stukken"]')) && !$('[data-testid="aa-alvast"]'));
+  await klik($('[data-testid="aa-stap-controle"]'));
+  check('stap 4 toont het kaartje ook', await wacht(() => $('[data-testid="aa-alvast"]')));
+  await klik($('[data-testid="aa-stap-vragenlijst"]'));
+  check('stap 1 toont het kaartje ook, naast de vragenlijst', await wacht(() => $('[data-testid="aa-vragen-samenvatting"]') && $('[data-testid="aa-alvast"]')) && $$('[data-testid="aa-alvast-stuk"]').length === 4);
+  await klik($('[data-testid="aa-stap-antwoorden"]'));
+
   await klik(knop('Alle fondsen'));
   check('terug op de lijst: de kaart toont de vier stappen met de voortgang', await wacht(() => $('[data-testid="aa-mini-stappen"]')) && $$('[data-testid="aa-mini-stappen"] li').length === 4 && /3 vragen/.test($('[data-testid="aa-mini-stappen"]').textContent) && /3 van 3 geschreven/.test($('[data-testid="aa-mini-stappen"]').textContent) && /2 van 4 klaar/.test($('[data-testid="aa-mini-stappen"]').textContent));
   check('de knop op de kaart wijst naar wat aan de beurt is: de stukken', /Ga verder met de stukken/.test($('[data-testid="aa-rij-aanvraag"]').textContent));

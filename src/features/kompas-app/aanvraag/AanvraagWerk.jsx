@@ -7,7 +7,7 @@ import { Button } from '../../../shared/ui/index.js';
 import { Blok, Chip, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { beoordeelAanvraag, bewaarCriteria, haalAanvraag, haalBeoordeling, schrijfProjectplan } from '../../../data/services/aanvraagAssistent.js';
 import { haalOrganisatieDocumentenOp } from '../../../data/services/organisatiedocumenten.js';
-import { AanvraagStijl, Bezig, Keuzekaart, PrivaatfondsKaart, RuimteBlok, Stappen, VierStappen } from './Bouwstenen.jsx';
+import { AanvraagStijl, AlvastVerzamelen, Bezig, Keuzekaart, PrivaatfondsKaart, RuimteBlok, Stappen, VierStappen } from './Bouwstenen.jsx';
 import BeoordelingResultaat from './BeoordelingResultaat.jsx';
 import FormulierBlok from './FormulierBlok.jsx';
 import VersieEditor from './VersieEditor.jsx';
@@ -720,6 +720,8 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
             stap={stap === 'vragenlijst' ? 'antwoorden' : stap}
             zonderKop
             onStatus={setWerkStatus}
+            onNaarStukken={() => kiesStap('stukken')}
+            zonderAlvast={stap === 'vragenlijst'}
             titel={`Aanvraag voor ${fondsLabel}`}
             kop={`Aanvraag ${fondsLabel}`}
             projectNaam={project.naam}
@@ -759,6 +761,7 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
         </div>
 
         <div className="fwk-wp-stapel">
+          {toonStappen && stap === 'vragenlijst' && <AlvastVerzamelen stukken={werkStatus && werkStatus.stukken ? werkStatus.stukken : formulier.stukken} docs={docsNu} gelezen={formulier.bevestigd} onNaarStukken={formulier.bevestigd ? () => kiesStap('stukken') : undefined} />}
           <RuimteBlok status={status} />
           <Blok titel="Wat betekent “Zeker”?">
             <div style={css('display: flex; flex-direction: column; gap: 10px;')} className="fwk-aa-tekst">

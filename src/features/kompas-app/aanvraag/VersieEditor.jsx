@@ -9,7 +9,7 @@ import ExportMenu from '../../../shared/ui/ExportMenu.jsx';
 import { bouwDocumentModel } from '../../../shared/export/exportModel.js';
 import { Blok, Chip, Melding } from '../../../shared/ui/werkplek.jsx';
 import { bewaarVersie, bewaarVragen, haalVersie, haalVersies, schrijfAntwoorden, verwijderVersie, wijzigVersie } from '../../../data/services/aanvraagAssistent.js';
-import { Bezig } from './Bouwstenen.jsx';
+import { AlvastVerzamelen, Bezig } from './Bouwstenen.jsx';
 import PlanEditor from './PlanEditor.jsx';
 import StukkenLijst from './StukkenLijst.jsx';
 import { aantalAanvullen, datumTekst, limietenUitPlan, onderdelenGelijk, onderdelenLeeg, onderdelenNaarTekst, onderdelenUitPlan, onderdelenUitVersie, onderdelenVoorVragen, onderdeelTekens, planUitVragen, telAntwoorden, telStukken, versieNaam } from './aanvraagModel.js';
@@ -74,7 +74,7 @@ function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding, numme
 // formulier: { projectId, vragen: { lijst }, stukken, docs } voor een aanvraag die per vraag van het formulier is opgebouwd; dan wordt 'plan' niet gebruikt.
 // stap (alleen met formulier): 'antwoorden' | 'stukken' | 'controle'. Met zonderKop staan de kop en de stappenbalk buiten dit scherm (AanvraagWerk) en meldt dit scherm zijn stand via onStatus.
 // De ref geeft probeerSluiten() (vraagt eerst om opslaan als er niet-opgeslagen tekst is) en bewaarNu() (bewaart stil; true = er is niets meer niet-opgeslagen).
-const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planProp, formulier = null, stap = 'antwoorden', zonderKop = false, onStatus = () => {}, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {} }, ref) {
+const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planProp, formulier = null, stap = 'antwoorden', zonderKop = false, onStatus = () => {}, onNaarStukken = null, zonderAlvast = false, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {} }, ref) {
   const plan = formulier ? planUitVragen(formulier.vragen) : planProp;
   const [fase, setFase] = useState('laden'); // laden | klaar | zonder
   const [versies, setVersies] = useState([]);
@@ -498,7 +498,7 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
     const a = telAntwoorden(onderdelen, limieten);
     const st = telStukken(stukken, Array.isArray(formulier.docs) ? formulier.docs : []);
 
-    onStatus({ fase, onopgeslagen, definitief: aanvraagStatus === 'definitief', nummer: huidig ? huidig.nummer : null, totaalVragen: a.totaal, beantwoord: a.beantwoord, geschreven: a.beantwoord + a.metGat, stukkenTotaal: st.totaal, stukkenKlaar: st.klaar });
+    onStatus({ fase, onopgeslagen, definitief: aanvraagStatus === 'definitief', nummer: huidig ? huidig.nummer : null, totaalVragen: a.totaal, beantwoord: a.beantwoord, geschreven: a.beantwoord + a.metGat, stukkenTotaal: st.totaal, stukkenKlaar: st.klaar, stukken });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fase, onopgeslagen, aanvraagStatus, huidig, onderdelen, stukken]);
 
@@ -783,6 +783,7 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
 
   const antwoordenStuk = (
     <div className="fwk-aa-split" data-testid="aa-antwoorden">
+      <div className="fwk-wp-stapel">
       <Blok titel="Vragen" testid="aa-vragenlijst-nav">
         <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px;')}>
           {onderdelen.map((o, i) => (
@@ -805,6 +806,8 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
           </div>
         )}
       </Blok>
+      {!zonderAlvast && <AlvastVerzamelen stukken={stukken} docs={docs} gelezen onNaarStukken={onNaarStukken} />}
+      </div>
 
       <div className="fwk-wp-stapel">
         <Blok titel={huidigeVraag ? `Vraag ${vraagNu + 1} van ${onderdelen.length}` : 'Uw antwoord'} testid="aa-versie-tekst">
@@ -927,7 +930,10 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
               {fout && <Melding toon="fout" testid="aa-versie-fout">{fout}</Melding>}
               {melding && !fout && <Melding toon="succes" testid="aa-versie-melding">{melding}</Melding>}
             </div>
-            <div className="fwk-wp-stapel">{versiesBlok}</div>
+            <div className="fwk-wp-stapel">
+              {!zonderAlvast && <AlvastVerzamelen stukken={stukken} docs={docs} gelezen onNaarStukken={onNaarStukken} />}
+              {versiesBlok}
+            </div>
           </div>
         )}
       </div>

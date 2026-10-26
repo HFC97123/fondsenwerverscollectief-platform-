@@ -470,6 +470,28 @@ export function telStukken(stukken, docs, nu = new Date()) {
   return { totaal: lijst.length, klaar, openstaand: lijst.length - klaar };
 }
 
+// ───────────── Alvast verzamelen ─────────────
+// Wat vrijwel elk fonds vraagt. Dit staat in de zijkant zolang het formulier van het fonds nog niet gelezen is; daarna komt de lijst van het fonds zelf.
+export const STANDAARD_STUKKEN = [
+  { id: 'std-jaarverslag', tekst: 'Jaarverslag, niet ouder dan 1 jaar', sleutel: 'jaarverslag', maxLeeftijdMaanden: 12 },
+  { id: 'std-anbi', tekst: 'ANBI-status', sleutel: 'anbi', maxLeeftijdMaanden: null },
+  { id: 'std-statuten', tekst: 'Statuten', sleutel: 'statuten', maxLeeftijdMaanden: null },
+  { id: 'std-jaarrekening', tekst: 'Jaarrekening, niet ouder dan 1 jaar', sleutel: 'jaarrekening', maxLeeftijdMaanden: 12 },
+];
+
+// De korte lijst voor de zijkant: eigen stukken van het fonds als die er zijn, anders de standaardstukken. 'Niet van toepassing' valt weg.
+export function alvastLijst(stukken, docs, nu = new Date()) {
+  const bron = Array.isArray(stukken) && stukken.length > 0 ? stukken : STANDAARD_STUKKEN;
+
+  return bron
+    .filter((s) => s && !s.nietVanToepassing)
+    .map((s) => {
+      const st = stukStatus(s, docs, nu);
+
+      return { id: s.id, tekst: s.tekst, status: st.status, bestand: st.document ? st.document.naam : '' };
+    });
+}
+
 // Hoeveel vragen hebben tekst, en hoeveel staan boven hun limiet?
 export function telAntwoorden(onderdelen, limieten) {
   const lijst = Array.isArray(onderdelen) ? onderdelen : [];

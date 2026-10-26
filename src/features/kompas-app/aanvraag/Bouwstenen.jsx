@@ -4,7 +4,7 @@ import React from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { color, font, radius } from '../../../shared/tokens.js';
 import { Blok, Chip } from '../../../shared/ui/werkplek.jsx';
-import { mailNaarCollectief, ruimteRegels } from './aanvraagModel.js';
+import { alvastLijst, mailNaarCollectief, ruimteRegels } from './aanvraagModel.js';
 
 export const CSS_AANVRAAG = `
 .fwk-aa-keuzes { display: flex; flex-wrap: wrap; gap: 18px; }
@@ -66,6 +66,12 @@ textarea.fwk-aa-veld { resize: vertical; }
 .fwk-aa-vier [data-staat="nu"] .fwk-aa-vier-nr { background: ${color.donkerblauw}; color: ${color.wit}; }
 @media (max-width: 760px) { .fwk-aa-vier { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fwk-aa-vier > li:nth-child(2) { border-right: none; } .fwk-aa-vier > li:nth-child(-n+2) { border-bottom: 1px solid ${color.lijn}; } }
 .fwk-aa-vier-nr[data-klaar="true"] { background: ${color.groen}; color: ${color.wit}; }
+.fwk-aa-alvast { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.fwk-aa-alvast li { display: flex; gap: 9px; align-items: flex-start; font-family: ${font.tekst}; font-size: 14px; font-weight: 700; line-height: 1.35; color: ${color.donkerblauw}; }
+.fwk-aa-alvast small { display: block; font-size: 12px; font-weight: 600; color: ${color.tekstLicht}; }
+.fwk-aa-alvast-punt { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; box-sizing: border-box; border-radius: 50%; border: 2px solid ${color.lijnInput}; font-size: 11px; line-height: 1; color: ${color.wit}; }
+.fwk-aa-alvast-punt[data-staat="klaar"] { background: ${color.groen}; border-color: ${color.groen}; }
+.fwk-aa-alvast-punt[data-staat="te-oud"] { border-color: #C98A2B; color: #8A5A10; }
 .fwk-aa-split { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 18px; align-items: start; }
 .fwk-aa-split > * { min-width: 0; }
 .fwk-aa-vraagknop { all: unset; box-sizing: border-box; width: 100%; display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid transparent; border-radius: ${radius.l}; cursor: pointer; font-family: ${font.tekst}; }
@@ -216,4 +222,42 @@ export function Bezig({ children }) {
 
 export function StatusChip({ tekst, toon }) {
   return <Chip toon={toon}>{tekst}</Chip>;
+}
+
+// Een korte checklist in de zijkant: wat het lid alvast kan verzamelen. Staat bij de stappen 1, 2 en 4; de volledige lijst (afvinken, koppelen) is stap 3.
+export function AlvastVerzamelen({ stukken, docs = [], gelezen = false, onNaarStukken }) {
+  const lijst = alvastLijst(stukken, docs);
+
+  return (
+    <Blok titel="Alvast verzamelen" testid="aa-alvast">
+      <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
+        {gelezen ? 'Dit heeft u straks nodig. Wat al in uw documenten staat, herkennen wij.' : 'Dit vragen bijna alle fondsen. Zodra wij uw formulier gelezen hebben, vullen wij aan met wat dit fonds extra vraagt.'}
+      </p>
+      {lijst.length === 0 ? (
+        <p className="fwk-aa-klein" style={css('margin: 0;')}>Er zijn geen stukken nodig.</p>
+      ) : (
+        <ul className="fwk-aa-alvast">
+          {lijst.map((s) => (
+            <li key={s.id} data-testid="aa-alvast-stuk" data-status={s.status}>
+              <span className="fwk-aa-alvast-punt" data-staat={s.status} aria-hidden="true">
+                {s.status === 'klaar' ? '✓' : s.status === 'te-oud' ? '!' : ''}
+              </span>
+              <span style={css('min-width: 0;')}>
+                {s.tekst}
+                {s.status === 'klaar' && <small>{s.bestand ? `Gevonden: ${s.bestand}` : 'Door u als klaar gemarkeerd'}</small>}
+                {s.status === 'te-oud' && <small>Controleer of dit de nieuwste is</small>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {onNaarStukken && (
+        <div style={css('margin-top: 12px;')}>
+          <button type="button" className="fwk-wp-link" onClick={onNaarStukken} data-testid="aa-alvast-naar-stukken">
+            Naar stap 3: Stukken
+          </button>
+        </div>
+      )}
+    </Blok>
+  );
 }
