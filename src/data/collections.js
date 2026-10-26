@@ -547,17 +547,20 @@ export const SITE_KEYS = {
 // Systeemteksten van de assistent. Tabel ai_prompts, sleutel-waarde.
 export const aiPromptBlocks = [
   {
-    page: 'Subsidie Kompas',
-    description: 'De systeemtekst die de assistent meekrijgt bij elke vraag.',
-    items: [
-      { key: 'kompas.system', label: 'Systeemtekst Subsidie Kompas', type: 'textarea' },
-      { key: 'kompas.premium_addendum', label: 'Aanvulling voor Premium-leden', type: 'textarea' },
-    ],
+    page: 'Subsidie Kompas: hoofdtekst',
+    description: 'De systeemtekst die de chatbot bij elk gesprek meekrijgt: toon, opbouw van antwoorden, regels voor fondsen, etappes. Wijzigingen werken direct, zonder deploy. Deze tekst mag nooit leeg zijn: dan start de chatbot geen gesprek.',
+    items: [{ key: 'kompas.system', label: 'Systeemtekst Subsidie Kompas', type: 'textarea', rows: 24, verplicht: true }],
   },
   {
-    page: 'Collie',
-    description: 'De assistent op de publieke website.',
-    items: [{ key: 'collie.system', label: 'Systeemtekst Collie', type: 'textarea' }],
+    page: 'Subsidie Kompas: aanvullingen',
+    description: 'Extra tekst die achter de hoofdtekst wordt gezet, afhankelijk van het abonnement (en bij het projectplan van het soort gesprek). Leeg laten mag: dan wordt er niets toegevoegd.',
+    items: [
+      { key: 'kompas.premium_addendum', rows: 8, label: 'Aanvulling voor Premium-leden (altijd bij Premium)', type: 'textarea' },
+      { key: 'kompas.aanvraagbeoordeling_addendum', rows: 8, label: 'Aanvulling aanvraagbeoordeling (altijd bij Premium)', type: 'textarea' },
+      { key: 'kompas.projectplan_addendum', rows: 8, label: 'Aanvulling projectplan (Pro en Premium, alleen als het gesprek een projectplan is)', type: 'textarea' },
+      { key: 'kompas.begroting_addendum', rows: 8, label: 'Aanvulling begroting en dekkingsplan (altijd bij Pro en Premium)', type: 'textarea' },
+      { key: 'kompas.strategie_addendum', rows: 8, label: 'Aanvulling fondsenwervende strategie (altijd bij Premium)', type: 'textarea' },
+    ],
   },
 ];
 
