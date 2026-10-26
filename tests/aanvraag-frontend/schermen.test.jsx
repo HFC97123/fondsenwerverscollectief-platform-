@@ -48,6 +48,18 @@ function Harnas({ store }) {
   );
 }
 
+
+// Eén tabblad zoals Documenten het nu toont: het projectplan en de fondsen waar het lid indient op dezelfde pagina.
+function HarnasEen({ store }) {
+  const assistent = useAanvraagAssistent(true);
+  const project = { id: PROJECT, naam: 'Samen Spelen' };
+
+  if (!assistent.klaar) return <div data-testid="laden">laden</div>;
+  if (!assistent.beschikbaar) return <div data-testid="geen-assistent">geen</div>;
+
+  return <AanvragenTab metProjectplan project={project} projecten={[project]} onKiesProject={() => {}} store={store} assistent={assistent} onNaarProjectinhoud={() => {}} />;
+}
+
 // ── Hulpjes ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const root = createRoot(document.getElementById('root'));
 const $ = (sel) => document.querySelector(sel);
@@ -254,6 +266,25 @@ sectie('8. Fouten worden eerlijk getoond');
   check('de meter springt bij en het onderdeel staat niet meer in de lijst', await wacht(() => parseInt($('[data-testid="aa-meter-percentage"]').textContent, 10) > voor) && !$('[data-testid="aa-mist-doelstelling"]'));
   await klik($('[data-testid="aa-mist-aanleiding"]'));
   check('ook een veld uit de projectdocumentatie wordt hier ingevuld', !!$('[data-testid="aa-invul-aanleiding"]'));
+  await opruimen();
+}
+
+sectie('9. Eén tabblad: projectplan en fondsen waar het lid indient');
+{
+  const een = maakServer();
+  client.__reset();
+  client.__zetSupabase(een.supabase);
+  await act(async () => { root.render(<HarnasEen store={{ orgProfile: { name: 'Stichting Samen Spelen' } }} />); });
+  await wacht(() => $('[data-testid="aa-projectplan"]'));
+  check('het projectplan en de fondsen staan op dezelfde pagina', !!$('[data-testid="aa-kaart-algemeen"]') && !!$('[data-testid="aa-aanvragen-lijst"]'));
+  check('de kaart Fondsbeoordeling en het blok Uw plannen zijn weg: de fondsen staan in één blok', !$('[data-testid="aa-kaart-fonds"]') && !$('[data-testid="aa-plannen"]'));
+  check('het blok heet Fondsen waar u indient en zegt dat het lid zelf indient', /Fondsen waar u indient/.test(tekst()) && /U dient zelf in bij het fonds/.test(tekst()));
+  check('de maandruimte, de uitleg bij het plan en het privaatfonds staan er één keer op', $$('[data-testid="aa-ruimte"]').length <= 1 && $$('[data-testid="aa-baseren"]').length === 1 && $$('[data-testid="aa-privaatfonds"]').length === 1);
+  check('er is één projectkeuze', $$('[data-testid="aa-projectkeuze"]').length === 1);
+  await klik(knop('+ Fonds toevoegen'));
+  check('+ Fonds toevoegen opent het scherm voor een nieuwe aanvraag', await wacht(() => $('[data-testid="aa-nieuw"]')) && !$('[data-testid="aa-kaart-algemeen"]'));
+  await klik(knop('Terug'));
+  check('terug brengt het lid naar dezelfde pagina met het plan en de fondsen', await wacht(() => $('[data-testid="aa-aanvragen-lijst"]')) && !!$('[data-testid="aa-kaart-algemeen"]'));
   await opruimen();
 }
 

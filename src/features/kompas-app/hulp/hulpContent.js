@@ -124,7 +124,7 @@ export const VRAGEN = [
   {
     id: 'projectplan',
     vraag: 'Hoe krijg ik een projectplan of een beoordeling?',
-    antwoord: 'Ga naar Subsidieadvies › Indienen. Vul eerst het projectdossier aan. Daarna kunt u onder Projectplan en Fondsen indienen een plan op maat van het fonds laten maken en uw aanvraag laten beoordelen voordat u indient.',
+    antwoord: 'Ga naar Subsidieadvies › Indienen. Vul eerst het projectdossier aan. Daarna kunt u onder Projectplan en indienen een plan op maat van het fonds laten maken en uw aanvraag laten beoordelen voordat u indient.',
     links: [{ href: '#/kompas/documentatie', tekst: 'Naar indienen' }],
   },
   {

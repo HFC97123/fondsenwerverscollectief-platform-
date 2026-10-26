@@ -18,7 +18,9 @@ const DOSSIER_ONDERDELEN = new Set(['aanleiding', 'doelstelling', 'activiteiten'
 const inDossier = (o) => o.waar === 'Projectdocumentatie' || DOSSIER_ONDERDELEN.has(o.id);
 const plekNaam = (o) => (inDossier(o) ? 'Projectdossier' : o.waar);
 
-export default function ProjectplanTab({ project, projecten, onKiesProject, store, assistent, onNieuweAanvraag, onOpenAanvraag, onNaarProjectinhoud }) {
+// Ingebed (één tabblad met de fondsen): de host geeft het blok met de fondsen (fondsenBlok) en wat er rechts bij hoort (rechtsExtra). Dan vervallen de kaart
+// Fondsbeoordeling en het blok Uw plannen: de fondsen staan in fondsenBlok.
+export default function ProjectplanTab({ project, projecten, onKiesProject, store, assistent, onNieuweAanvraag, onOpenAanvraag, onNaarProjectinhoud, ingebed = false, fondsenBlok = null, rechtsExtra = null }) {
   const projectId = project ? project.id : '';
   const [lijst, setLijst] = useState(null);
   const [lijstFout, setLijstFout] = useState('');
@@ -260,26 +262,28 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
               {bezig && <Bezig>{bezig}</Bezig>}
             </Keuzekaart>
 
-            <Keuzekaart titel="Fondsbeoordeling" testid="aa-kaart-fonds">
-              <p>Beoordeel uw aanvraag voor een fonds.</p>
-              <div>
-                <label htmlFor="aa-fonds-plan" className="fwk-aa-label">
-                  Welk fonds?
-                </label>
-                <input id="aa-fonds-plan" data-testid="aa-fonds-plan" className="fwk-aa-veld" type="text" value={fonds} maxLength={200} onChange={(e) => setFonds(e.target.value)} placeholder="Bijvoorbeeld Stichting Voorbeeldfonds" />
-              </div>
-              <div>
-                <label htmlFor="aa-site-plan" className="fwk-aa-label">
-                  Website van het fonds (optioneel)
-                </label>
-                <input id="aa-site-plan" data-testid="aa-site-plan" className="fwk-aa-veld" type="url" value={site} maxLength={500} onChange={(e) => setSite(e.target.value)} placeholder="https://www.voorbeeldfonds.nl/aanvragen" />
-              </div>
-              <div className="fwk-aa-onder">
-                <Button variant="dark" onClick={naarFonds} disabled={fonds.trim().length < 2 || !projectId} ariaLabel="Kies fonds en maak criteria">
-                  Kies fonds →
-                </Button>
-              </div>
-            </Keuzekaart>
+            {!ingebed && (
+              <Keuzekaart titel="Fondsbeoordeling" testid="aa-kaart-fonds">
+                <p>Beoordeel uw aanvraag voor een fonds.</p>
+                <div>
+                  <label htmlFor="aa-fonds-plan" className="fwk-aa-label">
+                    Welk fonds?
+                  </label>
+                  <input id="aa-fonds-plan" data-testid="aa-fonds-plan" className="fwk-aa-veld" type="text" value={fonds} maxLength={200} onChange={(e) => setFonds(e.target.value)} placeholder="Bijvoorbeeld Stichting Voorbeeldfonds" />
+                </div>
+                <div>
+                  <label htmlFor="aa-site-plan" className="fwk-aa-label">
+                    Website van het fonds (optioneel)
+                  </label>
+                  <input id="aa-site-plan" data-testid="aa-site-plan" className="fwk-aa-veld" type="url" value={site} maxLength={500} onChange={(e) => setSite(e.target.value)} placeholder="https://www.voorbeeldfonds.nl/aanvragen" />
+                </div>
+                <div className="fwk-aa-onder">
+                  <Button variant="dark" onClick={naarFonds} disabled={fonds.trim().length < 2 || !projectId} ariaLabel="Kies fonds en maak criteria">
+                    Kies fonds →
+                  </Button>
+                </div>
+              </Keuzekaart>
+            )}
           </div>
 
           {fout && (
@@ -298,7 +302,8 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
             </Melding>
           )}
 
-          <Blok titel="Uw plannen" testid="aa-plannen">
+          {ingebed ? fondsenBlok : (
+            <Blok titel="Uw plannen" testid="aa-plannen">
             {lijst === null && <Bezig>Uw plannen worden opgehaald.</Bezig>}
             {lijstFout && <Melding toon="waarschuwing">{lijstFout}</Melding>}
             {lijst !== null && !lijstFout && !algemeen?.heeftPlan && !metPlan.length && <Leeg testid="aa-plannen-leeg">Nog geen plannen.</Leeg>}
@@ -324,6 +329,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
               ))}
             </Rijen>
           </Blok>
+          )}
         </div>
 
         <div className="fwk-wp-stapel">
@@ -340,6 +346,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
               ))}
             </ul>
           </Blok>
+          {rechtsExtra}
         </div>
       </div>
     </div>

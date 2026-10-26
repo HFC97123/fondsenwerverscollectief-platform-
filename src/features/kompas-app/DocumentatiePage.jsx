@@ -48,9 +48,8 @@ import { Blok, Leeg, Melding, PaginaKop, Tabs, WerkPagina } from '../../shared/u
 // staan daar nu eenmalig, met dezelfde Word-generator en begrotings-Excel.
 import ExportMenu from '../../shared/ui/ExportMenu.jsx';
 import { opgeslagenDocumentExport } from './exportBronnen.js';
-// Aanvraag-assistent (Pro/Premium): tabbladen Projectplan en Aanvragen. Ze verschijnen alleen als de server de functie voor dit lid aanzet.
+// Aanvraag-assistent (Pro/Premium): het tabblad Projectplan en indienen. Het verschijnt alleen als de server de functie voor dit lid aanzet.
 import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
-import ProjectplanTab from './aanvraag/ProjectplanTab.jsx';
 import AanvragenTab from './aanvraag/AanvragenTab.jsx';
 import BegrotingTab from './begroting/BegrotingTab.jsx';
 import { huidigeHash, vervangAdres } from '../../app/adres.js';
@@ -69,14 +68,14 @@ function leesProjectUitUrl() {
   return m ? decodeURIComponent(m[1]) : '';
 }
 
-// Indienen heeft vier tabbladen: Projectplan, Fondsen indienen, Projectdossier en Projectdocumentatie (de bestanden).
-// ?tab=plan, aanvragen, inhoud of bestanden kiest het tabblad; zonder tab opent de pagina altijd op Projectplan (ook met ?project=<id>).
+// Indienen heeft drie tabbladen: Projectplan en indienen (het projectplan en de fondsen waar het lid indient), Projectdossier en Projectdocumentatie (de bestanden).
+// ?tab=plan, inhoud of bestanden kiest het tabblad (?tab=aanvragen, de oude naam, opent ook Projectplan en indienen); zonder tab opent de pagina altijd op Projectplan en indienen (ook met ?project=<id>).
 // Het projectdossier is het laatste tabblad en opent dus alleen als er expliciet om gevraagd wordt (?tab=inhoud).
 function leesTabUitUrl() {
   const h = huidigeHash();
   const m = /[?&]tab=(inhoud|bestanden|plan|aanvragen|begroting)(&|$)/.exec(h);
 
-  return m ? m[1] : 'plan';
+  return !m || m[1] === 'aanvragen' ? 'plan' : m[1];
 }
 
 function zetProjectInUrl(id) {
@@ -100,7 +99,6 @@ export default function DocumentatiePage() {
   const [tab, setTab] = useState(leesTabUitUrl);
   const [projectFilter, setProjectFilter] = useState(() => leesProjectUitUrl() || 'alle');
   const assistent = useAanvraagAssistent(paid);
-  const [aanvraagStart, setAanvraagStart] = useState(null);
 
   // Alleen echte, niet-gearchiveerde projecten: Projectinformatie hoort bij een bewaard project.
   const projecten = useMemo(() => (store.projects || []).filter((p) => isEchtId(p.id) && !p.gearchiveerd), [store.projects]);
@@ -109,7 +107,7 @@ export default function DocumentatiePage() {
   // Een link naar Projectplan of Fondsen indienen toont, als de functie er voor dit lid niet is, het projectdossier.
   // Het tabblad Begroting bestaat alleen als de database de kolom voor begrotingsregels heeft (budgetRegels is dan een lijst, ook een lege).
   const begrotingBeschikbaar = projecten.some((p) => Array.isArray(p.budgetRegels));
-  const vraagtAssistent = tab === 'plan' || tab === 'aanvragen';
+  const vraagtAssistent = tab === 'plan';
   const tabActief = vraagtAssistent && assistent.klaar && !assistent.beschikbaar ? 'inhoud' : tab === 'begroting' && !begrotingBeschikbaar ? 'bestanden' : tab;
 
   const kiesProject = useCallback((id) => {
@@ -195,7 +193,7 @@ export default function DocumentatiePage() {
           ) : (
             <>
               <p>Het projectdossier is de inhoud waarmee Subsidie Kompas teksten en aanvragen voor een project schrijft. Wat daar niet staat, verzint Subsidie Kompas niet.</p>
-              {assistent.beschikbaar && <p>Onder Projectplan schrijft u een algemeen plan of een plan voor één fonds. Onder Fondsen indienen houdt u per fonds de criteria, uw versie en de beoordeling van uw eigen tekst bij elkaar.</p>}
+              {assistent.beschikbaar && <p>Onder Projectplan en indienen schrijft u uw projectplan en houdt u per fonds de criteria, uw versie en de beoordeling van uw eigen tekst bij elkaar. U dient zelf in bij het fonds; wij helpen met de tekst en de stukken.</p>}
               <p>Projectdocumentatie zijn de bestanden bij uw projecten: wat u uploadt en wat Subsidie Kompas voor u opmaakte.</p>
             </>
           )
@@ -207,8 +205,7 @@ export default function DocumentatiePage() {
           tabs={[
             ...(assistent.beschikbaar
               ? [
-                  { id: 'plan', label: 'Projectplan' },
-                  { id: 'aanvragen', label: 'Fondsen indienen' },
+                  { id: 'plan', label: 'Projectplan en indienen' },
                 ]
               : []),
             { id: 'inhoud', label: 'Projectdossier' },
@@ -221,36 +218,18 @@ export default function DocumentatiePage() {
         />
       )}
 
-      {(tabActief === 'plan' || tabActief === 'aanvragen') && !assistent.beschikbaar && <Leeg>Even laden…</Leeg>}
+      {tabActief === 'plan' && !assistent.beschikbaar && <Leeg>Even laden…</Leeg>}
 
       {tabActief === 'plan' && assistent.beschikbaar && (projecten.length > 0 ? (
-        <ProjectplanTab
+        <AanvragenTab
+          metProjectplan
           project={projecten.find((p) => p.id === projectId) || null}
           projecten={projecten}
           onKiesProject={kiesProject}
           store={store}
           assistent={assistent}
-          onNieuweAanvraag={(fonds, website) => {
-            setAanvraagStart({ fonds, website: website || '', nonce: Date.now() });
-            setTab('aanvragen');
-          }}
-          onOpenAanvraag={(id) => {
-            setAanvraagStart({ aanvraagId: id, nonce: Date.now() });
-            setTab('aanvragen');
-          }}
           onNaarProjectinhoud={() => setTab('inhoud')}
         />
-      ) : (
-        <Leeg>
-          Nog geen project.{' '}
-          <a href="#/kompas/projecten?nieuw=1" className="fwk-wp-link">
-            Project aanmaken
-          </a>
-        </Leeg>
-      ))}
-
-      {tabActief === 'aanvragen' && assistent.beschikbaar && (projecten.length > 0 ? (
-        <AanvragenTab project={projecten.find((p) => p.id === projectId) || null} projecten={projecten} onKiesProject={kiesProject} store={store} assistent={assistent} start={aanvraagStart} />
       ) : (
         <Leeg>
           Nog geen project.{' '}

@@ -8,10 +8,13 @@ import { haalAanvragen } from '../../../data/services/aanvraagAssistent.js';
 import { AanvraagStijl, Bezig, PrivaatfondsKaart, ProjectKeuze, RuimteBlok } from './Bouwstenen.jsx';
 import AanvraagWerk from './AanvraagWerk.jsx';
 import NieuweAanvraag from './NieuweAanvraag.jsx';
+import ProjectplanTab from './ProjectplanTab.jsx';
 import { aanvraagBadges, datumTekst, splitsAanvragen } from './aanvraagModel.js';
 
-// start: { fonds?, aanvraagId?, nonce } vanuit het tabblad Projectplan.
-export default function AanvragenTab({ project, projecten, onKiesProject, store, assistent, start }) {
+// Eén tabblad "Projectplan en indienen": met metProjectplan staat het projectplan bovenaan en daaronder de fondsen waar het lid indient.
+// Het lid dient zelf in bij het fonds; Subsidie Kompas helpt met de tekst en de stukken.
+// start: { fonds?, aanvraagId?, nonce } (alleen nog nodig als een ander scherm direct een aanvraag wil openen).
+export default function AanvragenTab({ project, projecten, onKiesProject, store, assistent, start, metProjectplan = false, onNaarProjectinhoud }) {
   const projectId = project ? project.id : '';
   const [lijst, setLijst] = useState(null);
   const [fout, setFout] = useState('');
@@ -79,55 +82,75 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
 
   const { fondsen } = splitsAanvragen(lijst);
 
+  const fondsenBlok = (
+    <Blok
+      titel={metProjectplan ? 'Fondsen waar u indient' : 'Aanvragen voor dit project'}
+      aantal={lijst ? fondsen.length : undefined}
+      testid="aa-aanvragen-lijst"
+      actie={
+        <Button size="s" onClick={() => setScherm({ naam: 'nieuw', fonds: '' })} ariaLabel="Nieuwe aanvraag">
+          {metProjectplan ? '+ Fonds toevoegen' : '+ Nieuwe aanvraag'}
+        </Button>
+      }
+    >
+      <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
+        {metProjectplan ? 'U dient zelf in bij het fonds. Wij helpen u met de tekst en de stukken. Per fonds bewaren we de criteria, uw versie en de beoordeling bij elkaar.' : 'Per fonds bewaren we de criteria, uw versie en de beoordeling bij elkaar.'}
+      </p>
+      {lijst === null && <Bezig>De aanvragen worden opgehaald.</Bezig>}
+      {fout && <Melding toon="waarschuwing">{fout}</Melding>}
+      {lijst !== null && !fout && !fondsen.length && (
+        <Leeg testid="aa-aanvragen-leeg" actie={<button type="button" className="fwk-wp-link" onClick={() => setScherm({ naam: 'nieuw', fonds: '' })}>Begin met uw eerste aanvraag</button>}>
+          Nog geen aanvragen voor dit project.
+        </Leeg>
+      )}
+      <Rijen label="Aanvragen">
+        {fondsen.map((a) => (
+          <Rij
+            key={a.id}
+            testid="aa-rij-aanvraag"
+            titel={a.fondsLabel || 'Fonds'}
+            sub={`${a.aantalCriteria} ${a.aantalCriteria === 1 ? 'criterium' : 'criteria'} · bijgewerkt op ${datumTekst(a.bijgewerkt) || 'onbekende datum'}`}
+            onOpen={() => setScherm({ naam: 'werk', aanvraagId: a.id })}
+            eind={
+              <span className="fwk-aa-chips" style={css('margin: 0; justify-content: flex-end;')}>
+                {aanvraagBadges(a).map((b) => (
+                  <Chip key={b.tekst} toon={b.toon}>
+                    {b.tekst}
+                  </Chip>
+                ))}
+              </span>
+            }
+          />
+        ))}
+      </Rijen>
+    </Blok>
+  );
+
+  if (metProjectplan) {
+    return (
+      <ProjectplanTab
+        ingebed
+        project={project}
+        projecten={projecten}
+        onKiesProject={onKiesProject}
+        store={store}
+        assistent={assistent}
+        onNieuweAanvraag={(fonds, website) => setScherm({ naam: 'nieuw', fonds: fonds || '', website: website || '' })}
+        onOpenAanvraag={(id) => setScherm({ naam: 'werk', aanvraagId: id })}
+        onNaarProjectinhoud={onNaarProjectinhoud}
+        fondsenBlok={fondsenBlok}
+        rechtsExtra={<PrivaatfondsKaart fondsLabel="" />}
+      />
+    );
+  }
+
   return (
     <div data-testid="aa-aanvragen">
       <AanvraagStijl />
       <ProjectKeuze projecten={projecten} projectId={projectId} onKies={onKiesProject} />
 
       <div className="fwk-wp-kolommen">
-        <div className="fwk-wp-stapel">
-          <Blok
-            titel="Aanvragen voor dit project"
-            aantal={lijst ? fondsen.length : undefined}
-            testid="aa-aanvragen-lijst"
-            actie={
-              <Button size="s" onClick={() => setScherm({ naam: 'nieuw', fonds: '' })} ariaLabel="Nieuwe aanvraag">
-                + Nieuwe aanvraag
-              </Button>
-            }
-          >
-            <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
-              Per fonds bewaren we de criteria, uw versie en de beoordeling bij elkaar.
-            </p>
-            {lijst === null && <Bezig>De aanvragen worden opgehaald.</Bezig>}
-            {fout && <Melding toon="waarschuwing">{fout}</Melding>}
-            {lijst !== null && !fout && !fondsen.length && (
-              <Leeg testid="aa-aanvragen-leeg" actie={<button type="button" className="fwk-wp-link" onClick={() => setScherm({ naam: 'nieuw', fonds: '' })}>Begin met uw eerste aanvraag</button>}>
-                Nog geen aanvragen voor dit project.
-              </Leeg>
-            )}
-            <Rijen label="Aanvragen">
-              {fondsen.map((a) => (
-                <Rij
-                  key={a.id}
-                  testid="aa-rij-aanvraag"
-                  titel={a.fondsLabel || 'Fonds'}
-                  sub={`${a.aantalCriteria} ${a.aantalCriteria === 1 ? 'criterium' : 'criteria'} · bijgewerkt op ${datumTekst(a.bijgewerkt) || 'onbekende datum'}`}
-                  onOpen={() => setScherm({ naam: 'werk', aanvraagId: a.id })}
-                  eind={
-                    <span className="fwk-aa-chips" style={css('margin: 0; justify-content: flex-end;')}>
-                      {aanvraagBadges(a).map((b) => (
-                        <Chip key={b.tekst} toon={b.toon}>
-                          {b.tekst}
-                        </Chip>
-                      ))}
-                    </span>
-                  }
-                />
-              ))}
-            </Rijen>
-          </Blok>
-        </div>
+        <div className="fwk-wp-stapel">{fondsenBlok}</div>
 
         <div className="fwk-wp-stapel">
           <RuimteBlok status={assistent.status} />
