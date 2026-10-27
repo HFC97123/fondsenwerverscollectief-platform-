@@ -15,6 +15,7 @@ import { ISO_DATUM } from './projectOpslaan.js';
 import { stelTrefwoordenVoor, voegRegioToe } from './projectinformatie/trefwoorden.js';
 import TrefwoordVoorstellen from './projectinformatie/TrefwoordVoorstellen.jsx';
 import WerkgebiedVerfijning from './WerkgebiedVerfijning.jsx';
+import SlimmeHerkenning from './projectinformatie/SlimmeHerkenning.jsx';
 import { LANDNAMEN } from '../../shared/werkgebied/werkgebied.js';
 
 // De velden van het aanmaakformulier, in volgorde. Gebruikt door de pagina en door de tests.
@@ -181,6 +182,10 @@ export default function NieuwProjectFormulier({ form, setVeld, doelgroepen, them
           />
           <span data-testid="np-omschrijving-hulp" style={css(HULP)}>{OMSCHRIJVING_HULPTEKST}</span>
         </Field>
+
+        <div style={{ gridColumn: '1 / -1' }}>
+          <SlimmeHerkenning form={form} setVeld={setVeld} />
+        </div>
 
         <Field>
           Totale projectbegroting

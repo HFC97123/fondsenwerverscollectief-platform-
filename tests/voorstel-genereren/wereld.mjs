@@ -109,6 +109,13 @@ const from = (tabel) => {
   if (tabel === 'subsidie_kompas_actieplan_open') return wachtrijFrom();
   if (tabel === 'kompas_gebruik_log') {
     return {
+      // Tellen voor de daglimiet (select met count): filtert op eq-velden; het datumfilter (gte) is in de test niet nodig, alle rijen zijn van vandaag.
+      select() {
+        const f = {};
+        const t = { eq(k, v) { f[k] = v; return t; }, gte() { return t; }, then(ok, nok) { if (w.gebruikFout === 'tabel-weg') return Promise.resolve({ count: null, error: { code: 'PGRST205' } }).then(ok, nok); return Promise.resolve({ count: w.gebruikRijen.filter((r) => Object.entries(f).every(([k, v]) => r[k] === v)).length, error: null }).then(ok, nok); } };
+
+        return t;
+      },
       insert(rij) {
         if (w.gebruikFout === 'gooit') throw new Error('boem');
         if (w.gebruikFout === 'hangt') return new Promise(() => {});

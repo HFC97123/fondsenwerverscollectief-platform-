@@ -20,6 +20,7 @@
 import { supabase } from '../client.js';
 import { teFinancieren } from '../../features/kompas-app/financiering/dekkingsplan.js';
 import { leesWerkgebied, werkgebiedVoorOpslag } from '../../shared/werkgebied/werkgebied.js';
+import { eigenTermenVoorOpslag, leesEigenTermen } from '../../features/kompas-app/projectinformatie/eigenTermen.js';
 import { budgetKolom, leesOpgeslagenRegels } from '../../features/kompas-app/begroting/begrotingModel.js';
 
 // Doelgroep is voorheen een los tekstveld geweest (target_groups, plain
@@ -109,6 +110,8 @@ function naarProjectVeld(rij, docs) {
     regio: rij.location || '',
     // Gekozen werkgebied als ISO-landcodes plus door het lid bevestigde verfijningen (GeoNames); null/ontbrekend = nog niet gebruikt.
     werkgebied: leesWerkgebied(rij.work_area) || undefined,
+    // Eigen woorden van het lid ("Overig"). undefined = de kolom bestaat (nog) niet; dan wordt er niets geschreven.
+    eigenTermen: 'eigen_termen' in rij ? leesEigenTermen(rij.eigen_termen) : undefined,
     periodeVan: rij.period_start || '',
     periodeTot: rij.period_end || '',
     omschrijving: rij.description || '',
@@ -164,6 +167,7 @@ export function naarKolomPatch(project) {
     themes: doelgroepNaarKolom(project.discipline),
     location: project.regio || null,
     ...werkgebiedKolom(project),
+    ...(Array.isArray(project.eigenTermen) ? { eigen_termen: eigenTermenVoorOpslag(project.eigenTermen) } : {}),
     period_start: project.periodeVan || null,
     period_end: project.periodeTot || null,
     description: project.omschrijving || null,

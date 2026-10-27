@@ -29,6 +29,7 @@ export const ACTIE_TYPES = [
   'aanvraag_begroting_upload', // aanvraag-assistent: een geüpload begrotingsbestand omzetten in begrotingsregels
   'aanvraag_vragen', // aanvraag-assistent: het formulier van een fonds omzetten in vragen en stukken
   'aanvraag_antwoorden', // aanvraag-assistent: antwoorden schrijven op de vragen van het formulier
+  'trefwoorden_koppelen', // projectgegevens: disciplines, doelgroepen en werkgebieden voorstellen uit de omschrijving en eigen woorden
 ] as const;
 
 export type ActieType = (typeof ACTIE_TYPES)[number];

@@ -6745,6 +6745,7 @@ function schoneBronnen(bronnen: { title: string; url: string }[]): { title: stri
 // ===========================================================================
 const ZOEKPROFIEL_ACTIE = 'voorstel-zoekprofiel';
 const WERKGEBIED_ACTIE = 'werkgebied-verfijning';
+const TREFWOORDEN_ACTIE = 'trefwoorden-koppelen';
 const WERKGEBIED_MAX_TEKENS = 6000;
 const ZOEKPROFIEL_MAX_TEKENS = 12000;
 const MELDING_BEDRAG_ONBEKEND = 'Het bedrag dat u bij fondsen zoekt is nog niet bekend, dus de matching op bedrag is beperkt: de financiers zijn gekozen op inhoud, doelgroep en werkgebied, zonder voorgesteld bedrag. Vul de projectbegroting in om een dekkingsplan met bedragen te laten voorstellen.';
@@ -8468,6 +8469,85 @@ Deno.serve(async (req) => {
       console.error('[subsidie-kompas] werkgebied_verfijning_fout');
 
       return json({ ok: true, suggesties: [], beschikbaar: false });
+    }
+  }
+
+  // Slimme herkenning van projectgegevens ("Laat Claude meedenken"): de AI stelt disciplines, doelgroepen en werkgebieden voor uit de omschrijving en
+  // koppelt eigen woorden ("Overig") op betekenis aan bestaande waarden. Alleen exacte tabelwaarden met bewijs komen terug; SCHRIJFT NIETS.
+  if (body.mode === TREFWOORDEN_ACTIE) {
+    if (!profileId) return json({ error: 'Log in om Claude te laten meedenken.' }, 401);
+
+    const trefwoorden = await import('../_shared/trefwoordKoppelen.ts');
+    const tekst = typeof body.tekst === 'string' ? body.tekst.slice(0, trefwoorden.MAX_TREFWOORD_TEKENS) : '';
+    const eigenTermen = trefwoorden.schoonEigenTermen(body.eigenTermen);
+    const lijstUit = (v: unknown) => (Array.isArray(v) ? v.slice(0, 40).map((x) => String(x ?? '').slice(0, 120)) : []);
+    const gekozen = { discipline: lijstUit(body.gekozen?.discipline), doelgroep: lijstUit(body.gekozen?.doelgroep), regio: lijstUit(body.gekozen?.regio) };
+
+    // Niets te koppelen: geen modelaanroep. Eigen woorden blijven dan gewoon bij het project staan.
+    if (tekst.trim().length < trefwoorden.MIN_TEKST_TEKENS && !eigenTermen.length) return json({ ok: true, voorstellen: [], nietGekoppeld: [], beschikbaar: true });
+
+    // Daglimiet per lid (beheer onbeperkt). Kan de teller niet gelezen worden, dan blokkeert dat niets.
+    if (!isAdmin) {
+      try {
+        const sinds = new Date();
+
+        sinds.setUTCHours(0, 0, 0, 0);
+
+        const { count, error: telFout } = await admin.from('kompas_gebruik_log').select('id', { count: 'exact', head: true }).eq('user_id', profileId).eq('action_type', 'trefwoorden_koppelen').gte('created_at', sinds.toISOString());
+
+        if (!telFout && typeof count === 'number' && count >= trefwoorden.DAGLIMIET_TREFWOORDEN) {
+          return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'daglimiet' });
+        }
+      } catch (_e) {
+        // teller onbereikbaar: niet blokkeren
+      }
+    }
+
+    const taxonomie = await laadTaxonomie(admin);
+
+    if (!taxonomie) return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'geen-taxonomie' });
+
+    const invoer = { tekst, eigenTermen, gekozen };
+    const tStart = Date.now();
+
+    try {
+      const uitkomst = await fetchOpenAiMetTimeout('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [{ role: 'system', content: trefwoorden.trefwoordSysteem(taxonomie) }, { role: 'user', content: trefwoorden.trefwoordGebruikersbericht(invoer) }],
+          temperature: 0,
+          max_tokens: 900,
+          response_format: { type: 'json_object' },
+        }),
+      }, KORTE_CALL_TIMEOUT_MS);
+
+      if (!uitkomst.ok || !uitkomst.response.ok) {
+        console.error('[subsidie-kompas] trefwoorden_koppelen_ai_fout', uitkomst.ok ? uitkomst.response.status : 'geen-antwoord');
+
+        return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'ai-fout' });
+      }
+
+      const data = await uitkomst.response.json();
+      let ruw: unknown = {};
+
+      try {
+        ruw = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+      } catch (_e) {
+        ruw = {};
+      }
+
+      const gelezen = trefwoorden.leesTrefwoordKoppelingen(ruw, taxonomie, invoer);
+
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'trefwoorden_koppelen', projectId: null, model: MODEL, usage: data.usage, duurMs: Date.now() - tStart, succes: true });
+      console.log('[subsidie-kompas] trefwoorden_koppelen', JSON.stringify({ voorstellen: gelezen.voorstellen.length, nietGekoppeld: gelezen.nietGekoppeld.length, eigenTermen: eigenTermen.length }));
+
+      return json({ ok: true, voorstellen: gelezen.voorstellen, nietGekoppeld: gelezen.nietGekoppeld, beschikbaar: true });
+    } catch (_e) {
+      console.error('[subsidie-kompas] trefwoorden_koppelen_fout');
+
+      return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'ai-fout' });
     }
   }
 
