@@ -81,6 +81,8 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
   const plannen = stand && stand.plannen ? stand.plannen : null;
   const limietBereikt = Boolean(!planGeschreven && plannen && plannen.resterend === 0);
   const isPro = assistent.status && assistent.status.tier === 'pro';
+  // Een fonds laten beoordelen is er met Premium. De server beslist (status.fondsbeoordeling); is die niet bekend, dan blijft het scherm zoals het was.
+  const fondsLocked = Boolean(assistent.status && assistent.status.fondsbeoordeling === false);
 
   const schrijf = async () => {
     setFout(null);
@@ -262,7 +264,18 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
               {bezig && <Bezig>{bezig}</Bezig>}
             </Keuzekaart>
 
-            {!ingebed && (
+            {!ingebed && fondsLocked && (
+              <Keuzekaart titel="Fondsbeoordeling" testid="aa-kaart-fonds-premium">
+                <p>Uw aanvraag per fonds laten beoordelen kan met Premium. Met Pro schrijft u uw projectplan en dient u zelf in bij het fonds.</p>
+                <div className="fwk-aa-onder">
+                  <a className="fwk-wp-link" href="#/kompas/account" data-testid="aa-kaart-fonds-premium-link">
+                    Bekijk Premium
+                  </a>
+                </div>
+              </Keuzekaart>
+            )}
+
+            {!ingebed && !fondsLocked && (
               <Keuzekaart titel="Fondsbeoordeling" testid="aa-kaart-fonds">
                 <p>Beoordeel uw aanvraag voor een fonds.</p>
                 <div>

@@ -19,7 +19,7 @@ export const PLANBRON = {
 
 // ── Een server met de echte regels en een geheugendatabase ──────────────────────────────────────────────────────────────────────────────
 export function maakServer(o = {}) {
-  const s = { aanroepen: [], gebruik: [], planProjecten: new Set(), planIds: new Map(), tabel: new Map(), beoordelingen: new Map(), opties: { vlag: true, tier: 'pro', pagina: { ok: true, tekst: RICHTLIJN }, ...o } };
+  const s = { aanroepen: [], gebruik: [], planProjecten: new Set(), planIds: new Map(), tabel: new Map(), beoordelingen: new Map(), opties: { vlag: true, tier: 'premium', pagina: { ok: true, tekst: RICHTLIJN }, ...o } };
   const maand = (soort) => s.gebruik.filter((x) => x.succes && x.actie === soort).length;
   const deps = {
     modelNaam: 'test', nu: () => NU, vlagAan: () => s.opties.vlag,

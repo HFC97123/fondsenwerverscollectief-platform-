@@ -106,6 +106,19 @@ sectie('1. Zonder de functie of zonder Pro/Premium verandert er niets');
   await toon(free);
   check('Free (403): geen schermen', $('[data-testid="geen-assistent"]') && !$('[data-testid="tab-plan"]'));
   await opruimen();
+
+  // Pro: stappen 1 tot en met 3 en het projectplan; fondsbeoordeling en schrijven per fonds zijn Premium.
+  const pro = maakServer({ tier: 'pro' });
+  await toon(pro);
+  check('Pro: het projectplan-scherm is er, met de uitleg over Premium in plaats van het fondsformulier', !!$('[data-testid="aa-kaart-algemeen"]') && !!$('[data-testid="aa-kaart-fonds-premium"]') && !$('[data-testid="aa-kaart-fonds"]') && !$('[data-testid="aa-fonds-plan"]'));
+  check('Pro: de ruimte toont alleen de projectplannen (0 van 1), geen beoordelingen', /Projectplannen\s*0 van 1/.test(tekst()) && !/Beoordelingen/.test(tekst()));
+  await klik(knop('Start algemeen plan'));
+  await klik(knop('Ja, schrijf het plan'));
+  check('Pro: het projectplan schrijven werkt', await wacht(() => $('[data-testid="aa-plan"]')) && [...pro.s.tabel.values()].length === 1 && [...pro.s.tabel.values()][0].soort === 'algemeen');
+  await klik(knop('Sluiten'));
+  await klik($('[data-testid="tab-aanvragen"]'));
+  check('Pro: tabblad Aanvragen toont de Premium-uitleg met link', await wacht(() => $('[data-testid="aa-fondsen-premium"]')) && !!$('[data-testid="aa-fondsen-premium-link"]'));
+  await opruimen();
 }
 
 sectie('2. Projectplan: algemeen plan schrijven');
@@ -113,7 +126,7 @@ const S = maakServer();
 {
   await toon(S);
   check('Projectplan-scherm met beide keuzes', $('[data-testid="aa-kaart-algemeen"]') && $('[data-testid="aa-kaart-fonds"]'));
-  check('ruimte: Beoordelingen 0 van 6 en Projectplannen 0 van 1', /Beoordelingen\s*0 van 6/.test(tekst()) && /Projectplannen\s*0 van 1/.test(tekst()));
+  check('ruimte: Beoordelingen 0 van 30 en Projectplannen 0 van 3', /Beoordelingen\s*0 van 30/.test(tekst()) && /Projectplannen\s*0 van 3/.test(tekst()));
   check('voortgangsmeter: een volledig project staat op 100% en er is niets dat nog mist', await wacht(() => $('[data-testid="aa-meter-percentage"]')?.textContent === '100%') && !$('[data-testid="aa-meter-mist"]'));
   check('geen woord "eisenlijst" of "privéfonds" en geen "4 bestanden"', !/eisenlijst|privéfonds|4 bestanden/i.test(tekst()));
   check('"Waar we het plan op baseren": drie bronnen', ['Projectgegevens', 'Projectdocumentatie', 'Organisatieprofiel'].every((t) => tekst().includes(t)));
@@ -133,7 +146,7 @@ const S = maakServer();
 
   await klik(knop('Sluiten'));
   check('na sluiten: terug op Projectplan, plan staat in "Uw plannen"', await wacht(() => $('[data-testid="aa-rij-algemeen"]')));
-  check('ruimte ververst: Projectplannen 1 van 1', await wacht(() => /Projectplannen\s*1 van 1/.test(tekst())));
+  check('ruimte ververst: Projectplannen 1 van 3', await wacht(() => /Projectplannen\s*1 van 3/.test(tekst())));
   check('opnieuw schrijven kan niet meer: geen schrijfknop meer, wel "Open het projectplan" en uitleg', !knop('Start algemeen plan') && !!knop('Open het projectplan') && !!$('[data-testid="aa-plan-klaar"]') && !$('[data-testid="aa-meter"]'));
 
   await klik($('[data-testid="aa-rij-algemeen"] button'));
@@ -207,7 +220,7 @@ sectie('5. Beoordeel mijn aanvraag');
   check('de aanvraagtekst is nergens bewaard', !JSON.stringify([...S.s.tabel.values()]).includes('Samen Spelen start in januari') && !JSON.stringify([...S.s.beoordelingen.values()]).includes('Onze aanpak bestaat uit wekelijkse'));
   check('de aanvraag onthoudt de uitkomst', [...S.s.tabel.values()].find((x) => x.soort === 'fonds').laatste_uitkomst === 'eerst-aanvullen');
   await klik(knop('Sluiten'));
-  check('ruimte ververst: Beoordelingen 1 van 6', await wacht(() => /Beoordelingen\s*1 van 6/.test(tekst())));
+  check('ruimte ververst: Beoordelingen 1 van 30', await wacht(() => /Beoordelingen\s*1 van 30/.test(tekst())));
   await klik(knop('Laatste beoordeling bekijken'));
   check('een eerdere beoordeling is opnieuw te zien', await wacht(() => $('[data-testid="aa-beoordeling"]')) && /Eerst aanvullen/.test(tekst()));
   await klik(knop('Sluiten'));

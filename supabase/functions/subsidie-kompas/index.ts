@@ -5873,13 +5873,19 @@ function selecteerFreeFondsadvies(
   exclusiviteit: ExclusiviteitIndex = ONBEKENDE_EXCLUSIVITEIT,
 ) {
   const bepaald = bepaalRechten(tier, isAdmin, maxVolledig);
+  // Free zoekt in de database alleen in de Pro-fondsen: records op Premium-niveau doen voor Free niet mee (ook niet
+  // met alleen de naam). Wat online publiek gevonden is (_extern, of een databaserecord dat online bevestigd is: _web) blijft vindbaar, met alleen publieke gegevens.
+  const freeBeperking = bepaald.tier === 'free' && !bepaald.isAdmin;
+  const buitenFree = (k: { row: any }) => freeBeperking && !k.row?._extern && !k.row?._web && k.row?.access_tier === 'premium';
+  const doorFreeTeZoeken = alle.filter((k) => !buitenFree(k));
+  const premiumBuitenFree = alle.filter((k) => buitenFree(k));
   // Eén definitieve controle vóór de engine: exclusieve fondsen verdwijnen voor Free/Pro uit de
   // gezamenlijke pool (database + online), ongeacht waar ze vandaan komen.
-  const { over, verwijderd } = onderdrukExclusief(alle, bepaald, exclusiviteit);
+  const { over, verwijderd } = onderdrukExclusief(doorFreeTeZoeken, bepaald, exclusiviteit);
   const pool = beoordeelPool(over, criteria, vandaag);
   const rechten = pasRechtenToe(pool, bepaald);
 
-  return { ...pool, ...rechten, exclusiefVerwijderd: verwijderd };
+  return { ...pool, ...rechten, exclusiefVerwijderd: verwijderd, premiumBuitenFree };
 }
 
 type Taal = 'nl' | 'en';
@@ -6669,7 +6675,7 @@ async function freeFondsadvies(
     if (k.bron === 'regeling' && k.naam) ctx.verborgenNamen.add(k.naam);
   }
 
-  for (const v of selectie.exclusiefVerwijderd) {
+  for (const v of [...selectie.exclusiefVerwijderd, ...(selectie.premiumBuitenFree || [])]) {
     if (v.row?.funder_naam) ctx.verborgenNamen.add(String(v.row.funder_naam));
     if (v.bron === 'regeling' && v.row?.naam) ctx.verborgenNamen.add(String(v.row.naam));
   }
@@ -8522,8 +8528,35 @@ Deno.serve(async (req) => {
     // Niets te koppelen: geen modelaanroep. Eigen woorden blijven dan gewoon bij het project staan.
     if (tekst.trim().length < trefwoorden.MIN_TEKST_TEKENS && !eigenTermen.length) return json({ ok: true, voorstellen: [], nietGekoppeld: [], beschikbaar: true });
 
-    // Daglimiet per lid (beheer onbeperkt). Kan de teller niet gelezen worden, dan blokkeert dat niets.
-    if (!isAdmin) {
+    const taxonomie = await laadTaxonomie(admin);
+
+    if (!taxonomie) return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'geen-taxonomie' });
+
+    // HERKENNINGSWOORDEN: eigen woorden die Beheer eerder als synoniem goedkeurde, worden direct herkend, zonder AI. Alleen wat nog onbekend is gaat naar het
+    // model, en alleen dat komt (als woord, zonder wie het typte) op de werklijst "Nieuwe woorden" voor Beheer. Beide stappen zijn best effort: ontbreekt de
+    // tabel nog (migratie niet toegepast) of faalt de aanroep, dan werkt de slimme associatie gewoon zoals voorheen.
+    let herkend: { voorstellen: any[]; rest: string[] } = { voorstellen: [], rest: eigenTermen };
+
+    if (eigenTermen.length) {
+      try {
+        const { data: rijen, error: herkenFout } = await admin.rpc('kompas_herkenningswoorden_lees', { p_woorden: eigenTermen });
+
+        if (!herkenFout && Array.isArray(rijen) && rijen.length) herkend = trefwoorden.herkenEigenTermen(eigenTermen, rijen, taxonomie, gekozen);
+      } catch (_e) {
+        // geen herkenningswoorden beschikbaar: alles gaat naar het model
+      }
+
+      try {
+        await admin.rpc('kompas_eigen_termen_registreer', { p_woorden: herkend.rest });
+      } catch (_e) {
+        // registreren mag nooit blokkeren
+      }
+    }
+
+    const nietsMeerTeKoppelen = tekst.trim().length < trefwoorden.MIN_TEKST_TEKENS && !herkend.rest.length;
+
+    // Daglimiet per lid (beheer onbeperkt). Kan de teller niet gelezen worden, dan blokkeert dat niets. De herkende woorden kosten niets en blijven dus beschikbaar.
+    if (!isAdmin && !nietsMeerTeKoppelen) {
       try {
         const sinds = new Date();
 
@@ -8532,18 +8565,17 @@ Deno.serve(async (req) => {
         const { count, error: telFout } = await admin.from('kompas_gebruik_log').select('id', { count: 'exact', head: true }).eq('user_id', profileId).eq('action_type', 'trefwoorden_koppelen').gte('created_at', sinds.toISOString());
 
         if (!telFout && typeof count === 'number' && count >= trefwoorden.DAGLIMIET_TREFWOORDEN) {
-          return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'daglimiet' });
+          return json({ ok: true, voorstellen: herkend.voorstellen, nietGekoppeld: herkend.rest, beschikbaar: false, reden: 'daglimiet' });
         }
       } catch (_e) {
         // teller onbereikbaar: niet blokkeren
       }
     }
 
-    const taxonomie = await laadTaxonomie(admin);
+    // Alles al herkend en geen omschrijving om te lezen: geen modelaanroep.
+    if (nietsMeerTeKoppelen) return json({ ok: true, voorstellen: herkend.voorstellen, nietGekoppeld: [], beschikbaar: true });
 
-    if (!taxonomie) return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'geen-taxonomie' });
-
-    const invoer = { tekst, eigenTermen, gekozen };
+    const invoer = { tekst, eigenTermen: herkend.rest, gekozen };
     const tStart = Date.now();
 
     try {
@@ -8554,7 +8586,7 @@ Deno.serve(async (req) => {
           model: MODEL,
           messages: [{ role: 'system', content: trefwoorden.trefwoordSysteem(taxonomie) }, { role: 'user', content: trefwoorden.trefwoordGebruikersbericht(invoer) }],
           temperature: 0,
-          max_tokens: 900,
+          max_tokens: 1200,
           response_format: { type: 'json_object' },
         }),
       }, KORTE_CALL_TIMEOUT_MS);
@@ -8562,7 +8594,7 @@ Deno.serve(async (req) => {
       if (!uitkomst.ok || !uitkomst.response.ok) {
         console.error('[subsidie-kompas] trefwoorden_koppelen_ai_fout', uitkomst.ok ? uitkomst.response.status : 'geen-antwoord');
 
-        return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'ai-fout' });
+        return json({ ok: true, voorstellen: herkend.voorstellen, nietGekoppeld: herkend.rest, beschikbaar: false, reden: 'ai-fout' });
       }
 
       const data = await uitkomst.response.json();
@@ -8575,15 +8607,27 @@ Deno.serve(async (req) => {
       }
 
       const gelezen = trefwoorden.leesTrefwoordKoppelingen(ruw, taxonomie, invoer);
+      // Herkende woorden eerst, daarna wat het model voorstelt; zonder dubbelen en binnen het maximum.
+      const gezien = new Set(herkend.voorstellen.map((v: any) => `${v.categorie}:${v.naam}`));
+      const voorstellen = [...herkend.voorstellen, ...gelezen.voorstellen.filter((v: any) => !gezien.has(`${v.categorie}:${v.naam}`))].slice(0, trefwoorden.MAX_VOORSTELLEN);
+
+      // Het advies van het model bij onbekende woorden gaat naar Beheer ("Nieuwe woorden"); nooit naar het lid. Best effort.
+      if (gelezen.adviezen.length) {
+        try {
+          await admin.rpc('kompas_eigen_termen_advies', { p_rijen: gelezen.adviezen.map((a: any) => ({ woord: a.woord, actie: a.actie, categorie: a.categorie, naam: a.naam, toelichting: a.toelichting })) });
+        } catch (_e) {
+          // advies bewaren mag nooit blokkeren
+        }
+      }
 
       await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'trefwoorden_koppelen', projectId: null, model: MODEL, usage: data.usage, duurMs: Date.now() - tStart, succes: true });
-      console.log('[subsidie-kompas] trefwoorden_koppelen', JSON.stringify({ voorstellen: gelezen.voorstellen.length, nietGekoppeld: gelezen.nietGekoppeld.length, eigenTermen: eigenTermen.length }));
+      console.log('[subsidie-kompas] trefwoorden_koppelen', JSON.stringify({ voorstellen: voorstellen.length, herkend: herkend.voorstellen.length, nietGekoppeld: gelezen.nietGekoppeld.length, eigenTermen: eigenTermen.length }));
 
-      return json({ ok: true, voorstellen: gelezen.voorstellen, nietGekoppeld: gelezen.nietGekoppeld, beschikbaar: true });
+      return json({ ok: true, voorstellen, nietGekoppeld: gelezen.nietGekoppeld, beschikbaar: true });
     } catch (_e) {
       console.error('[subsidie-kompas] trefwoorden_koppelen_fout');
 
-      return json({ ok: true, voorstellen: [], nietGekoppeld: eigenTermen, beschikbaar: false, reden: 'ai-fout' });
+      return json({ ok: true, voorstellen: herkend.voorstellen, nietGekoppeld: herkend.rest, beschikbaar: false, reden: 'ai-fout' });
     }
   }
 

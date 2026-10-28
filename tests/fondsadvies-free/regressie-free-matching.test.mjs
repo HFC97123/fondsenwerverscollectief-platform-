@@ -197,11 +197,11 @@ instellingen.premiumIsExclusief = false;
 {
   const arm = { themas: ['Armoedebestrijding'], doelgroepen: ['Mensen in armoede'], regios: ['Landelijk'] };
   const regelingen = [
-    reg({ naam: 'Algemene Subsidieverordening Schiermonnikoog 2025', tier: 'premium', status: 'open', deadline: null, funder: 'GEM SCHIERMONNIKOOG', ...arm }),
+    reg({ naam: 'Algemene Subsidieverordening Schiermonnikoog 2025', tier: 'pro', status: 'open', deadline: null, funder: 'GEM SCHIERMONNIKOOG', ...arm }),
     reg({ naam: 'Buurtcultuurfonds Noord-Brabant', tier: 'pro', status: 'open', deadline: null, ...arm }),
-    { ...reg({ naam: 'Lokale Hulp', tier: 'premium', status: 'open', deadline: null, ...arm }), aanvraagcriteria: 'Alleen voor organisaties die werkzaam zijn binnen de gemeente Zwolle.' },
-    reg({ naam: 'Landelijk Armoedefonds', tier: 'premium', status: 'open', deadline: null, ...arm }),
-    reg({ naam: 'Vrijwilligersprijs', tier: 'premium', status: 'open', deadline: null, themas: ['Maatschappij', 'Sociaal-maatschappelijk'], regios: ['Landelijk'] }),
+    { ...reg({ naam: 'Lokale Hulp', tier: 'pro', status: 'open', deadline: null, ...arm }), aanvraagcriteria: 'Alleen voor organisaties die werkzaam zijn binnen de gemeente Zwolle.' },
+    reg({ naam: 'Landelijk Armoedefonds', tier: 'pro', status: 'open', deadline: null, ...arm }),
+    reg({ naam: 'Vrijwilligersprijs', tier: 'pro', status: 'open', deadline: null, themas: ['Maatschappij', 'Sociaal-maatschappelijk'], regios: ['Landelijk'] }),
   ];
   const extractorKern = (t) => ({ ...extractor(t), kern_themas: ['Armoedebestrijding', 'Zelfredzaamheid'] });
   resetWorld({ regelingen, extractor: extractorKern });
@@ -221,8 +221,8 @@ instellingen.premiumIsExclusief = false;
   check('Echt: project in Zwolle -> de Zwolle-gebonden regeling telt wel, Schiermonnikoog niet', totaalPassend(bz) === 1 && tz.includes('Lokale Hulp') && !/Schiermonnikoog/.test(tz), bz.match(/DATABASE-UITKOMST[^\n]*/)?.[0]);
 
   // Afgekapte funderpool: standaard-RPC levert 300, de matching-RPC alle
-  const veel = Array.from({ length: 400 }, (_, i) => funder({ naam: `A-fonds ${String(i).padStart(3, '0')}`, tier: 'premium', themas: ['Sport'], regios: ['Landelijk'] }));
-  const laat = funder({ naam: 'Zorgvuldig Armoedefonds', tier: 'premium', themas: ['Armoedebestrijding'], doelgroepen: ['Mensen in armoede'], regios: ['Landelijk'] });
+  const veel = Array.from({ length: 400 }, (_, i) => funder({ naam: `A-fonds ${String(i).padStart(3, '0')}`, tier: 'pro', themas: ['Sport'], regios: ['Landelijk'] }));
+  const laat = funder({ naam: 'Zorgvuldig Armoedefonds', tier: 'pro', themas: ['Armoedebestrijding'], doelgroepen: ['Mensen in armoede'], regios: ['Landelijk'] });
   resetWorld({ regelingen: [], funders: veel.slice(0, 300), extractor: extractorKern });
   world.fundersVolledig = [...veel, laat];
   const rp = await vraag(handler, { messages: msg(A_TEKST) });
@@ -235,7 +235,7 @@ instellingen.premiumIsExclusief = false;
 
   // Doelgroep-only criteria: een fonds zonder doelgroepen mag niet puur op regio matchen
   const dg = (t) => ({ themas: [], doelgroepen: ['Mensen in armoede'], regios: ['Amsterdam'], locatie: 'Amsterdam', gevraagd_bedrag: null });
-  resetWorld({ regelingen: [reg({ naam: 'Regio-only Fonds', tier: 'premium', status: 'open', deadline: null, themas: [], doelgroepen: [], regios: ['Amsterdam'] })], extractor: dg });
+  resetWorld({ regelingen: [reg({ naam: 'Regio-only Fonds', tier: 'pro', status: 'open', deadline: null, themas: [], doelgroepen: [], regios: ['Amsterdam'] })], extractor: dg });
   const rd2 = await vraag(handler, { messages: msg('Welke fondsen passen bij een project voor mensen in armoede in Amsterdam?') });
   check('Echt: fonds zonder doelgroep/thema telt niet mee op alleen regio', totaalPassend(blokVan(rd2.hoofd)) === 0);
 }
@@ -246,10 +246,10 @@ sectie('Verwante thema\'s: ruim en semantisch, maar alleen met bewijs (tweede in
 {
   const kernArm = (t) => ({ themas: ['Armoedebestrijding'], kern_themas: ['Armoedebestrijding'], doelgroepen: [], regios: [], locatie: '', gevraagd_bedrag: null });
   const regelingen = [
-    reg({ naam: 'Sociaal Domein Fonds', tier: 'premium', status: 'open', deadline: null, themas: ['Sociaal-maatschappelijk'], regios: ['Landelijk'] }),
+    reg({ naam: 'Sociaal Domein Fonds', tier: 'pro', status: 'open', deadline: null, themas: ['Sociaal-maatschappelijk'], regios: ['Landelijk'] }),
     reg({ naam: 'Welzijnsfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Welzijn'], regios: ['Landelijk'] }),
-    reg({ naam: 'Noodhulpfonds', tier: 'premium', status: 'open', deadline: null, themas: ['Noodhulp'], regios: ['Landelijk'] }),
-    reg({ naam: 'Cultuurpodium Fonds', tier: 'premium', status: 'open', deadline: null, themas: ['Podiumkunsten'], regios: ['Landelijk'] }),
+    reg({ naam: 'Noodhulpfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Noodhulp'], regios: ['Landelijk'] }),
+    reg({ naam: 'Cultuurpodium Fonds', tier: 'pro', status: 'open', deadline: null, themas: ['Podiumkunsten'], regios: ['Landelijk'] }),
     reg({ naam: 'Sportfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Sport'], regios: ['Landelijk'] }),
   ];
   resetWorld({ regelingen, extractor: kernArm });
@@ -261,7 +261,7 @@ sectie('Verwante thema\'s: ruim en semantisch, maar alleen met bewijs (tweede in
   // Mét een tweede, onafhankelijk inhoudelijk signaal (doelgroep van project én fonds) telt een breed/verwant thema wel
   const kernArmDg = () => ({ themas: ['Armoedebestrijding'], kern_themas: ['Armoedebestrijding'], doelgroepen: ['Mensen in armoede'], regios: [], locatie: '', gevraagd_bedrag: null });
   resetWorld({ regelingen: [
-    reg({ naam: 'Sociaal Domein Fonds', tier: 'premium', status: 'open', deadline: null, themas: ['Sociaal-maatschappelijk'], regios: ['Landelijk'] }),
+    reg({ naam: 'Sociaal Domein Fonds', tier: 'pro', status: 'open', deadline: null, themas: ['Sociaal-maatschappelijk'], regios: ['Landelijk'] }),
     reg({ naam: 'Sociaal met Doelgroep', tier: 'pro', status: 'open', deadline: null, themas: ['Sociaal-maatschappelijk'], doelgroepen: ['Mensen in armoede'], regios: ['Landelijk'] }),
     reg({ naam: 'Welzijn met Doelgroep', tier: 'pro', status: 'open', deadline: null, themas: ['Welzijn'], doelgroepen: ['Mensen in armoede'], regios: ['Landelijk'] }),
   ], extractor: kernArmDg });
@@ -272,7 +272,7 @@ sectie('Verwante thema\'s: ruim en semantisch, maar alleen met bewijs (tweede in
 
   // Paraplu-kernthema ("Maatschappij") met een specifiek sociaal thema: indirect, dus zonder tweede signaal niet
   const kernMaatschappij = () => ({ themas: ['Maatschappij'], kern_themas: ['Maatschappij'], doelgroepen: [], regios: [], locatie: '', gevraagd_bedrag: null });
-  resetWorld({ regelingen: [reg({ naam: 'Eenzaamheidsfonds', tier: 'premium', status: 'open', deadline: null, themas: ['Eenzaamheid'], regios: ['Landelijk'] }), reg({ naam: 'Sportfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Sport'], regios: ['Landelijk'] })], extractor: kernMaatschappij });
+  resetWorld({ regelingen: [reg({ naam: 'Eenzaamheidsfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Eenzaamheid'], regios: ['Landelijk'] }), reg({ naam: 'Sportfonds', tier: 'pro', status: 'open', deadline: null, themas: ['Sport'], regios: ['Landelijk'] })], extractor: kernMaatschappij });
   const rm = await vraag(handler, { messages: msg('Welke fondsen passen bij een maatschappelijk project?') });
   check('Verwant: kernthema Maatschappij -> alleen "Eenzaamheid" is indirect en dus (zonder tweede signaal) niet genoeg; Sport ook niet', totaalPassend(blokVan(rm.hoofd)) === 0);
 }
@@ -282,8 +282,8 @@ sectie('Algemene slotzin: door de server toegevoegd, nooit afhankelijk van wat e
 {
   const kernArm = () => ({ themas: ['Armoedebestrijding'], kern_themas: ['Armoedebestrijding'], doelgroepen: [], regios: [], locatie: '', gevraagd_bedrag: null });
   const regs = () => [
-    reg({ naam: 'Kansfonds Regeling', tier: 'premium', status: 'open', deadline: null, themas: ['Armoedebestrijding'], regios: ['Landelijk'], funder: 'Kansfonds' }),
-    reg({ naam: 'Rabo Regeling', tier: 'premium', status: 'open', deadline: null, themas: ['Armoedebestrijding'], regios: ['Landelijk'], funder: 'Rabobank Foundation' }),
+    reg({ naam: 'Kansfonds Regeling', tier: 'pro', status: 'open', deadline: null, themas: ['Armoedebestrijding'], regios: ['Landelijk'], funder: 'Kansfonds' }),
+    reg({ naam: 'Rabo Regeling', tier: 'pro', status: 'open', deadline: null, themas: ['Armoedebestrijding'], regios: ['Landelijk'], funder: 'Rabobank Foundation' }),
     reg({ naam: 'VSB Regeling', tier: 'pro', status: 'open', deadline: null, themas: ['Armoedebestrijding'], regios: ['Landelijk'], funder: 'Stichting VSBfonds' }),
   ];
   const PRO = { user: { id: 'u-pro' }, profile: { subscription_tier: 'pro', subscription_active: true, trial_ends_at: null, role: 'user' } };

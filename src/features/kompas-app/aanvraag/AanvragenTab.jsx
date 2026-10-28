@@ -18,6 +18,9 @@ import { documentenLijst, splitsAanvragen } from './aanvraagModel.js';
 // start: { fonds?, aanvraagId?, nonce } (alleen nog nodig als een ander scherm direct een aanvraag wil openen).
 export default function AanvragenTab({ project, projecten, onKiesProject, store, assistent, start, metProjectplan = false, onNaarProjectinhoud }) {
   const projectId = project ? project.id : '';
+  // Per fonds werken (criteria, een versie voor een fonds, de aanvraag laten beoordelen) is er met Premium. Met Pro schrijft het lid het projectplan.
+  // De server beslist (status.fondsbeoordeling); is die niet bekend, dan blijft het scherm zoals het was.
+  const fondsToegang = !(assistent && assistent.status && assistent.status.fondsbeoordeling === false);
   const [lijst, setLijst] = useState(null);
   const [fout, setFout] = useState('');
   const [scherm, setScherm] = useState({ naam: 'lijst' });
@@ -28,7 +31,7 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
   huidig.current = projectId;
 
   const laad = useCallback(async () => {
-    if (!projectId) return;
+    if (!projectId || !fondsToegang) return;
 
     const r = await haalAanvragen(projectId);
 
@@ -41,7 +44,7 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
       setLijst([]);
       setFout(r.melding);
     }
-  }, [projectId]);
+  }, [projectId, fondsToegang]);
 
   useEffect(() => {
     setLijst(null);
@@ -102,7 +105,16 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
   const { fondsen } = splitsAanvragen(lijst);
   const docsNu = documentenLijst(project.docs, orgDocs);
 
-  const fondsenBlok = (
+  const fondsenBlok = !fondsToegang ? (
+    <Blok titel={metProjectplan ? 'Fondsen waar u indient' : 'Aanvragen voor dit project'} testid="aa-fondsen-premium">
+      <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
+        Uw aanvraag per fonds laten beoordelen en een versie voor een fonds laten schrijven kan met Premium. Met Pro schrijft u uw projectplan en dient u zelf in bij het fonds.
+      </p>
+      <a className="fwk-wp-link" href="#/kompas/account" data-testid="aa-fondsen-premium-link">
+        Bekijk Premium
+      </a>
+    </Blok>
+  ) : (
     <Blok
       titel={metProjectplan ? 'Fondsen waar u indient' : 'Aanvragen voor dit project'}
       aantal={lijst ? fondsen.length : undefined}

@@ -227,28 +227,29 @@ sectie('8. Invoergrenzen en eerlijke meldingen');
   check('gewone tekst geeft geen inlogsignaal', !wijstOpInlog('Stuur uw aanvraag per post naar het secretariaat'));
 }
 
-sectie('9. Maandgrenzen en tierinstellingen (Pro 6/1, Premium 10/3, Free geen)');
+sectie('9. Maandgrenzen en tierinstellingen (Pro: alleen projectplan, 1 project; Premium 30/3; Free geen)');
 {
   const pro = tierConfigVoor('pro').aanvraagAssistent;
   const premium = tierConfigVoor('premium').aanvraagAssistent;
   const free = tierConfigVoor('free').aanvraagAssistent;
 
-  check('Pro: 6 beoordelingen per maand en 1 project met een plan', pro.beoordelingenPerMaand === 6 && pro.projectplannen === 1);
-  check('Premium: 30 beoordelingen per maand (10 per project, 3 projecten) en 3 projecten met een plan', premium.beoordelingenPerMaand === 30 && premium.beoordelingenPerMaand === 10 * premium.projectplannen && premium.projectplannen === 3);
-  check('Criteria ophalen: Pro 12, Premium 40 per maand', pro.eisenOphalenPerMaand === 12 && premium.eisenOphalenPerMaand === 40);
+  check('Pro: geen fondsbeoordeling (0 per maand), wel het projectplan voor 1 project', pro.fondsbeoordeling === false && pro.beoordelingenPerMaand === 0 && pro.projectplannen === 1);
+  check('Premium: fondsbeoordeling aan, 30 beoordelingen per maand (10 per project, 3 projecten) en 3 projecten met een plan', premium.fondsbeoordeling === true && premium.beoordelingenPerMaand === 30 && premium.beoordelingenPerMaand === 10 * premium.projectplannen && premium.projectplannen === 3);
+  check('Criteria ophalen (per fonds): Pro niet, Premium 40 per maand', pro.eisenOphalenPerMaand === 0 && premium.eisenOphalenPerMaand === 40);
   check('Free heeft geen aanvraag-assistent', free === null);
   check('admin krijgt de Premium-regels', tierConfigVoor('free', true).aanvraagAssistent.beoordelingenPerMaand === 30);
   check('onbekende tier valt op Free (geen toegang)', tierConfigVoor('enterprise').aanvraagAssistent === null);
   check('Premium heeft nu dezelfde functies als Pro: uitbreidingen staan uit tot ze gebouwd zijn', ['rijkeEditor', 'aiPaneel', 'dekkingsoverzicht', 'commissieblik'].every((k) => pro[k] === false && premium[k] === false) && pro.paneelActiesPerMaand === 0 && premium.paneelActiesPerMaand === 0);
   check('Premium heeft ruimere (of gelijke) bovengrenzen dan Pro, nooit krappere', premium.beoordelingenPerMaand > pro.beoordelingenPerMaand && premium.projectplannen > pro.projectplannen && premium.maxEisen >= pro.maxEisen);
-  check('de configuratie is bevroren: geen wijziging tijdens runtime', (() => { try { tierConfigVoor('pro').aanvraagAssistent.beoordelingenPerMaand = 99; } catch { /* streng */ } return tierConfigVoor('pro').aanvraagAssistent.beoordelingenPerMaand === 6; })());
+  check('de configuratie is bevroren: geen wijziging tijdens runtime', (() => { try { tierConfigVoor('pro').aanvraagAssistent.beoordelingenPerMaand = 99; } catch { /* streng */ } try { tierConfigVoor('pro').aanvraagAssistent.fondsbeoordeling = true; } catch { /* streng */ } return tierConfigVoor('pro').aanvraagAssistent.beoordelingenPerMaand === 0 && tierConfigVoor('pro').aanvraagAssistent.fondsbeoordeling === false; })());
 
-  gelijk('Pro, 0 gebruikt: toegestaan, 6 over', maandRuimte(pro, 'beoordeling', 0), { toegestaan: true, limiet: 6, resterend: 6, reden: null });
-  gelijk('Pro, 6 gebruikt: maand op', maandRuimte(pro, 'beoordeling', 6), { toegestaan: false, limiet: 6, resterend: 0, reden: 'maand-op' });
+  gelijk('Premium, 0 gebruikt: toegestaan, 30 over', maandRuimte(premium, 'beoordeling', 0), { toegestaan: true, limiet: 30, resterend: 30, reden: null });
+  gelijk('Premium, 30 gebruikt: maand op', maandRuimte(premium, 'beoordeling', 30), { toegestaan: false, limiet: 30, resterend: 0, reden: 'maand-op' });
+  gelijk('Pro: geen ruimte voor fondsbeoordelingen', maandRuimte(pro, 'beoordeling', 0).toegestaan, false);
   gelijk('Pro, 1 project met een plan gebruikt: op', maandRuimte(pro, 'plan', 1).reden, 'maand-op');
   gelijk('Premium, 29 gebruikt: nog 1 over', maandRuimte(premium, 'beoordeling', 29).resterend, 1);
   gelijk('Free: geen toegang', maandRuimte(free, 'beoordeling', 0), { toegestaan: false, limiet: 0, resterend: 0, reden: 'geen-toegang' });
-  check('rare tellingen (negatief, tekst, NaN) breken niets en geven geen extra ruimte boven de limiet', maandRuimte(pro, 'beoordeling', -5).resterend === 6 && maandRuimte(pro, 'beoordeling', 'x').resterend === 6 && maandRuimte(pro, 'beoordeling', 1e9).toegestaan === false);
+  check('rare tellingen (negatief, tekst, NaN) breken niets en geven geen extra ruimte boven de limiet', maandRuimte(premium, 'beoordeling', -5).resterend === 30 && maandRuimte(premium, 'beoordeling', 'x').resterend === 30 && maandRuimte(premium, 'beoordeling', 1e9).toegestaan === false);
   gelijk('maand begint op de eerste (UTC)', maandStartIso(new Date('2026-10-19T14:30:00Z')), '2026-10-01T00:00:00.000Z');
   gelijk('maandgrens: 31 oktober 23:59 UTC valt nog in oktober', maandStartIso(new Date('2026-10-31T23:59:59Z')), '2026-10-01T00:00:00.000Z');
   gelijk('maandgrens: 1 november 00:00 UTC begint een nieuwe maand', maandStartIso(new Date('2026-11-01T00:00:00Z')), '2026-11-01T00:00:00.000Z');

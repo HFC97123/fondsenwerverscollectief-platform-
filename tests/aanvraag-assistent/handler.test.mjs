@@ -20,7 +20,7 @@ const EISEN = [
 // Een complete nagebootste omgeving; elke test past er iets aan.
 function omgeving(opties = {}) {
   const o = {
-    tier: 'pro', actief: true, role: 'user', vlag: true, tellingBeoordelingen: 0, tellingEisen: 0, tellingPlannen: 0, telNull: false, projectVan: USER, rate: true,
+    tier: 'premium', actief: true, role: 'user', vlag: true, tellingBeoordelingen: 0, tellingEisen: 0, tellingPlannen: 0, telNull: false, projectVan: USER, rate: true,
     pagina: { ok: true, tekst: RICHTLIJN }, modelBeoordeling: 'goed', modelEisen: 'goed', opslaan: true, ...opties,
   };
   const log = { modelAanroepen: 0, gebruik: [], opgeslagen: [], paginas: [], tellingen: [], aanvraagSchrijf: [], reserveringen: [], afgerond: [] };
@@ -211,15 +211,15 @@ sectie('1. Toegang: wie, vlag, abonnement');
 
 sectie('2. Status');
 {
-  const { deps } = omgeving({ tellingBeoordelingen: 1, tellingEisen: 3 });
+  const { deps } = omgeving({ tier: 'pro', tellingBeoordelingen: 1, tellingEisen: 3 });
   const s = await verwerk(vraag({ mode: 'status' }), deps);
 
-  check('Pro: 6 beoordelingen, 1 gebruikt, 5 over; 1 project met een plan', s.body.beoordelingen.limiet === 6 && s.body.beoordelingen.gebruikt === 1 && s.body.beoordelingen.resterend === 5 && s.body.plannen.limiet === 1 && s.body.plannen.resterend === 1 && s.body.plannen.periodeMaanden === 12);
+  check('Pro: geen fondsbeoordeling (geen aantal beoordelingen), wel 1 project met een plan', s.body.fondsbeoordeling === false && s.body.beoordelingen.limiet === null && s.body.beoordelingen.resterend === null && s.body.plannen.limiet === 1 && s.body.plannen.resterend === 1 && s.body.plannen.periodeMaanden === 12);
   check('uitbreidingen staan uit', Object.values(s.body.uitbreidingen).every((x) => x === false));
 
   const p = omgeving({ tier: 'premium', tellingBeoordelingen: 29 });
   const sp = await verwerk(vraag({ mode: 'status' }), p.deps);
-  check('Premium: 30 beoordelingen (10 per project, 3 projecten) en 3 plannen', sp.body.beoordelingen.limiet === 30 && sp.body.beoordelingen.resterend === 1 && sp.body.plannen.limiet === 3);
+  check('Premium: 30 beoordelingen (10 per project, 3 projecten) en 3 plannen', sp.body.fondsbeoordeling === true && sp.body.beoordelingen.limiet === 30 && sp.body.beoordelingen.resterend === 1 && sp.body.plannen.limiet === 3);
   check('de maandtelling begint op de eerste van de maand (UTC)', p.log.tellingen.every((t) => t.sinds === '2026-10-01T00:00:00.000Z'));
   check('de telling gebruikt de gebruiker uit het token', p.log.tellingen.every((t) => t.u === USER));
 
@@ -236,9 +236,9 @@ sectie('3. Eisen ophalen');
   check('gelukt: alleen de eis met een echt bronstuk komt door', r.status === 200 && r.body.eisen.length === 1 && r.body.eisen[0].tekst === 'Begroting' && r.body.statistiek.zonderGeldigBronstuk === 1, JSON.stringify(r.body).slice(0, 300));
   check('het formulier van het lid gaat voor de website (bron 1 is lid, bron 2 website)', e.log.modelAanroepen === 1 && e.o.gezienBronnen.join() === 'lid,website');
   check('de website is opgehaald', e.log.paginas.length === 1 && e.log.paginas[0] === 'https://fonds.example/aanvragen');
-  check('gebruik gelogd: actie, tier, model, tokens, 1 pagina, succes', e.log.gebruik.length === 1 && e.log.gebruik[0].actie === 'aanvraag_eisen' && e.log.gebruik[0].tier === 'pro' && e.log.gebruik[0].inputTokens === 1000 && e.log.gebruik[0].externePaginas === 1 && e.log.gebruik[0].succes === true);
+  check('gebruik gelogd: actie, tier, model, tokens, 1 pagina, succes', e.log.gebruik.length === 1 && e.log.gebruik[0].actie === 'aanvraag_eisen' && e.log.gebruik[0].tier === 'premium' && e.log.gebruik[0].inputTokens === 1000 && e.log.gebruik[0].externePaginas === 1 && e.log.gebruik[0].succes === true);
   check('gebruiksmelding bevat geen inhoud (geen tekst, geen url)', !JSON.stringify(e.log.gebruik).includes('Beschrijf') && !JSON.stringify(e.log.gebruik).includes('fonds.example'));
-  check('resterende criterialijsten telt af', r.body.resterend === 12 - 0 - 1);
+  check('resterende criterialijsten telt af', r.body.resterend === 40 - 0 - 1);
   check('weinig eisen: de lijst is beperkt gemeld', r.body.beperkteLijst === true);
 
   e = omgeving();
@@ -261,12 +261,16 @@ sectie('3. Eisen ophalen');
   r = await verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN, websiteUrls: ['a', 'b', 'c', 'd'] }), e.deps);
   check('hooguit twee websitepagina\'s per keer', e.log.paginas.length === 2);
 
-  e = omgeving({ tellingEisen: 12 });
+  e = omgeving({ tellingEisen: 40 });
   r = await verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps);
-  check('Pro: na 12 criterialijsten is de maand op (429), zonder modelaanroep', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0);
+  check('Premium: na 40 criterialijsten is de maand op (429), zonder modelaanroep', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0);
 
-  e = omgeving({ tier: 'premium', tellingEisen: 12 });
-  gelijk('Premium heeft ruimere criterialijsten (40)', (await verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps)).status, 200);
+  e = omgeving({ tellingEisen: 39 });
+  gelijk('Premium: de veertigste criterialijst mag nog', (await verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps)).status, 200);
+
+  e = omgeving({ tier: 'pro' });
+  r = await verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps);
+  check('Pro: criteria van een fonds ophalen hoort bij Premium: 403 alleen-premium, geen modelaanroep, niets gemeld', r.status === 403 && r.body.reden === 'alleen-premium' && /Premium/.test(r.body.error) && e.log.modelAanroepen === 0 && e.log.gebruik.length === 0 && e.log.reserveringen.length === 0);
 
   e = omgeving({ telNull: true });
   r = await verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps);
@@ -295,12 +299,16 @@ sectie('4. Beoordelen');
   check('de aanvraagtekst komt niet terug in het antwoord (alleen korte citaten)', !JSON.stringify(r.body).includes('Onze aanpak bestaat uit wekelijkse sportlessen en een zomerkamp. De organisatie'));
   check('de eisen krijgen nieuwe id\'s en een server-zekerheid', r.body.eisen.map((x) => x.id).join() === 'e1,e2' && r.body.eisen.every((x) => ['hoog', 'middel', 'laag'].includes(x.zekerheid)));
   check('gebruik gelogd als aanvraag_beoordeling', e.log.gebruik[0].actie === 'aanvraag_beoordeling' && e.log.gebruik[0].succes === true && e.log.gebruik[0].outputTokens === 300);
-  check('resterend: Pro 6 - 0 - 1 = 5', r.body.resterend === 5 && r.body.limiet === 6);
+  check('resterend: Premium 30 - 0 - 1 = 29', r.body.resterend === 29 && r.body.limiet === 30);
 
-  e = omgeving({ tellingBeoordelingen: 6 });
+  e = omgeving({ tellingBeoordelingen: 30 });
   r = await verwerk(vraag(beoordeelBody()), e.deps);
-  check('Pro: zevende beoordeling deze maand: 429, geen modelaanroep, niets opgeslagen', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0 && e.log.opgeslagen.length === 0);
-  check('de melding bij Pro noemt Premium; er staat geen verzonnen prijs in', /Premium/.test(r.body.error) && !/€/.test(r.body.error));
+  check('Premium: de eenendertigste beoordeling deze maand: 429, geen modelaanroep, niets opgeslagen', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0 && e.log.opgeslagen.length === 0);
+  check('er staat geen verzonnen prijs in de melding', !/€/.test(r.body.error));
+
+  e = omgeving({ tier: 'pro' });
+  r = await verwerk(vraag(beoordeelBody()), e.deps);
+  check('Pro: een fonds laten beoordelen is er niet bij Pro: 403 alleen-premium, geen modelaanroep, niets opgeslagen, niets gemeld', r.status === 403 && r.body.reden === 'alleen-premium' && /Premium/.test(r.body.error) && !/€/.test(r.body.error) && e.log.modelAanroepen === 0 && e.log.opgeslagen.length === 0 && e.log.gebruik.length === 0);
 
   e = omgeving({ tier: 'premium', tellingBeoordelingen: 29 });
   r = await verwerk(vraag(beoordeelBody()), e.deps);
@@ -427,7 +435,7 @@ sectie('4c. Plan schrijven');
   ], criteria_bron: 'lid + website', bronnen: [], plan: null, plan_bijgewerkt_op: null, laatste_beoordeling_id: null, laatste_uitkomst: null, created_at: '2026-10-19T10:00:00Z', updated_at: '2026-10-19T10:00:00Z', ...extra });
 
   // Algemeen plan
-  let e = omgeving({ planBron: PLANBRON_VOL });
+  let e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL });
   let r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('algemeen plan: 8 standaardonderdelen, status 200', r.status === 200 && r.body.plan.secties.length === 8 && r.body.plan.soort === 'algemeen' && r.body.plan.uitFormulier === false, JSON.stringify(r.body).slice(0, 300));
   check('een verzonnen getal (4500) verdwijnt, een onbekend feit-id (f999) wordt genegeerd', r.body.plan.secties.every((s) => !s.tekst.includes('4500')) && r.body.plan.statistiek.verwijderdeZinnen > 0);
@@ -441,26 +449,26 @@ sectie('4c. Plan schrijven');
   check('het plan reserveert per project (niet per maand)', e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'plan' && e.log.reserveringen[0].project === PROJECT && e.log.reserveringen[0].limiet === 1 && e.log.reserveringen[0].sinds.startsWith('2025-10-19') && e.log.afgerond[0].succes === true);
 
   // Eén keer per project en een grens op het aantal projecten
-  e = omgeving({ planBron: PLANBRON_VOL, planGebruikt: 1 });
+  e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL, planGebruikt: 1 });
   r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('Pro, al een ander project met een plan: 429 plan-limiet met uitleg over Premium, geen modelaanroep', r.status === 429 && r.body.reden === 'plan-limiet' && e.log.modelAanroepen === 0 && /Premium/.test(r.body.error));
-  e = omgeving({ planBron: PLANBRON_VOL, projectKlaar: true, planGebruikt: 1 });
+  e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL, projectKlaar: true, planGebruikt: 1 });
   r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('dit project heeft al een plan: 409 al-geschreven, geen modelaanroep, niets gereserveerd', r.status === 409 && r.body.reden === 'al-geschreven' && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
   e = omgeving({ tier: 'premium', planBron: PLANBRON_VOL, planGebruikt: 2 });
   gelijk('Premium, 2 van 3 projecten: toegestaan', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 200);
   e = omgeving({ tier: 'premium', planBron: PLANBRON_VOL, planGebruikt: 3 });
   gelijk('Premium, 3 van 3 projecten: 429', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 429);
-  e = omgeving({ planBron: PLANBRON_VOL, telNull: true });
+  e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL, telNull: true });
   gelijk('telling onleesbaar: 503 (fail closed)', (await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)).status, 503);
 
   // Het algemene plan pas bij 100%
-  e = omgeving();
+  e = omgeving({ tier: 'pro' });
   r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('projectinformatie niet volledig: 422 onvolledig met de lijst wat nog mist, geen modelaanroep, niets gereserveerd', r.status === 422 && r.body.reden === 'onvolledig' && r.body.gereedheid.klaar === false && r.body.gereedheid.onderdelen.some((o) => o.id === 'borging' && o.gevuld === false) && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
 
   // Een plan met een mislukt onderdeel telt niet: de plek blijft vrij
-  e = omgeving({ planBron: PLANBRON_VOL, modelPlan: 'deels' });
+  e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL, modelPlan: 'deels' });
   r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('algemeen plan met een mislukt onderdeel: 502, niets opgeslagen, plek weer vrij', r.status === 502 && r.body.reden === 'ai-mislukt' && e.log.aanvraagSchrijf.length === 0 && e.log.afgerond[0].succes === false);
   e.o.modelPlan = 'goed';
@@ -472,10 +480,28 @@ sectie('4c. Plan schrijven');
     const rijF = formulierAanvraag();
     e = omgeving({ aanvragen: [rijF], planGebruikt: 1, projectKlaar: true });
     r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT, aanvraagId: AIDX }), e.deps);
-    check('fondsversie met het projectplan al gebruikt: toch toegestaan en gereserveerd bij de beoordelingen', r.status === 200 && e.log.reserveringen[0].soort === 'beoordelingen' && e.log.reserveringen[0].limiet === 6);
-    e = omgeving({ aanvragen: [rijF], tellingBeoordelingen: 6 });
+    check('fondsversie met het projectplan al gebruikt: toch toegestaan en gereserveerd bij de beoordelingen', r.status === 200 && e.log.reserveringen[0].soort === 'beoordelingen' && e.log.reserveringen[0].limiet === 30);
+    e = omgeving({ aanvragen: [rijF], tellingBeoordelingen: 30 });
     r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT, aanvraagId: AIDX }), e.deps);
     check('fondsversie als de beoordelingen op zijn: 429 maand-op, geen modelaanroep', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0);
+    e = omgeving({ tier: 'pro', aanvragen: [rijF], planBron: PLANBRON_VOL });
+    r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT, aanvraagId: AIDX }), e.deps);
+    check('Pro: een tekst per fonds schrijven is Premium: 403 alleen-premium, geen modelaanroep, niets gereserveerd', r.status === 403 && r.body.reden === 'alleen-premium' && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
+    e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL });
+    r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
+    check('Pro: het algemene projectplan schrijven mag wel', r.status === 200 && r.body.plan.soort === 'algemeen');
+    // Pro ziet en opent alleen het eigen projectplan; de teksten per fonds horen bij Premium.
+    const rijA = { ...formulierAanvraag(), id: 'aa000001-0000-4000-8000-000000000009', soort: 'algemeen', fonds_label: '', fonds_sleutel: '' };
+    e = omgeving({ tier: 'pro', aanvragen: [rijF, rijA] });
+    r = await verwerk(vraag({ mode: 'aanvragen', projectId: PROJECT }), e.deps);
+    check('Pro: de lijst toont alleen het projectplan, niet de teksten per fonds', r.status === 200 && r.body.aanvragen.length === 1 && r.body.aanvragen[0].soort === 'algemeen');
+    r = await verwerk(vraag({ mode: 'aanvraag', aanvraagId: rijA.id }), e.deps);
+    check('Pro: het eigen projectplan openen mag', r.status === 200 && r.body.aanvraag.id === rijA.id);
+    r = await verwerk(vraag({ mode: 'aanvraag', aanvraagId: AIDX }), e.deps);
+    check('Pro: een tekst per fonds openen: 404, niets te zien', r.status === 404);
+    e = omgeving({ tier: 'premium', aanvragen: [rijF, rijA] });
+    r = await verwerk(vraag({ mode: 'aanvragen', projectId: PROJECT }), e.deps);
+    check('Premium: de lijst toont beide', r.status === 200 && r.body.aanvragen.length === 2);
   }
 
   // De actuele begroting en het actuele dekkingsplan gaan bij elke tekst per fonds mee
@@ -498,13 +524,13 @@ sectie('4c. Plan schrijven');
   }
 
   // Voortgangsmeter
-  e = omgeving();
+  e = omgeving({ tier: 'pro' });
   r = await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
   check('voortgangsmeter bij gedeeltelijke informatie: percentage onder 100, lijst met wat mist, geen modelaanroep', r.status === 200 && r.body.gereedheid.percentage > 0 && r.body.gereedheid.percentage < 100 && r.body.gereedheid.klaar === false && r.body.gereedheid.onderdelen.length === 11 && e.log.modelAanroepen === 0);
-  e = omgeving({ planBron: PLANBRON_VOL });
+  e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL });
   r = await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
   check('voortgangsmeter volledig: 100% en klaar', r.body.gereedheid.percentage === 100 && r.body.gereedheid.klaar === true && r.body.projectKlaar === false && r.body.plannen.limiet === 1 && r.body.plannen.resterend === 1);
-  e = omgeving({ planBron: PLANBRON_VOL, projectKlaar: true, planGebruikt: 1 });
+  e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL, projectKlaar: true, planGebruikt: 1 });
   r = await verwerk(vraag({ mode: 'plan-gereedheid', projectId: PROJECT }), e.deps);
   check('voortgangsmeter: dit project is al geschreven', r.body.projectKlaar === true && r.body.plannen.resterend === 0);
   e = omgeving({ projectVan: ANDER });
@@ -528,7 +554,7 @@ sectie('4c. Plan schrijven');
   check('te weinig informatie: 422 te-weinig-info, geen modelaanroep, niets geteld', r.status === 422 && r.body.reden === 'te-weinig-info' && e.log.modelAanroepen === 0 && e.log.gebruik.length === 0 && e.log.aanvraagSchrijf.length === 0);
 
   // Modelstoring
-  e = omgeving({ planBron: PLANBRON_VOL, modelPlan: 'kapot' });
+  e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL, modelPlan: 'kapot' });
   r = await verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps);
   check('modelstoring: 502, niets opgeslagen, gelogd als mislukt (telt niet mee)', r.status === 502 && r.body.reden === 'ai-mislukt' && e.log.aanvraagSchrijf.length === 0 && e.log.gebruik[0].succes === false);
 
@@ -574,18 +600,18 @@ sectie('5. De Edge Function zelf (statische controles)');
 sectie('6. Atomaire maandgrens: gelijktijdig, mislukt, storing');
 {
   // Twee beoordelingen tegelijk met nog één plek: precies één komt erdoor (vroeger kwamen ze er allebei door).
-  let e = omgeving({ tellingBeoordelingen: 5 });
+  let e = omgeving({ tellingBeoordelingen: 29 });
   let [r1, r2] = await Promise.all([verwerk(vraag(beoordeelBody()), e.deps), verwerk(vraag(beoordeelBody()), e.deps)]);
-  gelijk('Pro, één plek over, twee verzoeken tegelijk: één 200 en één 429', [r1.status, r2.status].sort().join(','), '200,429');
+  gelijk('Premium, één plek over, twee verzoeken tegelijk: één 200 en één 429', [r1.status, r2.status].sort().join(','), '200,429');
   gelijk('en er is maar één keer het model aangeroepen', e.log.modelAanroepen, 1);
 
   // Een plan met Pro (1 per maand), twee tegelijk.
-  e = omgeving({ planBron: PLANBRON_VOL });
+  e = omgeving({ tier: 'pro', planBron: PLANBRON_VOL });
   [r1, r2] = await Promise.all([verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps), verwerk(vraag({ mode: 'plan-schrijven', projectId: PROJECT }), e.deps)]);
   gelijk('Pro, hetzelfde project twee keer tegelijk: één 200, de andere 409 (al geschreven)', [r1.status, r2.status].sort().join(','), '200,409');
 
   // Criteria ophalen, twee tegelijk met nog één plek.
-  e = omgeving({ tellingEisen: 11 });
+  e = omgeving({ tellingEisen: 39 });
   [r1, r2] = await Promise.all([verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps), verwerk(vraag({ mode: 'eisen-ophalen', richtlijnTekst: RICHTLIJN }), e.deps)]);
   gelijk('criteria ophalen, één plek over, twee tegelijk: één 200 en één 429', [r1.status, r2.status].sort().join(','), '200,429');
 
@@ -593,10 +619,10 @@ sectie('6. Atomaire maandgrens: gelijktijdig, mislukt, storing');
   e = omgeving();
   let r = await verwerk(vraag(beoordeelBody()), e.deps);
   check('geslaagde beoordeling: reservering op beoordelingen, afgerond als gelukt', r.status === 200 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen' && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === true);
-  check('reserveren gebruikt de limiet van het abonnement en de maandstart', e.log.reserveringen[0].limiet === 6 && e.log.reserveringen[0].sinds === '2026-10-01T00:00:00.000Z' && e.log.reserveringen[0].u === USER);
+  check('reserveren gebruikt de limiet van het abonnement en de maandstart', e.log.reserveringen[0].limiet === 30 && e.log.reserveringen[0].sinds === '2026-10-01T00:00:00.000Z' && e.log.reserveringen[0].u === USER);
 
   // Een mislukte aanroep telt niet mee: de plek komt terug en het lid kan het opnieuw proberen.
-  e = omgeving({ modelBeoordeling: 'kapot', tellingBeoordelingen: 5 });
+  e = omgeving({ modelBeoordeling: 'kapot', tellingBeoordelingen: 29 });
   r = await verwerk(vraag(beoordeelBody()), e.deps);
   check('mislukte beoordeling: 502 en afgerond als mislukt', r.status === 502 && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
   e.o.modelBeoordeling = 'goed';
@@ -634,7 +660,7 @@ sectie('6. Atomaire maandgrens: gelijktijdig, mislukt, storing');
   // Resterend telt vanaf de gereserveerde stand.
   e = omgeving({ tellingBeoordelingen: 2 });
   r = await verwerk(vraag(beoordeelBody()), e.deps);
-  gelijk('resterend na de derde beoordeling bij limiet 6: 3', r.body.resterend, 3);
+  gelijk('resterend na de derde beoordeling bij limiet 30: 27', r.body.resterend, 27);
 }
 
 
@@ -642,10 +668,10 @@ sectie('10. Begrotingsvoorstel uit de chat');
 {
   const CHAT = 'Hier is een voorstel voor uw begroting. Projectleider: 120 uur x 45 euro. Voedselpakketten ongeveer 2.500 euro (schatting). Zaalhuur is gratis van de buurtvereniging, 10 maanden. Het totaal komt op ruim 8.000 euro.';
   const body = (extra = {}) => ({ mode: 'begroting-voorstel', projectId: PROJECT, tekst: CHAT, ...extra });
-  let e = omgeving({ tier: 'pro', tellingBeoordelingen: 2 });
+  let e = omgeving({ tier: 'premium', tellingBeoordelingen: 2 });
   let r = await verwerk(vraag(body()), e.deps);
 
-  check('Pro krijgt een voorstel en het telt als één beoordeling (3 van 6 gebruikt, 3 resterend)', r.status === 200 && r.body.ok === true && r.body.resterend === 3 && r.body.limiet === 6 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen');
+  check('Premium krijgt een voorstel en het telt als één beoordeling (3 van 30 gebruikt, 27 resterend)', r.status === 200 && r.body.ok === true && r.body.resterend === 27 && r.body.limiet === 30 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen');
   const rg = r.body.regels || [];
   check('een regel zonder omschrijving valt weg; een onbekend kopje wordt: geen kopje; een negatief bedrag wordt genegeerd (regel blijft, zonder bedrag); een bijdrage in natura valt weg', rg.map((x) => x.omschrijving).join() === 'Projectleider,Voedselpakketten,Zaalhuur,Onbekend kopje,Flyers' && !rg.some((x) => x.omschrijving === 'Gratis zaal') && rg.find((x) => x.omschrijving === 'Onbekend kopje').categorie === '' && rg.find((x) => x.omschrijving === 'Flyers').bedrag === null);
   check('aantal x tarief: het bedrag blijft leeg (het scherm rekent), het model rekende niets mee', rg[0].aantal === 120 && rg[0].tarief === 45 && rg[0].bedrag === null);
@@ -661,9 +687,9 @@ sectie('10. Begrotingsvoorstel uit de chat');
   e = omgeving({ tier: 'premium', tellingBeoordelingen: 30 });
   r = await verwerk(vraag(body()), e.deps);
   check('Premium: de eenendertigste: 429, geen modelaanroep, geen reservering', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
-  e = omgeving({ tier: 'pro', tellingBeoordelingen: 6 });
+  e = omgeving({ tier: 'pro' });
   r = await verwerk(vraag(body()), e.deps);
-  check('Pro: maand op: 429 met verwijzing naar Premium, zonder prijs', r.status === 429 && /Premium/.test(r.body.error) && !/€/.test(r.body.error) && e.log.modelAanroepen === 0);
+  check('Pro: een begrotingsvoorstel uit de chat zit bij Premium: 403 alleen-premium, zonder prijs, geen modelaanroep', r.status === 403 && r.body.reden === 'alleen-premium' && /Premium/.test(r.body.error) && !/€/.test(r.body.error) && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
   e = omgeving({ tier: 'free', actief: false });
   r = await verwerk(vraag(body()), e.deps);
   check('Free: geen toegang', r.status === 403 && e.log.modelAanroepen === 0);
@@ -700,12 +726,12 @@ sectie('11. Begroting uit een geüpload bestand');
 {
   const BESTAND = 'Begroting 2027\nUitvoering\nProjectleider | 100 | uur | 50 | 5.000\nTraining vrijwilligers | 2.000\nActiva\nMateriaal | 10 | stuk | 25 | 300\nTotaal | 9.000';
   const body = (extra = {}) => ({ mode: 'begroting-upload', projectId: PROJECT, tekst: BESTAND, ...extra });
-  let e = omgeving({ tier: 'pro', tellingBeoordelingen: 2 });
+  let e = omgeving({ tier: 'premium', tellingBeoordelingen: 2 });
   let r = await verwerk(vraag(body()), e.deps);
   const rg = r.body.regels || [];
   const c = r.body.controle || {};
 
-  check('Pro: een bestand wordt gelezen en telt als één beoordeling van de maandruimte (3 van 6, 3 resterend)', r.status === 200 && r.body.ok === true && r.body.resterend === 3 && r.body.limiet === 6 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen');
+  check('Premium: een bestand wordt gelezen en telt als één beoordeling van de maandruimte (3 van 30, 27 resterend)', r.status === 200 && r.body.ok === true && r.body.resterend === 27 && r.body.limiet === 30 && e.log.reserveringen.length === 1 && e.log.reserveringen[0].soort === 'beoordelingen');
   check('een dubbele regel onder dezelfde kop wordt niet dubbel geteld; de rest blijft', rg.map((x) => x.omschrijving).join() === 'Projectleider,Training vrijwilligers,Materiaal,Verzekering');
   check('het kopje uit het bestand blijft op de server (geen veld sectie in het antwoord)', rg.every((x) => !('sectie' in x)));
   check('aantal x tarief dat klopt: aantal en tarief blijven, het scherm rekent', rg[0].aantal === 100 && rg[0].tarief === 50 && rg[0].bedrag === null);
@@ -719,6 +745,9 @@ sectie('11. Begroting uit een geüpload bestand');
   check('gebruik gelogd als aanvraag_begroting_upload zonder inhoud', e.log.gebruik.length === 1 && e.log.gebruik[0].actie === 'aanvraag_begroting_upload' && !JSON.stringify(e.log.gebruik).includes('Projectleider'));
   check('afgerond als gelukt', e.log.afgerond.length === 1 && e.log.afgerond[0].succes === true);
 
+  e = omgeving({ tier: 'pro' });
+  r = await verwerk(vraag(body()), e.deps);
+  check('Pro: een begrotingsbestand laten lezen zit bij Premium: 403 alleen-premium, geen modelaanroep, niets gereserveerd', r.status === 403 && r.body.reden === 'alleen-premium' && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);
   e = omgeving({ tier: 'premium', tellingBeoordelingen: 30 });
   r = await verwerk(vraag(body()), e.deps);
   check('Premium: maand op (30): 429, geen modelaanroep', r.status === 429 && r.body.reden === 'maand-op' && e.log.modelAanroepen === 0 && e.log.reserveringen.length === 0);

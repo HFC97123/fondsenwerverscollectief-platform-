@@ -26,7 +26,7 @@ const PLANBRON = {
 let nu = new Date('2026-10-26T12:00:00Z');
 
 function omgeving(opties = {}) {
-  const o = { tier: 'pro', zonderVragenFuncties: false, modelFaalt: false, vragenAntwoord: null, ...opties };
+  const o = { tier: 'premium', zonderVragenFuncties: false, modelFaalt: false, vragenAntwoord: null, ...opties };
   const log = { reserveringen: [], afgerond: [], modelAanroepen: 0, gebruik: [], tellingBeoordelingen: 0 };
   const aanvragen = new Map([
     [AANVRAAG, { id: AANVRAAG, user: USER, program_id: PROJECT, soort: 'fonds', fonds_label: 'Cultuurfonds', criteria: [{ id: 'e1', tekst: 'Past bij het doel van het fonds', soort: 'criterium', gewicht: 2, bronType: 'website', bronStuk: 'x', zekerheid: 'middel' }], vragen: null, stukken: null, schrijf_maand: null, schrijf_aantal: 0 }],
@@ -286,12 +286,12 @@ sectie('6. Antwoorden schrijven: één beoordeling per fonds');
 
   const vol = omgeving();
 
-  vol.log.tellingBeoordelingen = 6;
+  vol.log.tellingBeoordelingen = 30;
   await lezen(vol);
   await verwerk(vraag({ mode: 'vragen-bewaren', aanvraagId: AANVRAAG, vragen: vol.aanvragen.get(AANVRAAG).vragen.lijst.map((v) => ({ ...v, maxTekens: 800 })), bevestig: true }), vol.deps);
   const op = await verwerk(vraag({ mode: 'antwoorden-schrijven', projectId: PROJECT, aanvraagId: AANVRAAG }), vol.deps);
 
-  gelijk('maand op (6 van 6): 429 maand-op en er is niets geschreven', [op.status, op.body.reden, vol.log.modelAanroepen], [429, 'maand-op', 1]);
+  gelijk('maand op (30 van 30): 429 maand-op en er is niets geschreven', [op.status, op.body.reden, vol.log.modelAanroepen], [429, 'maand-op', 1]);
 
   const faal = omgeving();
 

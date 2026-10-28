@@ -161,7 +161,7 @@ sectie('A/B. Publiek bekend fonds met Premium-record (Oranje Fonds): Free en Pro
   const web = [wk({ regeling: O.regeling, gever: O.funder, website: `https://${O.domein}`, url: `https://${O.domein}/aanvragen`, deadline: '2026-11-30', bedragMax: 12345, samenvatting: 'Openbaar: nieuwe ronde 2026.' })];
 
   // Niveau 1: de engine beoordeelt tier-onafhankelijk en laat het fonds door.
-  for (const tier of ['free', 'pro']) {
+  for (const tier of ['pro']) {
     const sel = M.selecteerFreeFondsadvies(dbRows(regelingen, funders), CRITERIA, tier, false, undefined, '2026-10-08', LEEG());
     const ruw = sel.getoond.find((k) => k.naam === O.regeling);
     check(`A/B niveau 1 (${tier}): het Oranje-record zit in de gedeelde selectie`, Boolean(ruw));
@@ -181,7 +181,7 @@ sectie('A/B. Publiek bekend fonds met Premium-record (Oranje Fonds): Free en Pro
   }
 
   // Niveau 3a: alleen de database
-  for (const tier of ['free', 'pro']) {
+  for (const tier of ['pro']) {
     wereld({ regelingen, funders, profiel: tier, modelTekst: `Advies:\n1. ${O.regeling} van ${O.funder} past goed.` });
     const r = await stel(tier);
     const t = modelBlok(r);
@@ -190,6 +190,16 @@ sectie('A/B. Publiek bekend fonds met Premium-record (Oranje Fonds): Free en Pro
     check(`A/B niveau 3 (${tier}, alleen DB): het model hoort dat er alleen basisgegevens zijn, zonder abonnementshint`, /alleen basisgegevens beschikbaar/.test(t) && !/premium-fonds|alleen (?:beschikbaar )?(?:in|binnen) Premium/i.test(t));
     check(`A/B niveau 3 (${tier}, alleen DB): het antwoord noemt het fonds gewoon`, r.json.answer.includes(O.funder) && r.json.answer.includes(O.regeling), r.json.answer);
     check(`A/B niveau 3 (${tier}, alleen DB): geen DB-only gegevens in het volledige antwoord`, bevat(bodyTekst(r), DB_ONLY_O).length === 0);
+  }
+
+  // Niveau 3a-Free: Free zoekt in de database alleen in de Pro-fondsen; het Premium-record komt niet in de modelcontext en het model kan het niet noemen
+  {
+    wereld({ regelingen, funders, profiel: 'free', modelTekst: `Advies:\n1. ${O.regeling} van ${O.funder} past goed.` });
+    const r = await stel('free');
+    const t = modelBlok(r);
+    check('A/B niveau 3 (free, alleen DB): het Premium-fonds staat niet in de modelcontext', r.status === 200 && !t.includes(O.regeling) && !t.includes(O.funder));
+    check('A/B niveau 3 (free, alleen DB): geen DB-only gegevens in enige modelinput', bevat(alleModelInput(), DB_ONLY_O).length === 0);
+    check('A/B niveau 3 (free, alleen DB): het antwoord noemt het Premium-fonds niet, ook niet als het model het zelf noemt', !r.json.answer.includes(O.funder) && !r.json.answer.includes(O.regeling), r.json.answer);
   }
 
   // Niveau 3b: websearch vindt hetzelfde fonds (A en B uit de opdracht)
@@ -218,9 +228,13 @@ sectie('A/B. Publiek bekend fonds met Premium-record (Oranje Fonds): Free en Pro
   {
     const veel = [oranjeRegeling(), ...Array.from({ length: 5 }, (_, i) => reg(basis({ naam: `Extra Fonds ${i + 1}`, tier: 'free', funder: `Extra Funder ${i + 1}` })))];
     const sel = M.selecteerFreeFondsadvies(dbRows(veel), CRITERIA, 'free', false, undefined, '2026-10-08', LEEG());
-    check('A/B: de normale Free-limiet (top 3) geldt ook voor publieke Premium-records', sel.getoond.length === 3 && sel.verborgen.length === 3);
+    check('A/B: Free zoekt in de database alleen in de Pro-fondsen: het Premium-record (Oranje) doet niet mee, de normale top 3 geldt voor de rest', sel.getoond.length === 3 && sel.verborgen.length === 2 && !sel.relevant.some((k) => k.row.funder_id === O.id) && sel.extraPremium === 0);
     const selPro = M.selecteerFreeFondsadvies(dbRows(veel), CRITERIA, 'pro', false, undefined, '2026-10-08', LEEG());
-    check('A/B: Pro heeft die beperking niet en ziet alle zes', selPro.getoond.length === 6);
+    check('A/B: Pro heeft die beperking niet en ziet alle zes (het Premium-record met alleen publieke gegevens)', selPro.getoond.length === 6 && selPro.relevant.some((k) => k.row.funder_id === O.id));
+    const selAdmin = M.selecteerFreeFondsadvies(dbRows(veel), CRITERIA, 'free', true, undefined, '2026-10-08', LEEG());
+    check('A/B: de beheerder zoekt wel in alles', selAdmin.relevant.some((k) => k.row.funder_id === O.id));
+    const selPrem = M.selecteerFreeFondsadvies(dbRows(veel), CRITERIA, 'premium', false, undefined, '2026-10-08', LEEG());
+    check('A/B: Premium zoekt wel in alles', selPrem.relevant.some((k) => k.row.funder_id === O.id));
   }
 }
 
@@ -264,7 +278,7 @@ sectie('D/E. Expliciet exclusief fonds + websearch vindt dezelfde naam: verborge
   check('D/E niveau 1: externe rijen dragen de stempel _exclusief en krijgen GEEN Premium-erfenis (access_tier free)', gekoppeld.externe.length >= 1 && gekoppeld.externe.every((e) => e._exclusief === 'ja' && e.access_tier === 'free' && e._extern === true), JSON.stringify(gekoppeld.externe.map((e) => [e._exclusief, e.access_tier])));
   check('D/E niveau 1: ook zonder stempel (index weg) zou de centrale laag het via identiteit tegenhouden', gekoppeld.externe.every((e) => M.bepaalNiveau(M.bepaalRechten('free', false), 'regeling', { ...e, _exclusief: undefined }, IDX()).niveau === 'verborgen'));
 
-  for (const tier of ['free', 'pro']) {
+  for (const tier of ['pro']) {
     const sel = M.selecteerFreeFondsadvies(gekoppeld.alle, CRITERIA, tier, false, undefined, '2026-10-08', IDX());
     check(`D/E niveau 1 (${tier}): alle exclusieve kandidaten (database én online) zijn uit de pool verwijderd`, sel.exclusiefVerwijderd.length >= 4 && ![...sel.beoordeeld].some((k) => k.row.funder_id === X.id || k.row._exclusief === 'ja'), String(sel.exclusiefVerwijderd.length));
     check(`D/E niveau 1 (${tier}): de rest (Oranje, Free-fonds) is gewoon beoordeeld`, sel.beoordeeld.some((k) => k.naam === O.regeling) && sel.beoordeeld.some((k) => k.naam === 'F1 Eigen Free Fonds'));
@@ -285,7 +299,7 @@ sectie('D/E. Expliciet exclusief fonds + websearch vindt dezelfde naam: verborge
   // Niveau 3: chat en documentmodi
   const MODI = [['fondsadvies', CHAT], ['projectplan', `Schrijf het projectplan voor ${PROJECT}, inclusief een financieringsparagraaf met mogelijke fondsen`], ['begroting', `Maak een dekkingsplan bij de begroting van ${PROJECT}`], ['strategie', `Maak een financieringsstrategie voor ${PROJECT}`]];
 
-  for (const tier of ['free', 'pro']) {
+  for (const tier of ['pro']) {
     for (const [mode, tekst] of MODI) {
       wereld({ regelingen, funders, profiel: tier, exclusief: EXCLUSIEF(), scout: { kandidaten: webX }, modelTekst: `Document:\n${X.nieuwProg} van ${X.kort} dekt dit.\nAndere alinea.` });
       const r = await stel(tier, tekst, mode);
@@ -448,12 +462,14 @@ sectie('J. Tier-onafhankelijke matchingkwaliteit: dezelfde beoordeling, alleen d
   }
   const sleutel = (sel) => sel.relevant.map((k) => `${k.row.regeling_id}:${k.score}`).join(',');
   const zonderX = (sel) => sel.relevant.filter((k) => k.row.funder_id !== X.id && k.row._exclusief !== 'ja').map((k) => `${k.row.regeling_id}:${k.score}`).join(',');
-  check('J: Free, Pro en Premium/admin delen dezelfde relevante set, volgorde en scores, op de exclusieve fondsen na', zonderX(perTier.free) === zonderX(perTier.pro) && zonderX(perTier.pro) === zonderX(perTier.premium) && zonderX(perTier.premium) === zonderX(perTier.admin));
+  const zonderXenO = (sel) => sel.relevant.filter((k) => k.row.funder_id !== X.id && k.row._exclusief !== 'ja' && k.row.funder_id !== O.id).map((k) => `${k.row.regeling_id}:${k.score}`).join(',');
+  check('J: Pro, Premium en admin delen dezelfde relevante set, volgorde en scores, op de exclusieve fondsen na', zonderX(perTier.pro) === zonderX(perTier.premium) && zonderX(perTier.premium) === zonderX(perTier.admin));
   check('J: Premium/admin hebben daarnaast het exclusieve fonds (DB en online)', perTier.premium.relevant.some((k) => k.naam === X.regeling) && perTier.premium.relevant.some((k) => k.naam === X.nieuwProg) && sleutel(perTier.premium) === sleutel(perTier.admin));
   check('J: Free en Pro hebben geen enkel exclusief fonds in hun pool', ['free', 'pro'].every((n) => perTier[n].beoordeeld.every((k) => k.row.funder_id !== X.id && k.row._exclusief !== 'ja')));
   check('J: de corpus is niet leeg (anders bewijst de test niets)', perTier.free.relevant.length >= 3 && perTier.premium.relevant.length > perTier.free.relevant.length);
-  check('J: het Premium-record van Oranje Fonds telt voor Free/Pro gewoon mee, op zijn eigen score', perTier.free.relevant.some((k) => k.row.funder_id === O.id) && perTier.pro.relevant.some((k) => k.row.funder_id === O.id));
-  check('J: de verwijderde exclusieve kandidaten zijn de enige verschillen tussen Free en Premium', perTier.free.exclusiefVerwijderd.length > 0 && perTier.premium.exclusiefVerwijderd.length === 0 && perTier.free.beoordeeld.length + perTier.free.exclusiefVerwijderd.length === perTier.premium.beoordeeld.length);
+  check('J: het Premium-record van Oranje Fonds telt voor Pro gewoon mee, op zijn eigen score; bij Free alleen als het online publiek bevestigd is', perTier.pro.relevant.some((k) => k.row.funder_id === O.id) && perTier.free.relevant.filter((k) => k.row.funder_id === O.id).every((k) => k.row._web || k.row._extern));
+  check('J: voor de rest zoekt Free hetzelfde als Pro (alleen de Premium-records van de database vallen weg)', zonderXenO(perTier.free) === zonderXenO(perTier.pro));
+  check('J: de verwijderde exclusieve kandidaten zijn de enige verschillen tussen Free en Premium', perTier.pro.exclusiefVerwijderd.length > 0 && perTier.premium.exclusiefVerwijderd.length === 0 && perTier.pro.beoordeeld.length + perTier.pro.exclusiefVerwijderd.length === perTier.premium.beoordeeld.length);
 }
 
 // =================================================================================================
@@ -464,8 +480,8 @@ sectie('K. Migratie en fail-closed gedrag van de exclusiviteitslijst');
 
   // K1: migratie toegepast, nog niets gemarkeerd (default false): niets is exclusief
   gelogd.length = 0;
-  wereld({ regelingen, funders, profiel: 'free', exclusief: [] });
-  const r1 = await stel('free');
+  wereld({ regelingen, funders, profiel: 'pro', exclusief: [] });
+  const r1 = await stel('pro');
   check('K1 default false: zolang niets is gemarkeerd, is niets exclusief (ook geen "alle Premium"-gok)', r1.status === 200 && modelBlok(r1).includes(X.regeling) === true && modelBlok(r1).includes(O.regeling), 'Voorbeeld staat niet gemarkeerd en is dan publiek');
   check('K1 default false: het niet-gemarkeerde Premium-fonds is wel publiek geprojecteerd (geen DB-only gegevens)', bevat(alleModelInput(), [X.missie, X.crit, X.snippet, ...DB_ONLY_O]).length === 0);
 

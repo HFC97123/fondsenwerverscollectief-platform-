@@ -136,7 +136,6 @@ export const ABONNEMENTEN = {
       'Fondsmatching met passende fondsen en regelingen',
       'Sluitende begroting, dekkingsplan en actieplan per project',
       '1 projectplan genereren per maand',
-      '6 aanvragen beoordelen per maand',
     ],
   },
   premium: {
@@ -149,7 +148,7 @@ export const ABONNEMENTEN = {
       'Alles uit Pro',
       'fondsendatabase',
       '3 projectplannen genereren per maand',
-      '10 aanvragen beoordelen per maand',
+      'Advies per fondsaanvraag: een tekst op maat en een beoordeling per fonds',
     ],
   },
 };

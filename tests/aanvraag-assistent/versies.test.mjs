@@ -13,7 +13,7 @@ const NU = new Date('2026-10-26T12:00:00Z');
 const UUID = (n) => `99999999-9999-4999-8999-${String(n).padStart(12, '0')}`;
 
 function omgeving(opties = {}) {
-  const o = { tier: 'pro', vlag: true, zonderVersieFuncties: false, ...opties };
+  const o = { tier: 'premium', vlag: true, zonderVersieFuncties: false, ...opties };
   const log = { reserveringen: 0, modelAanroepen: 0 };
   const aanvragen = new Map([
     [AANVRAAG, { id: AANVRAAG, user: USER, soort: 'fonds', status: 'concept', definitieve_versie_id: null }],

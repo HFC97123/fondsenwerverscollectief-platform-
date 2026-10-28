@@ -94,6 +94,7 @@ export const FAQ_SECTIONS = [
           'Premium ondersteunt onder andere bij:',
           {
             list: [
+              'advies per fondsaanvraag (een tekst op maat en een beoordeling per fonds);',
               'geavanceerde fondsselecties;',
               'strategische analyses;',
               'meerjarige fondsenwervende strategieën;',

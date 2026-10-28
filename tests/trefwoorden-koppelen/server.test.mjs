@@ -1,8 +1,8 @@
 // Slimme herkenning ("Laat Claude meedenken"), serverkant. Echte handler; nagebootste AI en database.
 //   node tests/trefwoorden-koppelen/run.mjs (vanuit de repo-root)
-import { w, resetGenereren } from '../voorstel-genereren/wereld.mjs';
+import { UID, w, resetGenereren } from '../voorstel-genereren/wereld.mjs';
 import '../../supabase/functions/subsidie-kompas/index.ts';
-import { schoonEigenTermen, leesTrefwoordKoppelingen, trefwoordSysteem, trefwoordGebruikersbericht, DAGLIMIET_TREFWOORDEN } from '../../supabase/functions/_shared/trefwoordKoppelen.ts';
+import { schoonEigenTermen, leesTrefwoordKoppelingen, herkenEigenTermen, trefwoordSysteem, trefwoordGebruikersbericht, DAGLIMIET_TREFWOORDEN } from '../../supabase/functions/_shared/trefwoordKoppelen.ts';
 
 const stand = { ok: 0, fout: 0 };
 const check = (naam, waar, detail = '') => { if (waar) stand.ok += 1; else { stand.fout += 1; console.log(`  FAIL: ${naam} ${detail}`); } };
@@ -121,6 +121,72 @@ sectie('6. Daglimiet');
   wereld({ zoekprofielAi: { koppelingen: [] }, gebruikFout: 'tabel-weg' });
   const r2 = await post({ mode: 'trefwoorden-koppelen', tekst: TEKST });
   check('teller onbereikbaar: niet blokkeren', r2.status === 200 && r2.json.beschikbaar === true);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+sectie('7. Leren van gebruik: herkenningswoorden zonder AI, nieuwe woorden en advies voor Beheer');
+{
+  // Zuivere stap
+  const rijen = [{ woord_sleutel: 'drummen', categorie: 'discipline', naam: 'Muziek' }, { woord_sleutel: 'oudjes', categorie: 'doelgroep', naam: 'Ouderen' }, { woord_sleutel: 'weg', categorie: 'discipline', naam: 'Bestaat niet meer' }];
+  const h = herkenEigenTermen(['Drummen', 'oudjes', 'weg', 'buurtwerk'], rijen, TAX, { discipline: [], doelgroep: ['Ouderen'], regio: [] });
+
+  check('herkend woord wordt een voorstel met het eigen woord als bewijs', h.voorstellen.length === 1 && h.voorstellen[0].naam === 'Muziek' && h.voorstellen[0].eigenWoord === 'Drummen' && h.voorstellen[0].categorie === 'discipline');
+  check('wat het lid al koos wordt niet nogmaals voorgesteld (en het woord is toch herkend, dus niet "onbekend")', !h.rest.includes('oudjes') && !h.voorstellen.some((v) => v.naam === 'Ouderen'));
+  check('een synoniem naar een waarde die niet meer bestaat telt als onbekend; onbekende woorden blijven over', h.rest.join() === 'weg,buurtwerk');
+  check('zonder rijen is alles onbekend', herkenEigenTermen(['a b'], [], TAX, LEEG).rest.join() === 'a b');
+
+  // Advies bij onbekende woorden: streng gelezen
+  const ruw = { koppelingen: [{ categorie: 'discipline', waarde: 'Muziek', citaat: '', eigen_woord: 'drummen' }], niet_gekoppeld: [
+    { woord: 'djembé', advies: 'nieuwe_waarde', categorie: 'discipline', naam: 'Wereldmuziek', toelichting: 'Een echte discipline.' },
+    { woord: 'buurtwerk', advies: 'synoniem', categorie: 'discipline', naam: 'cultuur', toelichting: 'Hoort bij Cultuur.' },
+    { woord: 'xyz', advies: 'synoniem', categorie: 'discipline', naam: 'Verzonnen waarde', toelichting: '' },
+    { woord: 'Projectnaam Q', advies: 'afwijzen', categorie: 'discipline', naam: '', toelichting: 'Een projectnaam.' },
+    { woord: 'niet van het lid', advies: 'afwijzen' },
+    { woord: 'ritme', advies: 'nieuwe_waarde', categorie: 'discipline', naam: 'muziek', toelichting: '' },
+  ] };
+  const u = leesTrefwoordKoppelingen(ruw, TAX, inv({ eigenTermen: ['drummen', 'djembé', 'buurtwerk', 'xyz', 'Projectnaam Q', 'ritme'] }));
+  const advies = (woord) => u.adviezen.find((a) => a.woord === woord);
+
+  check('nieuwe waarde: het woord, de voorgestelde naam en de categorie', advies('djembé')?.actie === 'nieuwe_waarde' && advies('djembé')?.naam === 'Wereldmuziek' && advies('djembé')?.categorie === 'discipline');
+  check('synoniem: naam wordt teruggemapt op de exacte bestaande waarde', advies('buurtwerk')?.actie === 'synoniem' && advies('buurtwerk')?.naam === 'Cultuur');
+  check('synoniem naar een verzonnen waarde: geen advies (het woord blijft wel onbekend)', advies('xyz') === undefined && u.nietGekoppeld.includes('xyz'));
+  check('afwijzen: zonder naam, met toelichting', advies('Projectnaam Q')?.actie === 'afwijzen' && advies('Projectnaam Q')?.naam === null);
+  check('een woord dat niet van het lid is, krijgt geen advies', advies('niet van het lid') === undefined);
+  check('een "nieuwe waarde" die al bestaat wordt een synoniem', advies('ritme')?.actie === 'synoniem' && advies('ritme')?.naam === 'Muziek');
+  check('een door het model gekoppeld eigen woord wordt een kandidaat-herkenningswoord (synoniem)', advies('drummen')?.actie === 'synoniem' && advies('drummen')?.naam === 'Muziek');
+  check('adviezen bevatten nooit iets anders dan woord, actie, categorie, naam en toelichting', u.adviezen.every((a) => Object.keys(a).sort().join() === 'actie,categorie,naam,toelichting,woord'));
+
+  // Handler
+  wereld({ herkenningswoorden: [{ woord_sleutel: 'drummen', categorie: 'discipline', naam: 'Muziek' }], zoekprofielAi: { koppelingen: [], niet_gekoppeld: [{ woord: 'djembé', advies: 'nieuwe_waarde', categorie: 'discipline', naam: 'Wereldmuziek', toelichting: 'Echt.' }] } });
+  let r = await post({ mode: 'trefwoorden-koppelen', tekst: TEKST, eigenTermen: ['drummen', 'djembé'] });
+
+  check('handler: herkend woord komt als voorstel terug, zonder dat het model het woord ziet', r.json.voorstellen.some((v) => v.naam === 'Muziek' && v.eigenWoord === 'drummen') && !/drummen/.test(w.chatBodies[0].messages[1].content.split('Eigen woorden van de aanvrager:')[1] || ''), JSON.stringify(r.json).slice(0, 200));
+  check('handler: alleen het onbekende woord gaat naar de werklijst', JSON.stringify(w.eigenRegistraties) === '[["djembé"]]', JSON.stringify(w.eigenRegistraties));
+  check('handler: het advies bij het onbekende woord gaat naar Beheer, niet naar het lid', w.eigenAdviezen.length === 1 && w.eigenAdviezen[0].some((a) => a.woord === 'djembé' && a.actie === 'nieuwe_waarde') && !/Wereldmuziek/.test(r.tekst), JSON.stringify(w.eigenAdviezen));
+  check('handler: de werklijst bevat geen gebruikers-, project- of tekstgegevens (alleen woorden)', JSON.stringify([w.eigenRegistraties, w.eigenAdviezen]).indexOf('Rotterdam') === -1 && !JSON.stringify(w.eigenRegistraties).includes(UID));
+
+  // Alles al herkend en geen omschrijving: geen modelaanroep
+  wereld({ herkenningswoorden: [{ woord_sleutel: 'drummen', categorie: 'discipline', naam: 'Muziek' }], zoekprofielAi: { koppelingen: [] } });
+  r = await post({ mode: 'trefwoorden-koppelen', tekst: '', eigenTermen: ['drummen'] });
+  check('alles herkend en geen omschrijving: geen modelaanroep, voorstel er toch', w.chatBodies.length === 0 && r.json.voorstellen.length === 1 && r.json.nietGekoppeld.length === 0 && r.json.beschikbaar === true, `${w.chatBodies.length} ${JSON.stringify(r.json)}`);
+
+  // Herkende woorden kosten niets: ook boven de daglimiet blijven ze beschikbaar
+  wereld({ herkenningswoorden: [{ woord_sleutel: 'drummen', categorie: 'discipline', naam: 'Muziek' }], zoekprofielAi: { koppelingen: [] } });
+  await post({ mode: 'trefwoorden-koppelen', tekst: TEKST });
+  const uid2 = w.gebruikRijen[0]?.user_id;
+  for (let i = 0; i < DAGLIMIET_TREFWOORDEN; i += 1) w.gebruikRijen.push({ user_id: uid2, action_type: 'trefwoorden_koppelen' });
+  r = await post({ mode: 'trefwoorden-koppelen', tekst: TEKST, eigenTermen: ['drummen', 'onbekend woord'] });
+  check('boven de daglimiet: herkende woorden blijven voorstellen, het onbekende woord blijft bewaard en op de werklijst', r.json.reden === 'daglimiet' && r.json.voorstellen.length === 1 && r.json.nietGekoppeld.join() === 'onbekend woord' && JSON.stringify(w.eigenRegistraties.at(-1)) === '["onbekend woord"]');
+
+  // De tabel bestaat nog niet (migratie niet toegepast): alles werkt zoals voorheen
+  wereld({ herkenFout: true, zoekprofielAi: { koppelingen: [{ categorie: 'discipline', waarde: 'Muziek', citaat: '', eigen_woord: 'drummen' }] } });
+  r = await post({ mode: 'trefwoorden-koppelen', tekst: TEKST, eigenTermen: ['drummen'] });
+  check('zonder migratie: de slimme associatie werkt gewoon, geen fout', r.status === 200 && r.json.beschikbaar === true && r.json.voorstellen.some((v) => v.naam === 'Muziek'));
+
+  // Zonder eigen woorden: de werklijst wordt niet aangeroepen
+  wereld({ zoekprofielAi: { koppelingen: [] } });
+  await post({ mode: 'trefwoorden-koppelen', tekst: TEKST });
+  check('zonder eigen woorden: geen aanroep van de werklijst', !w.rpcs.includes('kompas_eigen_termen_registreer') && !w.rpcs.includes('kompas_herkenningswoorden_lees'));
 }
 
 console.log(`\nTREFWOORDEN-KOPPELEN SERVER: ${stand.ok} OK, ${stand.fout} FOUT`);

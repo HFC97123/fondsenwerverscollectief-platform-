@@ -397,6 +397,15 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
   if (!MODI.includes(modus)) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
 
+  // 4b. Per fonds werken (criteria, versies, vragen, beoordelen) is er alleen met Premium. Pro schrijft wel het projectplan. De server weigert, ook als een
+  // client de knoppen toch zou tonen of een verzoek zelf opstelt. De lijst en het openen van aanvragen blijven open voor Pro, maar alleen voor het eigen projectplan (zie hieronder).
+  const FONDS_MODI: readonly Modus[] = ['criteria-bewaren', 'eisen-ophalen', 'beoordelen', 'begroting-voorstel', 'begroting-upload', 'versies', 'versie', 'versie-bewaren', 'versie-wijzigen', 'versie-verwijderen', 'vragen', 'vragen-lezen', 'vragen-bewaren', 'antwoorden-schrijven'];
+  const fondsActie = FONDS_MODI.includes(modus) || (modus === 'plan-schrijven' && typeof body.aanvraagId === 'string' && body.aanvraagId !== '');
+
+  if (!config.fondsbeoordeling && fondsActie) {
+    return fout(403, 'alleen-premium', 'Fondsen laten beoordelen en per fonds schrijven is er met Premium. Met Pro kunt u wel uw projectplan schrijven.');
+  }
+
   // 5. Misbruikbeveiliging.
   if (!(await deps.rateLimitOk(userId))) return { status: 429, body: { ok: false, reden: 'te-snel', error: 'U verstuurt te veel verzoeken kort achter elkaar. Wacht even en probeer het opnieuw.' }, headers: { 'Retry-After': '60' } };
 
@@ -412,7 +421,8 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
       body: {
         ok: true,
         tier: tierLabel,
-        beoordelingen: { limiet: config.beoordelingenPerMaand, gebruikt: beoordelingen, resterend: beoordelingen === null ? null : maandRuimte(config, 'beoordeling', beoordelingen).resterend },
+        fondsbeoordeling: config.fondsbeoordeling,
+        beoordelingen: config.fondsbeoordeling ? { limiet: config.beoordelingenPerMaand, gebruikt: beoordelingen, resterend: beoordelingen === null ? null : maandRuimte(config, 'beoordeling', beoordelingen).resterend } : { limiet: null, gebruikt: null, resterend: null },
         plannen: { limiet: config.projectplannen, gebruikt: planStand === null ? null : planStand.gebruikt, resterend: planStand === null ? null : maandRuimte(config, 'plan', planStand.gebruikt).resterend, periodeMaanden: PLAN_VENSTER_MAANDEN },
         criteriaOphalen: { limiet: config.eisenOphalenPerMaand, gebruikt: eisen },
         maxEisen: config.maxEisen,
@@ -433,9 +443,12 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     if (check === null) return fout(503, 'project', 'De aanvraag-assistent is tijdelijk niet beschikbaar. Probeer het later opnieuw.');
     if (check !== true) return fout(404, 'project', 'Dit project is niet gevonden.');
 
-    const rijen = await deps.lijstAanvragen(userId, pid);
+    const alleRijen = await deps.lijstAanvragen(userId, pid);
 
-    if (rijen === null) return fout(503, 'opslag', 'De aanvragen konden nu niet worden opgehaald. Probeer het later opnieuw.');
+    if (alleRijen === null) return fout(503, 'opslag', 'De aanvragen konden nu niet worden opgehaald. Probeer het later opnieuw.');
+
+    // Pro ziet alleen het eigen projectplan; teksten per fonds horen bij Premium.
+    const rijen = config.fondsbeoordeling ? alleRijen : alleRijen.filter((r) => r.soort === 'algemeen');
 
     // Per aanvraag hoever het lid is (vragenlijst, antwoorden, stukken). Lukt dat niet, dan krijgt het lid de lijst zonder voortgang.
     const voortgang = deps.lijstVoortgang && rijen.length ? await deps.lijstVoortgang(userId, rijen.map((r) => r.id)).catch(() => null) : null;
@@ -451,7 +464,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     const rij = await deps.leesAanvraag(userId, id);
 
     if (rij === 'storing') return fout(503, 'opslag', 'De aanvraag kon nu niet worden opgehaald. Probeer het later opnieuw.');
-    if (!rij) return fout(404, 'aanvraag', 'Deze aanvraag is niet gevonden.');
+    if (!rij || (!config.fondsbeoordeling && rij.soort !== 'algemeen')) return fout(404, 'aanvraag', 'Deze aanvraag is niet gevonden.');
 
     return { status: 200, body: { ok: true, aanvraag: { ...samenvatAanvraag(rij), criteria: rij.criteria, bronnen: rij.bronnen, plan: rij.plan } } };
   }

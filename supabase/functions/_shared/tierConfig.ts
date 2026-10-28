@@ -48,6 +48,9 @@ export interface BeoordelingConfig {
 // Deze grenzen zijn HARD (anders dan het observatiebudget hierboven): is de maand op, dan weigert de server de aanroep met een duidelijke melding.
 // Aantallen zijn startwaarden (Aisya, 19 oktober 2026) en worden na de eerste meting met de gebruiksmeter bijgesteld.
 export interface AanvraagAssistentConfig {
+  // Mag dit abonnement per fonds werken (criteria ophalen, een versie voor een fonds schrijven, de aanvraag laten beoordelen)? Pro: nee, alleen het projectplan
+  // schrijven (Aisya, 28 oktober 2026). Premium: ja. De server weigert fondsacties zonder dit recht; de client toont dan alleen een verwijzing naar Premium.
+  fondsbeoordeling: boolean;
   beoordelingenPerMaand: number;
   // Het algemene projectplan wordt één keer per project door de AI geschreven. Dit is het aantal VERSCHILLENDE projecten per rollend jaar waarvoor dat mag.
   projectplannen: number;
@@ -124,9 +127,10 @@ const PRO: TierConfig = {
   beoordeling: { maxKandidaten: 25, dekkingsdoelLijst: 1.2, maxFactorLijst: 1.2, netNietLijst: false },
   maandBudgetObservatieEur: 7,
   aanvraagAssistent: {
-    beoordelingenPerMaand: 6,
+    fondsbeoordeling: false,
+    beoordelingenPerMaand: 0,
     projectplannen: 1,
-    eisenOphalenPerMaand: 12,
+    eisenOphalenPerMaand: 0,
     maxEisen: 40,
     maxAanvraagTekens: 60_000,
     maxRichtlijnTekens: 40_000,
@@ -159,6 +163,7 @@ const PREMIUM: TierConfig = {
   // krijgt de actuele begroting en het actuele dekkingsplan mee. Voor nu verder hetzelfde als Pro. De uitbreidingen (rijke editor, AI-paneel, dekkingsoverzicht, commissieblik) staan
   // uit tot ze gebouwd zijn.
   aanvraagAssistent: {
+    fondsbeoordeling: true,
     beoordelingenPerMaand: 30,
     projectplannen: 3,
     eisenOphalenPerMaand: 40,

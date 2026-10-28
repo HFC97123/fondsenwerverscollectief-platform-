@@ -73,6 +73,10 @@ export function resetGenereren(extra = {}) {
     planningFout: null, // true: lezen van die tabellen mislukt
     leesVertraging: false, // true: elke leesactie op taken wacht een macrotaak, zodat gelijktijdige verzoeken allebei lezen vóór er iemand schrijft
     documenten: [],
+    herkenningswoorden: [], // rijen { woord_sleutel, categorie, naam } uit kompas_herkenningswoorden_lees
+    herkenFout: false, // true: de tabel/RPC bestaat nog niet (migratie niet toegepast)
+    eigenRegistraties: [],
+    eigenAdviezen: [],
     ...extra,
   });
 }
@@ -231,6 +235,27 @@ const rpc = async (naam, args) => {
     w.rpcs.push(naam);
 
     return { data: w.deadlines, error: null };
+  }
+
+  // Leren van gebruik: herkenningswoorden (lezen), nieuwe woorden en adviezen (schrijven, alleen vastgelegd voor de tests).
+  if (naam === 'kompas_herkenningswoorden_lees') {
+    w.rpcs.push(naam);
+
+    return w.herkenFout ? { data: null, error: { code: '42883', message: 'bestaat niet' } } : { data: w.herkenningswoorden ?? [], error: null };
+  }
+
+  if (naam === 'kompas_eigen_termen_registreer') {
+    w.rpcs.push(naam);
+    (w.eigenRegistraties ??= []).push(args?.p_woorden ?? null);
+
+    return w.herkenFout ? { data: null, error: { code: '42883', message: 'bestaat niet' } } : { data: (args?.p_woorden || []).length, error: null };
+  }
+
+  if (naam === 'kompas_eigen_termen_advies') {
+    w.rpcs.push(naam);
+    (w.eigenAdviezen ??= []).push(args?.p_rijen ?? null);
+
+    return { data: (args?.p_rijen || []).length, error: null };
   }
 
   return basisRpc(naam, args);

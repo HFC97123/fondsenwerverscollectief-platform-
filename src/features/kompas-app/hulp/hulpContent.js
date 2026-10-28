@@ -42,7 +42,7 @@ export const RONDLEIDING = [
   {
     id: 'indienen',
     titel: 'Stap 4 · Indienen',
-    tekst: 'Maak een projectplan op maat, laat uw aanvraag per fonds beoordelen voordat u indient en vul het projectdossier aan.',
+    tekst: 'Maak een projectplan op maat en vul het projectdossier aan. Met Premium krijgt u ook advies per fondsaanvraag: een tekst op maat en een beoordeling per fonds voordat u indient.',
     link: { href: '#/kompas/documentatie', tekst: 'Naar indienen' },
   },
   {
@@ -124,7 +124,7 @@ export const VRAGEN = [
   {
     id: 'projectplan',
     vraag: 'Hoe krijg ik een projectplan of een beoordeling?',
-    antwoord: 'Ga naar Subsidieadvies › Indienen. Vul eerst het projectdossier aan. Daarna kunt u onder Aanvraag indienen een aanvraag op maat van het fonds laten maken en uw aanvraag laten beoordelen voordat u indient.',
+    antwoord: 'Ga naar Subsidieadvies › Indienen. Vul eerst het projectdossier aan. Daarna kunt u uw projectplan laten schrijven. Met Premium kunt u onder Aanvraag indienen ook een aanvraag op maat van het fonds laten maken en uw aanvraag per fonds laten beoordelen voordat u indient.',
     links: [{ href: '#/kompas/documentatie', tekst: 'Naar indienen' }],
   },
   {
