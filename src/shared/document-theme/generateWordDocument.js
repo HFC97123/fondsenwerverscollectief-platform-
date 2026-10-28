@@ -119,8 +119,9 @@ async function laadLogoAfbeelding(theme) {
  * @param {string} [opties.themeName]        Thema-naam (standaard: het vaste Subsidie Kompas-thema)
  * @returns {Promise<Blob>}
  */
-export async function generateWordDocument({ title, organizationName, documentType, content, themeName } = {}) {
-  const theme = getDocumentTheme(themeName);
+export async function generateWordDocument({ title, organizationName, documentType, content, themeName, theme: eigenThema } = {}) {
+  // Een eigen thema (huisstijl van een Premium-lid) gaat voor op de naam van een geregistreerd thema.
+  const theme = eigenThema || getDocumentTheme(themeName);
   const logoImage = await laadLogoAfbeelding(theme);
 
   const coverElementen = createCover(theme, {

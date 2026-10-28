@@ -88,8 +88,8 @@ function kolomBreedtes(headers, rows) {
  * @param {Object} opties  Zelfde velden als generateWordDocument
  * @returns {Promise<Blob>}
  */
-export async function generatePdfDocument({ title, organizationName, documentType, content, themeName } = {}) {
-  const theme = getDocumentTheme(themeName);
+export async function generatePdfDocument({ title, organizationName, documentType, content, themeName, theme: eigenThema } = {}) {
+  const theme = eigenThema || getDocumentTheme(themeName);
   const { colors, layout, typography } = theme;
   const marge = layout.marginLeftMm * PT_PER_MM;
   const veilig = maakPdfVeilig;

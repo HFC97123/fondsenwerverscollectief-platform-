@@ -75,8 +75,8 @@ function celWaarde(waarde, type) {
  * @param {Object} [opties]  { themeName }
  * @returns {Promise<Blob>}
  */
-export async function generateStructuredExcel(model, { themeName } = {}) {
-  const theme = getDocumentTheme(themeName);
+export async function generateStructuredExcel(model, { themeName, theme: eigenThema } = {}) {
+  const theme = eigenThema || getDocumentTheme(themeName);
   const kleur = theme.colors;
   const lettertype = theme.fonts.body;
   const wb = new ExcelJS.Workbook();

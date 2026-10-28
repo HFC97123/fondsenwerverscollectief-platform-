@@ -522,12 +522,12 @@ async function bouwDekkingsplanSheet(workbook, { budget, project, organizationNa
 // Centrale, AI-vrije Excel-generator. Ontvangt uitsluitend een al berekend en
 // gevalideerd Budget (berekenBudget()) plus de bekende, bestaande
 // project-/organisatiegegevens - doet zelf geen AI-aanroep.
-export async function generateExcelDocument({ budget, project, organizationName, themeName } = {}) {
+export async function generateExcelDocument({ budget, project, organizationName, themeName, theme: eigenThema } = {}) {
   if (!budget || !Array.isArray(budget.expenseLines) || !budget.totals) {
     throw new Error('generateExcelDocument vereist een al berekend budget (zie berekenBudget()).');
   }
 
-  const theme = getDocumentTheme(themeName || 'subsidieKompas');
+  const theme = eigenThema || getDocumentTheme(themeName || 'subsidieKompas');
   const kleur = theme.colors;
   const lettertype = theme.fonts.table || theme.fonts.body || 'Arial';
 

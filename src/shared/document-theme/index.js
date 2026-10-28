@@ -22,6 +22,7 @@ export { getPageSetup, getUsableWidthMm } from './pageSetup.js';
 import './themes/subsidieKompasTheme.js';
 
 export { SubsidieKompasTheme } from './themes/subsidieKompasTheme.js';
+export { bouwHuisstijlThema, normaliseerHuisstijl, themaVoorExport, pasLogoMaten } from './huisstijl.js';
 
 export {
   createCover,

@@ -626,3 +626,43 @@ export function organisatieDocsVoorLijst(orgDocs) {
     .filter((d) => d && d.pad && d.naam)
     .map((d) => ({ id: `org-${d.id}`, naam: String(d.naam), soort: 'Overig', soortTekst: String(d.soort || 'Overig'), pad: d.pad, organisatie: true, projectId: '', projectNaam: 'Hele organisatie', gemaakt: d.aangemaakt || '' }));
 }
+
+// ---- Definitieve versies ("Maak definitief") ----
+// Een definitieve versie is een vaste kopie van een concept; de lijst toont ze bovenaan, onder de naam zonder "Concept".
+export const DEFINITIEF_NAAM = { projectplan: 'Projectplan', begroting: 'Begroting', dekkingsplan: 'Dekkingsplan' };
+const DEFINITIEF_SOORT = { projectplan: 'Projectplan', begroting: 'Begroting', dekkingsplan: 'Concept-dekkingsplan' };
+const GENEREERD_NAAR_DEFINITIEF = { plan: 'projectplan', begroting: 'begroting', dekking: 'dekkingsplan' };
+
+// Het soort definitief document dat bij een concept-regel hoort, of null (een concept voor een fonds wordt niet definitief; dat staat in Aanvraag indienen).
+export const definitiefSoortVan = (doc) => (doc && GENEREERD_NAAR_DEFINITIEF[doc.gegenereerd]) || null;
+
+// De rijen van de database (zonder inhoud) als regels voor de lijst. projecten: om de projectnaam erbij te zetten.
+export function definitieveDocsVoorLijst(rijen, projecten) {
+  const namen = new Map((Array.isArray(projecten) ? projecten : []).map((p) => [p.id, p.naam || 'Naamloos project']));
+
+  return (Array.isArray(rijen) ? rijen : [])
+    .filter((r) => r && r.id && DEFINITIEF_NAAM[r.soort] && namen.has(r.projectId))
+    .map((r) => ({
+      id: `def-${r.id}`,
+      definitiefId: r.id,
+      definitiefSoort: r.soort,
+      naam: DEFINITIEF_NAAM[r.soort],
+      soort: DEFINITIEF_SOORT[r.soort],
+      gegenereerd: 'definitief',
+      definitief: true,
+      versie: r.versie,
+      datum: r.gemaakt || '',
+      projectId: r.projectId,
+      projectNaam: namen.get(r.projectId),
+    }));
+}
+
+// Wat er vast wordt bewaard. Het project gaat mee zonder zijn documenten (te groot, en niet nodig voor de begroting).
+const zonderDocs = (project) => {
+  const { docs, ...rest } = project || {};
+
+  return rest;
+};
+
+export const planMomentopname = ({ plan, projectNaam }) => ({ type: 'projectplan', plan, projectNaam: projectNaam || '' });
+export const begrotingMomentopname = ({ soort, project, finRegels }) => ({ type: soort, project: zonderDocs(project), finRegels: Array.isArray(finRegels) ? finRegels : [] });

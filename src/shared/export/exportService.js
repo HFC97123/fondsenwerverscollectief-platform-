@@ -14,6 +14,8 @@ import { supabase } from '../../data/client.js';
 import { haalProfiel, tierVan } from '../../data/services/profile.js';
 import { haalBudgetUitTekst } from '../../data/services/chat.js';
 import { bouwBestandsnaam, downloadBlob } from './exportBestand.js';
+import { themaVoorExport } from '../document-theme/huisstijl.js';
+import { haalHuisstijl } from '../../data/services/huisstijl.js';
 
 export const EXPORT_FORMATEN = {
   docx: { id: 'docx', label: 'Word (.docx)', kort: 'Word', extensie: 'docx' },
@@ -39,7 +41,7 @@ export class ExportFout extends Error {
  */
 export async function controleerExportRechten() {
   if (!supabase) {
-    return { toegestaan: true };
+    return { toegestaan: true, premium: false };
   }
 
   let userId = null;
@@ -65,10 +67,23 @@ export async function controleerExportRechten() {
   const tier = tierVan(profiel);
 
   if (profiel.role === 'admin' || tier === 'pro' || tier === 'premium') {
-    return { toegestaan: true };
+    // Premium (en beheerders) gebruikt de eigen huisstijl als die er is; Pro de Subsidie Kompas-huisstijl.
+    return { toegestaan: true, premium: profiel.role === 'admin' || tier === 'premium' };
   }
 
   return { toegestaan: false, reden: 'Exporteren is beschikbaar met een Pro- of Premium-abonnement.' };
+}
+
+// Het documentthema van de ingelogde gebruiker voor een export: Premium (en beheerders) met een eigen huisstijl krijgt die, iedereen anders null
+// (de generatoren nemen dan de Subsidie Kompas-huisstijl). Voor exports die niet via voerExportUit lopen, zoals de begroting als Excel.
+export async function haalExportThema() {
+  try {
+    const rechten = await controleerExportRechten();
+
+    return rechten.toegestaan && rechten.premium ? themaVoorExport({ premium: true, huisstijl: await haalHuisstijl() }) : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 // Begrotingsdocumenten houden hun bestaande Excel-route (tekst ->
@@ -146,12 +161,24 @@ export async function voerExportUit({ formaat, bouwModel, onStatus }) {
     let blob;
     let bestandsnaam = bouwBestandsnaam(model.bestandsDelen, fmt.extensie);
     let extraMelding = '';
+    // De eigen huisstijl alleen voor Premium; lukt het ophalen niet, dan geldt de Subsidie Kompas-huisstijl.
+    let thema = null;
+
+    if (rechten.premium) {
+      try {
+        thema = themaVoorExport({ premium: true, huisstijl: await haalHuisstijl() });
+      } catch (e) {
+        thema = null;
+      }
+    }
+
     const kern = {
       title: model.titel,
       documentType: model.documentType || undefined,
       organizationName: model.organisatieNaam || null,
       content: { blocks: model.blocks },
       themeName: model.themeName,
+      ...(thema ? { theme: thema } : {}),
     };
 
     if (formaat === 'docx') {
@@ -174,7 +201,7 @@ export async function voerExportUit({ formaat, bouwModel, onStatus }) {
     } else {
       const { generateStructuredExcel } = await import('./generateStructuredExcel.js');
 
-      blob = await generateStructuredExcel(model, { themeName: model.themeName });
+      blob = await generateStructuredExcel(model, { themeName: model.themeName, ...(thema ? { theme: thema } : {}) });
     }
 
     downloadBlob(blob, bestandsnaam);

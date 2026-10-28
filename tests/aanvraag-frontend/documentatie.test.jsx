@@ -47,12 +47,61 @@ const ORG_DOCS = [
   { id: 'o3', file_name: 'Notitie zonder bestand', title: null, notes: 'Overig', mime_type: '', storage_path: null, extracted_text: 'alleen tekst', created_at: '2026-09-03T10:00:00Z' },
 ];
 
+// Een nep-tabel voor de definitieve documenten: filtert op eq/in, telt het versienummer per project en soort, en weigert Free (RLS).
+function maakDefTabel({ toegestaan = true } = {}) {
+  const rijen = [];
+  let n = 0;
+
+  const filter = (lijst, f) => lijst.filter((r) => f.every(([k, v, is]) => (is ? v.includes(r[k]) : r[k] === v)));
+  const maak = () => {
+    const st = { f: [], modus: 'select', rij: null };
+    const uit = () => {
+      if (st.modus === 'insert') {
+        if (!toegestaan) return { data: null, error: { code: '42501' } };
+
+        const versie = rijen.filter((r) => r.program_id === st.rij.program_id && r.soort === st.rij.soort).length + 1;
+        const nieuw = { ...st.rij, id: `def${++n}`, versie, created_at: `2026-10-28T1${n}:00:00Z` };
+
+        rijen.push(nieuw);
+
+        return { data: { id: nieuw.id, versie }, error: null };
+      }
+
+      if (st.modus === 'delete') {
+        for (const r of filter(rijen, st.f)) rijen.splice(rijen.indexOf(r), 1);
+
+        return { error: null };
+      }
+
+      return { data: filter(rijen, st.f).slice().reverse(), error: null };
+    };
+    const q = {
+      select: () => q,
+      insert: (r) => { st.modus = 'insert'; st.rij = r; return q; },
+      delete: () => { st.modus = 'delete'; return q; },
+      eq: (k, v) => { st.f.push([k, v, false]); return q; },
+      then: (ok, nee) => Promise.resolve(uit()).then(ok, nee),
+      in: (k, v) => { st.f.push([k, v, true]); return q; },
+      order: async () => uit(),
+      single: async () => uit(),
+      maybeSingle: async () => { const u = uit(); return { data: Array.isArray(u.data) ? u.data[0] || null : u.data, error: u.error }; },
+    };
+
+    return q;
+  };
+
+  return { rijen, maak };
+}
+
+let defTabel = maakDefTabel();
+
 async function toon(server, tier = 'premium', orgDocs = []) {
   client.__reset();
   const van = server.supabase.from;
 
   server.supabase.auth = { getUser: async () => ({ data: { user: { id: USER } } }) };
   server.supabase.from = (tabel) => {
+    if (tabel === 'subsidie_kompas_definitieve_documenten') return defTabel.maak();
     if (tabel !== 'subsidie_kompas_knowledge_items') return van(tabel);
 
     const q = { select: () => q, eq: () => q, not: () => q, order: async () => ({ data: orgDocs, error: null }) };
@@ -135,6 +184,86 @@ sectie('2. Na het schrijven: het concept projectplan staat onder Projectplan');
   check('Naar Aanvraag indienen brengt het lid terug', await wacht(() => $('[data-testid="aa-projectplan"]')) && /onder Projectdocumentatie/.test($('[data-testid="aa-plan-klaar"]').textContent));
   await klik($('[data-testid="aa-open-plan"]'));
   check('Open het projectplan op Indienen gaat naar Projectdocumentatie en opent het concept', await wacht(() => $('[data-testid="gb-plan-open"]') && $('[data-testid="aa-plan"]')) && !$('[data-testid="aa-projectplan"]'));
+  await act(async () => { root.render(<div />); });
+}
+
+sectie('3. Maak definitief: een vaste kopie, bovenaan de lijst');
+{
+  const S = maakServer({ tier: 'premium', dekkingsplan: [{ id: 'r1' }, { id: 'r2' }] });
+
+  defTabel = maakDefTabel();
+  await toon(S);
+  await klik($('[data-testid="documenten-tab-plan"]'));
+  await wacht(() => $('[data-testid="aa-projectplan"]'));
+  await klik(knop('Start algemeen plan'));
+  await klik(knop('Ja, schrijf het plan'));
+  await wacht(() => $('[data-testid="aa-plan"]'));
+  await klik(knop('Sluiten'));
+  check('de concepten staan er, zonder definitieve versies', await wacht(() => aantal('Projectplan') === 1 && aantal('Begroting') === 1 && aantal('Dekkingsplan') === 1) && !$$('[data-testid="documenten-rij"]').some((r) => r.querySelector('[data-testid="definitief-verwijder"]')));
+
+  const conceptPlan = () => $$('[data-testid="documenten-rij"]').find((r) => /Concept projectplan/.test(r.textContent));
+  const conceptBegroting = () => $$('[data-testid="documenten-rij"]').find((r) => /Concept begroting/.test(r.textContent));
+
+  check('elk concept (plan, begroting, dekkingsplan) heeft Maak definitief; de Excel staat bij begroting en dekkingsplan', $$('[data-testid="maak-definitief"]').length === 3 && $$('[data-testid="document-excel"]').length === 2 && !conceptPlan().querySelector('[data-testid="document-excel"]'));
+
+  await klik(conceptPlan().querySelector('[data-testid="maak-definitief"]'));
+  check('Maak definitief vraagt eerst om een bevestiging in de regel, zonder dat er al iets is bewaard', await wacht(() => conceptPlan().querySelector('[data-testid="maak-definitief-vraag"]')) && defTabel.rijen.length === 0 && /Wijzigingen daarna veranderen deze kopie niet/.test(conceptPlan().textContent));
+  await klik(conceptPlan().querySelector('[data-testid="maak-definitief-nee"]'));
+  check('Annuleren bewaart niets en zet de knop terug', !conceptPlan().querySelector('[data-testid="maak-definitief-vraag"]') && defTabel.rijen.length === 0 && !!conceptPlan().querySelector('[data-testid="maak-definitief"]'));
+
+  await klik(conceptPlan().querySelector('[data-testid="maak-definitief"]'));
+  await wacht(() => conceptPlan().querySelector('[data-testid="maak-definitief-ja"]'));
+  await klik(conceptPlan().querySelector('[data-testid="maak-definitief-ja"]'));
+  check('na bevestigen is er één definitief projectplan bewaard, versie 1, met het hele plan erin', await wacht(() => defTabel.rijen.length === 1) && defTabel.rijen[0].soort === 'projectplan' && defTabel.rijen[0].versie === 1 && defTabel.rijen[0].inhoud.type === 'projectplan' && defTabel.rijen[0].inhoud.plan.secties.length === 8 && defTabel.rijen[0].naam === 'Projectplan');
+  check('de lijst toont het definitieve projectplan als eerste regel, zonder Concept in de naam', await wacht(() => $$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="definitief-verwijder"]')) && $$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="gb-open-geschreven"]').textContent.trim() === 'Projectplan' && /versie 1/.test($$('[data-testid="documenten-rij"]')[0].textContent));
+  check('het concept blijft staan en de teller van Projectplan is 2', !!conceptPlan() && aantal('Projectplan') === 2);
+  check('de definitieve regel heeft geen Maak definitief maar wel Verwijderen', !$$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="maak-definitief"]') && !!$$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="definitief-verwijder"]'));
+  check('een melding zegt waar het staat', /definitief gemaakt \(versie 1\)/.test(tekst()));
+
+  await klik(conceptPlan().querySelector('[data-testid="maak-definitief"]'));
+  await wacht(() => conceptPlan().querySelector('[data-testid="maak-definitief-ja"]'));
+  await klik(conceptPlan().querySelector('[data-testid="maak-definitief-ja"]'));
+  check('een tweede keer geeft versie 2 en de eerste blijft bestaan', await wacht(() => defTabel.rijen.length === 2) && defTabel.rijen[1].versie === 2 && $$('[data-testid="definitief-verwijder"]').length === 2);
+
+  await klik($$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="gb-open-geschreven"]'));
+  check('de definitieve regel opent de vaste kopie, met de uitleg en zonder de "net geschreven"-melding', await wacht(() => $('[data-testid="aa-plan"]') && $('[data-testid="gb-definitief-info"]')) && !$('[data-testid="gb-nieuw"]') && /definitief/.test($('[data-testid="aa-plan-kop"]').textContent) && $$('[data-testid="aa-plan-sectie"]').length === 8);
+  await klik(knop('Sluiten'));
+
+  await klik(conceptBegroting().querySelector('[data-testid="maak-definitief"]'));
+  await wacht(() => conceptBegroting().querySelector('[data-testid="maak-definitief-ja"]'));
+  await klik(conceptBegroting().querySelector('[data-testid="maak-definitief-ja"]'));
+  check('Begroting definitief bewaart het project (zonder documenten) en de financieringsregels', await wacht(() => defTabel.rijen.length === 3) && defTabel.rijen[2].soort === 'begroting' && defTabel.rijen[2].inhoud.project.id === PROJECT && !('docs' in defTabel.rijen[2].inhoud.project) && Array.isArray(defTabel.rijen[2].inhoud.finRegels) && defTabel.rijen[2].inhoud.finRegels.length === 2);
+  check('de definitieve begroting heet Begroting, heeft een Excel en geen link naar het concept', await wacht(() => $$('[data-testid="documenten-rij"]').some((r) => r.querySelector('[data-testid="gb-definitief-naam"]'))) && !!$$('[data-testid="documenten-rij"]').find((r) => r.querySelector('[data-testid="gb-definitief-naam"]')).querySelector('[data-testid="document-excel"]'));
+
+  // Het concept verandert, de definitieve kopie niet.
+  const kopie = JSON.stringify(defTabel.rijen[2].inhoud);
+
+  project.budgetRegels = [{ id: 'a' }];
+  check('wijzigingen in het project veranderen de bewaarde kopie niet', JSON.stringify(defTabel.rijen[2].inhoud) === kopie);
+  project.budgetRegels = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  const nu = defTabel.rijen.length;
+  const eerste = $$('[data-testid="documenten-rij"]')[0];
+  await klik(eerste.querySelector('[data-testid="definitief-verwijder"]'));
+  check('Verwijderen vraagt eerst om een bevestiging', !!eerste.querySelector('[data-testid="definitief-verwijder-vraag"]') && defTabel.rijen.length === nu);
+  await klik(eerste.querySelector('[data-testid="definitief-verwijder-ja"]'));
+  check('na bevestigen is alleen die versie weg; het concept blijft', await wacht(() => defTabel.rijen.length === nu - 1) && !!conceptPlan() && /verwijderd/.test(tekst()));
+  await act(async () => { root.render(<div />); });
+}
+
+sectie('4. Zonder Pro of Premium is er geen definitieve versie');
+{
+  const S = maakServer({ tier: 'premium' });
+
+  defTabel = maakDefTabel({ toegestaan: false });
+  await toon(S);
+  await wacht(() => aantal('Begroting') === 1);
+  const rij = $$('[data-testid="documenten-rij"]').find((r) => /Concept begroting/.test(r.textContent));
+
+  await klik(rij.querySelector('[data-testid="maak-definitief"]'));
+  await wacht(() => rij.querySelector('[data-testid="maak-definitief-ja"]'));
+  await klik(rij.querySelector('[data-testid="maak-definitief-ja"]'));
+  check('de database weigert het en het lid ziet een duidelijke melding, zonder dat er een regel bijkomt', await wacht(() => /hoort bij Pro en Premium/.test(tekst())) && defTabel.rijen.length === 0 && !$('[data-testid="definitief-verwijder"]'));
   await act(async () => { root.render(<div />); });
 }
 

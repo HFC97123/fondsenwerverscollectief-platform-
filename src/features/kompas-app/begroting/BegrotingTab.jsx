@@ -15,6 +15,7 @@ import { projectFinancieringHref } from '../financiering/deeplinks.js';
 import { chatStartHref } from '../chat/gesprekUrl.js';
 import { leesBegrotingUpload } from '../../../data/services/aanvraagAssistent.js';
 import { leesBegrotingBestand } from './begrotingBestand.js';
+import { downloadBegrotingConcept } from './begrotingExport.js';
 import { valideerEnBereidOp } from '../projectOpslaan.js';
 import { CATEGORIEEN, GEEN_KOPJE, berekenBegroting, categorieLabel, eigenKopjeSleutel, expenseLinesVoorExcel, kopjeDef, kopjeSlug, kopjeVolgorde, leesBudgetRegels, nieuweRegel, regelBedrag, regelHerkomst, regelsVoorOpslag, samenvoegVoorstel, schuifKopje, schuifRegel, verplaatsKopje, verplaatsRegel, verwijderKopje, voorstelNaarRegels } from './begrotingModel.js';
 
@@ -746,20 +747,10 @@ export default function BegrotingTab({ project, projecten, onKiesProject, store 
     setFout('');
 
     try {
-      const [{ berekenBudget }, { generateExcelDocument, bepaalExcelBestandsnaam }] = await Promise.all([import('../../../shared/budget/berekenBudget.js'), import('../../../shared/budget/generateExcelDocument.js')]);
+      // De huidige schermregels (ook niet-opgeslagen) en de financiering van dit moment, in de huisstijl van het lid.
       const naam = (store && store.orgProfile && store.orgProfile.name) || null;
-      const p = { ...project, begroting: begrotingVoorDekking };
-      const budget = berekenBudget(expenseLinesVoorExcel(regels), p, {}, fin && fin.beschikbaar ? { regels: fin.regels, dekking: dekkingVanProject(p, fin.regels), metPlanning: true } : undefined);
-      const blob = await generateExcelDocument({ budget, project: p, organizationName: naam });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
 
-      a.href = url;
-      a.download = bepaalExcelBestandsnaam({ project: p, organizationName: naam });
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await downloadBegrotingConcept({ project: { ...project, begroting: begrotingVoorDekking }, regels, organisatieNaam: naam });
     } catch (e) {
       setFout('De Excel kon niet worden gemaakt. Probeer het opnieuw.');
     }

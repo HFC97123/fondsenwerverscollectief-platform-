@@ -9,10 +9,10 @@ import { bouwDocumentModel } from '../../../shared/export/exportModel.js';
 import { Melding } from '../../../shared/ui/werkplek.jsx';
 import { haalAanvraag, haalAanvragen } from '../../../data/services/aanvraagAssistent.js';
 import { haalDekkingsplan } from '../../../data/services/projectFinanciering.js';
-import { projectExport } from '../exportBronnen.js';
+import { haalDefinitieveDocumenten, haalDefinitiefDocument } from '../../../data/services/definitieveDocumenten.js';
 import { AanvraagStijl, Bezig } from './Bouwstenen.jsx';
 import PlanEditor from './PlanEditor.jsx';
-import { geschrevenDocs, planNaarTekst, splitsAanvragen } from './aanvraagModel.js';
+import { definitieveDocsVoorLijst, geschrevenDocs, planNaarTekst, splitsAanvragen } from './aanvraagModel.js';
 
 // Laadt per project het concept projectplan, de concepten per fonds en het aantal regels van het dekkingsplan, en maakt er regels van.
 // actief: alleen laden als het tabblad Projectdocumentatie openstaat (en opnieuw bij elk bezoek, zodat een net geschreven plan er direct staat).
@@ -62,6 +62,36 @@ export function useGeschrevenDocs({ projecten, metPlan, actief }) {
   return docs;
 }
 
+// De definitieve versies van de projecten. ververs(): opnieuw laden (na Maak definitief of Verwijderen).
+export function useDefinitieveDocs({ projecten, actief }) {
+  const [docs, setDocs] = useState([]);
+  const [nu, setNu] = useState(0);
+  const sleutel = (projecten || []).map((p) => p.id).join('|');
+  const teller = useRef(0);
+
+  useEffect(() => {
+    if (!actief) return undefined;
+
+    const mijn = ++teller.current;
+    let weg = false;
+
+    haalDefinitieveDocumenten((projecten || []).map((p) => p.id))
+      .then((rijen) => {
+        if (!weg && mijn === teller.current) setDocs(definitieveDocsVoorLijst(rijen, projecten));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      weg = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sleutel, actief, nu]);
+
+  const ververs = useCallback(() => setNu((n) => n + 1), []);
+
+  return { docs, ververs };
+}
+
 async function leesPlan(aanvraagId) {
   const r = await haalAanvraag(aanvraagId);
 
@@ -70,8 +100,9 @@ async function leesPlan(aanvraagId) {
 
 // Het geopende concept: het plan met export, en de weg terug naar Aanvraag indienen.
 // aanvraagId, of algemeen: dan zoekt dit scherm zelf het concept projectplan van het project (net geschreven). nieuw: toon de melding waar het is bewaard.
-export function PlanVenster({ project, aanvraagId = '', algemeen = false, nieuw = false, store, onSluit, onNaarIndienen }) {
+export function PlanVenster({ project, aanvraagId = '', algemeen = false, definitiefId = '', nieuw = false, store, onSluit, onNaarIndienen }) {
   const [plan, setPlan] = useState(null);
+  const [versie, setVersie] = useState(0);
   const [fout, setFout] = useState('');
   const projectId = project ? project.id : '';
 
@@ -80,8 +111,22 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, nieuw 
 
     setPlan(null);
     setFout('');
+    setVersie(0);
 
     (async () => {
+      if (definitiefId) {
+        const d = await haalDefinitiefDocument(definitiefId);
+
+        if (weg) return;
+
+        if (d && d.inhoud && d.inhoud.plan) {
+          setPlan(d.inhoud.plan);
+          setVersie(d.versie);
+        } else setFout('Dit document is niet gevonden. Probeer het opnieuw.');
+
+        return;
+      }
+
       let id = aanvraagId;
 
       if (!id && algemeen) {
@@ -102,9 +147,10 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, nieuw 
     return () => {
       weg = true;
     };
-  }, [projectId, aanvraagId, algemeen]);
+  }, [projectId, aanvraagId, algemeen, definitiefId]);
 
-  const titel = `Concept projectplan ${project && project.naam ? project.naam : ''}`.trim();
+  const definitief = Boolean(definitiefId);
+  const titel = `${definitief ? 'Projectplan' : 'Concept projectplan'} ${project && project.naam ? project.naam : ''}`.trim();
 
   return (
     <div data-testid="gb-plan-open">
@@ -120,6 +166,13 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, nieuw 
       )}
       {plan && (
         <>
+          {definitief && (
+            <div style={css('margin-bottom: 14px;')}>
+              <Melding toon="info" testid="gb-definitief-info">
+                Dit is een vaste kopie. Wijzigingen in het concept veranderen deze versie niet.
+              </Melding>
+            </div>
+          )}
           {nieuw && (
             <div style={css('margin-bottom: 14px;')}>
               <Melding toon="succes" testid="gb-nieuw">
@@ -131,7 +184,7 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, nieuw 
             plan={plan}
             opgeslagen
             titel={titel}
-            kop="Concept projectplan"
+            kop={definitief ? `Projectplan · definitief${versie ? `, versie ${versie}` : ""}` : 'Concept projectplan'}
             projectNaam={project && project.naam}
             store={store}
             onSluit={onSluit}
@@ -150,7 +203,8 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, nieuw 
 }
 
 // De export van een geschreven document; een concept voor een fonds is er niet (die staat in Aanvraag indienen).
-export function geschrevenExport({ doc, project, store }) {
+// De begroting en het dekkingsplan zijn Excel (zie ExcelKnop in DefinitieveDocs.jsx); alleen het plan gaat via het exportmenu.
+export function geschrevenExport({ doc, store }) {
   if (doc.gegenereerd === 'plan') {
     return async () => {
       const plan = await leesPlan(doc.aanvraagId);
@@ -163,7 +217,19 @@ export function geschrevenExport({ doc, project, store }) {
     };
   }
 
-  if (doc.gegenereerd === 'begroting' || doc.gegenereerd === 'dekking') return projectExport({ projectId: project ? project.id : doc.projectId, store });
+  if (doc.gegenereerd === 'definitief' && doc.definitiefSoort === 'projectplan') {
+    return async () => {
+      const d = await haalDefinitiefDocument(doc.definitiefId);
+
+      if (!d || !d.inhoud || !d.inhoud.plan) return null;
+
+      const titel = `Projectplan ${doc.projectNaam || ''}`.trim();
+
+      return bouwDocumentModel({ tekst: planNaarTekst(d.inhoud.plan, titel), soort: 'Projectplan', organisatieNaam: (store && store.orgProfile && store.orgProfile.name) || null, projectNaam: doc.projectNaam, titel });
+    };
+  }
 
   return null;
 }
+
+export { leesPlan };

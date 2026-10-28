@@ -17,6 +17,7 @@ import {
 import { analyseerWebsite, extractOrganisatieVelden } from '../../data/services/chat.js';
 import { Button, Field, Notice, Panel, PanelHeader, veldStijl } from '../../shared/ui/index.js';
 import { OrganisatieStukken } from './financiering/StukkenVoorFondsenwerving.jsx';
+import HuisstijlPaneel from './HuisstijlPaneel.jsx';
 
 // Ook gebruikt door KompasToolPage.jsx (fase 6, veldlabels voor de
 // goedkeuring van AI-voorstellen die tijdens een gesprek naar voren komen).
@@ -569,6 +570,8 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
           </div>
         )}
       </div>
+
+      {!embedded && <HuisstijlPaneel premium={Boolean(app.isAdmin) || app.subscriptionTier === 'premium'} organisatieNaam={profiel.name || ''} />}
     </Panel>
   );
 }

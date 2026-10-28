@@ -16,7 +16,18 @@ const orgDocs = [
 const van = server.supabase.from;
 
 server.supabase.auth = { getUser: async () => ({ data: { user: { id: USER } } }) };
+const defRijen = [
+  { id: 'd1', program_id: PROJECT, soort: 'projectplan', naam: 'Projectplan', versie: 1, created_at: '2026-10-27T09:00:00Z', inhoud: {} },
+  { id: 'd2', program_id: PROJECT, soort: 'begroting', naam: 'Begroting', versie: 1, created_at: '2026-10-28T09:30:00Z', inhoud: {} },
+];
+
 server.supabase.from = (tabel) => {
+  if (tabel === 'subsidie_kompas_definitieve_documenten') {
+    const q = { select: () => q, eq: () => q, in: () => q, order: async () => ({ data: defRijen.slice().reverse(), error: null }) };
+
+    return q;
+  }
+
   if (tabel !== 'subsidie_kompas_knowledge_items') return van(tabel);
 
   const q = { select: () => q, eq: () => q, is: () => q, order: async () => ({ data: orgDocs, error: null }) };

@@ -51,7 +51,8 @@ import { opgeslagenDocumentExport } from './exportBronnen.js';
 // Aanvraag-assistent (Pro/Premium): het tabblad Aanvraag indienen. Het verschijnt alleen als de server de functie voor dit lid aanzet.
 import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
 import AanvragenTab from './aanvraag/AanvragenTab.jsx';
-import { PlanVenster, geschrevenExport, useGeschrevenDocs } from './aanvraag/GeschrevenDocs.jsx';
+import { PlanVenster, geschrevenExport, useDefinitieveDocs, useGeschrevenDocs } from './aanvraag/GeschrevenDocs.jsx';
+import { DefinitiefVerwijderKnop, ExcelKnop, MaakDefinitiefKnop } from './aanvraag/DefinitieveDocs.jsx';
 import BegrotingTab from './begroting/BegrotingTab.jsx';
 import { huidigeHash, vervangAdres } from '../../app/adres.js';
 import { datumTekst, organisatieDocsVoorLijst } from './aanvraag/aanvraagModel.js';
@@ -61,6 +62,7 @@ import { haalOrganisatieDocumentenOp } from '../../data/services/organisatiedocu
 // elk echt document hier altijd een .docx - geen verzonnen Excel/PDF-variant.
 // Het label links in de rij van een door Subsidie Kompas geschreven document.
 const GESCHREVEN_BADGE = { plan: 'PLAN', fonds: 'PLAN', begroting: 'BEGR', dekking: 'DEKK' };
+const DEFINITIEF_BADGE = { projectplan: 'plan', begroting: 'begroting', dekkingsplan: 'dekking' };
 const WORD_STIJL = { label: 'DOCX', bg: '#EAF1F6', color: '#2C4A5E' };
 
 // Op het scherm heet de soort Concept-dekkingsplan gewoon Dekkingsplan; de naam in de opslag blijft zoals hij was. Of een document nog concept of definitief is, staat bij het document zelf.
@@ -180,6 +182,8 @@ export default function DocumentatiePage() {
 
   // Wat Subsidie Kompas schreef (concept projectplan, begroting, dekkingsplan) komt in de lijst van Projectdocumentatie.
   const gegenereerd = useGeschrevenDocs({ projecten, metPlan: Boolean(assistent.beschikbaar), actief: tabActief === 'bestanden' && paid });
+  // De definitieve versies (Maak definitief) staan bovenaan de lijst.
+  const definitief = useDefinitieveDocs({ projecten, actief: tabActief === 'bestanden' && paid });
 
   // De bestanden van het organisatieprofiel (jaarverslag, ANBI-status, statuten, ...) horen bij alle projecten en staan daarom ook in deze lijst.
   const [orgDocs, setOrgDocs] = useState([]);
@@ -230,7 +234,7 @@ export default function DocumentatiePage() {
       })),
   );
   // Wat Subsidie Kompas schreef (concept projectplan, begroting, dekkingsplan) staat in dezelfde lijst, onder de soort die erbij hoort.
-  const alle = [...gegenereerd, ...eigen, ...organisatieDocsVoorLijst(orgDocs)];
+  const alle = [...definitief.docs, ...gegenereerd, ...eigen, ...organisatieDocsVoorLijst(orgDocs)];
   // Documenten van de hele organisatie gelden voor elk project: ze staan bij Alle projecten en bij elk gekozen project.
   const inProject = alle.filter((d) => projectFilter === 'alle' || d.organisatie || d.projectId === projectFilter);
   const zichtbaar = inProject.filter((d) => filter === 'alle' || d.soort === filter);
@@ -329,10 +333,11 @@ export default function DocumentatiePage() {
 
       {tabActief === 'bestanden' && planOpen && (
         <PlanVenster
-          key={`${planOpen.projectId}-${planOpen.aanvraagId || 'plan'}`}
+          key={`${planOpen.projectId}-${planOpen.definitiefId || planOpen.aanvraagId || 'plan'}`}
           project={(store.projects || []).find((p) => p.id === planOpen.projectId) || null}
           aanvraagId={planOpen.aanvraagId || ''}
           algemeen={Boolean(planOpen.algemeen)}
+          definitiefId={planOpen.definitiefId || ''}
           nieuw={Boolean(planOpen.nieuw)}
           store={store}
           onSluit={() => setPlanOpen(null)}
@@ -393,7 +398,8 @@ export default function DocumentatiePage() {
                   paid={paid}
                   onOpenInChat={openInChat}
                   onMelding={setMelding}
-                  onOpenGeschreven={(doc) => (doc.gegenereerd === 'fonds' ? naarIndienen(doc.projectId, doc.aanvraagId) : setPlanOpen({ projectId: doc.projectId, aanvraagId: doc.aanvraagId }))}
+                  onOpenGeschreven={(doc) => (doc.gegenereerd === 'fonds' ? naarIndienen(doc.projectId, doc.aanvraagId) : setPlanOpen(doc.definitief ? { projectId: doc.projectId, definitiefId: doc.definitiefId } : { projectId: doc.projectId, aanvraagId: doc.aanvraagId }))}
+                  onVerversDefinitief={definitief.ververs}
                 />
               ))}
             </ul>
@@ -431,20 +437,23 @@ function UploadVoorProject({ project, store }) {
   );
 }
 
-function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding, onOpenGeschreven }) {
+function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding, onOpenGeschreven, onVerversDefinitief }) {
   const beheer = useDocumentenBeheer(project || { id: '', docs: [] }, store);
   const kanVerwijderen = Boolean(!d.gegenereerd && project && isEchtId(project.id) && isEchtId(String(d.id)));
   const heeftTekst = Boolean(d.tekst && String(d.tekst).trim());
   const geschrevenBouw = d.gegenereerd ? geschrevenExport({ doc: d, project, store }) : null;
+  const isExcel = d.gegenereerd === 'begroting' || d.gegenereerd === 'dekking' || (d.definitief && d.definitiefSoort !== 'projectplan');
 
   return (
     <li data-testid="documenten-rij" data-project-id={d.projectId} style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF;')}>
       <span style={css(`flex-shrink: 0; padding: 5px 9px; border-radius: 8px; background: ${WORD_STIJL.bg}; color: ${WORD_STIJL.color}; font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em;`)}>
-        {d.gegenereerd ? GESCHREVEN_BADGE[d.gegenereerd] || 'DOC' : d.pad && !heeftTekst ? String((d.naam || '').split('.').pop() || 'BESTAND').toUpperCase().slice(0, 4) : WORD_STIJL.label}
+        {d.gegenereerd ? GESCHREVEN_BADGE[d.definitief ? DEFINITIEF_BADGE[d.definitiefSoort] : d.gegenereerd] || 'DOC' : d.pad && !heeftTekst ? String((d.naam || '').split('.').pop() || 'BESTAND').toUpperCase().slice(0, 4) : WORD_STIJL.label}
       </span>
 
       <div style={css('flex: 1 1 220px; min-width: 0;')}>
-        {d.gegenereerd === 'begroting' || d.gegenereerd === 'dekking' ? (
+        {d.definitief && d.definitiefSoort !== 'projectplan' ? (
+          <span data-testid="gb-definitief-naam" style={css("display: block; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;")}>{d.naam}</span>
+        ) : d.gegenereerd === 'begroting' || d.gegenereerd === 'dekking' ? (
           <a data-testid="gb-open-begroting" href={`#/kompas/documentatie?tab=begroting&project=${encodeURIComponent(d.projectId)}`} style={css("display: block; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E; text-decoration: none; overflow-wrap: anywhere;")}>
             {d.naam}
           </a>
@@ -464,7 +473,7 @@ function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding, on
             {d.projectNaam}
           </strong>
           {'  ·  '}
-          {[d.soortTekst || soortLabel(d.soort || 'Overig'), d.concept ? 'concept' : '', d.toelichting || '', d.gegenereerd && d.datum ? `bijgewerkt op ${datumTekst(d.datum)}` : '', d.versie ? `versie ${d.versie}` : '', d.context && d.context.fonds ? `voor ${d.context.fonds}` : '', d.vervangen ? 'vervangen door een nieuwere versie' : ''].filter(Boolean).join('  ·  ')}
+          {[d.soortTekst || soortLabel(d.soort || 'Overig'), d.concept ? 'concept' : '', d.definitief ? 'definitief' : '', d.toelichting || '', d.gegenereerd && d.datum ? `${d.definitief ? 'gemaakt' : 'bijgewerkt'} op ${datumTekst(d.datum)}` : '', d.versie ? `versie ${d.versie}` : '', d.context && d.context.fonds ? `voor ${d.context.fonds}` : '', d.vervangen ? 'vervangen door een nieuwere versie' : ''].filter(Boolean).join('  ·  ')}
         </span>
       </div>
 
@@ -488,6 +497,9 @@ function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding, on
             Bestand openen
           </button>
         )}
+        {isExcel && <ExcelKnop doc={d} project={project} store={store} onMelding={onMelding} />}
+        {d.concept && d.gegenereerd !== 'fonds' && <MaakDefinitiefKnop doc={d} project={project} onMelding={onMelding} onKlaar={onVerversDefinitief} />}
+        {d.definitief && <DefinitiefVerwijderKnop doc={d} onMelding={onMelding} onKlaar={onVerversDefinitief} />}
         {geschrevenBouw && <ExportMenu toegestaan={paid} uitlijnen="rechts" onMelding={onMelding} ariaLabel={`${d.naam} exporteren`} bouwModel={geschrevenBouw} />}
         {heeftTekst && <ExportMenu toegestaan={paid} uitlijnen="rechts" onMelding={onMelding} ariaLabel={`${d.naam} exporteren`} bouwModel={opgeslagenDocumentExport({ doc: d, store })} />}
         {kanVerwijderen && <DocumentVerwijderKnop doc={d} beheer={beheer} />}

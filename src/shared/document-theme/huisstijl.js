@@ -1,0 +1,102 @@
+// De eigen huisstijl voor documenten (Premium): een logo, twee kleuren en de naam op het voorblad en in de voettekst.
+// Alles komt uit één klein object (zie normaliseerHuisstijl); het gaat door dezelfde Word-, PDF- en Excel-generatoren als de Subsidie Kompas-huisstijl,
+// die voor Pro en als terugval blijft gelden. Lettertype en marges blijven die van Subsidie Kompas: Arial in Word en Excel, Helvetica in PDF
+// (een eigen lettertype zou op de computer van de lezer kunnen ontbreken en dan stilletjes op iets anders terugvallen).
+// Zuivere functies: geen netwerk, geen opslag.
+import { createDocumentTheme } from './documentTheme.js';
+import { SubsidieKompasTheme } from './themes/subsidieKompasTheme.js';
+
+export const HUISSTIJL_VERSIE = 1;
+export const MAX_HUISSTIJL_NAAM = 80;
+export const MAX_LOGO_TEKENS = 250000; // data-URL van het logo (ongeveer 180 KB aan beeld)
+export const LOGO_MAX_HOOGTE_PX = 48; // zoals het Subsidie Kompas-logo op het voorblad
+export const LOGO_MAX_BREEDTE_PX = 180;
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const LOGO = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
+
+const hex = (w, terugval) => (typeof w === 'string' && HEX.test(w.trim()) ? w.trim().toUpperCase() : terugval);
+
+// Wat in de database staat of uit het formulier komt -> een schoon object, of null als er niets bruikbaars in zit (dan geldt de Subsidie Kompas-huisstijl).
+export function normaliseerHuisstijl(ruw) {
+  if (!ruw || typeof ruw !== 'object' || Array.isArray(ruw)) return null;
+
+  const naam = String(ruw.naam == null ? '' : ruw.naam).replace(/\s+/g, ' ').trim().slice(0, MAX_HUISSTIJL_NAAM);
+  const logo = typeof ruw.logo === 'string' && ruw.logo.length <= MAX_LOGO_TEKENS && LOGO.test(ruw.logo) ? ruw.logo : '';
+  const primair = hex(ruw.primair, '');
+  const accent = hex(ruw.accent, '');
+
+  // Leeg object = geen eigen huisstijl.
+  if (!naam && !logo && !primair && !accent) return null;
+
+  const b = Number(ruw.logoBreedte);
+  const h = Number(ruw.logoHoogte);
+  const maten = logo && Number.isFinite(b) && Number.isFinite(h) && b > 0 && h > 0 ? pasLogoMaten(b, h) : logo ? { breedte: LOGO_MAX_HOOGTE_PX, hoogte: LOGO_MAX_HOOGTE_PX } : { breedte: 0, hoogte: 0 };
+
+  return {
+    versie: HUISSTIJL_VERSIE,
+    naam,
+    primair: primair || SubsidieKompasTheme.colors.primary,
+    accent: accent || SubsidieKompasTheme.colors.accent,
+    logo,
+    logoBreedte: maten.breedte,
+    logoHoogte: maten.hoogte,
+  };
+}
+
+// Houdt de verhouding van het logo en past het in een vak van hoogstens 180 bij 48 px.
+export function pasLogoMaten(breedte, hoogte) {
+  const f = Math.min(LOGO_MAX_BREEDTE_PX / breedte, LOGO_MAX_HOOGTE_PX / hoogte, 1);
+
+  return { breedte: Math.max(1, Math.round(breedte * f)), hoogte: Math.max(1, Math.round(hoogte * f)) };
+}
+
+// Mengt een kleur met wit: 0 = de kleur zelf, 1 = wit. Voor de lichte vlakken (totalen en samenvattingen).
+export function mengMetWit(kleur, deel) {
+  const k = hex(kleur, '#000000');
+  const mix = (i) => Math.round(parseInt(k.slice(1 + i * 2, 3 + i * 2), 16) * (1 - deel) + 255 * deel);
+
+  return `#${[0, 1, 2].map((i) => mix(i).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+}
+
+// Is de kleur donker genoeg voor witte tekst erop (tabelkoppen)? Anders wordt de tabeltekst donker.
+export function isDonker(kleur) {
+  const k = hex(kleur, '#000000');
+  const l = (0.299 * parseInt(k.slice(1, 3), 16) + 0.587 * parseInt(k.slice(3, 5), 16) + 0.114 * parseInt(k.slice(5, 7), 16)) / 255;
+
+  return l < 0.6;
+}
+
+// Het documentthema van deze huisstijl: de Subsidie Kompas-opzet met de kleuren, het logo en de naam van de lid.
+export function bouwHuisstijlThema(huisstijl) {
+  const h = normaliseerHuisstijl(huisstijl);
+
+  if (!h) return SubsidieKompasTheme;
+
+  const basis = SubsidieKompasTheme;
+
+  return createDocumentTheme('eigen', {
+    colors: {
+      ...basis.colors,
+      primary: h.primair,
+      accent: h.accent,
+      secondary: mengMetWit(h.primair, 0.78),
+      tableHeaderBg: h.primair,
+      tableHeaderText: isDonker(h.primair) ? '#FFFFFF' : '#2E3A38',
+      hyperlink: h.primair,
+    },
+    fonts: { ...basis.fonts },
+    typography: { ...basis.typography },
+    layout: { ...basis.layout },
+    branding: {
+      organizationName: h.naam || basis.branding.organizationName,
+      footerLabel: h.naam || basis.branding.footerLabel,
+      logo: h.logo ? { path: h.logo, width: h.logoBreedte, height: h.logoHoogte } : { ...basis.branding.logo },
+    },
+  });
+}
+
+// Welk thema bij een export hoort: Premium (en beheerders) met een eigen huisstijl krijgt die; iedereen anders de Subsidie Kompas-huisstijl.
+export function themaVoorExport({ premium, huisstijl }) {
+  return premium && normaliseerHuisstijl(huisstijl) ? bouwHuisstijlThema(huisstijl) : SubsidieKompasTheme;
+}
