@@ -72,7 +72,7 @@ function HarnasDocs({ store, logboek }) {
 
   return (
     <div>
-      {tab === 'indienen' && <AanvragenTab metProjectplan project={project} projecten={[project]} onKiesProject={() => {}} store={store} assistent={assistent} onNaarProjectinhoud={() => {}} onPlanGeschreven={() => { setOpenPlan({ projectId: PROJECT, nonce: 1 }); setTab('docs'); }} onNaarDocumentatie={() => { setOpenPlan(null); setTab('docs'); }} />}
+      {tab === 'indienen' && <AanvragenTab metProjectplan project={project} projecten={[project]} onKiesProject={() => {}} store={store} assistent={assistent} onNaarProjectinhoud={() => {}} onPlanGeschreven={() => { setOpenPlan({ projectId: PROJECT, nonce: 1 }); setTab('docs'); }} onNaarDocumentatie={(id, metOpen) => { setOpenPlan(metOpen ? { projectId: PROJECT, nonce: 2 } : null); setTab('docs'); }} />}
       {tab === 'docs' && <div data-testid="docs"><GeschrevenBlok project={project} store={store} assistent={assistent} openPlan={openPlan} onNaarIndienen={(id) => { logboek.push(id || 'plan'); setOpenPlan(null); setTab('indienen'); }} /></div>}
     </div>
   );
@@ -612,9 +612,11 @@ sectie('12. Het projectplan staat onder Projectdocumentatie');
   await klik($('[data-testid="gb-rij-plan"] button.fwk-wp-heel'));
   check('de rij opent het plan opnieuw, zonder de "net geschreven"-melding', await wacht(() => $('[data-testid="aa-plan"]')) && !$('[data-testid="gb-nieuw"]'));
   await klik($('[data-testid="gb-naar-indienen"]'));
-  check('Naar Aanvraag indienen brengt het lid terug; het plan is daar nog te openen', await wacht(() => $('[data-testid="aa-projectplan"]')) && logboek.length === 1 && !!knop('Open het projectplan') && !!$('[data-testid="aa-plan-naar-documentatie"]'));
-  await klik($('[data-testid="aa-plan-naar-documentatie"]'));
-  check('Bekijk het onder Projectdocumentatie leidt naar het blok, zonder het plan zelf te openen', await wacht(() => $('[data-testid="gb-rij-plan"]')) && !$('[data-testid="aa-plan"]'));
+  check('Naar Aanvraag indienen brengt het lid terug; daar staat dat het concept onder Projectdocumentatie staat', await wacht(() => $('[data-testid="aa-projectplan"]')) && logboek.length === 1 && !!$('[data-testid="aa-open-plan"]') && /onder Projectdocumentatie/.test($('[data-testid="aa-plan-klaar"]').textContent));
+  await klik($('[data-testid="aa-open-plan"]'));
+  check('"Open het projectplan" op Indienen gaat naar Projectdocumentatie en opent daar het concept projectplan', await wacht(() => $('[data-testid="gb-plan-open"]') && $('[data-testid="aa-plan"]')) && !$('[data-testid="aa-projectplan"]') && /Concept projectplan/.test($('[data-testid="aa-plan-kop"]').textContent));
+  await klik(knop('Sluiten'));
+  check('in de lijst heet het plan "Concept projectplan"', await wacht(() => $('[data-testid="gb-rij-plan"]')) && /Concept projectplan/.test($('[data-testid="gb-rij-plan"]').textContent));
   await opruimen();
 
   // Zonder de aanvraag-assistent (geen Pro/Premium-functie): alleen Begroting en dekkingsplan.

@@ -55,7 +55,7 @@ export default function GeschrevenBlok({ project, store, assistent, openPlan = n
   const { algemeen, fondsen } = splitsAanvragen(lijst);
   const fondsMetPlan = fondsen.filter((a) => a.heeftPlan);
   const heeftAlgemeen = Boolean(algemeen && algemeen.heeftPlan);
-  const titel = project ? `Projectplan ${project.naam || ''}`.trim() : 'Projectplan';
+  const titel = project ? `Concept projectplan ${project.naam || ''}`.trim() : 'Concept projectplan';
 
   const haalPlan = useCallback(async () => {
     if (!algemeen) return null;
@@ -118,7 +118,7 @@ export default function GeschrevenBlok({ project, store, assistent, openPlan = n
           plan={open.plan}
           opgeslagen
           titel={titel}
-          kop="Projectplan"
+          kop="Concept projectplan"
           projectNaam={project.naam}
           store={store}
           onSluit={() => setOpen(null)}
@@ -151,7 +151,7 @@ export default function GeschrevenBlok({ project, store, assistent, openPlan = n
 
           {lijst !== null && !fout && !heeftAlgemeen && (
             <p className="fwk-aa-klein" data-testid="gb-plan-leeg" style={css('margin: 0;')}>
-              Het projectplan is nog niet geschreven.{' '}
+              Het concept projectplan is nog niet geschreven.{' '}
               {onNaarIndienen && (
                 <button type="button" className="fwk-wp-link" onClick={() => onNaarIndienen()}>
                   Naar Aanvraag indienen
@@ -165,7 +165,7 @@ export default function GeschrevenBlok({ project, store, assistent, openPlan = n
               {heeftAlgemeen && (
                 <Rij
                   testid="gb-rij-plan"
-                  titel="Projectplan"
+                  titel="Concept projectplan"
                   sub={`Bijgewerkt op ${datumTekst(algemeen.planBijgewerkt) || 'onbekende datum'}`}
                   onOpen={() => openAlgemeen(false)}
                   eind={

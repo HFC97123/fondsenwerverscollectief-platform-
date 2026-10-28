@@ -231,15 +231,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
 
               {planGeschreven && (
                 <div className="fwk-aa-klein" data-testid="aa-plan-klaar" style={css('margin-top: 10px;')}>
-                  Plan geschreven. Opnieuw schrijven kan niet.
-                  {onNaarDocumentatie && (
-                    <>
-                      {' '}
-                      <button type="button" className="fwk-wp-link" data-testid="aa-plan-naar-documentatie" onClick={() => onNaarDocumentatie(projectId)}>
-                        Bekijk het onder Projectdocumentatie
-                      </button>
-                    </>
-                  )}
+                  Plan geschreven. Opnieuw schrijven kan niet.{onNaarDocumentatie ? ' U vindt het concept onder Projectdocumentatie.' : ''}
                 </div>
               )}
 
@@ -267,7 +259,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
 
               <div className="fwk-aa-onder">
                 {planGeschreven ? (
-                  <Button onClick={openAlgemeen} disabled={Boolean(bezig) || !algemeen} variant="primary" ariaLabel="Open het projectplan">
+                  <Button onClick={() => (onNaarDocumentatie ? onNaarDocumentatie(projectId, true) : openAlgemeen())} disabled={Boolean(bezig) || !algemeen} variant="primary" ariaLabel="Open het projectplan" testid="aa-open-plan">
                     Open het projectplan
                   </Button>
                 ) : (
@@ -342,7 +334,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                   testid="aa-rij-algemeen"
                   titel="Projectplan"
                   sub={`Bijgewerkt op ${datumTekst(algemeen.planBijgewerkt) || 'onbekende datum'}`}
-                  onOpen={openAlgemeen}
+                  onOpen={() => (onNaarDocumentatie ? onNaarDocumentatie(projectId, true) : openAlgemeen())}
                   eind={<Chip toon="blauw">Concept</Chip>}
                 />
               )}

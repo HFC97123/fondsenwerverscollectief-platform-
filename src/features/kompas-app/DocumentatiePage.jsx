@@ -266,7 +266,7 @@ export default function DocumentatiePage() {
           start={startAanvraag}
           onNaarProjectinhoud={() => setTab('inhoud')}
           onPlanGeschreven={(id) => naarDocumentatie(id, true)}
-          onNaarDocumentatie={(id) => naarDocumentatie(id)}
+          onNaarDocumentatie={(id, metOpenPlan) => naarDocumentatie(id, Boolean(metOpenPlan))}
         />
       ) : (
         <Leeg>
