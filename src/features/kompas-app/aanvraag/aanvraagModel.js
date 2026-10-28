@@ -218,14 +218,8 @@ export function kortFondsLabel(label) {
   return m && t.split(' ').length > 4 && m[1].split(' ').length >= 2 ? m[1].trim() : t;
 }
 
-const OVERHEID = /\b(gemeente|provincie|ministerie|rijksdienst|rijksoverheid|waterschap|europese|europees|erasmus|creative europe|rvo|dus-i|zonmw|nwo)\b/i;
-
-// "Fondsaanvraag Stichting Cordius" of, bij een overheid of Europees programma, "Subsidieaanvraag Gemeente Rotterdam".
-export function aanvraagTitel(label) {
-  const kort = kortFondsLabel(label);
-
-  return `${OVERHEID.test(kort) ? 'Subsidieaanvraag' : 'Fondsaanvraag'} ${kort}`.trim();
-}
+// De titel van een aanvraag is alleen de naam van het fonds: "Stichting Cordius".
+export const aanvraagTitel = (label) => kortFondsLabel(label);
 
 // Fondsen uit het dekkingsplan van het project waarvoor nog geen aanvraag is gemaakt, om er direct een te beginnen.
 // regels: regelUitRpc-regels; aanvragen: de aanvragen van het project. Verborgen of verwijderde bronnen, afgewezen en ingetrokken regels tellen niet mee.

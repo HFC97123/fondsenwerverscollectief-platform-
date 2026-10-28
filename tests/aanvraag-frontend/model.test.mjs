@@ -221,8 +221,8 @@ sectie('Korte titels: alleen de naam van het fonds');
   gelijk('een korte naam blijft zoals hij is', M.kortFondsLabel('Stichting Cordius'), 'Stichting Cordius');
   gelijk('een naam zonder stichting of fonds blijft zoals hij is', M.kortFondsLabel('Prins Bernhard Cultuurfonds'), 'Prins Bernhard Cultuurfonds');
   gelijk('rommel geeft een lege tekst', M.kortFondsLabel(null), '');
-  gelijk('titel van een fonds', M.aanvraagTitel('Kwartaalronde projectaanvraag Stichting Pieter Bastiaan'), 'Fondsaanvraag Stichting Pieter Bastiaan');
-  gelijk('titel van een overheid', M.aanvraagTitel('Gemeente Rotterdam'), 'Subsidieaanvraag Gemeente Rotterdam');
+  gelijk('titel van een aanvraag: alleen de naam van het fonds', M.aanvraagTitel('Kwartaalronde projectaanvraag Stichting Pieter Bastiaan'), 'Stichting Pieter Bastiaan');
+  gelijk('titel zonder voorvoegsel, ook bij andere aanbieders', M.aanvraagTitel('Gemeente Rotterdam'), 'Gemeente Rotterdam');
 
   const regels = [
     { id: 'a', bronStatus: 'zichtbaar', status: 'interesting', naam: 'Kwartaalronde donatieaanvraag mens, natuur en cultuur Stichting Cordius', funder: 'Stichting Cordius', requested: 5000, awarded: null, website: '' },
