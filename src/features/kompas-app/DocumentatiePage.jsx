@@ -54,7 +54,8 @@ import AanvragenTab from './aanvraag/AanvragenTab.jsx';
 import { PlanVenster, geschrevenExport, useGeschrevenDocs } from './aanvraag/GeschrevenDocs.jsx';
 import BegrotingTab from './begroting/BegrotingTab.jsx';
 import { huidigeHash, vervangAdres } from '../../app/adres.js';
-import { datumTekst } from './aanvraag/aanvraagModel.js';
+import { datumTekst, organisatieDocsVoorLijst } from './aanvraag/aanvraagModel.js';
+import { haalOrganisatieDocumentenOp } from '../../data/services/organisatiedocumenten.js';
 
 // Tot er een tweede documentgenerator bestaat (Excel/PDF, een latere stap) is
 // elk echt document hier altijd een .docx - geen verzonnen Excel/PDF-variant.
@@ -180,6 +181,26 @@ export default function DocumentatiePage() {
   // Wat Subsidie Kompas schreef (concept projectplan, begroting, dekkingsplan) komt in de lijst van Projectdocumentatie.
   const gegenereerd = useGeschrevenDocs({ projecten, metPlan: Boolean(assistent.beschikbaar), actief: tabActief === 'bestanden' && paid });
 
+  // De bestanden van het organisatieprofiel (jaarverslag, ANBI-status, statuten, ...) horen bij alle projecten en staan daarom ook in deze lijst.
+  const [orgDocs, setOrgDocs] = useState([]);
+
+  useEffect(() => {
+    if (!paid || tabActief !== 'bestanden') return undefined;
+
+    let weg = false;
+
+    Promise.resolve()
+      .then(() => haalOrganisatieDocumentenOp())
+      .then((l) => {
+        if (!weg && Array.isArray(l)) setOrgDocs(l);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      weg = true;
+    };
+  }, [paid, tabActief]);
+
   // Subsidieadvies: Begroting (stap 2) en Indienen (stap 4) zijn twee kanten van deze pagina.
   const sectie = tabActief === 'begroting' ? 'begroting' : 'indienen';
 
@@ -209,11 +230,12 @@ export default function DocumentatiePage() {
       })),
   );
   // Wat Subsidie Kompas schreef (concept projectplan, begroting, dekkingsplan) staat in dezelfde lijst, onder de soort die erbij hoort.
-  const alle = [...gegenereerd, ...eigen];
-  const inProject = alle.filter((d) => projectFilter === 'alle' || d.projectId === projectFilter);
+  const alle = [...gegenereerd, ...eigen, ...organisatieDocsVoorLijst(orgDocs)];
+  // Documenten van de hele organisatie gelden voor elk project: ze staan bij Alle projecten en bij elk gekozen project.
+  const inProject = alle.filter((d) => projectFilter === 'alle' || d.organisatie || d.projectId === projectFilter);
   const zichtbaar = inProject.filter((d) => filter === 'alle' || d.soort === filter);
   const filterProject = projectFilter !== 'alle' ? (store.projects || []).find((p) => p.id === projectFilter) || null : null;
-  const aantalProjecten = new Set(alle.map((d) => d.projectId)).size;
+  const aantalProjecten = new Set(alle.filter((d) => !d.organisatie).map((d) => d.projectId)).size;
 
   const openInChat = (doc) => {
     store.patch({ activeDoc: { id: doc.id, naam: doc.naam, soort: doc.soort, projectId: doc.projectId || '' } });
@@ -442,11 +464,16 @@ function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding, on
             {d.projectNaam}
           </strong>
           {'  ·  '}
-          {[soortLabel(d.soort || 'Overig'), d.concept ? 'concept' : '', d.toelichting || '', d.gegenereerd && d.datum ? `bijgewerkt op ${datumTekst(d.datum)}` : '', d.versie ? `versie ${d.versie}` : '', d.context && d.context.fonds ? `voor ${d.context.fonds}` : '', d.vervangen ? 'vervangen door een nieuwere versie' : ''].filter(Boolean).join('  ·  ')}
+          {[d.soortTekst || soortLabel(d.soort || 'Overig'), d.concept ? 'concept' : '', d.toelichting || '', d.gegenereerd && d.datum ? `bijgewerkt op ${datumTekst(d.datum)}` : '', d.versie ? `versie ${d.versie}` : '', d.context && d.context.fonds ? `voor ${d.context.fonds}` : '', d.vervangen ? 'vervangen door een nieuwere versie' : ''].filter(Boolean).join('  ·  ')}
         </span>
       </div>
 
       <span style={css('display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap;')}>
+        {d.organisatie && (
+          <a className="fwk-wp-link" data-testid="document-org-beheer" href="#/kompas/organisatie" style={css('font-size: 12.5px; color: #7B8985;')}>
+            Organisatieprofiel
+          </a>
+        )}
         {d.pad && (
           <button
             type="button"

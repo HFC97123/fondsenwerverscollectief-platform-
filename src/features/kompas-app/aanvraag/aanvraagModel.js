@@ -618,3 +618,11 @@ export function geschrevenDocs(project, aanvragen, dekkingRegels = 0) {
 
   return uit;
 }
+
+// De bestanden van het organisatieprofiel als regels in de lijst van Projectdocumentatie. Ze horen bij de hele organisatie, niet bij één project; de soort die het lid er
+// zelf aan gaf (jaarverslag, beleidsplan, ...) blijft zichtbaar, voor het filter vallen ze onder Overig. Alleen bestanden die echt te openen zijn.
+export function organisatieDocsVoorLijst(orgDocs) {
+  return (Array.isArray(orgDocs) ? orgDocs : [])
+    .filter((d) => d && d.pad && d.naam)
+    .map((d) => ({ id: `org-${d.id}`, naam: String(d.naam), soort: 'Overig', soortTekst: String(d.soort || 'Overig'), pad: d.pad, organisatie: true, projectId: '', projectNaam: 'Hele organisatie', gemaakt: d.aangemaakt || '' }));
+}

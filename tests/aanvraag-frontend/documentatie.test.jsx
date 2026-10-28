@@ -41,8 +41,25 @@ const wacht = async (fn, ms = 4000) => {
 const project = { id: PROJECT, naam: 'Samen Spelen', gearchiveerd: false, docs: [], budgetRegels: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] };
 const winkel = { projects: [project], orgProfile: { name: 'Stichting Samen Spelen' }, patch: () => {} };
 
-async function toon(server, tier = 'premium') {
+const ORG_DOCS = [
+  { id: 'o1', file_name: 'Jaarverslag 2025.pdf', title: null, notes: 'Jaarverslag', mime_type: 'application/pdf', storage_path: `${USER}/jaarverslag.pdf`, extracted_text: 'tekst', created_at: '2026-09-01T10:00:00Z' },
+  { id: 'o2', file_name: 'ANBI-beschikking.pdf', title: null, notes: 'Overig', mime_type: 'application/pdf', storage_path: `${USER}/anbi.pdf`, extracted_text: '', created_at: '2026-09-02T10:00:00Z' },
+  { id: 'o3', file_name: 'Notitie zonder bestand', title: null, notes: 'Overig', mime_type: '', storage_path: null, extracted_text: 'alleen tekst', created_at: '2026-09-03T10:00:00Z' },
+];
+
+async function toon(server, tier = 'premium', orgDocs = []) {
   client.__reset();
+  const van = server.supabase.from;
+
+  server.supabase.auth = { getUser: async () => ({ data: { user: { id: USER } } }) };
+  server.supabase.from = (tabel) => {
+    if (tabel !== 'subsidie_kompas_knowledge_items') return van(tabel);
+
+    const q = { select: () => q, eq: () => q, not: () => q, order: async () => ({ data: orgDocs, error: null }) };
+    q.is = () => q;
+
+    return q;
+  };
   client.__zetSupabase(server.supabase);
   globalThis.__app = { subscriptionTier: tier, isAdmin: false };
   globalThis.__store = winkel;
@@ -59,6 +76,26 @@ sectie('1. Voordat er iets geschreven is: de begroting staat er, het projectplan
   await toon(S);
   check('Begroting telt 1, Projectplan 0', await wacht(() => aantal('Begroting') === 1) && aantal('Projectplan') === 0);
   check('geen concept projectplan in de lijst', !$$('[data-testid="documenten-rij"]').some((r) => /Concept projectplan/.test(r.textContent)));
+  await act(async () => { root.render(<div />); });
+}
+
+sectie('1b. Documenten van de hele organisatie staan bij alle projecten');
+{
+  const S = maakServer({ tier: 'premium' });
+
+  await toon(S, 'premium', ORG_DOCS);
+  check('de bestanden uit het organisatieprofiel staan in de lijst, zonder de notitie zonder bestand', await wacht(() => $$('[data-testid="documenten-rij"]').length === 3) && /Jaarverslag 2025/.test(tekst()) && /ANBI-beschikking/.test(tekst()) && !/Notitie zonder bestand/.test(tekst()));
+  const rij = $$('[data-testid="documenten-rij"]').find((r) => /Jaarverslag 2025/.test(r.textContent));
+  check('de regel zegt Hele organisatie en de soort die het lid koos, en heeft Bestand openen en een link naar het organisatieprofiel', /Hele organisatie/.test(rij.textContent) && /Jaarverslag/.test(rij.textContent) && /Bestand openen/.test(rij.textContent) && !!rij.querySelector('[data-testid="document-org-beheer"]') && !rij.querySelector('[data-testid*="verwijder"]'));
+  check('het getal bij Overig telt ze mee en het tabblad ook', aantal('Overig') === 2 && /Projectdocumentatie\s*3/.test(tekst()));
+  check('de kop telt de documenten en de organisatie telt niet als project', /3 documenten in 1 project/.test(tekst()));
+
+  const kies = $('[data-testid="documenten-projectfilter"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(kies, PROJECT);
+    kies.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+  check('ook bij een gekozen project staan de organisatiebestanden erbij', await wacht(() => $('[data-testid="documenten-projectfilter"]').value === PROJECT) && $$('[data-testid="documenten-rij"]').length >= 2 && /Jaarverslag 2025/.test(tekst()));
   await act(async () => { root.render(<div />); });
 }
 
