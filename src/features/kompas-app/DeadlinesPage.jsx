@@ -58,9 +58,13 @@ const DEADLINE_OPTIONS = [
 ];
 
 
+// Bij een vergrendelde regel geeft de database alleen een periode (0 = binnen 1 week, 7 = binnen 1 maand, ...). Sorteer die op het
+// einde van die periode, zodat ze niet vóór de eigen, wel zichtbare regelingen met een echte datum komen.
+const EINDE_PERIODE = { 0: 6, 7: 30, 31: 90, 91: 180, 181: 365 };
+
 function daysLeft(row) {
   if (row.dagen != null) {
-    return row.dagen;
+    return !row.volledigZichtbaar && EINDE_PERIODE[row.dagen] != null ? EINDE_PERIODE[row.dagen] : row.dagen;
   }
 
   if (!row.deadline) {
