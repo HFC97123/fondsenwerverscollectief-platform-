@@ -591,3 +591,30 @@ export function volgendeStap(stappen) {
 }
 
 export const STAP_KNOP = { vragenlijst: 'Ga verder met de vragenlijst', antwoorden: 'Ga verder met de antwoorden', stukken: 'Ga verder met de stukken', controle: 'Naar de controle' };
+
+// Wat Subsidie Kompas voor een project heeft geschreven, als regels voor de lijst van Projectdocumentatie: het concept projectplan en de concepten per fonds (soort Projectplan),
+// de concept-begroting (soort Begroting) en het concept-dekkingsplan (soort Concept-dekkingsplan, op het scherm Dekkingsplan). Het lid maakt ze later definitief. Alleen wat er echt is; de server bewaart de plannen, hier wordt niets nagemaakt.
+// aanvragen: de lijst van de server (of null), dekkingRegels: het aantal regels van het dekkingsplan (of 0).
+export function geschrevenDocs(project, aanvragen, dekkingRegels = 0) {
+  if (!project || !project.id) return [];
+
+  const { algemeen, fondsen } = splitsAanvragen(aanvragen);
+  const basis = { projectId: project.id, projectNaam: project.naam || 'Naamloos project', concept: true };
+  const uit = [];
+
+  if (algemeen && algemeen.heeftPlan) {
+    uit.push({ ...basis, id: `gen-plan-${algemeen.id}`, naam: 'Concept projectplan', soort: 'Projectplan', gegenereerd: 'plan', aanvraagId: algemeen.id, datum: algemeen.planBijgewerkt || '' });
+  }
+
+  for (const a of fondsen.filter((x) => x.heeftPlan)) {
+    uit.push({ ...basis, id: `gen-fonds-${a.id}`, naam: `Concept voor ${kortFondsLabel(a.fondsLabel) || 'een fonds'}`, soort: 'Projectplan', gegenereerd: 'fonds', aanvraagId: a.id, datum: a.planBijgewerkt || a.bijgewerkt || '' });
+  }
+
+  const regels = Array.isArray(project.budgetRegels) ? project.budgetRegels.length : 0;
+
+  if (regels > 0) uit.push({ ...basis, id: `gen-begroting-${project.id}`, naam: 'Concept begroting', soort: 'Begroting', gegenereerd: 'begroting', datum: '', toelichting: `${regels} ${regels === 1 ? 'regel' : 'regels'}` });
+
+  if (Number(dekkingRegels) > 0) uit.push({ ...basis, id: `gen-dekking-${project.id}`, naam: 'Concept dekkingsplan', soort: 'Concept-dekkingsplan', gegenereerd: 'dekking', datum: '', toelichting: `${dekkingRegels} ${Number(dekkingRegels) === 1 ? 'financier' : 'financiers'}` });
+
+  return uit;
+}

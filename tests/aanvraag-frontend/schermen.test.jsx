@@ -16,7 +16,6 @@ const client = await import('../checkout-frontend/fake-client.js');
 const { useAanvraagAssistent } = await import('../../src/features/kompas-app/aanvraag/useAanvraagAssistent.js');
 const { default: ProjectplanTab } = await import('../../src/features/kompas-app/aanvraag/ProjectplanTab.jsx');
 const { default: AanvragenTab } = await import('../../src/features/kompas-app/aanvraag/AanvragenTab.jsx');
-const { default: GeschrevenBlok } = await import('../../src/features/kompas-app/aanvraag/GeschrevenBlok.jsx');
 
 const stand = { ok: 0, fout: 0 };
 const check = (naam, waar, detail = '') => { if (waar) stand.ok += 1; else { stand.fout += 1; console.log(`  FAIL: ${naam} ${detail}`); } };
@@ -59,23 +58,6 @@ function HarnasEen({ store }) {
   if (!assistent.beschikbaar) return <div data-testid="geen-assistent">geen</div>;
 
   return <AanvragenTab metProjectplan project={project} projecten={[project]} onKiesProject={() => {}} store={store} assistent={assistent} onNaarProjectinhoud={() => {}} />;
-}
-
-// Indienen en Projectdocumentatie zoals de pagina ze verbindt: na het schrijven gaat het lid naar Projectdocumentatie, waar het plan opent.
-function HarnasDocs({ store, logboek }) {
-  const assistent = useAanvraagAssistent(true);
-  const [tab, setTab] = useState('indienen');
-  const [openPlan, setOpenPlan] = useState(null);
-  const project = { id: PROJECT, naam: 'Samen Spelen', budgetRegels: [{ id: 'a' }, { id: 'b' }] };
-
-  if (!assistent.klaar) return <div data-testid="laden">laden</div>;
-
-  return (
-    <div>
-      {tab === 'indienen' && <AanvragenTab metProjectplan project={project} projecten={[project]} onKiesProject={() => {}} store={store} assistent={assistent} onNaarProjectinhoud={() => {}} onPlanGeschreven={() => { setOpenPlan({ projectId: PROJECT, nonce: 1 }); setTab('docs'); }} onNaarDocumentatie={(id, metOpen) => { setOpenPlan(metOpen ? { projectId: PROJECT, nonce: 2 } : null); setTab('docs'); }} />}
-      {tab === 'docs' && <div data-testid="docs"><GeschrevenBlok project={project} store={store} assistent={assistent} openPlan={openPlan} onNaarIndienen={(id) => { logboek.push(id || 'plan'); setOpenPlan(null); setTab('indienen'); }} /></div>}
-    </div>
-  );
 }
 
 // ── Hulpjes ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -585,43 +567,6 @@ sectie('11. Aanvraag indienen: formulier, tekenlimieten, antwoorden per vraag en
   const Z = maakServer({ zonderVragen: true });
   await openWerk(Z);
   check('zonder formulierfunctie op de server verdwijnt het blok en blijft de oude schrijfkaart', await wacht(() => $('[data-testid="aa-kaart-schrijven"]')) && !$('[data-testid="aa-formulier-blok"]'));
-  await opruimen();
-}
-
-sectie('12. Het projectplan staat onder Projectdocumentatie');
-{
-  const D = maakServer({ tier: 'premium' });
-  const logboek = [];
-
-  client.__reset();
-  client.__zetSupabase(D.supabase);
-  await act(async () => { root.render(<HarnasDocs store={{ orgProfile: { name: 'Stichting Samen Spelen' } }} logboek={logboek} />); });
-  await wacht(() => $('[data-testid="aa-projectplan"]'));
-  await klik(knop('Start algemeen plan'));
-  await klik(knop('Ja, schrijf het plan'));
-  check('na het schrijven opent het plan onder Projectdocumentatie, niet meer op Indienen', await wacht(() => $('[data-testid="gb-plan-open"]') && $('[data-testid="aa-plan"]')) && !$('[data-testid="aa-projectplan"]'));
-  check('met de melding dat het is bewaard onder Projectdocumentatie › Projectplan', await wacht(() => $('[data-testid="gb-nieuw"]')) && /Projectdocumentatie › Projectplan/.test($('[data-testid="gb-nieuw"]').textContent));
-  check('het geopende plan heeft 8 onderdelen, exportmenu en knop terug naar Aanvraag indienen', $$('[data-testid="aa-plan-sectie"]').length === 8 && !!knop('Plan exporteren') && !!$('[data-testid="gb-naar-indienen"]'));
-  check('het plan is op de server bewaard (één algemeen plan)', [...D.s.tabel.values()].length === 1 && [...D.s.tabel.values()][0].soort === 'algemeen');
-
-  await klik(knop('Sluiten'));
-  check('na sluiten: Projectplan en Begroting en dekkingsplan staan onder elkaar', await wacht(() => $('[data-testid="gb-rij-plan"]')) && !!$('[data-testid="gb-projectplan"]') && !!$('[data-testid="gb-rij-begroting"]'));
-  check('het projectplan heeft een datum, een exportmenu en opent weer', /Bijgewerkt op/.test($('[data-testid="gb-rij-plan"]').textContent) && !!knop('Projectplan exporteren'));
-  check('begroting en dekkingsplan: aantal regels, link naar het tabblad en exportmenu', /2 regels/.test($('[data-testid="gb-rij-begroting"]').textContent) && /tab=begroting&project=/.test($('[data-testid="gb-rij-begroting"] a').getAttribute('href')) && !!knop('Begroting en dekkingsplan exporteren'));
-
-  await klik($('[data-testid="gb-rij-plan"] button.fwk-wp-heel'));
-  check('de rij opent het plan opnieuw, zonder de "net geschreven"-melding', await wacht(() => $('[data-testid="aa-plan"]')) && !$('[data-testid="gb-nieuw"]'));
-  await klik($('[data-testid="gb-naar-indienen"]'));
-  check('Naar Aanvraag indienen brengt het lid terug; daar staat dat het concept onder Projectdocumentatie staat', await wacht(() => $('[data-testid="aa-projectplan"]')) && logboek.length === 1 && !!$('[data-testid="aa-open-plan"]') && /onder Projectdocumentatie/.test($('[data-testid="aa-plan-klaar"]').textContent));
-  await klik($('[data-testid="aa-open-plan"]'));
-  check('"Open het projectplan" op Indienen gaat naar Projectdocumentatie en opent daar het concept projectplan', await wacht(() => $('[data-testid="gb-plan-open"]') && $('[data-testid="aa-plan"]')) && !$('[data-testid="aa-projectplan"]') && /Concept projectplan/.test($('[data-testid="aa-plan-kop"]').textContent));
-  await klik(knop('Sluiten'));
-  check('in de lijst heet het plan "Concept projectplan"', await wacht(() => $('[data-testid="gb-rij-plan"]')) && /Concept projectplan/.test($('[data-testid="gb-rij-plan"]').textContent));
-  await opruimen();
-
-  // Zonder de aanvraag-assistent (geen Pro/Premium-functie): alleen Begroting en dekkingsplan.
-  await act(async () => { root.render(<GeschrevenBlok project={{ id: PROJECT, naam: 'Samen Spelen' }} store={{}} assistent={{ beschikbaar: false }} />); });
-  check('zonder assistent: geen projectplan-blok, wel begroting en dekkingsplan', !$('[data-testid="gb-projectplan"]') && !!$('[data-testid="gb-rij-begroting"]') && /Nog geen begroting ingevuld/.test(tekst()));
   await opruimen();
 }
 

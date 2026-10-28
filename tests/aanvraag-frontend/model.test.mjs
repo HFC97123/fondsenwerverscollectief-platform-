@@ -236,4 +236,19 @@ sectie('Korte titels: alleen de naam van het fonds');
   gelijk('dekkingsplan: een fonds met een aanvraag (ook onder de lange naam) staat er niet meer in', M.fondsenUitDekkingsplan(regels, [{ soort: 'fonds', fondsLabel: 'Kwartaalronde projectaanvraag Stichting Pieter Bastiaan' }, { soort: 'fonds', fondsLabel: 'Stichting Cordius' }]).length, 0);
 }
 
+
+sectie('Geschreven documenten voor Projectdocumentatie');
+{
+  const proj = { id: 'p1', naam: 'Samen Spelen', budgetRegels: [{}, {}] };
+  const lijst = [{ id: 'a1', soort: 'algemeen', heeftPlan: true, planBijgewerkt: '2026-10-28T10:00:00Z' }, { id: 'f1', soort: 'fonds', heeftPlan: true, fondsLabel: 'Kwartaalronde donatieaanvraag mens, natuur en cultuur Stichting Cordius', bijgewerkt: '2026-10-28T11:00:00Z' }, { id: 'f2', soort: 'fonds', heeftPlan: false, fondsLabel: 'Fonds zonder plan' }];
+  const d = M.geschrevenDocs(proj, lijst, 3);
+
+  check('plan, concept per fonds, begroting en dekkingsplan: vier regels', d.length === 4);
+  check('het concept projectplan heet zo en valt onder Projectplan', d[0].naam === 'Concept projectplan' && d[0].soort === 'Projectplan' && d[0].gegenereerd === 'plan' && d[0].aanvraagId === 'a1' && d[0].projectNaam === 'Samen Spelen');
+  check('een fonds zonder geschreven plan telt niet; de naam van het fonds is kort', d[1].naam === 'Concept voor Stichting Cordius' && !d.some((x) => /zonder plan/.test(x.naam)));
+  check('begroting en dekkingsplan hebben hun eigen soort en een toelichting', d[2].naam === 'Concept begroting' && d[2].soort === 'Begroting' && d[3].naam === 'Concept dekkingsplan' && /2 regels/.test(d[2].toelichting) && d[3].soort === 'Concept-dekkingsplan' && /3 financiers/.test(d[3].toelichting));
+  check('zonder iets geschreven: niets, ook niet bij een leeg dekkingsplan', M.geschrevenDocs({ id: 'p1', naam: 'X' }, [], 0).length === 0 && M.geschrevenDocs(null, null).length === 0);
+  check('de id\'s zijn uniek per document', new Set(d.map((x) => x.id)).size === 4);
+}
+
 klaar('aanvraag-schermen-model');

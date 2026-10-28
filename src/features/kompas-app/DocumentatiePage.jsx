@@ -51,15 +51,22 @@ import { opgeslagenDocumentExport } from './exportBronnen.js';
 // Aanvraag-assistent (Pro/Premium): het tabblad Aanvraag indienen. Het verschijnt alleen als de server de functie voor dit lid aanzet.
 import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
 import AanvragenTab from './aanvraag/AanvragenTab.jsx';
-import GeschrevenBlok from './aanvraag/GeschrevenBlok.jsx';
+import { PlanVenster, geschrevenExport, useGeschrevenDocs } from './aanvraag/GeschrevenDocs.jsx';
 import BegrotingTab from './begroting/BegrotingTab.jsx';
 import { huidigeHash, vervangAdres } from '../../app/adres.js';
+import { datumTekst } from './aanvraag/aanvraagModel.js';
 
 // Tot er een tweede documentgenerator bestaat (Excel/PDF, een latere stap) is
 // elk echt document hier altijd een .docx - geen verzonnen Excel/PDF-variant.
+// Het label links in de rij van een door Subsidie Kompas geschreven document.
+const GESCHREVEN_BADGE = { plan: 'PLAN', fonds: 'PLAN', begroting: 'BEGR', dekking: 'DEKK' };
 const WORD_STIJL = { label: 'DOCX', bg: '#EAF1F6', color: '#2C4A5E' };
 
-const FILTERS = [['alle', 'Alle documenten'], ...DOC_SOORTEN.map((soort) => [soort, soort])];
+// Op het scherm heet de soort Concept-dekkingsplan gewoon Dekkingsplan; de naam in de opslag blijft zoals hij was. Of een document nog concept of definitief is, staat bij het document zelf.
+const SOORT_LABEL = { 'Concept-dekkingsplan': 'Dekkingsplan' };
+const soortLabel = (soort) => SOORT_LABEL[soort] || soort;
+
+const FILTERS = [['alle', 'Alle documenten'], ...DOC_SOORTEN.map((soort) => [soort, soortLabel(soort)])];
 
 // Het gekozen project voor Projectinformatie staat als ?project=<id> in de hash, zodat het projectdossier er direct
 // naar kan linken en een vernieuwde pagina hetzelfde project toont.
@@ -98,7 +105,7 @@ export default function DocumentatiePage() {
   const [melding, setMelding] = useState('');
   const [gekozen, setGekozen] = useState(leesProjectUitUrl);
   const [tab, setTab] = useState(leesTabUitUrl);
-  const [openPlan, setOpenPlan] = useState(null); // { projectId, nonce }: het net geschreven plan opent direct onder Projectdocumentatie
+  const [planOpen, setPlanOpen] = useState(null); // { projectId, aanvraagId?, algemeen?, nieuw? }: een concept dat onder Projectdocumentatie openstaat
   const [startAanvraag, setStartAanvraag] = useState(null); // { aanvraagId, nonce }: een versie voor een fonds openen in Aanvraag indienen
   const [projectFilter, setProjectFilter] = useState(() => leesProjectUitUrl() || 'alle');
   const assistent = useAanvraagAssistent(paid);
@@ -120,7 +127,7 @@ export default function DocumentatiePage() {
 
   // Een tabblad kiezen wist de eenmalige verzoeken (plan direct openen, een aanvraag openen), zodat ze niet terugkomen bij een volgend bezoek.
   const kiesTab = useCallback((t) => {
-    setOpenPlan(null);
+    setPlanOpen(null);
     setStartAanvraag(null);
     setTab(t);
   }, []);
@@ -131,7 +138,7 @@ export default function DocumentatiePage() {
       kiesProject(id);
       setProjectFilter(id);
       setStartAanvraag(null);
-      setOpenPlan(metOpenPlan ? { projectId: id, nonce: Date.now() } : null);
+      setPlanOpen(metOpenPlan ? { projectId: id, algemeen: true, nieuw: true } : null);
       setTab('bestanden');
     },
     [kiesProject],
@@ -141,7 +148,7 @@ export default function DocumentatiePage() {
   const naarIndienen = useCallback(
     (id, aanvraagId) => {
       kiesProject(id);
-      setOpenPlan(null);
+      setPlanOpen(null);
       setStartAanvraag(aanvraagId ? { aanvraagId, nonce: Date.now() } : null);
       setTab('plan');
     },
@@ -170,6 +177,9 @@ export default function DocumentatiePage() {
     return () => window.removeEventListener('hashchange', volg);
   }, []);
 
+  // Wat Subsidie Kompas schreef (concept projectplan, begroting, dekkingsplan) komt in de lijst van Projectdocumentatie.
+  const gegenereerd = useGeschrevenDocs({ projecten, metPlan: Boolean(assistent.beschikbaar), actief: tabActief === 'bestanden' && paid });
+
   // Subsidieadvies: Begroting (stap 2) en Indienen (stap 4) zijn twee kanten van deze pagina.
   const sectie = tabActief === 'begroting' ? 'begroting' : 'indienen';
 
@@ -188,7 +198,7 @@ export default function DocumentatiePage() {
   }
 
   // Documenten met inhoud (opgemaakt in de chat) of een bewaard bestand (upload). Nooit een lege of fictieve kaart.
-  const alle = (store.projects || []).flatMap((p, pi) =>
+  const eigen = (store.projects || []).flatMap((p, pi) =>
     (p.docs || [])
       .filter((d) => (d.tekst && String(d.tekst).trim().length > 0) || d.pad)
       .map((d, di) => ({
@@ -198,12 +208,12 @@ export default function DocumentatiePage() {
         projectNaam: p.naam || 'Naamloos project',
       })),
   );
+  // Wat Subsidie Kompas schreef (concept projectplan, begroting, dekkingsplan) staat in dezelfde lijst, onder de soort die erbij hoort.
+  const alle = [...gegenereerd, ...eigen];
   const inProject = alle.filter((d) => projectFilter === 'alle' || d.projectId === projectFilter);
   const zichtbaar = inProject.filter((d) => filter === 'alle' || d.soort === filter);
   const filterProject = projectFilter !== 'alle' ? (store.projects || []).find((p) => p.id === projectFilter) || null : null;
   const aantalProjecten = new Set(alle.map((d) => d.projectId)).size;
-  // Wat Subsidie Kompas schreef (projectplan, begroting en dekkingsplan): voor het gekozen project, of per project bij "Alle projecten".
-  const blokProjecten = filterProject ? (isEchtId(filterProject.id) && !filterProject.gearchiveerd ? [filterProject] : []) : projecten;
 
   const openInChat = (doc) => {
     store.patch({ activeDoc: { id: doc.id, naam: doc.naam, soort: doc.soort, projectId: doc.projectId || '' } });
@@ -295,7 +305,20 @@ export default function DocumentatiePage() {
           </div>
         ))}
 
-      {tabActief === 'bestanden' && (
+      {tabActief === 'bestanden' && planOpen && (
+        <PlanVenster
+          key={`${planOpen.projectId}-${planOpen.aanvraagId || 'plan'}`}
+          project={(store.projects || []).find((p) => p.id === planOpen.projectId) || null}
+          aanvraagId={planOpen.aanvraagId || ''}
+          algemeen={Boolean(planOpen.algemeen)}
+          nieuw={Boolean(planOpen.nieuw)}
+          store={store}
+          onSluit={() => setPlanOpen(null)}
+          onNaarIndienen={() => naarIndienen(planOpen.projectId)}
+        />
+      )}
+
+      {tabActief === 'bestanden' && !planOpen && (
         <Blok kaal testid="documenten-bestanden">
           <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 14px;')}>
             <select
@@ -335,18 +358,6 @@ export default function DocumentatiePage() {
             })}
           </div>
 
-          {blokProjecten.map((p) => (
-            <GeschrevenBlok
-              key={p.id}
-              project={p}
-              store={store}
-              assistent={assistent}
-              openPlan={openPlan && openPlan.projectId === p.id ? openPlan : null}
-              onNaarIndienen={(aanvraagId) => naarIndienen(p.id, aanvraagId)}
-              kopMetProject={blokProjecten.length > 1}
-            />
-          ))}
-
           {filterProject && isEchtId(filterProject.id) && !filterProject.gearchiveerd && <UploadVoorProject project={filterProject} store={store} />}
 
           {zichtbaar.length > 0 && (
@@ -360,6 +371,7 @@ export default function DocumentatiePage() {
                   paid={paid}
                   onOpenInChat={openInChat}
                   onMelding={setMelding}
+                  onOpenGeschreven={(doc) => (doc.gegenereerd === 'fonds' ? naarIndienen(doc.projectId, doc.aanvraagId) : setPlanOpen({ projectId: doc.projectId, aanvraagId: doc.aanvraagId }))}
                 />
               ))}
             </ul>
@@ -397,19 +409,28 @@ function UploadVoorProject({ project, store }) {
   );
 }
 
-function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding }) {
+function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding, onOpenGeschreven }) {
   const beheer = useDocumentenBeheer(project || { id: '', docs: [] }, store);
-  const kanVerwijderen = Boolean(project && isEchtId(project.id) && isEchtId(String(d.id)));
+  const kanVerwijderen = Boolean(!d.gegenereerd && project && isEchtId(project.id) && isEchtId(String(d.id)));
   const heeftTekst = Boolean(d.tekst && String(d.tekst).trim());
+  const geschrevenBouw = d.gegenereerd ? geschrevenExport({ doc: d, project, store }) : null;
 
   return (
     <li data-testid="documenten-rij" data-project-id={d.projectId} style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF;')}>
       <span style={css(`flex-shrink: 0; padding: 5px 9px; border-radius: 8px; background: ${WORD_STIJL.bg}; color: ${WORD_STIJL.color}; font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em;`)}>
-        {d.pad && !heeftTekst ? String((d.naam || '').split('.').pop() || 'BESTAND').toUpperCase().slice(0, 4) : WORD_STIJL.label}
+        {d.gegenereerd ? GESCHREVEN_BADGE[d.gegenereerd] || 'DOC' : d.pad && !heeftTekst ? String((d.naam || '').split('.').pop() || 'BESTAND').toUpperCase().slice(0, 4) : WORD_STIJL.label}
       </span>
 
       <div style={css('flex: 1 1 220px; min-width: 0;')}>
-        {heeftTekst ? (
+        {d.gegenereerd === 'begroting' || d.gegenereerd === 'dekking' ? (
+          <a data-testid="gb-open-begroting" href={`#/kompas/documentatie?tab=begroting&project=${encodeURIComponent(d.projectId)}`} style={css("display: block; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E; text-decoration: none; overflow-wrap: anywhere;")}>
+            {d.naam}
+          </a>
+        ) : d.gegenereerd ? (
+          <button type="button" data-testid="gb-open-geschreven" onClick={() => onOpenGeschreven(d)} style={css('cursor: pointer; border: none; background: none; padding: 0; text-align: left;')}>
+            <span style={css("display: block; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;")}>{d.naam}</span>
+          </button>
+        ) : heeftTekst ? (
           <button type="button" onClick={() => onOpenInChat(d)} style={css('cursor: pointer; border: none; background: none; padding: 0; text-align: left;')}>
             <span style={css("display: block; font-family: 'Mulish', sans-serif; font-size: 14px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;")}>{d.naam}</span>
           </button>
@@ -421,7 +442,7 @@ function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding }) 
             {d.projectNaam}
           </strong>
           {'  ·  '}
-          {[d.soort || 'Overig', d.versie ? `versie ${d.versie}` : '', d.context && d.context.fonds ? `voor ${d.context.fonds}` : '', d.vervangen ? 'vervangen door een nieuwere versie' : ''].filter(Boolean).join('  ·  ')}
+          {[soortLabel(d.soort || 'Overig'), d.concept ? 'concept' : '', d.toelichting || '', d.gegenereerd && d.datum ? `bijgewerkt op ${datumTekst(d.datum)}` : '', d.versie ? `versie ${d.versie}` : '', d.context && d.context.fonds ? `voor ${d.context.fonds}` : '', d.vervangen ? 'vervangen door een nieuwere versie' : ''].filter(Boolean).join('  ·  ')}
         </span>
       </div>
 
@@ -440,6 +461,7 @@ function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding }) 
             Bestand openen
           </button>
         )}
+        {geschrevenBouw && <ExportMenu toegestaan={paid} uitlijnen="rechts" onMelding={onMelding} ariaLabel={`${d.naam} exporteren`} bouwModel={geschrevenBouw} />}
         {heeftTekst && <ExportMenu toegestaan={paid} uitlijnen="rechts" onMelding={onMelding} ariaLabel={`${d.naam} exporteren`} bouwModel={opgeslagenDocumentExport({ doc: d, store })} />}
         {kanVerwijderen && <DocumentVerwijderKnop doc={d} beheer={beheer} />}
       </span>

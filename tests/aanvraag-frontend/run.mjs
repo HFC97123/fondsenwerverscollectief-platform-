@@ -48,4 +48,35 @@ for (const b of ['model', 'service']) {
   status = status || (r.status ?? 1);
 }
 
+// De echte pagina Projectdocumentatie: het concept projectplan, de begroting en het dekkingsplan als regels in de lijst.
+{
+  const fakeClient = join(process.cwd(), 'tests', 'checkout-frontend', 'fake-client.js');
+  const stub = (inhoud) => ({ contents: inhoud, loader: 'js' });
+
+  await build({
+    entryPoints: ['tests/aanvraag-frontend/documentatie.test.jsx'],
+    outfile: 'tests/aanvraag-frontend/.build/documentatie.bundle.mjs',
+    bundle: true, platform: 'node', format: 'esm', loader: { '.js': 'jsx' }, jsx: 'automatic',
+    define: { 'process.env.NODE_ENV': '"test"', 'import.meta.env': '{}' },
+    banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
+    external: ['jsdom', 'exceljs', 'docx', 'jszip', 'pdfjs-dist', 'mammoth'],
+    plugins: [
+      { name: 'alias-fakes', setup(b) { b.onResolve({ filter: /\/client\.js$/ }, (a) => (a.importer.includes('/src/') ? { path: fakeClient } : null)); } },
+      { name: 'url-stub', setup(b) { b.onResolve({ filter: /\?url$/ }, (a) => ({ path: a.path, namespace: 'url-stub' })); b.onLoad({ filter: /.*/, namespace: 'url-stub' }, () => stub("export default 'worker.js';")); } },
+      // De pagina haalt zijn gegevens uit de app (rechten) en de winkel (projecten); in de test zijn dat twee kleine stand-ins.
+      { name: 'app-stub', setup(b) {
+        b.onResolve({ filter: /\/useKompasApp\.js$/ }, () => ({ path: 'useKompasApp', namespace: 'app-stub' }));
+        b.onResolve({ filter: /\/KompasStore\.jsx$/ }, () => ({ path: 'KompasStore', namespace: 'app-stub' }));
+        b.onLoad({ filter: /^useKompasApp$/, namespace: 'app-stub' }, () => stub('export const useApp = () => globalThis.__app;'));
+        b.onLoad({ filter: /^KompasStore$/, namespace: 'app-stub' }, () => stub("export const DOC_SOORTEN = ['Projectplan', 'Begroting', 'Concept-dekkingsplan', 'Overig']; export const PROJECT_EMPTY = {}; export const useKompas = () => globalThis.__store; export const useKompasZacht = () => globalThis.__store; export const KompasProvider = ({ children }) => children;"));
+      } },
+    ],
+    logLevel: 'error',
+  });
+
+  const r = spawnSync('node', ['tests/aanvraag-frontend/.build/documentatie.bundle.mjs'], { stdio: 'inherit' });
+
+  status = status || (r.status ?? 1);
+}
+
 process.exit(status);
