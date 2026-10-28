@@ -572,6 +572,60 @@ sectie('N. Veldinventaris: wat een Free/Pro-gebruiker van een Premium-record te 
   check('N (premium): Premium krijgt de volledige rij (op interne identifiers na)', prem.row.contact_email === O.contact && prem.row.funder_missie === O.missie && !('funder_id' in prem.row));
 }
 
+// =================================================================================================
+sectie('P. Database eerst, online alleen aanvullend (Free, Pro, Premium)');
+{
+  const vier = ['A', 'B', 'C', 'D'].map((l) => reg(basis({ naam: `F${l} Gewoon Fonds`, tier: 'free', funder: `Funder ${l}`, regios: ['Amsterdam'], min: 2000, max: 20000 })));
+  const aanvulling = wk({ regeling: 'Online Aanvulling', gever: 'Online Gever', url: 'https://online.test/x' });
+
+  // Free: de chat toont maximaal 3 fondsen. Levert de database er 3 of meer, dan is online niet nodig.
+  wereld({ regelingen: vier, profiel: 'free', scout: { kandidaten: [aanvulling] } });
+  const freeGenoeg = await stel('free');
+
+  check('Free, database levert 3 of meer: geen online zoekactie (geen verkenner)', freeGenoeg.status === 200 && freeGenoeg.scout.length === 0 && /Online onderzoek is nu niet actief|ONLINE ONDERZOEK/.test(modelBlok(freeGenoeg)), `${freeGenoeg.scout.length}`);
+  check('Free: nooit meer dan 3 fondsen getoond', freeGenoeg.tel && freeGenoeg.tel.getoond <= 3, JSON.stringify(freeGenoeg.tel));
+
+  // Free: te weinig in de database: dan een korte online aanvulling, om tot 3 te komen (hier 1 uit de database + maximaal 2 online).
+  wereld({ regelingen: [vier[0]], profiel: 'free', scout: { kandidaten: [aanvulling] } });
+  const freeKort = await stel('free');
+
+  check('Free, database levert minder dan 3: een korte online aanvulling (hoogstens 2 kandidaten)', freeKort.scout.length === 1 && /Maximaal 2 kandidaten/.test(JSON.stringify(freeKort.scout[0])), JSON.stringify(freeKort.scout[0] || {}).slice(0, 200));
+  check('Free: de online ronde zoekt ANDERE fondsen dan die al uit de database komen ("Noem NIET")', /Noem NIET/.test(JSON.stringify(freeKort.scout[0])) && /FA Gewoon Fonds|Funder A/.test(JSON.stringify(freeKort.scout[0])));
+  check('Free: ook met online aanvulling nooit meer dan 3 getoond', freeKort.tel && freeKort.tel.getoond <= 3, JSON.stringify(freeKort.tel));
+
+  // Pro: de korte lijst uit de database is sterk genoeg: geen online zoekactie.
+  wereld({ regelingen: vier, profiel: 'pro', scout: { kandidaten: [aanvulling] } });
+  const proGenoeg = await stel('pro');
+
+  check('Pro, database levert genoeg sterke matches: geen online zoekactie', proGenoeg.status === 200 && proGenoeg.scout.length === 0, `${proGenoeg.scout.length}`);
+
+  // Pro: de database levert te weinig: een korte online aanvulling (hoogstens 2 kandidaten, 2 zoekopdrachten), veel korter dan Premium.
+  wereld({ regelingen: [vier[0]], profiel: 'pro', scout: { kandidaten: [aanvulling] } });
+  const proKort = await stel('pro');
+
+  check('Pro, database levert te weinig: een korte online aanvulling (hoogstens 2 kandidaten en 2 zoekopdrachten)', proKort.scout.length === 1 && /Maximaal 2 kandidaten/.test(JSON.stringify(proKort.scout[0])) && /hoogstens 2 webzoekopdrachten/.test(JSON.stringify(proKort.scout[0])), JSON.stringify(proKort.scout[0] || {}).slice(0, 200));
+  check('Pro: hoofdmodel krijgt geen zoektool (online loopt via de verkenner, niet via het hoofdmodel)', Boolean(proKort.hoofd) && proKort.hoofd.tools === undefined);
+
+  // Premium: na de database altijd een online ronde (ruimer dan Pro).
+  wereld({ regelingen: vier, profiel: 'premium', scout: { kandidaten: [aanvulling] } });
+  const premiumGenoeg = await stel('premium');
+
+  check('Premium: ook als de database al genoeg levert volgt een online ronde (database eerst, dan aanvullend)', premiumGenoeg.scout.length === 1, `${premiumGenoeg.scout.length}`);
+  check('Premium: ruimer dan Pro (de chat-ruimte, zonder de korte beperking van 2 kandidaten)', !/Maximaal 2 kandidaten/.test(JSON.stringify(premiumGenoeg.scout[0] || {})));
+
+  // Beheer: onveranderd, zoekt altijd mee.
+  wereld({ regelingen: vier, profiel: 'admin', scout: { kandidaten: [aanvulling] } });
+  const beheer = await stel('admin');
+
+  check('Beheer: zoekt altijd online mee (onveranderd)', beheer.scout.length === 1);
+
+  // De online aanvulling blijft keurig binnen de exclusiviteit en de namen van wat al in de database staat verschijnen niet dubbel.
+  wereld({ regelingen: [vier[0]], profiel: 'free', scout: { kandidaten: [aanvulling] } });
+  const freeNogmaals = await stel('free');
+
+  check('Free met online aanvulling: de online gevonden regeling staat in het antwoord naast de database', /Online Aanvulling/.test(modelBlok(freeNogmaals)) && /FA Gewoon Fonds/.test(modelBlok(freeNogmaals)));
+}
+
 console.error = origError;
 console.log(`\nRESULTAAT: ${ok} OK, ${fout} FAIL`);
 process.exit(fout ? 1 : 0);

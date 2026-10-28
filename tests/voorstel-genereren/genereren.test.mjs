@@ -114,8 +114,8 @@ sectie('2. Pro: database met free + pro, GEEN Premium-record, GEEN exclusief fon
   check('Pro: slank actieplan, geen losse "Projectstukken verzamelen"-stap meer', j.voorstel.acties.filter((a) => a.titel.startsWith('Projectstukken')).length === 0);
   check('Pro: een regel zonder deadline krijgt één contactactie (nooit een verzonnen datum)', j.voorstel.regels.filter((x) => x.deadline.status !== 'geverifieerd' && x.selecteerbaar && x.bedrag).every((x) => j.voorstel.acties.some((a) => a.regelSleutel === x.sleutel && /^Kansrijkheid en indiendatum of vergaderdatum toetsen met/.test(a.titel))));
   check('Pro: aanvullen is niet beschikbaar (alleen Premium)', j.aanvullenMogelijk === false);
-  check('Pro: de oriëntatie vroeg om hoogstens 2 kandidaten en 2 zoekopdrachten', w.openaiAantal === 1 && /Maximaal 2 kandidaten/.test(JSON.stringify(w.openaiBodies[0])) && /hoogstens 2 webzoekopdrachten/.test(JSON.stringify(w.openaiBodies[0])), JSON.stringify(w.openaiBodies[0] || {}).slice(0, 300));
-  check('Pro: kleinere uitvoer en een eigen time-out dan de chat (max_output_tokens 4600)', w.openaiBodies[0]?.max_output_tokens === 4600, String(w.openaiBodies[0]?.max_output_tokens));
+  check('Pro: DATABASE EERST: de database haalt het doel al, dus geen online zoekactie (geen OpenAI-aanroep)', w.openaiAantal === 0 && j.werkwijze.onlineStatus === 'uit' && j.werkwijze.onlineKandidaten === 0, `${w.openaiAantal} ${JSON.stringify(j.werkwijze)}`);
+  check('Pro: de kostenmeter meldt dan alleen de database-scan, geen web-scan', w.gebruikRijen.every((rij) => rij.action_type === 'fonds_scan_database'), JSON.stringify(w.gebruikRijen).slice(0, 200));
   check('Pro: de kostenmeter legt alleen tellers vast (geen namen, geen inhoud)', w.gebruikRijen.length >= 1 && w.gebruikRijen.every((rij) => ['fonds_scan_database', 'fonds_scan_web'].includes(rij.action_type) && rij.tier === 'pro' && !/Muziek|Rotterdam|Premium|Geheim/.test(JSON.stringify(rij))), JSON.stringify(w.gebruikRijen).slice(0, 300));
   check('Pro: het voorstel bevat een beschikbaar-voor-controle sleutel per regel en acties verwijzen daarnaar', j.voorstel.acties.filter((a) => a.regelSleutel).every((a) => j.voorstel.regels.some((x) => x.sleutel === a.regelSleutel)));
 }
@@ -183,9 +183,19 @@ sectie('5. Al in het dekkingsplan staande financiers doen niet opnieuw mee');
 sectie('6. Online-only kandidaten: apart, niet gecontroleerd, nooit in de dekking; Premium lekt niet naar Pro');
 {
   // Pro: twee online-only kandidaten + één die samenvalt met een Premium-record + één die samenvalt met het exclusieve fonds.
+  // Pro, de database dekt het doel al: online kandidaten staan klaar, maar er wordt niet gezocht en er verschijnt niets online.
+  resetGenereren({ ...pool(), profile: PRO, online: [online({ gever: 'Onbekend Online Fonds', regeling: 'Online Muziekregeling' })] });
+  const genoeg = await genereer();
+
+  check('Pro, database dekt het doel: geen online zoekactie en geen online suggesties', genoeg.status === 200 && w.openaiAantal === 0 && (genoeg.json.onlineSuggesties || []).length === 0 && !genoeg.tekst.includes('Online Muziekregeling'), `${w.openaiAantal} ${JSON.stringify(genoeg.json.onlineSuggesties).slice(0, 100)}`);
+
+  // Pro, de database dekt het doel NIET (groot project): dan een korte online aanvulling.
+  const GROOT = projectRij({ budget_total: 1000000 });
+
   resetGenereren({
     ...pool(),
     profile: PRO,
+    project: GROOT,
     online: [
       online({ gever: 'Onbekend Online Fonds', regeling: 'Online Muziekregeling' }),
       online({ gever: 'Premium Gever', regeling: 'Premium Cultuurregeling', url: 'https://www.premium.example.nl/regeling', website: 'https://www.premium.example.nl/' }),
@@ -196,15 +206,18 @@ sectie('6. Online-only kandidaten: apart, niet gecontroleerd, nooit in de dekkin
   const r = await genereer();
   const j = r.json;
 
+  check('Pro, tekort na de database: de online aanvulling vroeg om hoogstens 2 kandidaten en 2 zoekopdrachten', w.openaiAantal === 1 && /Maximaal 2 kandidaten/.test(JSON.stringify(w.openaiBodies[0])) && /hoogstens 2 webzoekopdrachten/.test(JSON.stringify(w.openaiBodies[0])), JSON.stringify(w.openaiBodies[0] || {}).slice(0, 300));
+  check('Pro: kleinere uitvoer en een eigen time-out dan de chat (max_output_tokens 4600)', w.openaiBodies[0]?.max_output_tokens === 4600, String(w.openaiBodies[0]?.max_output_tokens));
+  check('Pro: de online ronde zoekt ANDERE financiers dan die al in het voorstel staan ("Noem NIET")', /Noem NIET/.test(JSON.stringify(w.openaiBodies[0])) && /Rotterdams Muziekfonds/.test(JSON.stringify(w.openaiBodies[0])));
   check('Pro: de verkenner levert hoogstens 2 kandidaten (de rest wordt weggegooid)', j.werkwijze.onlineKandidaten === 2, JSON.stringify(j.werkwijze));
   check('Pro: Premium- en exclusieve fondsen die online opduiken verschijnen nergens (voorstel, suggesties, melding)', NAMEN_VERBORGEN_VOOR_PRO.every((n) => !r.tekst.includes(n)), NAMEN_VERBORGEN_VOOR_PRO.filter((n) => r.tekst.includes(n)).join(','));
   check('een online-only kandidaat staat NIET tussen de voorstelregels', !regelNamen(r).includes('Online Muziekregeling') && j.voorstel.regels.every((x) => x.herkomst === 'database'));
   check('een online-only kandidaat verschijnt als suggestie, uitdrukkelijk niet gecontroleerd', j.onlineSuggesties.some((s) => s.naam === 'Online Muziekregeling' && s.gecontroleerd === false), JSON.stringify(j.onlineSuggesties).slice(0, 300));
   check('de dekking telt geen online suggestie mee', j.totalen.som === j.voorstel.regels.filter((x) => x.selecteerbaar && x.bedrag).reduce((t, x) => t + x.bedrag, 0));
-  check('de suggestie bevat een bron-URL (https) en een indicatief bedrag als schatting', j.onlineSuggesties.every((s) => s.url === null || /^https:\/\//.test(s.url)) && j.onlineSuggesties.every((s) => s.indicatiefBedrag === null || s.indicatiefBedrag <= 35000));
+  check('de suggestie bevat een bron-URL (https) en een indicatief bedrag als schatting', j.onlineSuggesties.every((s) => s.url === null || /^https:\/\//.test(s.url)) && j.onlineSuggesties.every((s) => s.indicatiefBedrag === null || s.indicatiefBedrag <= 500000));
 
   // Mislukte verkenner: geen voorstelverlies, wel eerlijke status.
-  resetGenereren({ ...pool(), profile: PRO, onlineStatus: 'fout' });
+  resetGenereren({ ...pool(), profile: PRO, project: GROOT, onlineStatus: 'fout' });
   const kapot = await genereer();
 
   check('verkenner mislukt: het voorstel uit de database komt er gewoon, status mislukt', kapot.status === 200 && kapot.json.voorstel.regels.length > 0 && kapot.json.werkwijze.onlineStatus === 'mislukt');
@@ -216,7 +229,7 @@ sectie('6. Online-only kandidaten: apart, niet gecontroleerd, nooit in de dekkin
   check('KOMPAS_WEB_VERKENNER=uit: geen OpenAI-aanroep, voorstel uit de database', uit.status === 200 && w.openaiAantal === 0 && uit.json.voorstel.regels.length > 0);
 
   // Als de exclusiviteitslijst niet betrouwbaar is, krijgt Pro geen online kandidaten (fail closed), de database wel.
-  resetGenereren({ ...pool(), profile: PRO, online: [online({})], exclusiefFout: true });
+  resetGenereren({ ...pool(), profile: PRO, project: GROOT, online: [online({})], exclusiefFout: true });
   const zonderLijst = await genereer();
 
   check('onbetrouwbare exclusiviteitslijst: Pro krijgt geen online oriëntatie (fail closed)', zonderLijst.status === 200 && w.openaiAantal === 0 && (zonderLijst.json.onlineSuggesties || []).length === 0, `${zonderLijst.status} ${w.openaiAantal}`);

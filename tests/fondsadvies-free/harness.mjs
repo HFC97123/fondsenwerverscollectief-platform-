@@ -177,7 +177,7 @@ export async function laadModule(bron, tag) {
   src = src.replace("import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';", 'const createClient = globalThis.__createClient;');
   const sharedUrl = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../supabase/functions/_shared') + path.sep).href;
   // De gebouwde module staat in tmp: dynamische imports uit ../_shared/ moeten naar de echte map wijzen (Node 22 leest .ts met type-stripping).
-  src = src.replace(/import\(\s*'\.\.\/_shared\/(?=bronControle|plaatsen|proSelectie|werkgebied|locatieVerfijning|fondsBeoordeling|tierConfig|gebruikLog)/g, `import('${sharedUrl}`);
+  src = src.replace(/import\(\s*'\.\.\/_shared\/(?=bronControle|plaatsen|proSelectie|werkgebied|locatieVerfijning|fondsBeoordeling|tierConfig|gebruikLog|onlineAanvulling|trefwoordKoppelen)/g, `import('${sharedUrl}`);
   const { code } = await esbuild.transform(src, { loader: 'ts', format: 'esm', target: 'es2022' });
   const uit = path.join(os.tmpdir(), `fondsadvies-test-${process.pid}`, `${tag}.mjs`);
   fs.mkdirSync(path.dirname(uit), { recursive: true });

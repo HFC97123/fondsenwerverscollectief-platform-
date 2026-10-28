@@ -6567,12 +6567,10 @@ async function freeFondsadvies(
   // kandidaten (zij zouden niet op exclusiviteit te controleren zijn): fail closed.
   const rechten = bepaalRechten(tier, isAdmin);
   const webToegestaan = rechten.isAdmin || rechten.tier === 'premium' || exclusiviteit.beschikbaar;
+  const FREE_CHAT_MAX = 3;
   const geenWeb = { kandidaten: [] as WebKandidaat[], status: 'uit' as const, usage: null as any };
 
-  const [funderPool, web] = await Promise.all([
-    haalFunderPool(),
-    webToegestaan ? verkenOnline(apiKey, criteria, berichten, taxonomie, matchContext) : Promise.resolve(geenWeb),
-  ]);
+  const funderPool = await haalFunderPool();
 
   const dbPool: { bron: Kandidaat['bron']; row: any }[] = [
     ...(subsidieKandidaten?.alle || []).map((row: any) => ({ bron: 'regeling' as const, row })),
@@ -6583,32 +6581,70 @@ async function freeFondsadvies(
   // Eén verzoekcontext voor database EN online (met de exclusiviteitsindex).
   const ctx = nieuweEntitlementCtx(DOCUMENT_MODI.includes(modus), exclusiviteit);
 
-  // Online kandidaten: koppelen aan de database (resolver), ontdubbelen, samenvoegen en per
-  // kandidaat vaststellen of hij bij een expliciet exclusief fonds hoort. Daarna één
-  // gezamenlijke pool; de centrale laag (onderdrukExclusief) verwijdert voor Free/Pro de
-  // exclusieve fondsen op basis van identiteit, vóór de engine.
-  const gekoppeld = verwerkWebKandidaten(web.kandidaten, dbPool, exclusiviteit);
-  await registreerOnlineGescand(admin, web.kandidaten, gekoppeld.geclassificeerd, 'chat');
-
   // Pro: de aanvrager speelt geen rol in selectie en ranking en het totaal gevraagde bedrag sluit geen fonds uit (elk fonds draagt een deel bij; de
   // bijdrage wordt per fonds geschat). Free, Premium en admin blijven ongewijzigd.
   // Premium krijgt dezelfde korte lijst met een ruimere buffer (160% in plaats van 120% van de financieringsbehoefte); de AI-beoordeling en de "net niet"-lijst
   // alleen als de servervlag FONDS_BEOORDELING voor dit lid aan staat.
   const proActief = (tier === 'pro' || tier === 'premium') && !isAdmin;
   const selectieCriteria: FondsCriteria = proActief ? { ...criteria, aanvragertype: 'onbekend', gevraagdBedrag: null } : criteria;
+  // Financieringsbehoefte: uit het project (begroting min eigen bijdrage, toegekend en aangevraagd), anders het bedrag dat het lid in het gesprek noemde ("we zoeken nog € 50.000").
+  const gesprekBehoefte = criteria.gevraagdBedrag && criteria.gevraagdBedrag > 0 ? criteria.gevraagdBedrag : null;
+  const feitenMetBehoefte: ProFeiten = proFeiten ? { ...proFeiten, behoefte: proFeiten.behoefte || gesprekBehoefte } : gesprekBehoefte ? { begroting: null, behoefte: gesprekBehoefte, regio: '', doelgroep: '' } : null;
+  const wilMeer = MEER_TONEN_RE.test(String(laatsteGebruiker?.content || ''));
+
+  // STAP 1, DATABASE EERST. Alleen de eigen database, zonder online kandidaten.
+  let gekoppeld = verwerkWebKandidaten([], dbPool, exclusiviteit);
   let selectie: ReturnType<typeof selecteerFreeFondsadvies> & { pro?: any } = selecteerFreeFondsadvies(gekoppeld.alle, selectieCriteria, tier, isAdmin, undefined, undefined, exclusiviteit);
+  let web: { kandidaten: WebKandidaat[]; status: 'ok' | 'uit' | 'mislukt'; usage: any; webAanroepen?: number } = geenWeb;
+
+  // STAP 2, ONLINE ALLEEN AANVULLEND. Alleen als de database niet genoeg oplevert: Free tot 3 fondsen, Pro en Premium tot de korte lijst de
+  // financieringsbehoefte dekt. Bij Free en Pro is de online ronde kort; Premium krijgt de ruime ronde. Faalt de vaststelling, dan wordt aangevuld.
+  if (webToegestaan) {
+    let proUitkomst: 'voldoende' | 'tekort' | 'zonder-begroting' | 'geen-geschikt' | null = null;
+    let proRegels = 0;
+
+    if (proActief && tier === 'pro') {
+      try {
+        const voor = await bouwProSelectie(admin, selectie, selectieCriteria, rechten, ctx, feitenMetBehoefte, wilMeer, null, 'pro');
+
+        proUitkomst = voor.resultaat.uitkomst;
+        proRegels = voor.resultaat.regels.length;
+      } catch (_e) {
+        console.error('[subsidie-kompas] database_eerst_bepaling_fout');
+      }
+    }
+
+    const { onlineNodigInChat, chatOnlineProfiel } = await import('../_shared/onlineAanvulling.ts');
+
+    if (onlineNodigInChat({ tier, isAdmin, aantalGetoond: selectie.getoond.length, proUitkomst, proRegels })) {
+      const { tierConfigVoor: configVoor } = await import('../_shared/tierConfig.ts');
+      const profiel = chatOnlineProfiel(tier, isAdmin, configVoor('pro', false).onlineOrientatie, Math.max(1, FREE_CHAT_MAX - selectie.getoond.length));
+      // Wat de database al oplevert wordt niet nogmaals gezocht: de online ronde zoekt andere fondsen.
+      const reedsBekend = Array.from(new Set(selectie.getoond.flatMap((k) => [k.funderNaam, k.naam]).filter(Boolean).map(String))).slice(0, 15);
+
+      web = await verkenOnline(apiKey, criteria, berichten, taxonomie, matchContext, undefined, profiel ? { ...profiel, extraInstructie: reedsBekend.length ? `Noem NIET (staan al in de database): ${reedsBekend.join('; ')}.` : '' } : reedsBekend.length ? { extraInstructie: `Noem NIET (staan al in de database): ${reedsBekend.join('; ')}.` } : undefined);
+
+      // Online kandidaten: koppelen aan de database (resolver), ontdubbelen, samenvoegen en per
+      // kandidaat vaststellen of hij bij een expliciet exclusief fonds hoort. Daarna één
+      // gezamenlijke pool; de centrale laag (onderdrukExclusief) verwijdert voor Free/Pro de
+      // exclusieve fondsen op basis van identiteit, vóór de engine.
+      if (web.kandidaten.length) {
+        gekoppeld = verwerkWebKandidaten(web.kandidaten, dbPool, exclusiviteit);
+        selectie = selecteerFreeFondsadvies(gekoppeld.alle, selectieCriteria, tier, isAdmin, undefined, undefined, exclusiviteit);
+      }
+    }
+  }
+
+  await registreerOnlineGescand(admin, web.kandidaten, gekoppeld.geclassificeerd, 'chat');
+
   let proBlok: string | null = null;
   let beoordelingUsage: { prompt_tokens: number; completion_tokens: number } | null = null;
 
   if (proActief) {
     try {
-      const wilMeer = MEER_TONEN_RE.test(String(laatsteGebruiker?.content || ''));
       const { tierConfigVoor } = await import('../_shared/tierConfig.ts');
       const beoordelingCfg = beoordelingAan ? tierConfigVoor(tier, false).beoordeling : null;
       const ai: AiBeoordelingCtx | null = beoordelingCfg && apiKey ? { config: beoordelingCfg, apiKey, tier: tier === 'premium' ? 'premium' : 'pro', cache: maakOordeelCache(admin, MODEL) } : null;
-      // Financieringsbehoefte: uit het project, anders het bedrag dat het lid in het gesprek noemde ("we zoeken nog € 50.000").
-      const gesprekBehoefte = criteria.gevraagdBedrag && criteria.gevraagdBedrag > 0 ? criteria.gevraagdBedrag : null;
-      const feitenMetBehoefte: ProFeiten = proFeiten ? { ...proFeiten, behoefte: proFeiten.behoefte || gesprekBehoefte } : gesprekBehoefte ? { begroting: null, behoefte: gesprekBehoefte, regio: '', doelgroep: '' } : null;
       const pro = await bouwProSelectie(admin, selectie, selectieCriteria, rechten, ctx, feitenMetBehoefte, wilMeer, ai, tier === 'premium' ? 'premium' : 'pro');
 
       selectie = pro.selectie;
@@ -8769,7 +8805,9 @@ Deno.serve(async (req) => {
       }
 
       // --- Genereren -------------------------------------------------------------------------------------------------------------
-      const run = await draaiEngineVoorProject(admin, apiKey, b, b.config.onlineOrientatie);
+      // DATABASE EERST: het voorstel wordt uit de eigen database opgebouwd. Online wordt pas aanvullend gezocht als er na de database nog dekking ontbreekt
+      // (Premium: altijd een korte online ronde, zie tierConfig).
+      const run = await draaiEngineVoorProject(admin, apiKey, b, null);
 
       if (!run) return json({ ok: false, reden: 'fondsgegevens-onleesbaar', error: 'De fondsgegevens konden niet worden gelezen. Probeer het later opnieuw.' }, 503);
 
@@ -8812,9 +8850,21 @@ Deno.serve(async (req) => {
       const rest = resterendeDekking({ dekking: b.dekking, config: b.config, regels: uitkomst.gevalideerd.voorstel.regels as any[] });
       const uitgesloten = [...bestaandeVanBasis(b).namen, ...uitkomst.gevalideerd.voorstel.regels.flatMap((r: any) => [r.naam, r.gever])].filter(Boolean);
       const orient = b.config.onlineOrientatie;
+      const { onlineNodigInVoorstel } = await import('../_shared/onlineAanvulling.ts');
+      let onlineRun: Awaited<ReturnType<typeof draaiEngineVoorProject>> = null;
+
+      if (onlineNodigInVoorstel({ heeftOnlineConfig: Boolean(orient), minTonen: orient ? orient.minTonen : null, zonderBedrag: b.zonderBedrag, restNodig: rest.nodig, aantalRegels: uitkomst.gevalideerd.voorstel.regels.length })) {
+        // Wat al in het voorstel of in het plan staat wordt niet nogmaals gezocht: de online ronde zoekt andere financiers.
+        const extra = uitgesloten.length ? `Noem NIET (staan al in de database of in het voorstel): ${uitgesloten.slice(0, 30).join('; ')}.` : '';
+
+        onlineRun = await draaiEngineVoorProject(admin, apiKey, b, orient, extra);
+      }
+
+      const web = onlineRun ? onlineRun.web : run.web;
+      const onlineKandidaten = onlineRun ? onlineRun.kandidaten : [];
       // Premium: minstens `minTonen` online suggesties (ook als de database het doel al haalt) en daarna door tot de indicatieve bedragen het
       // doel dekken, tot het totale maximum. Pro: het vaste korte lijstje van de oriëntatie.
-      const alleOnline = onlineSuggestiesUit(run.kandidaten, { gat: b.gat, nodig: rest.nodig, config: b.config, max: orient && orient.totaalMax ? orient.totaalMax : 3, uitsluiten: uitgesloten });
+      const alleOnline = onlineSuggestiesUit(onlineKandidaten, { gat: b.gat, nodig: rest.nodig, config: b.config, max: orient && orient.totaalMax ? orient.totaalMax : 3, uitsluiten: uitgesloten });
       const gekozenOnline = kiesOnlineTonen(alleOnline, { nodig: rest.nodig, min: orient ? orient.minTonen : undefined, max: orient && orient.minTonen != null ? orient.maxKandidaten : 3 });
       const onlineSuggesties = gekozenOnline.tonen;
       // Pro: alleen een aantal van passende fondsen die alleen Premium mag zien (nooit namen of details).
@@ -8826,13 +8876,13 @@ Deno.serve(async (req) => {
 
       await meldGebruik(admin, { userId: profileId, tier: gebruikTier, actie: 'fonds_scan_database', projectId: b.project.id, duurMs: Date.now() - tStart, succes: true });
 
-      if (run.web.status !== 'uit') {
-        await meldGebruik(admin, { userId: profileId, tier: gebruikTier, actie: 'fonds_scan_web', projectId: b.project.id, model: CHAT_MODEL, usage: run.web.usage, webZoekAanroepen: run.web.webAanroepen ?? 0, succes: run.web.status === 'ok' });
+      if (web.status !== 'uit') {
+        await meldGebruik(admin, { userId: profileId, tier: gebruikTier, actie: 'fonds_scan_web', projectId: b.project.id, model: CHAT_MODEL, usage: web.usage, webZoekAanroepen: web.webAanroepen ?? 0, succes: web.status === 'ok' });
       }
 
       console.log(
         '[subsidie-kompas] voorstel_genereren',
-        JSON.stringify({ tier: gebruikTier, uitkomst: mix.uitkomst, regels: uitkomst.gevalideerd.voorstel.regels.length, relevant: run.kandidaten.length, online: run.web.kandidaten.length, suggesties: onlineSuggesties.length }),
+        JSON.stringify({ tier: gebruikTier, uitkomst: mix.uitkomst, regels: uitkomst.gevalideerd.voorstel.regels.length, relevant: run.kandidaten.length, online: web.kandidaten.length, suggesties: onlineSuggesties.length }),
       );
 
       return json({
@@ -8848,7 +8898,7 @@ Deno.serve(async (req) => {
         dekkingsdoel: b.config.dekkingsdoel,
         totalen: { gat: mix.gat, doelBedrag: mix.doelBedrag, som: rest.som, nodig: rest.nodig, dekking: mix.dekking },
         // Eerlijke uitleg van wat er gedaan is, zonder namen of aantallen die het lid niet mag zien.
-        werkwijze: { onlineStatus: run.web.status, onlineKandidaten: run.web.kandidaten.length, gekwalificeerd: gekozen.length, documenten: b.documentenGebruikt, zoekprofiel: profielRuw ? 'bevestigd-profiel' : 'projectvelden', bedrag: b.zonderBedrag ? 'onbekend' : 'bekend', profielToetsing: b.profielToetsing },
+        werkwijze: { onlineStatus: web.status, onlineKandidaten: web.kandidaten.length, gekwalificeerd: gekozen.length, documenten: b.documentenGebruikt, zoekprofiel: profielRuw ? 'bevestigd-profiel' : 'projectvelden', bedrag: b.zonderBedrag ? 'onbekend' : 'bekend', profielToetsing: b.profielToetsing },
         aanvullenMogelijk: !b.zonderBedrag && Boolean(b.config.onlineAanvullen) && rest.nodig > gekozenOnline.indicatief && onlineSuggesties.length < ((orient && orient.totaalMax) || 0),
         onlineIndicatief: gekozenOnline.indicatief,
         premiumHint: premiumHint > 0 ? { aantal: premiumHint } : null,
