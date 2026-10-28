@@ -188,6 +188,7 @@ export default function FinancierFormulier({ projectId, onKlaar, eigenBijdrage =
       <label style={css('min-width: 0;')}>
         <span style={css(LABEL)}>Financier</span>
         <input data-testid="pf-financier-naam" value={naam} maxLength={200} onChange={(e) => setNaam(e.target.value)} placeholder="Bijvoorbeeld Gemeente Amsterdam" style={css(INVOER)} />
+        <span data-testid="pf-financier-hint" style={css('display: block; margin-top: 4px; font-size: 12.5px; line-height: 1.45; color: #6D7C77;')}>Staat uw financier er niet bij? Typ de naam gerust zelf. Wij nemen nieuwe financiers mee in ons overzicht.</span>
       </label>
       <label style={css('min-width: 0;')}>
         <span style={css(LABEL)}>Bedrag</span>

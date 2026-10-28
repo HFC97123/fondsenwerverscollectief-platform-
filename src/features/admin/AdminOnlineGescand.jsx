@@ -4,7 +4,8 @@
 // Alle databasecommunicatie loopt via data/services/adminOnlineGescand.js.
 import React, { useCallback, useEffect, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
-import { GESCAND_STATUSSEN, haalOnlineGescand, telOnlineGescand, werkOnlineGescandBij } from '../../data/services/adminOnlineGescand.js';
+import { GESCAND_STATUSSEN, haalOnlineGescand, neemOnlineGescandOp, telOnlineGescand, werkOnlineGescandBij } from '../../data/services/adminOnlineGescand.js';
+import { FUNDER_TYPES } from '../../data/services/adminFunders.js';
 import {
   badgeStyle,
   emptyStateStyle,
@@ -31,7 +32,7 @@ const VOLGENDE = [
   { status: 'afgewezen', label: 'Afwijzen', stijl: smallDangerStyle },
 ];
 
-export default function AdminOnlineGescand({ notify, diensten = { haalOnlineGescand, telOnlineGescand, werkOnlineGescandBij } }) {
+export default function AdminOnlineGescand({ notify, diensten = { haalOnlineGescand, telOnlineGescand, werkOnlineGescandBij, neemOnlineGescandOp } }) {
   const [status, setStatus] = useState('nieuw');
   const [zoek, setZoek] = useState('');
   const [rijen, setRijen] = useState([]);
@@ -40,6 +41,8 @@ export default function AdminOnlineGescand({ notify, diensten = { haalOnlineGesc
   const [fout, setFout] = useState('');
   const [open, setOpen] = useState(true);
   const [bezigId, setBezigId] = useState(null);
+  const [opnemenId, setOpnemenId] = useState(null);
+  const [opnemenType, setOpnemenType] = useState('vermogensfonds');
 
   const laad = useCallback(async () => {
     setLaden(true);
@@ -72,12 +75,37 @@ export default function AdminOnlineGescand({ notify, diensten = { haalOnlineGesc
     setBezigId(null);
 
     if (!res.ok) {
-      if (notify) notify(res.fout || 'Bijwerken is niet gelukt.');
+      if (notify) notify('error', res.fout || 'Bijwerken is niet gelukt.');
 
       return;
     }
 
-    if (notify) notify(`"${rij.regeling || rij.gever}" staat nu op ${(GESCAND_STATUSSEN.find((s) => s.value === nieuweStatus) || {}).label || nieuweStatus}.`);
+    if (notify) notify('success', `"${rij.regeling || rij.gever}" staat nu op ${(GESCAND_STATUSSEN.find((s) => s.value === nieuweStatus) || {}).label || nieuweStatus}.`);
+    laad();
+  };
+
+  // Opnemen in de database: de gever en/of regeling wordt aangemaakt als NIET beoordeeld, zodat u ze nog kunt nalopen en aanvullen.
+  const neemOp = async (rij) => {
+    setBezigId(rij.id);
+
+    const res = await diensten.neemOnlineGescandOp({ id: rij.id, type: opnemenType });
+
+    setBezigId(null);
+
+    if (!res.ok) {
+      if (notify) notify('error', res.fout || 'Opnemen is niet gelukt.');
+
+      return;
+    }
+
+    setOpnemenId(null);
+
+    const nieuw = [res.resultaat && res.resultaat.funder_nieuw ? 'fonds' : null, res.resultaat && res.resultaat.regeling_nieuw ? 'regeling' : null].filter(Boolean);
+
+    if (notify) {
+      notify('success', nieuw.length ? `"${rij.regeling || rij.gever}" is opgenomen (nieuw: ${nieuw.join(' en ')}), nog niet beoordeeld.` : `"${rij.regeling || rij.gever}" stond al in de database; de rij is op Opgenomen gezet.`);
+    }
+
     laad();
   };
 
@@ -85,7 +113,7 @@ export default function AdminOnlineGescand({ notify, diensten = { haalOnlineGesc
 
   return (
     <div data-testid="admin-online-gescand">
-      <div style={{ ...panelStyle, ...(aantalNieuw > 0 ? { borderColor: '#E9C46A', background: '#FFFBEF' } : {}) }}>
+      <div style={{ ...panelStyle, ...(aantalNieuw > 0 ? { border: '1px solid #E9C46A', background: '#FFFBEF' } : {}) }}>
         <div style={css('display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;')}>
           <div style={css('min-width: 0;')}>
             <h3 style={{ ...subsectionTitleStyle, margin: 0 }}>
@@ -153,7 +181,7 @@ export default function AdminOnlineGescand({ notify, diensten = { haalOnlineGesc
                           <td style={tdStyle}>
                             <div style={css('font-weight: 700;')}>{r.aantal_keer}×</div>
                             <div style={css('font-size: 12.5px; color: #6D7C77;')}>laatst {datum(r.laatst_gezien)}</div>
-                            <div style={css('font-size: 12.5px; color: #6D7C77;')}>via {r.bron === 'voorstel' ? 'dekkingsplanvoorstel' : 'chat'}</div>
+                            <div style={css('font-size: 12.5px; color: #6D7C77;')}>{r.bron === 'lid' ? 'typte een lid zelf in' : `via ${r.bron === 'voorstel' ? 'dekkingsplanvoorstel' : 'chat'}`}</div>
                           </td>
                           <td style={tdStyle}>
                             <div style={css('font-size: 12.5px; color: #536460; display: flex; flex-direction: column; gap: 2px;')}>
@@ -170,7 +198,29 @@ export default function AdminOnlineGescand({ notify, diensten = { haalOnlineGesc
                           </td>
                           <td style={tdStyle}>
                             <div style={css('display: flex; gap: 6px; flex-wrap: wrap;')}>
-                              {VOLGENDE.filter((v) => v.status !== r.review_status).map((v) => (
+                              {r.review_status !== 'opgenomen' && opnemenId !== r.id && (
+                                <button type="button" disabled={bezigId === r.id} onClick={() => { setOpnemenId(r.id); setOpnemenType('vermogensfonds'); }} style={smallButtonStyle} data-testid="online-gescand-opnemen">
+                                  Opnemen in de database
+                                </button>
+                              )}
+                              {opnemenId === r.id && (
+                                <span style={css('display: flex; gap: 6px; flex-wrap: wrap; align-items: center;')} data-testid="online-gescand-opnemen-keuze">
+                                  <select value={opnemenType} onChange={(e) => setOpnemenType(e.target.value)} aria-label="Soort gever" style={css('padding: 6px 8px; font-size: 13px; border-radius: 8px; border: 1px solid #D5DEDB;')}>
+                                    {FUNDER_TYPES.map((t) => (
+                                      <option key={t.value} value={t.value}>
+                                        {t.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button type="button" disabled={bezigId === r.id} onClick={() => neemOp(r)} style={smallButtonStyle} data-testid="online-gescand-opnemen-bevestig">
+                                    Opnemen
+                                  </button>
+                                  <button type="button" onClick={() => setOpnemenId(null)} style={smallButtonStyle}>
+                                    Annuleren
+                                  </button>
+                                </span>
+                              )}
+                              {VOLGENDE.filter((v) => v.status !== r.review_status && v.status !== 'opgenomen').map((v) => (
                                 <button key={v.status} type="button" disabled={bezigId === r.id} onClick={() => zet(r, v.status)} style={v.stijl}>
                                   {v.label}
                                 </button>

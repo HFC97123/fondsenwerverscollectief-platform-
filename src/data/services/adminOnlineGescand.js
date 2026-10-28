@@ -34,3 +34,11 @@ export async function werkOnlineGescandBij({ id, status, notitie = null }) {
 
   return { ok: !res.error, fout: res.error ? 'Bijwerken is niet gelukt.' : '' };
 }
+
+// Een gescand fonds of regeling opnemen in de database (als NIET beoordeeld; de gever en de regeling worden niet dubbel aangemaakt).
+// -> { ok, resultaat: { funder_nieuw, regeling_nieuw }, fout }
+export async function neemOnlineGescandOp({ id, type = 'vermogensfonds' }) {
+  const res = await query((sb) => sb.rpc('admin_online_gescand_opnemen', { p_id: id, p_type: type }));
+
+  return { ok: !res.error, resultaat: res.error ? null : res.data || {}, fout: res.error ? 'Opnemen is niet gelukt.' : '' };
+}

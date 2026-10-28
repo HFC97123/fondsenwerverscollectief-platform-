@@ -53,6 +53,7 @@ import AdminBulkActionsBar from './shared/AdminBulkActionsBar.jsx';
 import AdminAccessTierBulkActie from './shared/AdminAccessTierBulkActie.jsx';
 import BulkBewerkModal from './shared/BulkBewerkModal.jsx';
 import AdminPagination from './shared/AdminPagination.jsx';
+import { haalAlgemeneBeschrijving, zetAlgemeneBeschrijving } from '../../data/services/adminBeschrijving.js';
 import AdminEditModal from './shared/AdminEditModal.jsx';
 import ContributionEditor from './shared/ContributionEditor.jsx';
 import {
@@ -592,6 +593,8 @@ export default function AdminFunders({ notify }) {
       volgendeVergaderdatum: row.volgende_vergaderdatum || '',
       vergaderfrequentie: row.vergaderfrequentie || '',
       vergaderingToelichting: row.vergadering_toelichting || '',
+      algemeneBeschrijving: '',
+      algemeneBeschrijvingBeschikbaar: false,
     };
 
     setForm(basis);
@@ -609,9 +612,13 @@ export default function AdminFunders({ notify }) {
     const exclusiviteit = await fetchFunderExclusiviteit([row.id]);
     const exRij = exclusiviteit.rijen.find((r) => r.funder_id === row.id) || null;
 
+    const beschrijving = await haalAlgemeneBeschrijving('funders', row.id);
+
     const volledig = {
       ...basis,
       themas: koppelingen.themas,
+      algemeneBeschrijving: beschrijving.tekst,
+      algemeneBeschrijvingBeschikbaar: beschrijving.beschikbaar,
       doelgroepen: koppelingen.doelgroepen,
       regios: koppelingen.regios,
       premiumExclusive: !!exRij?.premium_exclusive,
@@ -684,6 +691,19 @@ export default function AdminFunders({ notify }) {
       laad();
 
       return;
+    }
+
+    // Algemene beschrijving: alleen opslaan als de beheerder ze gewijzigd heeft en de database de RPC kent.
+    if (form.algemeneBeschrijvingBeschikbaar && initialFormRef.current && form.algemeneBeschrijving !== initialFormRef.current.algemeneBeschrijving) {
+      const beschrijvingRes = await zetAlgemeneBeschrijving('funders', row.id, form.algemeneBeschrijving);
+
+      if (!beschrijvingRes.ok) {
+        notify('error', 'Funder bijgewerkt, maar de algemene beschrijving kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
     }
 
     if (form.accessTier !== (row.access_tier || 'premium')) {
@@ -1276,6 +1296,17 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
           <input style={inputStyle} type="number" value={form.jaarbudget} onChange={set('jaarbudget')} />
         </Veld>
       </VeldGrid>
+
+      {form.algemeneBeschrijvingBeschikbaar ? (
+        <>
+          <SectieKop>Algemene beschrijving</SectieKop>
+          <VeldGrid>
+            <Veld label="Uitgebreide beschrijving (wat het fonds doet, voor wie en hoe het werkt)" span={3}>
+              <textarea style={textareaStyle} rows={6} maxLength={8000} value={form.algemeneBeschrijving} onChange={set('algemeneBeschrijving')} data-testid="admin-algemene-beschrijving" />
+            </Veld>
+          </VeldGrid>
+        </>
+      ) : null}
 
       <SectieKop>Aanvraag</SectieKop>
       <VeldGrid>
