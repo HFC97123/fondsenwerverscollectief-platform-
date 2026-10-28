@@ -15,7 +15,6 @@ import KompasWerkNav, { MIJN_PADEN } from './KompasWerkNav.jsx';
 import AdviesPage from './advies/AdviesPage.jsx';
 import AdviesSubnav from './advies/AdviesSubnav.jsx';
 import MijnSubnav from './advies/MijnSubnav.jsx';
-import DeadlinePopup from './financiering/DeadlinePopup.jsx';
 import KompasHulp from './hulp/KompasHulp.jsx';
 import { ADVIES_PADEN } from './advies/adviesLinks.js';
 import { WerkNavContext } from './werkNavContext.js';
@@ -57,7 +56,6 @@ export default function KompasApp({ route, param }) {
       <WerkNavContext.Provider value={heeftWerkNav}>
         <div style={{ fontFamily: "'Mulish', sans-serif" }}>
           {heeftWerkNav ? <KompasWerkNav pad={route.pad} /> : KOP_VAN_KOMPASAPP.has(route.pad) && <KompasSubnav toonPlan />}
-          {heeftWerkNav && <DeadlinePopup />}
           {heeftWerkNav && <KompasHulp pad={route.pad} />}
           {heeftWerkNav && MIJN_PADEN.includes(route.pad) && <MijnSubnav pad={route.pad} />}
           {heeftWerkNav && ADVIES_PADEN.includes(route.pad) && <AdviesSubnav pad={route.pad} />}
