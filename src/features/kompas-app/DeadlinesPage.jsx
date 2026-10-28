@@ -99,6 +99,16 @@ function formatAmount(min, max) {
 
 // Heeft een regeling een bekend minimum- of maximumbedrag?
 // Een vergrendelde rij toont nooit de echte tekst, ook niet wazig: letters en cijfers worden bolletjes (spaties blijven, zodat de regel er natuurlijk uitziet).
+// Een vergrendelde regel krijgt van de database geen naam meer mee (lek gedicht, 28-10-2026); op het scherm staan vaste puntjes.
+const WAZIGE_NAAM = '•••••••••••••••••••••••••';
+
+// Discipline · doelgroep · regio: mag leesbaar bij een vergrendelde regel (opdracht Aisya); naam, fonds, bedrag en datum niet.
+function kenmerkenRegel(r) {
+  const dg = Array.isArray(r.doelgroepenNamen) ? r.doelgroepenNamen.slice(0, 2).join(', ') : '';
+
+  return [r.thema || 'Discipline onbekend', dg, r.regio].filter(Boolean).join(' · ');
+}
+
 function wazigeTekst(tekst) {
   return String(tekst ?? '').replace(/[\p{L}\p{N}]/gu, '•');
 }
@@ -786,14 +796,14 @@ export default function DeadlinesPage() {
                           >
                             <div className="fwk-dl-naam">
                               <div className={locked ? 'fwk-dl-titel fwk-dl-wazig' : 'fwk-dl-titel'} aria-hidden={locked ? 'true' : undefined} data-testid={locked ? 'rij-naam-wazig' : undefined}>
-                                {locked ? wazigeTekst(r.naam) : r.naam}
+                                {locked ? WAZIGE_NAAM : r.naam}
                                 {!locked && r.accessTier === 'premium' && (
                                   <span className="fwk-dl-tag fwk-dl-premiumlabel" data-toon="premium" data-testid="rij-premium">
                                     Premium
                                   </span>
                                 )}
                               </div>
-                              <div className={locked ? 'fwk-dl-sub fwk-dl-wazig' : 'fwk-dl-sub'} aria-hidden={locked ? 'true' : undefined}>{locked ? wazigeTekst(`${r.thema || 'Discipline onbekend'} · ${r.regio}`) : `${r.funder} · ${r.regio}`}</div>
+                              <div className="fwk-dl-sub" data-testid={locked ? 'rij-kenmerken' : undefined}>{locked ? kenmerkenRegel(r) : `${r.funder} · ${r.regio}`}</div>
                               {isAdmin && (
                                 <div className="fwk-dl-admin" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                                   <button type="button" aria-pressed={adminExpanded} onClick={() => setExpandedAdminId(adminExpanded ? null : r.id)}>
@@ -1052,7 +1062,7 @@ export default function DeadlinesPage() {
               <span className="fwk-dl-status" style={css(`border-color: ${(STATUS_STYLE[upgradeRow.status] || STATUS_STYLE.Open).border}; background: ${(STATUS_STYLE[upgradeRow.status] || STATUS_STYLE.Open).bg}; color: ${(STATUS_STYLE[upgradeRow.status] || STATUS_STYLE.Open).color};`)}>
                 {upgradeRow.status}
               </span>
-              <span className="fwk-dl-chiptekst">{`${upgradeRow.thema || 'Discipline onbekend'} · ${upgradeRow.regio}`}</span>
+              <span className="fwk-dl-chiptekst">{kenmerkenRegel(upgradeRow)}</span>
             </div>
 
             <div className="fwk-dl-upgradekop">Geïnteresseerd in deze subsidieregeling?</div>
