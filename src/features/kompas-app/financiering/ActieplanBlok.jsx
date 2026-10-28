@@ -81,6 +81,72 @@ function datumRegels(item, nu) {
   return delen;
 }
 
+// Korte actie zonder de fondsnaam (die staat al vooraan in de regel): "Kansrijkheid en indiendatum of vergaderdatum toetsen met Fonds X"
+// wordt "Kansrijkheid en indiendatum toetsen". Staat de fondsnaam niet in de titel, dan blijft de titel zoals hij is.
+export function korteActie(titel, fonds) {
+  let t = String(titel || '').trim();
+  const f = String(fonds || '').trim();
+
+  if (f) {
+    const esc = f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const zonder = t.replace(new RegExp(`\\s*(met|bij|voor|van|aan)?\\s*${esc}`, 'i'), ' ').replace(/\s+/g, ' ').trim();
+
+    if (zonder && zonder !== t) t = zonder;
+  }
+
+  // Staat er een (iets andere) naam in de titel, dan valt die er bij de vaste voorstellen ook uit.
+  t = t.replace(/^(contact opnemen) met .+? (over .+)$/i, '$1 $2').replace(/^(.+ toetsen) met .+$/i, '$1');
+
+  t = t
+    // Beide vaste voorstellen zijn dezelfde actie en heten daarom hetzelfde.
+    .replace(/^kansrijkheid en indiendatum( of vergaderdatum)? toetsen$/i, 'Kansrijkheid en indiendatum of vergaderdatum toetsen')
+    .replace(/^contact opnemen over passendheid, aanvraag en behandeltermijn$/i, 'Kansrijkheid en indiendatum of vergaderdatum toetsen');
+
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// "1 nov · over 6 dagen" (kort, voor de rechterkant van een regel).
+function korteDatum(item, nu) {
+  const iso = item.datumSoort === DATUM_SOORT.STREEF ? item.streefdatum : item.datumSoort === DATUM_SOORT.EXTERN ? item.externeDeadline : null;
+
+  if (!iso) return '';
+
+  const kort = formatDatum(iso).replace(/\s\d{4}$/, '');
+  const d = item.status === 'done' ? null : dagenTot(iso, nu);
+
+  return d == null ? kort : `${kort} · ${dagenTekst(d)}`;
+}
+
+// Een notitie die bij meerdere taken in dezelfde groep hetzelfde is, staat één keer boven de groep in plaats van bij elke taak.
+function gedeeldeNotities(items) {
+  const tel = new Map();
+
+  items.forEach((i) => {
+    const n = i.soort === SOORT.TAAK && i.taak.notitie ? i.taak.notitie.trim() : '';
+
+    if (n) tel.set(n, (tel.get(n) || 0) + 1);
+  });
+
+  return new Set(Array.from(tel.entries()).filter(([, aantal]) => aantal > 1).map(([n]) => n));
+}
+
+function GedeeldeNotitie({ notities, items }) {
+  if (!notities.size) return null;
+
+  return Array.from(notities).map((n) => (
+    <div key={n} data-testid="ap-gedeelde-notitie" style={css(`${TEKST} font-size: 13px; padding: 8px 12px; border-radius: 10px; background: #F6F8F7; color: #4B5C58;`)}>
+      <b style={css('color: #2C4A5E;')}>Bij {items.filter((i) => i.soort === SOORT.TAAK && (i.taak.notitie || '').trim() === n).length} acties:</b> {n}
+    </div>
+  ));
+}
+
+// Alleen 'hoog' valt op (een rode stip); normaal en laag tonen niets.
+function PrioStip({ prioriteit }) {
+  if (prioriteit !== 'high') return null;
+
+  return <span data-testid="ap-prio-hoog" title="Hoge prioriteit" aria-label="Hoge prioriteit" style={css('display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 999px; background: #D9776A; vertical-align: 2px; flex-shrink: 0;')} />;
+}
+
 function Chip({ prioriteit }) {
   return (
     <span data-testid="ap-prioriteit-chip" style={css(`display: inline-block; padding: 2px 9px; border-radius: 999px; font-family: 'Mulish', sans-serif; font-size: 12px; font-weight: 800; ${PRIORITEIT_STIJL[prioriteit] || PRIORITEIT_STIJL.normal}`)}>
@@ -177,8 +243,9 @@ function ActieFormulier({ initieel, financiers, financierVast = null, volgtFonds
   );
 }
 
-function Taak({ item, financiers, regelNaam, nu, onWijzig, onVerwijder, projectNaam = '' }) {
+function Taak({ item, financiers, regelNaam, nu, onWijzig, onVerwijder, projectNaam = '', verbergNotitie = false }) {
   const taak = item.taak;
+  const [menu, setMenu] = useState(false);
   const [bewerk, setBewerk] = useState(false);
   const [bevestig, setBevestig] = useState(false);
   const [fout, setFout] = useState('');
@@ -215,76 +282,111 @@ function Taak({ item, financiers, regelNaam, nu, onWijzig, onVerwijder, projectN
     );
   }
 
-  const datums = datumRegels(item, nu);
+  const fonds = regelNaam || taak.financier || '';
+  const actie = korteActie(taak.titel, fonds);
+  const datum = korteDatum(item, nu);
+  const notitie = taak.notitie && !verbergNotitie ? taak.notitie : '';
+  const MENU_KNOP = `${KNOP_TEKST} display: block; width: 100%; text-align: left; padding: 6px 14px; color: #2C4A5E;`;
 
   return (
     <article
       data-testid="ap-taak"
       data-actie-id={taak.id}
       data-status={taak.status}
-      style={css(`box-sizing: border-box; padding: 12px 16px; border: 1px solid #E1EAE4; border-radius: 14px; background: #FFFFFF; ${klaar ? 'opacity: 0.72;' : ''}`)}
+      className="fwk-ap-rij"
+      style={css(`position: relative; box-sizing: border-box; padding: 10px 14px; border-bottom: 1px solid #EEF2EF; background: #FFFFFF; ${klaar ? 'opacity: 0.6;' : ''}`)}
     >
-      <div style={css('display: flex; gap: 12px; align-items: flex-start;')}>
+      <style>{'.fwk-ap-datum-o { display: none; } @media (max-width: 600px) { .fwk-ap-datum-r { display: none; } .fwk-ap-datum-o { display: block; } }'}</style>
+      <div style={css('display: flex; gap: 12px; align-items: center;')}>
         <input
           type="checkbox"
           data-testid="ap-klaar"
           checked={klaar}
           aria-label={`${klaar ? 'Weer openen' : 'Markeer als klaar'}: ${taak.titel}`}
           onChange={() => zet({ status: klaar ? 'todo' : 'done' })}
-          style={css('width: 20px; height: 20px; margin-top: 2px; flex-shrink: 0; cursor: pointer; accent-color: #4E9A6C;')}
+          style={css('width: 18px; height: 18px; flex-shrink: 0; cursor: pointer; accent-color: #4E9A6C;')}
         />
         <div style={css('flex: 1; min-width: 0;')}>
-          <div data-testid="ap-taak-titel" style={css(`${TEKST} font-size: 15px; font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere; ${klaar ? 'text-decoration: line-through;' : ''}`)}>
-            {taak.titel}
+          <div data-testid="ap-taak-titel" title={taak.titel} style={css(`${TEKST} font-size: 14.5px; color: #2C4A5E; overflow-wrap: anywhere; ${klaar ? 'text-decoration: line-through;' : ''}`)}>
+            <PrioStip prioriteit={taak.prioriteit} />
+            {fonds ? (
+              <>
+                <b>{fonds}</b>
+                <span style={css('color: #4B5C58;')}> · {actie}</span>
+              </>
+            ) : (
+              <b>{actie}</b>
+            )}
+            {taak.status === 'doing' && (
+              <span data-testid="ap-status-bezig" style={css('margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #EAF2F8; color: #2C4A5E; font-size: 12px; font-weight: 800;')}>
+                Bezig
+              </span>
+            )}
           </div>
-          <div style={css(`${TEKST} font-size: 13px; color: #687974; margin-top: 2px; overflow-wrap: anywhere;`)}>
-            {[projectNaam, regelNaam || taak.financier, ...datums].filter(Boolean).join(' · ') || 'Geen financier of deadline'}
-            {taak.bron === 'chat' && <span data-testid="ap-bron-chat"> · voorgesteld door Subsidie Kompas{item.aangepastDoorLid ? ', door u aangepast' : ''}</span>}
-          </div>
-          {item.externeDeadlineGewijzigd && (
-            <div data-testid="ap-deadline-gewijzigd" style={css(`${TEKST} font-size: 12.5px; margin-top: 4px; color: #8A5A16;`)}>
-              De deadline van het fonds is gewijzigd: was {formatDatum(item.externeDeadlineGewijzigd.van)}, nu {formatDatum(item.externeDeadlineGewijzigd.naar)}.
-              {item.datumSoort === DATUM_SOORT.STREEF ? ' Uw streefdatum is niet aangepast.' : ' Deze taak volgt de nieuwe deadline.'}
+          {datum && (
+            <div className="fwk-ap-datum-o" style={css(`${TEKST} font-size: 12.5px; color: #687974;`)}>
+              {datum}
             </div>
           )}
-          {taak.notitie && <div style={css(`${TEKST} font-size: 13px; margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere;`)}>{taak.notitie}</div>}
+          {(projectNaam || notitie || item.externeDeadlineGewijzigd) && (
+            <div style={css(`${TEKST} font-size: 12.5px; color: #7B8985; margin-top: 1px; overflow-wrap: anywhere;`)}>
+              {[projectNaam, notitie].filter(Boolean).join(' · ')}
+              {item.externeDeadlineGewijzigd && (
+                <span data-testid="ap-deadline-gewijzigd" style={css('color: #8A5A16;')}>
+                  {projectNaam || notitie ? ' · ' : ''}Deadline van het fonds gewijzigd naar {formatDatum(item.externeDeadlineGewijzigd.naar)}
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        <div style={css('display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0;')}>
-          <SoortLabel soort={SOORT.TAAK} />
-          <Chip prioriteit={taak.prioriteit} />
-          <select data-testid="ap-status" aria-label={`Status van ${taak.titel}`} value={taak.status} onChange={(e) => zet({ status: e.target.value })} style={css(`${INVOER} width: auto; min-height: 32px; padding: 4px 8px; font-size: 13px;`)}>
-            {ACTIE_STATUSSEN.map((s) => (
-              <option key={s} value={s}>
-                {ACTIE_STATUS_LABEL[s]}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div style={css('display: flex; gap: 12px; margin-top: 6px; padding-left: 32px; flex-wrap: wrap; align-items: center;')}>
-        <button type="button" data-testid="ap-bewerk" onClick={() => setBewerk(true)} style={css(`${KNOP_TEKST} color: #2C4A5E;`)}>
-          Bewerken
+        <span className="fwk-ap-datum-r" style={css(`${TEKST} font-size: 13px; color: #687974; white-space: nowrap; flex-shrink: 0;`)}>{datum}</span>
+        <button
+          type="button"
+          data-testid="ap-menu"
+          aria-label={`Meer bij ${taak.titel}`}
+          aria-expanded={menu}
+          onClick={() => setMenu((m) => !m)}
+          style={css(`${KNOP_TEKST} min-height: 32px; padding: 0 8px; color: #4B5C58; font-size: 18px; line-height: 1;`)}
+        >
+          ⋯
         </button>
-        {bevestig ? (
-          <span style={css('display: inline-flex; gap: 8px; align-items: center;')}>
-            <button type="button" data-testid="ap-verwijder-ja" onClick={() => onVerwijder(taak.id)} style={css(`${KNOP_TEKST} color: #9E3B2C;`)}>
-              Ja, verwijderen
-            </button>
-            <button type="button" onClick={() => setBevestig(false)} style={css(`${KNOP_TEKST} color: #4B5C58;`)}>
-              Annuleren
-            </button>
-          </span>
-        ) : (
-          <button type="button" data-testid="ap-verwijder" aria-label={`Verwijderen: ${taak.titel}`} onClick={() => setBevestig(true)} style={css(`${KNOP_TEKST} color: #9E3B2C;`)}>
-            Verwijderen
-          </button>
-        )}
-        {fout && (
-          <span role="alert" data-testid="ap-taak-fout" style={css(`${TEKST} font-size: 13px; font-weight: 700; color: #9E3B2C;`)}>
-            {fout}
-          </span>
-        )}
       </div>
+      {menu && (
+        <div role="menu" data-testid="ap-menu-lijst" style={css('position: absolute; right: 10px; top: 42px; z-index: 5; min-width: 200px; padding: 6px 0; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; box-shadow: 0 10px 24px rgba(44,74,94,0.12);')}>
+          {taak.bron === 'chat' && (
+            <div data-testid="ap-bron-chat" style={css(`${TEKST} font-size: 12px; padding: 4px 14px 6px; color: #7B8985;`)}>
+              Voorgesteld door Subsidie Kompas{item.aangepastDoorLid ? ', door u aangepast' : ''}
+            </div>
+          )}
+          {!klaar && (
+            <button type="button" role="menuitem" data-testid="ap-zet-bezig" onClick={() => { setMenu(false); zet({ status: taak.status === 'doing' ? 'todo' : 'doing' }); }} style={css(MENU_KNOP)}>
+              {taak.status === 'doing' ? 'Terug naar te doen' : 'Ik ben hiermee bezig'}
+            </button>
+          )}
+          <button type="button" role="menuitem" data-testid="ap-bewerk" onClick={() => { setMenu(false); setBewerk(true); }} style={css(MENU_KNOP)}>
+            Bewerken
+          </button>
+          {bevestig ? (
+            <span style={css('display: flex; gap: 4px; padding: 0 8px;')}>
+              <button type="button" data-testid="ap-verwijder-ja" onClick={() => onVerwijder(taak.id)} style={css(`${KNOP_TEKST} color: #9E3B2C;`)}>
+                Ja, verwijderen
+              </button>
+              <button type="button" onClick={() => setBevestig(false)} style={css(`${KNOP_TEKST} color: #4B5C58;`)}>
+                Annuleren
+              </button>
+            </span>
+          ) : (
+            <button type="button" role="menuitem" data-testid="ap-verwijder" aria-label={`Verwijderen: ${taak.titel}`} onClick={() => setBevestig(true)} style={css(`${MENU_KNOP} color: #9E3B2C;`)}>
+              Verwijderen
+            </button>
+          )}
+        </div>
+      )}
+      {fout && (
+        <div role="alert" data-testid="ap-taak-fout" style={css(`${TEKST} font-size: 13px; font-weight: 700; color: #9E3B2C; padding-left: 30px;`)}>
+          {fout}
+        </div>
+      )}
     </article>
   );
 }
@@ -388,25 +490,27 @@ export function ActieplanBlok({ project, regels, plan, nu, koptekst = true }) {
             <h3 style={css(`${LABEL} margin: 6px 0 0; color: ${g === 'te-laat' ? '#9E3B2C' : '#2C4A5E'};`)}>
               {ACTIE_GROEP_LABEL[g]} <span style={css('color: #7B8985;')}>({groepen[g].length})</span>
             </h3>
+            <GedeeldeNotitie notities={gedeeldeNotities(groepen[g])} items={groepen[g]} />
+            <div style={css('border: 1px solid #E1EAE4; border-radius: 14px; background: #FFFFFF; overflow: visible;')}>
             {groepen[g].map((i) =>
               i.soort === SOORT.TAAK ? (
-                <Taak key={i.sleutel} item={i} financiers={financiers} regelNaam={naamVanRegel(i.taak.fundingId)} nu={nu} onWijzig={plan.wijzig} onVerwijder={plan.verwijder} />
+                <Taak key={i.sleutel} item={i} financiers={financiers} regelNaam={naamVanRegel(i.taak.fundingId)} nu={nu} onWijzig={plan.wijzig} onVerwijder={plan.verwijder} verbergNotitie={gedeeldeNotities(groepen[g]).has((i.taak.notitie || '').trim())} />
               ) : (
-                <div key={i.sleutel} data-testid="ap-afgeleid-actie" data-soort="afgeleid" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border: 1px solid #E8E0F2; border-radius: 12px; background: #FBF9FD;')}>
+                <div key={i.sleutel} data-testid="ap-afgeleid-actie" data-soort="afgeleid" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px 10px 44px; border-bottom: 1px solid #EEF2EF; background: #FBFCFB;')}>
                   <div style={css('min-width: 0; flex: 1 1 240px;')}>
-                    <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{i.titel}</div>
+                    <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}><PrioStip prioriteit={i.prioriteit} />{i.titel}</div>
                     <div style={css(`${TEKST} font-size: 13px; color: #687974; overflow-wrap: anywhere;`)}>{[i.regelNaam, i.reden].filter(Boolean).join(' · ')}</div>
                   </div>
                   <SoortLabel soort={SOORT.AFGELEID} />
-                  <Chip prioriteit={i.prioriteit} />
                   {beschikbaar && (
-                    <button type="button" data-testid="ap-maak-taak" onClick={() => maakTaak(i)} style={css(KNOP)}>
-                      Maak er een taak van
+                    <button type="button" data-testid="ap-maak-taak" onClick={() => maakTaak(i)} style={css(`${KNOP_TEKST} color: #4E9A6C;`)}>
+                      + Op mijn lijst
                     </button>
                   )}
                 </div>
               ),
             )}
+            </div>
           </div>
         ) : null,
       )}
@@ -520,6 +624,9 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
               ))}
             </select>
             <span data-testid="ap-teller" style={css(`${TEKST} font-size: 13px; color: #7B8985;`)}>{telOpen(zichtbaar)} open</span>
+            <span style={css(`${TEKST} font-size: 12.5px; color: #7B8985;`)}>
+              <PrioStip prioriteit="high" />= hoge prioriteit
+            </span>
             {beschikbaar && kiesProject && !open && (
               <button type="button" data-testid="ap-toevoegen-open" onClick={() => setOpen(true)} style={css(`${KNOP} margin-left: auto;`)}>
                 + Actie toevoegen
@@ -553,12 +660,15 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
                 <h3 style={css(`${LABEL} margin: 6px 0 0; color: ${g === 'te-laat' ? '#9E3B2C' : '#2C4A5E'};`)}>
                   {ACTIE_GROEP_LABEL[g]} <span style={css('color: #7B8985;')}>({groepen[g].length})</span>
                 </h3>
+                <GedeeldeNotitie notities={gedeeldeNotities(groepen[g])} items={groepen[g]} />
+                <div style={css('border: 1px solid #E1EAE4; border-radius: 14px; background: #FFFFFF;')}>
                 {groepen[g].map((i) =>
                   i.soort === SOORT.TAAK ? (
                     <Taak
                       key={i.sleutel}
                       item={i}
-                      projectNaam={kiesProject ? '' : naamVanProject(i.projectId)}
+                      verbergNotitie={gedeeldeNotities(groepen[g]).has((i.taak.notitie || '').trim())}
+                      projectNaam={kiesProject || actief.length === 1 ? '' : naamVanProject(i.projectId)}
                       financiers={financiersVan(i.projectId)}
                       regelNaam={naamVanRegel(i.projectId, i.taak.fundingId)}
                       nu={nu}
@@ -566,21 +676,21 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
                       onVerwijder={plan.verwijder}
                     />
                   ) : (
-                    <div key={i.sleutel} data-testid="ap-afgeleid-actie" data-soort="afgeleid" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border: 1px dashed #D5E0D9; border-radius: 12px; background: #FFFFFF;')}>
+                    <div key={i.sleutel} data-testid="ap-afgeleid-actie" data-soort="afgeleid" style={css('display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px 10px 44px; border-bottom: 1px solid #EEF2EF; background: #FBFCFB;')}>
                       <div style={css('min-width: 0; flex: 1 1 240px;')}>
-                        <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}>{i.titel}</div>
+                        <div style={css(`${TEKST} font-weight: 800; color: #2C4A5E; overflow-wrap: anywhere;`)}><PrioStip prioriteit={i.prioriteit} />{i.titel}</div>
                         <div style={css(`${TEKST} font-size: 13px; color: #687974; overflow-wrap: anywhere;`)}>{[kiesProject ? '' : naamVanProject(i.projectId), i.regelNaam, i.reden].filter(Boolean).join(' · ')}</div>
                       </div>
                       <SoortLabel soort={SOORT.AFGELEID} />
-                      <Chip prioriteit={i.prioriteit} />
                       {beschikbaar && (
-                        <button type="button" data-testid="ap-maak-taak" onClick={() => maakTaak(i)} style={css(KNOP)}>
-                          Maak er een taak van
+                        <button type="button" data-testid="ap-maak-taak" onClick={() => maakTaak(i)} style={css(`${KNOP_TEKST} color: #4E9A6C;`)}>
+                          + Op mijn lijst
                         </button>
                       )}
                     </div>
                   ),
                 )}
+                </div>
               </div>
             ) : null,
           )}
