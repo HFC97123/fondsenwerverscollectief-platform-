@@ -1,11 +1,13 @@
-// "Projectdossier uit een document": het lid kiest een Word-, PDF-, Excel- of tekstbestand; de browser leest de tekst, en op verzoek (knop, nooit
-// automatisch) stelt Claude per onderdeel van het projectdossier een tekst voor, uitsluitend uit het document. Het lid kiest zelf wat overgenomen wordt.
+// "Projectdossier uit een document": het lid uploadt een Word-, PDF-, Excel- of tekstbestand; de browser leest de tekst, en op verzoek (knop, nooit
+// automatisch) stelt Subsidie Kompas per onderdeel van het projectdossier een tekst voor, uitsluitend uit het document. Het lid kiest zelf wat overgenomen wordt.
+// Het blok is compact en staat rechts naast de kop; het resultaat krijgt een eigen rij eronder (flex-wrap in de ouder).
 // - Een onderdeel dat nog leeg is staat voorgevinkt; een onderdeel met eigen tekst nooit: daar staat de huidige tekst naast het voorstel en een duidelijke
 //   waarschuwing dat overnemen die tekst vervangt.
-// - Overnemen vult alleen het formulier; bewaren gaat met "Projectdocumentatie opslaan", met herkomst "uit een document".
+// - Overnemen vult alleen het formulier; bewaren gaat met "Projectdossier opslaan", met herkomst "uit een document".
 import React, { useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
+import DenkKompas from '../DenkKompas.jsx';
 import { extraheerTekst } from '../../../data/services/documentExtractie.js';
 import { haalDossierVoorstellen } from '../../../data/services/dossierUitlezen.js';
 import { PI_VELDEN } from './projectinformatie.js';
@@ -19,10 +21,10 @@ const BESTANDSTYPEN = '.docx,.pdf,.xlsx,.txt,.md,.csv,application/pdf,applicatio
 const TOEGESTAAN = /\.(docx|pdf|xlsx|txt|md|csv)$/i;
 
 export const MELDINGEN = {
-  daglimiet: 'Claude heeft vandaag al veel documenten gelezen. Morgen kan het weer; uw formulier blijft zoals het is.',
-  storing: 'Claude kan het document nu even niet lezen. Er is niets gewijzigd; probeer het straks opnieuw.',
+  daglimiet: 'Er zijn vandaag al veel documenten uitgelezen. Morgen kan het weer; uw formulier blijft zoals het is.',
+  storing: 'Het uitlezen lukt nu even niet. Er is niets gewijzigd; probeer het straks opnieuw.',
   'te-weinig-tekst': 'In dit document staat te weinig tekst om het projectdossier uit in te vullen.',
-  'niets-gevonden': 'Claude vond in dit document geen onderdelen die het met zekerheid kan overnemen. Er is niets gewijzigd.',
+  'niets-gevonden': 'In dit document staat niets dat we met zekerheid kunnen overnemen. Er is niets gewijzigd.',
   'alleen-pro': 'Een projectdossier laten invullen uit een document is er met Pro en Premium.',
   'geen-tekst': 'In dit bestand is geen tekst gevonden. Dat gebeurt bij een gescande PDF (een foto van papier) of een beveiligd bestand. Upload het opnieuw als Word-bestand, of als PDF waarin u tekst kunt selecteren.',
   type: 'Dit bestandstype kan niet worden gelezen. Kies een Word-bestand (.docx), PDF, Excel-bestand (.xlsx) of tekstbestand.',
@@ -132,56 +134,61 @@ export default function DossierUitDocument({ waarden, onNeem, lees = extraheerTe
   const bezig = fase === 'lezen' || fase === 'denken';
 
   return (
-    <section data-testid="dossier-uit-document" style={css('box-sizing: border-box; margin: 0 0 22px; padding: 18px 20px; border: 1px solid #D5E0D9; border-radius: 16px; background: #F7FAF8;')}>
-      <h3 style={css(`${LABEL} margin: 0 0 6px;`)}>Projectdossier uit een document</h3>
-      <p style={css(`${TEKST} margin: 0 0 12px; max-width: 680px;`)}>
-        Heeft u al een projectplan of aanvraag? Kies het bestand (Word, PDF of Excel). Claude leest het en stelt per onderdeel een tekst voor, alleen uit wat erin staat. U kiest zelf wat u overneemt.
-      </p>
+    <>
+      <section data-testid="dossier-uit-document" style={css('box-sizing: border-box; flex: 0 1 330px; min-width: 240px; padding: 12px 14px; border: 1px solid #D5E0D9; border-radius: 14px; background: #F7FAF8;')}>
+        <p style={css(`${KLEIN} margin: 0 0 10px; color: #4B5C58;`)}>
+          Heeft u al een concept (projectplan) of aantekeningen? Upload ze hier, dan vullen we het projectdossier automatisch in.
+        </p>
 
-      <input
-        ref={invoer}
-        type="file"
-        accept={BESTANDSTYPEN}
-        data-testid="dossier-bestand"
-        aria-label="Document met het projectplan"
-        style={css('position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;')}
-        onChange={(e) => {
-          const f = e.target.files && e.target.files[0];
+        <input
+          ref={invoer}
+          type="file"
+          accept={BESTANDSTYPEN}
+          data-testid="dossier-bestand"
+          aria-label="Document met het projectplan"
+          style={css('position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;')}
+          onChange={(e) => {
+            const f = e.target.files && e.target.files[0];
 
-          e.target.value = '';
-          kies(f);
-        }}
-      />
+            e.target.value = '';
+            kies(f);
+          }}
+        />
 
-      {fase !== 'klaar' && (
-        <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;')}>
-          <Button type="button" variant="outline" size="s" disabled={bezig} onClick={() => invoer.current && invoer.current.click()}>
-            Document kiezen
-          </Button>
-          {fase === 'lezen' && <span role="status" style={css(KLEIN)}>{bestand} wordt gelezen…</span>}
-          {fase === 'denken' && <span role="status" data-testid="dossier-bezig" style={css(KLEIN)}>Claude leest {bestand} en zoekt de onderdelen. Dit duurt even.</span>}
-          {genomen > 0 && fase === 'rust' && (
-            <span role="status" data-testid="dossier-genomen" style={css('font-size: 14px; font-weight: 700; color: #4E9A6C;')}>
-              {genomen} {genomen === 1 ? 'onderdeel' : 'onderdelen'} overgenomen. Controleer ze hieronder en kies Projectdocumentatie opslaan.
-            </span>
-          )}
-        </div>
-      )}
+        {fase !== 'klaar' && (
+          <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;')}>
+            <Button type="button" variant="outline" size="s" disabled={bezig} onClick={() => invoer.current && invoer.current.click()}>
+              Uploaden
+            </Button>
+            {bezig && (
+              <span role="status" data-testid="dossier-bezig" style={css(`${KLEIN} display: inline-flex; align-items: center; gap: 6px;`)}>
+                <DenkKompas grootte={26} label="Bezig met uitlezen" />
+                Bezig met uitlezen…
+              </span>
+            )}
+            {genomen > 0 && fase === 'rust' && (
+              <span role="status" data-testid="dossier-genomen" style={css('font-size: 13px; font-weight: 700; color: #4E9A6C;')}>
+                {genomen} {genomen === 1 ? 'onderdeel' : 'onderdelen'} overgenomen. Controleer ze hieronder en sla op.
+              </span>
+            )}
+          </div>
+        )}
+      </section>
 
       {fase === 'melding' && (
-        <div role="alert" data-testid="dossier-melding" style={css('margin-top: 12px; padding: 12px 16px; border: 1px solid #E9C46A; border-radius: 12px; background: #FFF9EA; font-size: 14px; font-weight: 700; color: #7A5B10;')}>
+        <div role="alert" data-testid="dossier-melding" style={css('flex: 1 1 100%; box-sizing: border-box; padding: 12px 16px; border: 1px solid #E9C46A; border-radius: 12px; background: #FFF9EA; font-size: 14px; font-weight: 700; color: #7A5B10;')}>
           {melding}
         </div>
       )}
 
       {fase === 'klaar' && (
-        <div data-testid="dossier-voorstellen">
+        <div data-testid="dossier-voorstellen" style={css('flex: 1 1 100%; box-sizing: border-box; padding: 16px 18px; border: 1px solid #D5E0D9; border-radius: 16px; background: #F7FAF8;')}>
           <p style={css(`${TEKST} margin: 0 0 12px; font-weight: 700;`)}>
-            Claude vond {voorstellen.length} {voorstellen.length === 1 ? 'onderdeel' : 'onderdelen'} in {bestand}. Vink aan wat u wilt overnemen.
+            We vonden {voorstellen.length} {voorstellen.length === 1 ? 'onderdeel' : 'onderdelen'} in {bestand}. Vink aan wat u wilt overnemen.
           </p>
           {afgekapt && (
             <p data-testid="dossier-afgekapt" style={css(`${KLEIN} margin: 0 0 12px;`)}>
-              Het document is erg lang; Claude heeft het begin gelezen. Is er meer, upload dan de rest apart.
+              Het document is erg lang; we hebben het begin gelezen. Is er meer, upload dan de rest apart.
             </p>
           )}
 
@@ -219,6 +226,6 @@ export default function DossierUitDocument({ waarden, onNeem, lees = extraheerTe
           </div>
         </div>
       )}
-    </section>
+    </>
   );
 }

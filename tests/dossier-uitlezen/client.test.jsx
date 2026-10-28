@@ -65,8 +65,21 @@ sectie('2. Bestand kiezen, lezen en voorstellen tonen');
   const neem = [];
 
   await toon(<DossierUitDocument waarden={{ doelstelling: 'Mijn eigen doelstelling.' }} onNeem={(k, t) => neem.push([k, t])} lees={lees} denk={denk} />);
-  check('de knop Document kiezen staat er en er wordt niets automatisch gelezen', /Document kiezen/.test(document.body.textContent) && aanroepen.length === 0);
+  check('de knop Uploaden staat er en er wordt niets automatisch gelezen', /Uploaden/.test(document.body.textContent) && aanroepen.length === 0);
 
+  check('compacte tekst met de knop Uploaden, zonder "Claude" en zonder "Document kiezen"', /Heeft u al een concept \(projectplan\) of aantekeningen\? Upload ze hier, dan vullen we het projectdossier automatisch in\./.test(document.body.textContent) && !/Claude/.test(document.body.textContent) && !/Document kiezen/.test(document.body.textContent));
+
+  let uitlezen = null;
+  const trage = () => new Promise((r) => { uitlezen = r; });
+  const wachtDenk = async (inv) => { await trage(); return denk(inv); };
+
+  await toon(<DossierUitDocument waarden={{ doelstelling: 'Mijn eigen doelstelling.' }} onNeem={() => {}} lees={lees} denk={wachtDenk} />);
+  await kiesBestand('plan.docx');
+  await wacht(() => q('dossier-bezig'));
+  check('tijdens het uitlezen: het kompas draait en er staat "Bezig met uitlezen…"', /Bezig met uitlezen…/.test(q('dossier-bezig').textContent) && !!q('dossier-bezig').querySelector('svg') && !/Claude/.test(q('dossier-bezig').textContent));
+  await act(async () => { uitlezen(); });
+
+  await toon(<DossierUitDocument waarden={{ doelstelling: 'Mijn eigen doelstelling.' }} onNeem={(k, t) => neem.push([k, t])} lees={lees} denk={denk} />);
   await kiesBestand('plan.docx');
   await wacht(() => q('dossier-voorstellen'));
   check('de tekst wordt gelezen met een ruime grens en doorgestuurd, met wat al is ingevuld', aanroepen[0][0] === 'lees' && aanroepen[0][2] > 20000 && aanroepen[1][1].huidig.join() === 'doelstelling' && aanroepen[1][1].tekst === DOC.trim());

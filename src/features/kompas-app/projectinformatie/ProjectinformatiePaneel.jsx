@@ -97,7 +97,7 @@ function Formulier({ project, projecten, store }) {
       }
 
       setUitDocument({});
-      setMelding('Projectdocumentatie opgeslagen.');
+      setMelding('Projectdossier opgeslagen.');
     });
   };
 
@@ -132,21 +132,22 @@ function Formulier({ project, projecten, store }) {
         opslaan();
       }}
     >
-      <div style={css('display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px;')}>
-        <h2 style={css(`${LABEL} margin: 0;`)}>Projectdocumentatie</h2>
-        <span data-testid="pi-voortgang" style={css('font-size: 13px; font-weight: 800; color: #2C4A5E;')}>
-          {pi.ingevuld} van {pi.totaal} onderdelen ingevuld
-        </span>
+      <div style={css('display: flex; align-items: flex-start; justify-content: space-between; gap: 14px 22px; flex-wrap: wrap; margin-bottom: 18px;')}>
+        <div style={css('flex: 1 1 300px; min-width: 0;')}>
+          <h2 style={css(`${LABEL} margin: 0 0 6px;`)}>Projectdossier</h2>
+          <span data-testid="pi-voortgang" style={css('display: block; margin-bottom: 8px; font-size: 13px; font-weight: 800; color: #2C4A5E;')}>
+            {pi.ingevuld} van {pi.totaal} onderdelen ingevuld
+          </span>
+          <p style={css(`${TEKST} margin: 0; max-width: 560px; font-size: 13.5px;`)}>
+            Kenmerken en bedragen (doelgroep, werkgebied, begroting) past u aan{' '}
+            <a href={`#/kompas/projecten/${encodeURIComponent(project.id)}`} style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>
+              bij het project
+            </a>
+            .
+          </p>
+        </div>
+        {heeftProjectInfo(project) && <DossierUitDocument waarden={waarden} onNeem={neemOver} />}
       </div>
-      <p style={css(`${TEKST} margin: 0 0 16px; max-width: 680px;`)}>
-        Kenmerken en bedragen past u aan in{' '}
-        <a href={`#/kompas/projecten/${encodeURIComponent(project.id)}`} style={css('font-weight: 800; color: #4E9A6C; text-decoration: none;')}>
-          het projectdossier
-        </a>
-        .
-      </p>
-
-      {heeftProjectInfo(project) && <DossierUitDocument waarden={waarden} onNeem={neemOver} />}
 
       {PI_GROEPEN.map((g) => {
         const groepVelden = velden.filter((v) => v.groep === g.id);
@@ -183,7 +184,7 @@ function Formulier({ project, projecten, store }) {
 
       <div style={css('display: flex; gap: 12px; align-items: center; flex-wrap: wrap;')}>
         <Button type="submit" disabled={bezig || !gewijzigd}>
-          {bezig ? 'Bezig met opslaan…' : 'Projectdocumentatie opslaan'}
+          {bezig ? 'Bezig met opslaan…' : 'Projectdossier opslaan'}
         </Button>
         <span role="status" data-testid="pi-melding" style={css('font-size: 14px; font-weight: 700; color: #4E9A6C;')}>
           {melding}
