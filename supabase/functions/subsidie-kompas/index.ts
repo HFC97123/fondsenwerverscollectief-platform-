@@ -5830,7 +5830,10 @@ function beoordeelPool(alle: { bron: Kandidaat['bron']; row: any }[], criteriaRu
 // krijgen alle relevante matches (tot de promptgrens). Welke VELDEN van een kandidaat getoond
 // worden (publiek of volledig) bepaalt applyEntitlementsAndSanitize bij de presentatie.
 function pasRechtenToe(pool: ReturnType<typeof beoordeelPool>, rechten: Rechten) {
-  const zichtbaar = pool.relevant;
+  // Free zoekt in alle fondsen, maar toont geen Premium-fondsen uit de database (ook geen naam): die tellen alleen mee in het aantal "passend in de
+  // Premium-database". Wat online publiek bevestigd is (_extern of _web) blijft vindbaar, met alleen publieke gegevens.
+  const verborgenVoorFree = (k: { row?: any }) => rechten.gratis && !rechten.isAdmin && !k.row?._extern && !k.row?._web && k.row?.access_tier === 'premium';
+  const zichtbaar = pool.relevant.filter((k) => !verborgenVoorFree(k));
   const getoond = zichtbaar.slice(0, rechten.maxVolledig);
   const getoondSet = new Set(getoond);
   const overig = rechten.gratis ? pool.relevant.filter((k) => !getoondSet.has(k)) : [];
@@ -5845,7 +5848,7 @@ function pasRechtenToe(pool: ReturnType<typeof beoordeelPool>, rechten: Rechten)
 
   // Categorie B: inhoudelijk passend, maar nu niet open. Los van alle aantallen
   // en alleen voor zichtbare records.
-  const geslotenGetoond = pool.gesloten.slice(0, rechten.maxGesloten);
+  const geslotenGetoond = pool.gesloten.filter((k) => !verborgenVoorFree(k)).slice(0, rechten.maxGesloten);
 
   return {
     getoond,
@@ -5873,19 +5876,13 @@ function selecteerFreeFondsadvies(
   exclusiviteit: ExclusiviteitIndex = ONBEKENDE_EXCLUSIVITEIT,
 ) {
   const bepaald = bepaalRechten(tier, isAdmin, maxVolledig);
-  // Free zoekt in de database alleen in de Pro-fondsen: records op Premium-niveau doen voor Free niet mee (ook niet
-  // met alleen de naam). Wat online publiek gevonden is (_extern, of een databaserecord dat online bevestigd is: _web) blijft vindbaar, met alleen publieke gegevens.
-  const freeBeperking = bepaald.tier === 'free' && !bepaald.isAdmin;
-  const buitenFree = (k: { row: any }) => freeBeperking && !k.row?._extern && !k.row?._web && k.row?.access_tier === 'premium';
-  const doorFreeTeZoeken = alle.filter((k) => !buitenFree(k));
-  const premiumBuitenFree = alle.filter((k) => buitenFree(k));
   // Eén definitieve controle vóór de engine: exclusieve fondsen verdwijnen voor Free/Pro uit de
   // gezamenlijke pool (database + online), ongeacht waar ze vandaan komen.
-  const { over, verwijderd } = onderdrukExclusief(doorFreeTeZoeken, bepaald, exclusiviteit);
+  const { over, verwijderd } = onderdrukExclusief(alle, bepaald, exclusiviteit);
   const pool = beoordeelPool(over, criteria, vandaag);
   const rechten = pasRechtenToe(pool, bepaald);
 
-  return { ...pool, ...rechten, exclusiefVerwijderd: verwijderd, premiumBuitenFree };
+  return { ...pool, ...rechten, exclusiefVerwijderd: verwijderd };
 }
 
 type Taal = 'nl' | 'en';
@@ -5907,18 +5904,23 @@ function detecteerTaal(tekst: string): Taal {
   return e >= 3 && e > n + 1 ? 'en' : 'nl';
 }
 
-// Algemene verkoopzin (productboodschap, geen onderdeel van de matching). Hij is bewust
-// NIET afhankelijk van wat er voor dit lid verborgen is: geen aantallen, geen namen en
-// geen aanwijzing dat er iets passends achter slot zit. Alleen onderaan een chatantwoord,
-// nooit in een document, en nooit voor Premium of Admin.
-function bouwVerkoopzin(tier: string, isAdmin: boolean, taal: Taal = 'nl'): string | null {
+// Algemene verkoopzin (productboodschap, geen onderdeel van de matching). Alleen onderaan een chatantwoord, nooit in een document, en nooit voor
+// Premium of Admin. Pro: geen aantallen. Free: wel het aantal passende fondsen dat in de Premium-database staat (die Free wel doorzoekt maar niet
+// laat zien); nooit namen of details. 28-10-2026: besluit van de opdrachtgever.
+function bouwVerkoopzin(tier: string, isAdmin: boolean, taal: Taal = 'nl', extraPremium: number = 0): string | null {
   if (isAdmin || tier === 'premium') return null;
 
+  const n = tier === 'free' && Number.isFinite(extraPremium) && extraPremium > 0 ? Math.floor(extraPremium) : 0;
+
   if (taal === 'en') {
-    return tier === 'pro' ? 'With Premium you also get access to the exclusive funds database.' : 'Want to see more funds? That is possible with a Pro or Premium subscription.';
+    const telling = n ? `In addition, ${n} ${n === 1 ? 'fund' : 'funds'} in the Premium database ${n === 1 ? 'matches' : 'match'} your project. ` : '';
+
+    return tier === 'pro' ? 'With Premium you also get access to the exclusive funds database.' : `${telling}Want to see more funds? That is possible with a Pro or Premium subscription.`;
   }
 
-  return tier === 'pro' ? 'Met Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.' : 'Wilt u meer fondsen zien? Dat kan met een Pro- of Premium-abonnement.';
+  const telling = n ? `Daarnaast ${n === 1 ? 'past' : 'passen'} ${n} ${n === 1 ? 'fonds' : 'fondsen'} uit de Premium-database bij uw project. ` : '';
+
+  return tier === 'pro' ? 'Met Premium krijgt u daarnaast toegang tot de exclusieve fondsendatabase.' : `${telling}Wilt u meer fondsen zien? Dat kan met een Pro- of Premium-abonnement.`;
 }
 
 function naamVoorVergelijking(t: unknown): string {
@@ -5940,18 +5942,20 @@ const VERKOOPZIN_PATRONEN: RegExp[] = [
   /\s*Met (?:Pro of Premium|Premium|Pro en Premium) krijgt u daarnaast toegang[^.\n]*\./gi,
   /\s*With (?:Pro or Premium|Premium|Pro and Premium) you also get access[^.\n]*\./gi,
   // 18-10-2026: de nieuwe zin voor Free ("Wilt u meer fondsen zien? ..."), zodat een door het model herhaalde variant niet dubbel komt.
+  /\s*Daarnaast (?:past|passen) \d+ fonds(?:en)? uit de Premium-database[^.\n]*\./gi,
+  /\s*In addition, \d+ funds? in the Premium database[^.\n]*\./gi,
   /\s*Wilt u meer fondsen zien\?[^.\n]*\./gi,
   /\s*Want to see more funds\?[^.\n]*\./gi,
 ];
 
-function verwerkAanvullendeZin(antwoord: string, tier: string, isAdmin: boolean, metZin: boolean, taal: Taal = 'nl'): { tekst: string; toegevoegd: string } {
+function verwerkAanvullendeZin(antwoord: string, tier: string, isAdmin: boolean, metZin: boolean, taal: Taal = 'nl', extraPremium: number = 0): { tekst: string; toegevoegd: string } {
   let schoon = String(antwoord || '');
 
   for (const re of VERKOOPZIN_PATRONEN) schoon = schoon.replace(re, '');
 
   schoon = schoon.replace(/[ \t]+\n/g, '\n').trimEnd();
 
-  const zin = metZin ? bouwVerkoopzin(tier, isAdmin, taal) : null;
+  const zin = metZin ? bouwVerkoopzin(tier, isAdmin, taal, extraPremium) : null;
 
   if (!zin) return { tekst: schoon, toegevoegd: '' };
 
@@ -6100,7 +6104,7 @@ function nabewerkAntwoord(
     // De verkoopzin over Pro/Premium is een productboodschap, geen onderdeel van de
     // matching: alleen onderaan een chatantwoord, nooit in een document (projectplan,
     // dekkingsplan, begroting, strategie).
-    const verwerkt = verwerkAanvullendeZin(tekst, sel.tier, sel.isAdmin, opties.metVerkoopzin !== false, opties.taal);
+    const verwerkt = verwerkAanvullendeZin(tekst, sel.tier, sel.isAdmin, opties.metVerkoopzin !== false, opties.taal, Number(sel.extraPremium) || 0);
 
     return { tekst: verwerkt.tekst, toegevoegd: verwerkt.toegevoegd };
   }
@@ -6675,7 +6679,7 @@ async function freeFondsadvies(
     if (k.bron === 'regeling' && k.naam) ctx.verborgenNamen.add(k.naam);
   }
 
-  for (const v of [...selectie.exclusiefVerwijderd, ...(selectie.premiumBuitenFree || [])]) {
+  for (const v of selectie.exclusiefVerwijderd) {
     if (v.row?.funder_naam) ctx.verborgenNamen.add(String(v.row.funder_naam));
     if (v.bron === 'regeling' && v.row?.naam) ctx.verborgenNamen.add(String(v.row.naam));
   }

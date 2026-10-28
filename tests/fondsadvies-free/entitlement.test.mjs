@@ -192,7 +192,7 @@ sectie('A/B. Publiek bekend fonds met Premium-record (Oranje Fonds): Free en Pro
     check(`A/B niveau 3 (${tier}, alleen DB): geen DB-only gegevens in het volledige antwoord`, bevat(bodyTekst(r), DB_ONLY_O).length === 0);
   }
 
-  // Niveau 3a-Free: Free zoekt in de database alleen in de Pro-fondsen; het Premium-record komt niet in de modelcontext en het model kan het niet noemen
+  // Niveau 3a-Free: Free zoekt in alle fondsen, maar het Premium-record komt niet in de modelcontext en het model kan het niet noemen
   {
     wereld({ regelingen, funders, profiel: 'free', modelTekst: `Advies:\n1. ${O.regeling} van ${O.funder} past goed.` });
     const r = await stel('free');
@@ -200,6 +200,10 @@ sectie('A/B. Publiek bekend fonds met Premium-record (Oranje Fonds): Free en Pro
     check('A/B niveau 3 (free, alleen DB): het Premium-fonds staat niet in de modelcontext', r.status === 200 && !t.includes(O.regeling) && !t.includes(O.funder));
     check('A/B niveau 3 (free, alleen DB): geen DB-only gegevens in enige modelinput', bevat(alleModelInput(), DB_ONLY_O).length === 0);
     check('A/B niveau 3 (free, alleen DB): het antwoord noemt het Premium-fonds niet, ook niet als het model het zelf noemt', !r.json.answer.includes(O.funder) && !r.json.answer.includes(O.regeling), r.json.answer);
+    check('A/B niveau 3 (free, alleen DB): het antwoord meldt wel hoeveel passende fondsen er in de Premium-database staan, zonder naam', /Daarnaast past 1 fonds uit de Premium-database bij uw project\./.test(r.json.answer), r.json.answer);
+    wereld({ regelingen, funders, profiel: 'pro', modelTekst: `Advies:\n1. ${O.regeling} van ${O.funder} past goed.` });
+    const rPro = await stel('pro');
+    check('A/B niveau 3 (pro): geen aantal Premium-fondsen in het antwoord (alleen voor Free)', !/uit de Premium-database bij uw project/.test(rPro.json.answer), rPro.json.answer);
   }
 
   // Niveau 3b: websearch vindt hetzelfde fonds (A en B uit de opdracht)
@@ -228,7 +232,7 @@ sectie('A/B. Publiek bekend fonds met Premium-record (Oranje Fonds): Free en Pro
   {
     const veel = [oranjeRegeling(), ...Array.from({ length: 5 }, (_, i) => reg(basis({ naam: `Extra Fonds ${i + 1}`, tier: 'free', funder: `Extra Funder ${i + 1}` })))];
     const sel = M.selecteerFreeFondsadvies(dbRows(veel), CRITERIA, 'free', false, undefined, '2026-10-08', LEEG());
-    check('A/B: Free zoekt in de database alleen in de Pro-fondsen: het Premium-record (Oranje) doet niet mee, de normale top 3 geldt voor de rest', sel.getoond.length === 3 && sel.verborgen.length === 2 && !sel.relevant.some((k) => k.row.funder_id === O.id) && sel.extraPremium === 0);
+    check('A/B: Free zoekt in alle fondsen maar toont het Premium-record (Oranje) niet: het telt alleen mee in het aantal Premium-matches', sel.getoond.length === 3 && !sel.getoond.some((k) => k.row.funder_id === O.id) && sel.relevant.some((k) => k.row.funder_id === O.id) && sel.extraPremium === 1 && sel.verborgen.length === 3);
     const selPro = M.selecteerFreeFondsadvies(dbRows(veel), CRITERIA, 'pro', false, undefined, '2026-10-08', LEEG());
     check('A/B: Pro heeft die beperking niet en ziet alle zes (het Premium-record met alleen publieke gegevens)', selPro.getoond.length === 6 && selPro.relevant.some((k) => k.row.funder_id === O.id));
     const selAdmin = M.selecteerFreeFondsadvies(dbRows(veel), CRITERIA, 'free', true, undefined, '2026-10-08', LEEG());
