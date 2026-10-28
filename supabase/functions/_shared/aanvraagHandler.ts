@@ -397,9 +397,9 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
   if (!MODI.includes(modus)) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
 
-  // 4b. Per fonds werken (criteria, versies, vragen, beoordelen) is er alleen met Premium. Pro schrijft wel het projectplan. De server weigert, ook als een
+  // 4b. Per fonds werken (criteria, versies van een fonds, vragen, beoordelen) is er alleen met Premium. Pro schrijft wel het projectplan en bewerkt het (versies van het algemene plan, zie hieronder). De server weigert, ook als een
   // client de knoppen toch zou tonen of een verzoek zelf opstelt. De lijst en het openen van aanvragen blijven open voor Pro, maar alleen voor het eigen projectplan (zie hieronder).
-  const FONDS_MODI: readonly Modus[] = ['criteria-bewaren', 'eisen-ophalen', 'beoordelen', 'begroting-voorstel', 'begroting-upload', 'versies', 'versie', 'versie-bewaren', 'versie-wijzigen', 'versie-verwijderen', 'vragen', 'vragen-lezen', 'vragen-bewaren', 'antwoorden-schrijven'];
+  const FONDS_MODI: readonly Modus[] = ['criteria-bewaren', 'eisen-ophalen', 'beoordelen', 'begroting-voorstel', 'begroting-upload', 'vragen', 'vragen-lezen', 'vragen-bewaren', 'antwoorden-schrijven'];
   const fondsActie = FONDS_MODI.includes(modus) || (modus === 'plan-schrijven' && typeof body.aanvraagId === 'string' && body.aanvraagId !== '');
 
   if (!config.fondsbeoordeling && fondsActie) {
@@ -503,6 +503,9 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
     }
 
     const NIET_BESCHIKBAAR = fout(503, 'opslag', 'De versies zijn nu niet beschikbaar. Probeer het later opnieuw.');
+    // Pro bewerkt en bewaart alleen versies van het algemene projectplan; versies van een aanvraag voor een fonds zijn er met Premium.
+    const mag = (stand: { soort: string }) => config.fondsbeoordeling || stand.soort === 'algemeen';
+    const ALLEEN_PREMIUM = fout(403, 'alleen-premium', 'Per fonds schrijven en versies bewaren is er met Premium. Met Pro bewerkt u wel uw projectplan.');
     const samenvatVersie = (v: VersieRij) => ({ id: v.id, aanvraagId: v.aanvraag_id, nummer: v.nummer, naam: v.naam, status: v.status, herkomst: v.herkomst, heeftBeoordeling: Boolean(v.beoordeling_id), gemaakt: v.created_at, bijgewerkt: v.updated_at });
     const idVan = (x: unknown) => (typeof x === 'string' && UUID_RE.test(x) ? x.toLowerCase() : '');
 
@@ -517,6 +520,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
       if (stand === 'storing') return { antwoord: NIET_BESCHIKBAAR } as const;
       if (!stand) return { antwoord: fout(404, 'versie', 'Deze versie is niet gevonden.') } as const;
+      if (!mag(stand)) return { antwoord: ALLEEN_PREMIUM } as const;
 
       return { versie, stand } as const;
     };
@@ -530,6 +534,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
       if (stand === 'storing') return NIET_BESCHIKBAAR;
       if (!stand) return fout(404, 'aanvraag', 'Deze aanvraag is niet gevonden.');
+      if (!mag(stand)) return ALLEEN_PREMIUM;
 
       const lijst = await deps.lijstVersies(userId, aanvraagId);
 
@@ -565,6 +570,7 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
       if (stand === 'storing') return NIET_BESCHIKBAAR;
       if (!stand) return fout(404, 'aanvraag', 'Deze aanvraag is niet gevonden.');
+      if (!mag(stand)) return ALLEEN_PREMIUM;
 
       let basis: VersieRij | null = null;
 

@@ -74,7 +74,7 @@ function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding, numme
 // formulier: { projectId, vragen: { lijst }, stukken, docs } voor een aanvraag die per vraag van het formulier is opgebouwd; dan wordt 'plan' niet gebruikt.
 // stap (alleen met formulier): 'antwoorden' | 'stukken' | 'controle'. Met zonderKop staan de kop en de stappenbalk buiten dit scherm (AanvraagWerk) en meldt dit scherm zijn stand via onStatus.
 // De ref geeft probeerSluiten() (vraagt eerst om opslaan als er niet-opgeslagen tekst is) en bewaarNu() (bewaart stil; true = er is niets meer niet-opgeslagen).
-const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planProp, formulier = null, stap = 'antwoorden', zonderKop = false, onStatus = () => {}, onNaarStukken = null, zonderAlvast = false, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {} }, ref) {
+const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planProp, formulier = null, stap = 'antwoorden', zonderKop = false, onStatus = () => {}, onNaarStukken = null, zonderAlvast = false, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {}, terugTekst = '← Terug naar het fonds', intro = '', zonderDefinitief = false, definitiefSlot = null }, ref) {
   const plan = formulier ? planUitVragen(formulier.vragen) : planProp;
   const [fase, setFase] = useState('laden'); // laden | klaar | zonder
   const [versies, setVersies] = useState([]);
@@ -532,7 +532,7 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
   const kopStuk = (
       <div style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap;')}>
         <Button variant="outline" size="s" onClick={probeerSluiten}>
-          ← Terug naar het fonds
+          {terugTekst}
         </Button>
         <strong style={css('font-size: 17px;')} data-testid="aa-versie-kop">
           {kop || titel}
@@ -600,7 +600,20 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
               </Blok>
   );
 
-  const definitiefBlok = (
+  // Het projectplan in Projectdocumentatie: hier maakt het lid een vaste kopie ("Maak definitief" in de lijst), niet de definitieve versie van een aanvraag voor een fonds.
+  const conceptBlok = (
+    <Blok titel="Concept projectplan" testid="aa-versie-definitief" actie={<Chip toon="blauw">Concept</Chip>}>
+      <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
+        Werkt u nog aan de tekst? Dan is het een concept. Is hij af, maak hem dan definitief: dat is een vaste kopie van uw laatst opgeslagen versie, die u onder Projectdocumentatie terugvindt. Het concept blijft bewerkbaar.
+      </p>
+      <div className="fwk-aa-acties">
+        {definitiefSlot}
+        <ExportMenu toegestaan uitlijnen="rechts" onMelding={setMelding} ariaLabel="Plan exporteren" bouwModel={bouwModel} />
+      </div>
+    </Blok>
+  );
+
+  const definitiefBlok = zonderDefinitief ? conceptBlok : (
           <Blok titel="Concept of definitief" testid="aa-versie-definitief" actie={<Chip toon={definitief ? 'groen' : 'blauw'}>{definitief ? 'Definitief' : 'Concept'}</Chip>}>
             <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
               Werkt u nog aan de tekst? Dan is het een concept. Is hij af, maak hem dan definitief: die versie blijft bewaard en u downloadt hem om zelf in te dienen. Terug naar concept kan altijd.
@@ -957,13 +970,25 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
                 <Button size="s" variant="dark" disabled={Boolean(bezig)} onClick={() => schrijf(leegIds)} ariaLabel="Schrijf een concept voor alle lege vragen">
                   Schrijf een concept voor alle lege vragen
                 </Button>
+              ) : !formulier ? (
+                // Een lang plan: opslaan hoeft niet pas onderaan.
+                <span style={css('display: flex; align-items: center; gap: 10px; flex-wrap: wrap;')}>
+                  <span className="fwk-aa-klein" data-testid="aa-versie-opslagstatus-boven" style={css('font-weight: 800;')}>
+                    {statusTekst}
+                  </span>
+                  <Button size="s" onClick={() => bewaar()} disabled={!kanOpslaan} ariaLabel="Opslaan als versie" testid="aa-opslaan-boven">
+                    Opslaan
+                  </Button>
+                </span>
               ) : undefined
             }
           >
             <p className="fwk-aa-klein" style={css('margin: 0 0 16px;')}>
               {formulier
                 ? 'Dit zijn de vragen uit het formulier van het fonds, in dezelfde volgorde. Wij schrijven een concept uit uw projectgegevens, begroting en dekkingsplan. Wat we niet weten, staat als '
-                : nieuwePlan
+                : intro
+                  ? `${intro} Wat nog ontbreekt, staat als `
+                  : nieuwePlan
                   ? 'Dit is een nieuwe aanzet van de AI. Wat we niet wisten, staat als '
                   : 'Dit is uw tekst. Wat we niet wisten, staat als '}
               <mark className="fwk-aa-markering">[aanvullen]</mark>. {formulier ? 'U kopieert het antwoord daarna zelf in het formulier van het fonds. Alle antwoorden voor dit fonds tellen in een maand samen als één beoordeling. U beslist en past het aan; wij dienen niets voor u in.' : 'U beslist en past het aan; wij dienen niets voor u in.'}

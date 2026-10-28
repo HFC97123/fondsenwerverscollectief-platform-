@@ -8,7 +8,7 @@ import { haalDefinitiefDocument, maakDefinitief, verwijderDefinitief } from '../
 import { downloadBegrotingConcept, downloadBegrotingDefinitief } from '../begroting/begrotingExport.js';
 import { regelUitRpc } from '../financiering/dekkingsplan.js';
 import { aantalAanvullenInPlan, begrotingMomentopname, DEFINITIEF_NAAM, definitiefSoortVan, planMomentopname } from './aanvraagModel.js';
-import { leesPlan } from './GeschrevenDocs.jsx';
+import { leesPlanActueel } from './planLezen.js';
 
 const FOUT_TEKST = {
   'niet-toegestaan': 'Definitief maken hoort bij Pro en Premium.',
@@ -25,7 +25,7 @@ async function maakInhoud({ doc, project }) {
   const soort = definitiefSoortVan(doc);
 
   if (soort === 'projectplan') {
-    const plan = await leesPlan(doc.aanvraagId);
+    const plan = await leesPlanActueel(doc.aanvraagId);
 
     return plan ? { soort, inhoud: planMomentopname({ plan, projectNaam: doc.projectNaam }), aanvullen: aantalAanvullenInPlan(plan) } : null;
   }

@@ -7,12 +7,15 @@ import { Button } from '../../../shared/ui/index.js';
 import ExportMenu from '../../../shared/ui/ExportMenu.jsx';
 import { bouwDocumentModel } from '../../../shared/export/exportModel.js';
 import { Melding } from '../../../shared/ui/werkplek.jsx';
-import { haalAanvraag, haalAanvragen } from '../../../data/services/aanvraagAssistent.js';
+import { haalAanvragen } from '../../../data/services/aanvraagAssistent.js';
 import { haalDekkingsplan } from '../../../data/services/projectFinanciering.js';
 import { haalDefinitieveDocumenten, haalDefinitiefDocument } from '../../../data/services/definitieveDocumenten.js';
 import { AanvraagStijl, Bezig } from './Bouwstenen.jsx';
 import PlanEditor from './PlanEditor.jsx';
+import VersieEditor from './VersieEditor.jsx';
+import { MaakDefinitiefKnop } from './DefinitieveDocs.jsx';
 import { definitieveDocsVoorLijst, geschrevenDocs, planNaarTekst, splitsAanvragen } from './aanvraagModel.js';
+import { leesPlan, leesPlanActueel } from './planLezen.js';
 
 // Laadt per project het concept projectplan, de concepten per fonds en het aantal regels van het dekkingsplan, en maakt er regels van.
 // actief: alleen laden als het tabblad Projectdocumentatie openstaat (en opnieuw bij elk bezoek, zodat een net geschreven plan er direct staat).
@@ -92,16 +95,12 @@ export function useDefinitieveDocs({ projecten, actief }) {
   return { docs, ververs };
 }
 
-async function leesPlan(aanvraagId) {
-  const r = await haalAanvraag(aanvraagId);
-
-  return r.ok && r.antwoord.aanvraag && r.antwoord.aanvraag.plan ? r.antwoord.aanvraag.plan : null;
-}
-
 // Het geopende concept: het plan met export, en de weg terug naar Aanvraag indienen.
 // aanvraagId, of algemeen: dan zoekt dit scherm zelf het concept projectplan van het project (net geschreven). nieuw: toon de melding waar het is bewaard.
-export function PlanVenster({ project, aanvraagId = '', algemeen = false, definitiefId = '', nieuw = false, store, onSluit, onNaarIndienen }) {
+export function PlanVenster({ project, aanvraagId = '', algemeen = false, definitiefId = '', nieuw = false, store, onSluit, onNaarIndienen, onDefinitiefGemaakt = () => {} }) {
   const [plan, setPlan] = useState(null);
+  const [planId, setPlanId] = useState('');
+  const [meld, setMeld] = useState('');
   const [versie, setVersie] = useState(0);
   const [fout, setFout] = useState('');
   const projectId = project ? project.id : '';
@@ -112,6 +111,7 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, defini
     setPlan(null);
     setFout('');
     setVersie(0);
+    setPlanId('');
 
     (async () => {
       if (definitiefId) {
@@ -140,8 +140,10 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, defini
 
       if (weg) return;
 
-      if (p) setPlan(p);
-      else setFout('Dit concept is niet gevonden. Probeer het opnieuw.');
+      if (p) {
+        setPlanId(id);
+        setPlan(p);
+      } else setFout('Dit concept is niet gevonden. Probeer het opnieuw.');
     })();
 
     return () => {
@@ -180,22 +182,41 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, defini
               </Melding>
             </div>
           )}
-          <PlanEditor
-            plan={plan}
-            opgeslagen
-            titel={titel}
-            kop={definitief ? `Projectplan · definitief${versie ? `, versie ${versie}` : ""}` : 'Concept projectplan'}
-            projectNaam={project && project.naam}
-            store={store}
-            onSluit={onSluit}
-            extraActies={
-              onNaarIndienen && (
-                <Button variant="dark" size="s" onClick={() => onNaarIndienen()} testid="gb-naar-indienen">
-                  Naar Aanvraag indienen
-                </Button>
-              )
-            }
-          />
+          {definitief ? (
+            <PlanEditor plan={plan} opgeslagen titel={titel} kop={`Projectplan · definitief${versie ? `, versie ${versie}` : ''}`} projectNaam={project && project.naam} store={store} onSluit={onSluit} />
+          ) : (
+            <>
+              {onNaarIndienen && (
+                <div style={css('margin-bottom: 14px;')}>
+                  <Button variant="outline" size="s" onClick={() => onNaarIndienen()} testid="gb-naar-indienen">
+                    Naar Aanvraag indienen
+                  </Button>
+                </div>
+              )}
+              {meld && (
+                <div style={css('margin-bottom: 14px;')}>
+                  <Melding toon="info" testid="gb-meld">
+                    {meld}
+                  </Melding>
+                </div>
+              )}
+              <VersieEditor
+                key={planId}
+                aanvraagId={planId}
+                plan={plan}
+                nieuwePlan={nieuw}
+                titel={titel}
+                kop="Concept projectplan"
+                projectNaam={project && project.naam}
+                store={store}
+                onSluit={onSluit}
+                terugTekst="← Terug naar de lijst"
+                intro="Dit is de eerste aanzet van uw projectplan. Pas de tekst zelf aan, ook de onderdelen die al geschreven zijn."
+                zonderDefinitief
+                definitiefSlot={<MaakDefinitiefKnop doc={{ gegenereerd: 'plan', aanvraagId: planId, projectId, projectNaam: project && project.naam, naam: 'Concept projectplan' }} project={project} onMelding={setMeld} onKlaar={onDefinitiefGemaakt} />}
+              />
+            </>
+          )}
         </>
       )}
     </div>
@@ -207,7 +228,7 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, defini
 export function geschrevenExport({ doc, store }) {
   if (doc.gegenereerd === 'plan') {
     return async () => {
-      const plan = await leesPlan(doc.aanvraagId);
+      const plan = await leesPlanActueel(doc.aanvraagId);
 
       if (!plan) return null;
 
@@ -232,4 +253,3 @@ export function geschrevenExport({ doc, store }) {
   return null;
 }
 
-export { leesPlan };

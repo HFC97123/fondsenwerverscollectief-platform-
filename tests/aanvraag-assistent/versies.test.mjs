@@ -9,6 +9,7 @@ const USER = '11111111-1111-4111-8111-111111111111';
 const ANDER = '22222222-2222-4222-8222-222222222222';
 const AANVRAAG = '44444444-4444-4444-8444-444444444444';
 const ANDERE_AANVRAAG = '55555555-5555-4555-8555-555555555555';
+const ALGEMEEN = '66666666-6666-4666-8666-666666666666';
 const NU = new Date('2026-10-26T12:00:00Z');
 const UUID = (n) => `99999999-9999-4999-8999-${String(n).padStart(12, '0')}`;
 
@@ -17,6 +18,7 @@ function omgeving(opties = {}) {
   const log = { reserveringen: 0, modelAanroepen: 0 };
   const aanvragen = new Map([
     [AANVRAAG, { id: AANVRAAG, user: USER, soort: 'fonds', status: 'concept', definitieve_versie_id: null }],
+    [ALGEMEEN, { id: ALGEMEEN, user: USER, soort: 'algemeen', status: 'concept', definitieve_versie_id: null }],
     [ANDERE_AANVRAAG, { id: ANDERE_AANVRAAG, user: ANDER, soort: 'fonds', status: 'concept', definitieve_versie_id: null }],
   ]);
   const versies = new Map();
@@ -185,6 +187,50 @@ sectie('6. Maximaal 20 versies per aanvraag');
   }
   const vol = await verwerk(vraag({ mode: 'versie-bewaren', aanvraagId: AANVRAAG, antwoorden: [{ id: 'a', titel: '', tekst: 'nog een' }] }), v.deps);
   gelijk('alleen definitieve versies: 409 versies-vol', [vol.status, vol.body.reden], [409, 'versies-vol']);
+}
+
+sectie('7. Pro bewerkt het projectplan, maar bewaart geen versies per fonds');
+{
+  const e = omgeving({ tier: 'pro' });
+
+  let r = await verwerk(vraag({ mode: 'versie-bewaren', aanvraagId: ALGEMEEN, antwoorden: tekst }), e.deps);
+  check('Pro: een versie van het algemene projectplan bewaren kan', r.status === 200 && r.body.versie.nummer === 1 && e.versies.size === 1);
+  const id = r.body.versie.id;
+  r = await verwerk(vraag({ mode: 'versie-bewaren', aanvraagId: ALGEMEEN, versieId: id, antwoorden: [{ id: 'aanleiding', titel: 'Aanleiding', tekst: 'Door Pro aangepast.' }] }), e.deps);
+  check('Pro: dezelfde versie bijwerken kan', r.status === 200 && r.body.nieuw === false && e.versies.get(id).antwoorden[0].tekst === 'Door Pro aangepast.');
+  r = await verwerk(vraag({ mode: 'versies', aanvraagId: ALGEMEEN }), e.deps);
+  check('Pro: de lijst met versies van het projectplan kan', r.status === 200 && r.body.versies.length === 1);
+  r = await verwerk(vraag({ mode: 'versie', versieId: id }), e.deps);
+  check('Pro: een versie van het projectplan ophalen kan', r.status === 200 && r.body.versie.antwoorden.length === 1);
+  r = await verwerk(vraag({ mode: 'versie-wijzigen', versieId: id, actie: 'hernoem', naam: 'Voor het bestuur' }), e.deps);
+  check('Pro: een versie hernoemen kan', r.status === 200);
+  r = await verwerk(vraag({ mode: 'versie-verwijderen', versieId: id }), e.deps);
+  check('Pro: een versie van het projectplan verwijderen kan', r.status === 200 && e.versies.size === 0);
+
+  // Een aanvraag voor een fonds blijft Premium.
+  const f = omgeving({ tier: 'pro' });
+  const geweigerd = [
+    ['versies', { mode: 'versies', aanvraagId: AANVRAAG }],
+    ['versie-bewaren', { mode: 'versie-bewaren', aanvraagId: AANVRAAG, antwoorden: tekst }],
+  ];
+
+  for (const [naam, body] of geweigerd) {
+    const x = await verwerk(vraag(body), f.deps);
+    check(`Pro: ${naam} bij een aanvraag voor een fonds: 403 alleen-premium`, x.status === 403 && x.body.reden === 'alleen-premium');
+  }
+
+  // Een versie van een fonds die al bestaat (bijvoorbeeld uit een Premium-periode) is ook voor Pro dicht.
+  const p = omgeving({ tier: 'premium' });
+  const gemaakt = await verwerk(vraag({ mode: 'versie-bewaren', aanvraagId: AANVRAAG, antwoorden: tekst }), p.deps);
+  const pro = { ...f.deps, leesVersie: p.deps.leesVersie, leesVersieStand: p.deps.leesVersieStand };
+
+  for (const body of [{ mode: 'versie', versieId: gemaakt.body.versie.id }, { mode: 'versie-wijzigen', versieId: gemaakt.body.versie.id, actie: 'definitief' }, { mode: 'versie-verwijderen', versieId: gemaakt.body.versie.id }]) {
+    const x = await verwerk(vraag(body), pro);
+    check(`Pro: ${body.mode} van een versie voor een fonds: 403 alleen-premium`, x.status === 403 && x.body.reden === 'alleen-premium');
+  }
+
+  check('Pro: een fonds laten beoordelen blijft dicht', (await verwerk(vraag({ mode: 'beoordelen', aanvraagId: AANVRAAG }), f.deps)).status === 403);
+  check('bewaren kost Pro geen maandruimte en geen model', e.log.reserveringen === 0 && e.log.modelAanroepen === 0);
 }
 
 klaar('aanvraag-versies');

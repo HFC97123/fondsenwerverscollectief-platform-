@@ -666,3 +666,22 @@ const zonderDocs = (project) => {
 
 export const planMomentopname = ({ plan, projectNaam }) => ({ type: 'projectplan', plan, projectNaam: projectNaam || '' });
 export const begrotingMomentopname = ({ soort, project, finRegels }) => ({ type: soort, project: zonderDocs(project), finRegels: Array.isArray(finRegels) ? finRegels : [] });
+
+// Het plan zoals het lid het nu heeft: de tekst van de AI, met de tekst uit de nieuwste opgeslagen versie erover (per onderdeel op id). Zonder versie: het plan zelf.
+// Een onderdeel dat de AI niet lukte en dat het lid zelf schreef, telt weer als geschreven.
+export function planMetVersie(plan, antwoorden) {
+  if (!plan || !Array.isArray(plan.secties) || !Array.isArray(antwoorden) || !antwoorden.length) return plan;
+
+  const per = new Map(antwoorden.filter((a) => a && a.id != null).map((a) => [String(a.id), String(a.tekst || '')]));
+
+  return {
+    ...plan,
+    secties: plan.secties.map((s) => {
+      if (!s || s.id == null || !per.has(String(s.id))) return s;
+
+      const tekst = per.get(String(s.id));
+
+      return { ...s, tekst, status: s.status === 'mislukt' && tekst.trim() ? 'geschreven' : s.status };
+    }),
+  };
+}

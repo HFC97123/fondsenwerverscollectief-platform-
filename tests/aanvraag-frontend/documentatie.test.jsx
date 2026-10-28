@@ -26,6 +26,12 @@ const $$ = (sel) => [...document.querySelectorAll(sel)];
 const tekst = () => document.body.textContent.replace(/\s+/g, ' ');
 const knop = (naam) => $$('button, a').find((b) => b.textContent.replace(/\s+/g, ' ').trim().includes(naam) || (b.getAttribute('aria-label') || '').includes(naam));
 const klik = async (el) => { await act(async () => { el.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); }); };
+const typ = async (el, waarde) => {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(el, waarde);
+    el.dispatchEvent(new window.Event('input', { bubbles: true }));
+  });
+};
 const wacht = async (fn, ms = 4000) => {
   const t0 = Date.now();
 
@@ -160,11 +166,11 @@ sectie('2. Na het schrijven: het concept projectplan staat onder Projectplan');
   check('tabblad Aanvraag indienen opent met het projectplan', await wacht(() => $('[data-testid="aa-projectplan"]')));
   await klik(knop('Start algemeen plan'));
   await klik(knop('Ja, schrijf het plan'));
-  check('na het schrijven opent het concept onder Projectdocumentatie, met de melding', await wacht(() => $('[data-testid="gb-plan-open"]') && $('[data-testid="aa-plan"]') && $('[data-testid="gb-nieuw"]')) && !$('[data-testid="aa-projectplan"]'));
+  check('na het schrijven opent het concept onder Projectdocumentatie, met de melding', await wacht(() => $('[data-testid="gb-plan-open"]') && $('[data-testid="aa-versie-editor"]') && $('[data-testid="gb-nieuw"]')) && !$('[data-testid="aa-projectplan"]'));
   check('het tabblad Projectdocumentatie is actief', $('[data-testid="documenten-tab-bestanden"]')?.getAttribute('aria-selected') === 'true');
   check('de server heeft één algemeen plan bewaard', [...S.s.tabel.values()].length === 1 && [...S.s.tabel.values()][0].soort === 'algemeen');
 
-  await klik(knop('Sluiten'));
+  await klik(knop('Terug naar de lijst'));
   check('na sluiten staat het concept projectplan als regel in de lijst', await wacht(() => $$('[data-testid="documenten-rij"]').some((r) => /Concept projectplan/.test(r.textContent))));
   check('Projectplan telt nu 1, Begroting 1 en Dekkingsplan 1 (zonder het woord concept in de knoppen)', await wacht(() => aantal('Projectplan') === 1 && aantal('Begroting') === 1 && aantal('Dekkingsplan') === 1), `(${aantal('Projectplan')}, ${aantal('Begroting')}, ${aantal('Dekkingsplan')})`);
   check('het tabblad telt de drie geschreven documenten mee', /Projectdocumentatie\s*3/.test(tekst()));
@@ -179,11 +185,11 @@ sectie('2. Na het schrijven: het concept projectplan staat onder Projectplan');
   check('het filter Projectplan toont alleen het concept projectplan', $$('[data-testid="documenten-rij"]').length === 1 && /Concept projectplan/.test($$('[data-testid="documenten-rij"]')[0].textContent));
 
   await klik($('[data-testid="gb-open-geschreven"]'));
-  check('de regel opent het concept opnieuw, zonder de "net geschreven"-melding', await wacht(() => $('[data-testid="aa-plan"]')) && !$('[data-testid="gb-nieuw"]') && $$('[data-testid="aa-plan-sectie"]').length === 8);
+  check('de regel opent het concept opnieuw, zonder de "net geschreven"-melding', await wacht(() => $('[data-testid="aa-versie-editor"]')) && !$('[data-testid="gb-nieuw"]') && $$('[data-testid="aa-onderdeel"]').length === 8);
   await klik($('[data-testid="gb-naar-indienen"]'));
   check('Naar Aanvraag indienen brengt het lid terug', await wacht(() => $('[data-testid="aa-projectplan"]')) && /onder Projectdocumentatie/.test($('[data-testid="aa-plan-klaar"]').textContent));
   await klik($('[data-testid="aa-open-plan"]'));
-  check('Open het projectplan op Indienen gaat naar Projectdocumentatie en opent het concept', await wacht(() => $('[data-testid="gb-plan-open"]') && $('[data-testid="aa-plan"]')) && !$('[data-testid="aa-projectplan"]'));
+  check('Open het projectplan op Indienen gaat naar Projectdocumentatie en opent het concept', await wacht(() => $('[data-testid="gb-plan-open"]') && $('[data-testid="aa-versie-editor"]')) && !$('[data-testid="aa-projectplan"]'));
   await act(async () => { root.render(<div />); });
 }
 
@@ -197,8 +203,8 @@ sectie('3. Maak definitief: een vaste kopie, bovenaan de lijst');
   await wacht(() => $('[data-testid="aa-projectplan"]'));
   await klik(knop('Start algemeen plan'));
   await klik(knop('Ja, schrijf het plan'));
-  await wacht(() => $('[data-testid="aa-plan"]'));
-  await klik(knop('Sluiten'));
+  await wacht(() => $('[data-testid="aa-versie-editor"]'));
+  await klik(knop('Terug naar de lijst'));
   check('de concepten staan er, zonder definitieve versies', await wacht(() => aantal('Projectplan') === 1 && aantal('Begroting') === 1 && aantal('Dekkingsplan') === 1) && !$$('[data-testid="documenten-rij"]').some((r) => r.querySelector('[data-testid="definitief-verwijder"]')));
 
   const conceptPlan = () => $$('[data-testid="documenten-rij"]').find((r) => /Concept projectplan/.test(r.textContent));
@@ -264,6 +270,42 @@ sectie('4. Zonder Pro of Premium is er geen definitieve versie');
   await wacht(() => rij.querySelector('[data-testid="maak-definitief-ja"]'));
   await klik(rij.querySelector('[data-testid="maak-definitief-ja"]'));
   check('de database weigert het en het lid ziet een duidelijke melding, zonder dat er een regel bijkomt', await wacht(() => /hoort bij Pro en Premium/.test(tekst())) && defTabel.rijen.length === 0 && !$('[data-testid="definitief-verwijder"]'));
+  await act(async () => { root.render(<div />); });
+}
+
+sectie('5. Het concept projectplan bewerken (Pro en Premium): vakken per onderdeel, opslaan, en Maak definitief neemt de eigen tekst mee');
+for (const tier of ['pro', 'premium']) {
+  const S = maakServer({ tier, dekkingsplan: [{ id: 'r1' }] });
+
+  defTabel = maakDefTabel();
+  await toon(S, tier);
+  await klik($('[data-testid="documenten-tab-plan"]'));
+  await wacht(() => $('[data-testid="aa-projectplan"]'));
+  await klik(knop('Start algemeen plan'));
+  await klik(knop('Ja, schrijf het plan'));
+  const opent = await wacht(() => $$('[data-testid="aa-onderdeel"] textarea').length === 8);
+  check(`${tier}: het concept opent met een tekstvak per onderdeel`, opent);
+  check(`${tier}: de uitleg zegt dat het de eerste aanzet is en dat u de tekst zelf aanpast`, /eerste aanzet van uw projectplan/.test(tekst()) && /Pas de tekst zelf aan/.test(tekst()) && !/ontbreekt\. Wat nog ontbreekt/.test(tekst()));
+  check(`${tier}: er is een weg terug naar de lijst en naar Aanvraag indienen`, !!knop('Terug naar de lijst') && !!$('[data-testid="gb-naar-indienen"]'));
+  check(`${tier}: het concept heeft Maak definitief en een exportmenu, en niet de definitieve versie van een fonds`, !!$('[data-testid="maak-definitief"]') && !!$('[aria-label="Plan exporteren"]') && !$('[aria-label="Maak definitief"]'));
+
+  const veld = $$('[data-testid="aa-onderdeel"] textarea')[0];
+
+  await typ(veld, 'Onze eigen aanleiding, door het lid geschreven.');
+  check(`${tier}: tijdens het typen staat er "Niet opgeslagen"`, /Niet opgeslagen/.test($('[data-testid="aa-versie-opslagstatus"]').textContent));
+  await klik($('[aria-label="Opslaan als versie"]'));
+  check(`${tier}: opslaan maakt een versie met de eigen tekst`, await wacht(() => /Opgeslagen als versie 1/.test(tekst())) && [...S.s.versies.values()].some((v) => JSON.stringify(v.antwoorden).includes('Onze eigen aanleiding')));
+
+  await klik($('[data-testid="maak-definitief"]'));
+  await wacht(() => $('[data-testid="maak-definitief-ja"]'));
+  await klik($('[data-testid="maak-definitief-ja"]'));
+  check(`${tier}: Maak definitief bewaart de eigen tekst, niet de eerste tekst van de AI`, await wacht(() => defTabel.rijen.length === 1) && JSON.stringify(defTabel.rijen[0].inhoud.plan.secties[0]).includes('Onze eigen aanleiding'));
+  check(`${tier}: een melding zegt dat het definitief is`, await wacht(() => $('[data-testid="gb-meld"]') && /definitief gemaakt/.test($('[data-testid="gb-meld"]').textContent)));
+
+  await klik(knop('Terug naar de lijst'));
+  check(`${tier}: de lijst toont het definitieve projectplan bovenaan`, await wacht(() => $$('[data-testid="documenten-rij"]')[0] && $$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="definitief-verwijder"]')));
+  await klik($$('[data-testid="documenten-rij"]').find((r) => /Concept projectplan/.test(r.textContent)).querySelector('[data-testid="gb-open-geschreven"]'));
+  check(`${tier}: het concept opent opnieuw met de bewerkte tekst`, await wacht(() => $$('[data-testid="aa-onderdeel"] textarea').length === 8) && await wacht(() => $$('[data-testid="aa-onderdeel"] textarea')[0].value.includes('Onze eigen aanleiding')));
   await act(async () => { root.render(<div />); });
 }
 

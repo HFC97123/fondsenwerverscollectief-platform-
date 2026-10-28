@@ -342,6 +342,7 @@ export default function DocumentatiePage() {
           store={store}
           onSluit={() => setPlanOpen(null)}
           onNaarIndienen={() => naarIndienen(planOpen.projectId)}
+          onDefinitiefGemaakt={definitief.ververs}
         />
       )}
 
