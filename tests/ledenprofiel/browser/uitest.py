@@ -92,7 +92,7 @@ with sync_playwright() as p:
     check('zonder foto: initialen als fallback (SD)', s and s['soort'] == 'initialen' and s['tekst'] == 'SD', s)
     check('zonder foto: geen <img>, dus geen broken image', pg.locator('#account [data-avatar] img').count() == 0)
     check('zonder foto: knop "Foto toevoegen"', knop(pg, 'Foto toevoegen').count() == 1 and knop(pg, 'Foto wijzigen').count() == 0 and knop(pg, 'Foto verwijderen').count() == 0)
-    check('zonder foto: hint over bestandstypen en 5 MB', 'JPEG, PNG of WebP, maximaal 5 MB' in kaart_tekst(pg))
+    check('zonder foto: bestandstypen en 5 MB alleen als tooltip, geen vaste tekst', 'JPEG, PNG of WebP' not in kaart_tekst(pg) and knop(pg, 'Foto toevoegen').get_attribute('title') == 'JPEG, PNG of WebP, maximaal 5 MB')
     check('naam en "Lid van het Collectief" nog zichtbaar', 'Sanne de Vries' in kaart_tekst(pg) and 'Lid van het Collectief' in kaart_tekst(pg))
     check('zonder foto: ronde 120px cirkel', s['w'] == 120 and s['h'] == 120 and s['rad'] in ('50%', '60px'), s)
     check('bestand-invoer accepteert alleen jpeg/png/webp', pg.get_attribute('input[aria-label="Profielfoto kiezen"]', 'accept') == 'image/jpeg,image/png,image/webp')
