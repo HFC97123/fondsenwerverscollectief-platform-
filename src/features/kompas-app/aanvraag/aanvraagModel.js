@@ -209,26 +209,46 @@ export function splitsAanvragen(lijst) {
   };
 }
 
+// De naam van het fonds zoals die in titels staat: alleen de naam van de stichting, niet de hele regelingnaam.
+// "Kwartaalronde donatieaanvraag mens, natuur en cultuur Stichting Cordius" -> "Stichting Cordius". Staat er geen "Stichting"/"Fonds" in, dan blijft de naam zoals hij is.
+export function kortFondsLabel(label) {
+  const t = schoonTekst(label);
+  const m = /(?:^|\s)((?:Stichting|Fonds|Fondation|Foundation|Vereniging)\s+[^,;()]+)$/i.exec(t);
+
+  return m && t.split(' ').length > 4 && m[1].split(' ').length >= 2 ? m[1].trim() : t;
+}
+
+const OVERHEID = /\b(gemeente|provincie|ministerie|rijksdienst|rijksoverheid|waterschap|europese|europees|erasmus|creative europe|rvo|dus-i|zonmw|nwo)\b/i;
+
+// "Fondsaanvraag Stichting Cordius" of, bij een overheid of Europees programma, "Subsidieaanvraag Gemeente Rotterdam".
+export function aanvraagTitel(label) {
+  const kort = kortFondsLabel(label);
+
+  return `${OVERHEID.test(kort) ? 'Subsidieaanvraag' : 'Fondsaanvraag'} ${kort}`.trim();
+}
+
 // Fondsen uit het dekkingsplan van het project waarvoor nog geen aanvraag is gemaakt, om er direct een te beginnen.
 // regels: regelUitRpc-regels; aanvragen: de aanvragen van het project. Verborgen of verwijderde bronnen, afgewezen en ingetrokken regels tellen niet mee.
 const DP_VOLGORDE = { preparing: 0, interesting: 1, submitted: 2, awarded: 3 };
 const dpSleutel = (t) => schoonTekst(t).toLowerCase();
 
 export function fondsenUitDekkingsplan(regels, aanvragen) {
-  const heeft = new Set((Array.isArray(aanvragen) ? aanvragen : []).filter((a) => a && a.soort === 'fonds').map((a) => dpSleutel(a.fondsLabel)));
+  const heeft = new Set((Array.isArray(aanvragen) ? aanvragen : []).filter((a) => a && a.soort === 'fonds').map((a) => dpSleutel(kortFondsLabel(a.fondsLabel))));
   const gezien = new Set();
   const uit = [];
 
   (Array.isArray(regels) ? regels : []).forEach((r, i) => {
     if (!r || r.bronStatus !== 'zichtbaar' || DP_VOLGORDE[r.status] === undefined) return;
 
-    const naam = schoonTekst(r.naam);
+    // De aanbieder (de stichting) is de naam van de aanvraag; een regeling van dat fonds staat eronder als toelichting.
+    const naam = kortFondsLabel(schoonTekst(r.funder) || schoonTekst(r.naam));
+    const regeling = schoonTekst(r.funder) && schoonTekst(r.naam) !== schoonTekst(r.funder) ? schoonTekst(r.naam) : '';
     const sleutel = dpSleutel(naam);
 
     if (!naam || heeft.has(sleutel) || gezien.has(sleutel)) return;
 
     gezien.add(sleutel);
-    uit.push({ id: r.id || `dp-${i}`, naam, website: r.website || '', status: r.status, bedrag: r.status === 'awarded' && r.awarded != null ? r.awarded : r.requested, i });
+    uit.push({ id: r.id || `dp-${i}`, naam, regeling, website: r.website || '', status: r.status, bedrag: r.status === 'awarded' && r.awarded != null ? r.awarded : r.requested, i });
   });
 
   return uit.sort((x, y) => DP_VOLGORDE[x.status] - DP_VOLGORDE[y.status] || x.i - y.i);

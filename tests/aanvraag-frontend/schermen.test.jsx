@@ -129,7 +129,7 @@ const S = maakServer();
   check('ruimte: Beoordelingen 0 van 30 en Projectplannen 0 van 3', /Beoordelingen\s*0 van 30/.test(tekst()) && /Projectplannen\s*0 van 3/.test(tekst()));
   check('voortgangsmeter: een volledig project staat op 100% en er is niets dat nog mist', await wacht(() => $('[data-testid="aa-meter-percentage"]')?.textContent === '100%') && !$('[data-testid="aa-meter-mist"]'));
   check('geen woord "eisenlijst" of "privéfonds" en geen "4 bestanden"', !/eisenlijst|privéfonds|4 bestanden/i.test(tekst()));
-  check('"Waar we het plan op baseren": drie bronnen', ['Projectgegevens', 'Projectdocumentatie', 'Organisatieprofiel'].every((t) => tekst().includes(t)));
+  check('"Waar we het plan op baseren": drie bronnen', ['Projectgegevens', 'Projectdossier', 'Organisatieprofiel'].every((t) => tekst().includes(t)));
   check('privaatfonds-kaart wordt hier niet getoond, wel de lege plannenlijst', /Nog geen plannen/.test(tekst()));
 
   await klik(knop('Start algemeen plan'));
@@ -294,6 +294,7 @@ sectie('9. Eén tabblad: projectplan en fondsen waar het lid indient');
   check('het blok heet Fondsen waar u indient en zegt dat het lid zelf indient', /Fondsen waar u indient/.test(tekst()) && /U dient zelf in bij het fonds/.test(tekst()));
   check('de maandruimte, de uitleg bij het plan en het privaatfonds staan er één keer op', $$('[data-testid="aa-ruimte"]').length <= 1 && $$('[data-testid="aa-baseren"]').length === 1 && $$('[data-testid="aa-privaatfonds"]').length === 1);
   check('er is één projectkeuze', $$('[data-testid="aa-projectkeuze"]').length === 1);
+  check('Waar we het plan op baseren: Projectgegevens, Projectdossier en Organisatieprofiel zijn links', $('[data-testid="aa-baseren-gegevens"]')?.getAttribute('href') === `#/kompas/projecten/${PROJECT}?bewerk=1` && $('[data-testid="aa-baseren-organisatie"]')?.getAttribute('href') === '#/kompas/organisatie' && /Projectdossier/.test($('[data-testid="aa-baseren-dossier"]')?.textContent || '') && !/Projectdocumentatie/.test($('[data-testid="aa-baseren"]').textContent));
   await klik(knop('+ Fonds toevoegen'));
   check('+ Fonds toevoegen opent het scherm voor een nieuwe aanvraag', await wacht(() => $('[data-testid="aa-nieuw"]')) && !$('[data-testid="aa-kaart-algemeen"]'));
   await klik(knop('Terug'));

@@ -176,7 +176,10 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
             {uitDekkingsplan.map((f) => (
               <li key={f.id}>
                 <button type="button" data-testid="aa-dp-fonds" onClick={() => setScherm({ naam: 'nieuw', fonds: f.naam, website: f.website })} aria-label={`Aanvraag voorbereiden voor ${f.naam}`}>
-                  <span style={css('font-weight: 800; min-width: 0;')}>{f.naam}</span>
+                  <span style={css('min-width: 0; text-align: left;')}>
+                    <span style={css('font-weight: 800; display: block;')}>{f.naam}</span>
+                    {f.regeling && <span className="fwk-aa-klein" style={css('display: block;')}>{f.regeling}</span>}
+                  </span>
                   <span style={css('display: inline-flex; align-items: center; gap: 8px;')}>
                     {f.bedrag != null && <span className="fwk-aa-klein">{formatEuro(f.bedrag)}</span>}
                     <Chip toon={f.status === 'awarded' ? 'groen' : f.status === 'submitted' ? 'blauw' : 'grijs'}>{DP_STATUS[f.status]}</Chip>

@@ -14,6 +14,8 @@ import VersieEditor from './VersieEditor.jsx';
 import {
   SOORTEN_KEUZE,
   aanvraagTekstStatus,
+  aanvraagTitel,
+  kortFondsLabel,
   aantalFormulierVragen,
   bronLabel,
   criteriaGewijzigd,
@@ -458,7 +460,7 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
     return (
       <>
         <AanvraagStijl />
-        <VersieEditor aanvraagId={aanvraagId} plan={plan.plan} opgeslagen={plan.opgeslagen} nieuwePlan={plan.nieuw} titel={`Aanvraag voor ${fondsLabel}`} kop={`Aanvraag ${fondsLabel}`} projectNaam={project.naam} store={store} onSluit={() => setPlan(null)} onGewijzigd={onGewijzigd} />
+        <VersieEditor aanvraagId={aanvraagId} plan={plan.plan} opgeslagen={plan.opgeslagen} nieuwePlan={plan.nieuw} titel={aanvraagTitel(fondsLabel)} kop={aanvraagTitel(fondsLabel)} projectNaam={project.naam} store={store} onSluit={() => setPlan(null)} onGewijzigd={onGewijzigd} />
       </>
     );
   }
@@ -697,7 +699,7 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
           ← Alle fondsen
         </Button>
         <strong data-testid="aa-fonds-naam" style={css('font-size: 17px;')}>
-          {fondsLabel}
+          {kortFondsLabel(fondsLabel)}
         </strong>
         {toonStappen && werkStatus && (
           <Chip toon={werkStatus.definitief ? 'groen' : 'blauw'} testid="aa-versie-status">
@@ -722,8 +724,8 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
             onStatus={setWerkStatus}
             onNaarStukken={() => kiesStap('stukken')}
             zonderAlvast={stap === 'vragenlijst'}
-            titel={`Aanvraag voor ${fondsLabel}`}
-            kop={`Aanvraag ${fondsLabel}`}
+            titel={aanvraagTitel(fondsLabel)}
+            kop={aanvraagTitel(fondsLabel)}
             projectNaam={project.naam}
             store={store}
             onSluit={onTerug}

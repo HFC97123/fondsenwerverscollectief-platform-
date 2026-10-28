@@ -214,4 +214,26 @@ sectie('Alvast verzamelen: korte lijst voor de zijkant');
   check('met een lijst van het fonds geldt die lijst, zonder wat niet van toepassing is', lijstFonds.length === 1 && lijstFonds[0].tekst === 'Aanbevelingsbrief' && lijstFonds[0].status === 'klaar');
 }
 
+sectie('Korte titels: alleen de naam van het fonds');
+{
+  gelijk('regelingnaam met stichting: alleen de stichting (Cordius)', M.kortFondsLabel('Kwartaalronde donatieaanvraag mens, natuur en cultuur Stichting Cordius'), 'Stichting Cordius');
+  gelijk('regelingnaam met stichting: alleen de stichting (Pieter Bastiaan)', M.kortFondsLabel('Kwartaalronde projectaanvraag Stichting Pieter Bastiaan'), 'Stichting Pieter Bastiaan');
+  gelijk('een korte naam blijft zoals hij is', M.kortFondsLabel('Stichting Cordius'), 'Stichting Cordius');
+  gelijk('een naam zonder stichting of fonds blijft zoals hij is', M.kortFondsLabel('Prins Bernhard Cultuurfonds'), 'Prins Bernhard Cultuurfonds');
+  gelijk('rommel geeft een lege tekst', M.kortFondsLabel(null), '');
+  gelijk('titel van een fonds', M.aanvraagTitel('Kwartaalronde projectaanvraag Stichting Pieter Bastiaan'), 'Fondsaanvraag Stichting Pieter Bastiaan');
+  gelijk('titel van een overheid', M.aanvraagTitel('Gemeente Rotterdam'), 'Subsidieaanvraag Gemeente Rotterdam');
+
+  const regels = [
+    { id: 'a', bronStatus: 'zichtbaar', status: 'interesting', naam: 'Kwartaalronde donatieaanvraag mens, natuur en cultuur Stichting Cordius', funder: 'Stichting Cordius', requested: 5000, awarded: null, website: '' },
+    { id: 'b', bronStatus: 'zichtbaar', status: 'preparing', naam: 'Stichting Pieter Bastiaan', funder: 'Stichting Pieter Bastiaan', requested: 3000, awarded: null, website: '' },
+    { id: 'c', bronStatus: 'zichtbaar', status: 'interesting', naam: 'Tweede regeling Stichting Cordius', funder: 'Stichting Cordius', requested: 1000, awarded: null, website: '' },
+  ];
+  const l = M.fondsenUitDekkingsplan(regels, [{ soort: 'fonds', fondsLabel: 'Kwartaalronde projectaanvraag Stichting Pieter Bastiaan' }]);
+
+  gelijk('dekkingsplan: de aanbieder is de naam, twee regelingen van dezelfde stichting worden één fonds', l.map((x) => x.naam).join('|'), 'Stichting Cordius');
+  gelijk('dekkingsplan: de regeling staat eronder als toelichting', l[0].regeling, 'Kwartaalronde donatieaanvraag mens, natuur en cultuur Stichting Cordius');
+  gelijk('dekkingsplan: een fonds met een aanvraag (ook onder de lange naam) staat er niet meer in', M.fondsenUitDekkingsplan(regels, [{ soort: 'fonds', fondsLabel: 'Kwartaalronde projectaanvraag Stichting Pieter Bastiaan' }, { soort: 'fonds', fondsLabel: 'Stichting Cordius' }]).length, 0);
+}
+
 klaar('aanvraag-schermen-model');

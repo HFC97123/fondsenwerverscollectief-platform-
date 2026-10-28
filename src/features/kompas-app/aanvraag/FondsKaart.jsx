@@ -4,7 +4,7 @@ import React from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
 import { Chip } from '../../../shared/ui/werkplek.jsx';
-import { STAP_KNOP, aanvraagBadges, datumTekst, stappenUitVoortgang, uitkomstLabel, volgendeStap } from './aanvraagModel.js';
+import { STAP_KNOP, aanvraagBadges, datumTekst, kortFondsLabel, stappenUitVoortgang, uitkomstLabel, volgendeStap } from './aanvraagModel.js';
 
 export default function FondsKaart({ aanvraag: a, docs = [], onOpen }) {
   const stappen = stappenUitVoortgang(a.voortgang, docs);
@@ -17,7 +17,7 @@ export default function FondsKaart({ aanvraag: a, docs = [], onOpen }) {
     <div className="fwk-aa-kaart" data-testid="aa-rij-aanvraag">
       <div style={css('display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap;')}>
         <div style={css('min-width: 0;')}>
-          <h3 className="fwk-aa-kaart-titel">{a.fondsLabel || 'Fonds'}</h3>
+          <h3 className="fwk-aa-kaart-titel">{kortFondsLabel(a.fondsLabel) || 'Fonds'}</h3>
           <div className="fwk-aa-klein">{sub}</div>
         </div>
         {stappen ? (

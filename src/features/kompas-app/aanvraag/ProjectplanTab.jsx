@@ -11,7 +11,7 @@ import { haalAanvraag, haalAanvragen, haalPlanGereedheid, schrijfProjectplan } f
 import { AanvraagStijl, Bezig, Keuzekaart, ProjectKeuze, RuimteBlok } from './Bouwstenen.jsx';
 import MeterInvullen, { kanInvullen } from './MeterInvullen.jsx';
 import PlanEditor from './PlanEditor.jsx';
-import { datumTekst, splitsAanvragen } from './aanvraagModel.js';
+import { datumTekst, kortFondsLabel, splitsAanvragen } from './aanvraagModel.js';
 
 // Deze onderdelen vult u in het projectdossier (Indienen › Projectdossier) in; de server noemt ze nog Projectgegevens of Projectdocumentatie.
 const DOSSIER_ONDERDELEN = new Set(['aanleiding', 'doelstelling', 'activiteiten', 'resultaat', 'planning', 'borging']);
@@ -334,7 +334,7 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
                 <Rij
                   key={a.id}
                   testid="aa-rij-fondsplan"
-                  titel={a.fondsLabel || 'Fonds'}
+                  titel={kortFondsLabel(a.fondsLabel) || 'Fonds'}
                   sub="Fondsversie"
                   onOpen={() => onOpenAanvraag(a.id)}
                   eind={<Chip toon="blauw">Concept</Chip>}
@@ -349,12 +349,24 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
           <RuimteBlok status={assistent.status} />
           <Blok titel="Waar we het plan op baseren" testid="aa-baseren">
             <ul className="fwk-aa-lijst" style={css('padding: 0;')}>
-              {['Projectgegevens', 'Projectdocumentatie', 'Organisatieprofiel'].map((t) => (
+              {[
+                { t: 'Projectgegevens', href: projectId ? `#/kompas/projecten/${encodeURIComponent(projectId)}?bewerk=1` : '#/kompas/projecten', testid: 'aa-baseren-gegevens' },
+                { t: 'Projectdossier', klik: onNaarProjectinhoud, href: '#/kompas/documentatie?tab=inhoud', testid: 'aa-baseren-dossier' },
+                { t: 'Organisatieprofiel', href: '#/kompas/organisatie', testid: 'aa-baseren-organisatie' },
+              ].map(({ t, href, klik, testid }) => (
                 <li key={t} style={css('display: flex; align-items: center; gap: 10px; padding: 7px 0; border: none; font-size: 15px;')}>
                   <span aria-hidden="true" style={css(`width: 22px; height: 22px; border-radius: 50%; background: ${color.vlakGroen}; color: ${color.succes}; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;`)}>
                     ✓
                   </span>
-                  {t}
+                  {klik ? (
+                    <button type="button" className="fwk-wp-link" data-testid={testid} onClick={klik}>
+                      {t}
+                    </button>
+                  ) : (
+                    <a className="fwk-wp-link" data-testid={testid} href={href}>
+                      {t}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
