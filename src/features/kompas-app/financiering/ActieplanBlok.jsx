@@ -11,6 +11,7 @@ import { isEchtId } from '../../../data/services/projecten.js';
 import { useDekkingsplannen } from './useProjectFinanciering.js';
 import { useActieplan } from './useActieplan.js';
 import { ActieplanNu } from './ActieplanNu.jsx';
+import { StukkenVoorFondsenwerving } from './StukkenVoorFondsenwerving.jsx';
 import { bouwActiesEnDeadlines, groepeerActiesEnDeadlines, telOpen, SOORT, DATUM_SOORT } from './actiesEnDeadlines.js';
 import { dagenTot, dagenTekst, formatDatum } from './dekkingsplan.js';
 import {
@@ -606,6 +607,11 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
       {actief.length > 0 && status !== 'laden' && (
         <>
           <ActieplanNu items={zichtbaar} projecten={inBeeld} nu={nu} plan={plan} beschikbaar={beschikbaar} maakTaak={maakTaak} naamVanProject={naamVanProject} fondsVan={fondsVan} />
+          <StukkenVoorFondsenwerving
+            projecten={inBeeld}
+            aantalFondsen={new Set(inBeeld.flatMap((p) => (perProject[p.id] || []).filter((r) => r.bronStatus === 'zichtbaar' && r.naam).map((r) => r.naam))).size}
+            nu={nu}
+          />
           <div style={css(`${LABEL} margin-top: 8px;`)}>Alle acties</div>
           <div style={css('display: flex; gap: 10px; flex-wrap: wrap; align-items: center;')}>
             <select data-testid="ap-filter-project" aria-label="Project" value={kiesProject} onChange={(e) => { setKiesProject(e.target.value); setKiesFonds(''); }} style={css(FILTER_STIJL)}>
