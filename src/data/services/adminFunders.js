@@ -31,8 +31,9 @@ export const SOURCE_TYPES = [
 // hierboven (dat blijft de herkomstgebaseerde public/premium-as). Een
 // beheerder zet dit per funder ÉN apart per subsidieregeling; nooit
 // automatisch afgeleid.
+// Alleen Pro of Premium (opdracht Aisya, 28-10-2026): Free ziet wat in Pro staat al (de eerste vrije plekken), dus een eigen
+// keuze Free heeft geen zin. Er staat in de database geen enkele funder of regeling op 'free'.
 export const ACCESS_TIERS = [
-  { value: 'free', label: 'Free' },
   { value: 'pro', label: 'Pro' },
   { value: 'premium', label: 'Premium' },
 ];

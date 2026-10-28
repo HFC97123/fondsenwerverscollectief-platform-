@@ -16,6 +16,7 @@ import {
 } from '../../data/services/organisatiedocumenten.js';
 import { analyseerWebsite, extractOrganisatieVelden } from '../../data/services/chat.js';
 import { Button, Field, Notice, Panel, PanelHeader, veldStijl } from '../../shared/ui/index.js';
+import { OrganisatieStukken } from './financiering/StukkenVoorFondsenwerving.jsx';
 
 // Ook gebruikt door KompasToolPage.jsx (fase 6, veldlabels voor de
 // goedkeuring van AI-voorstellen die tijdens een gesprek naar voren komen).
@@ -409,6 +410,18 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
 
       <Notice>{melding}</Notice>
 
+      {/* De basisstukken voor fondsenwerving (jaarrekening, ANBI, statuten, KvK) en de aanvullende; dezelfde lijst als in het actieplan. */}
+      <div style={css('margin-top: 30px;')}>
+        <OrganisatieStukken
+          documenten={documenten}
+          onToevoegen={() => {
+            const el = document.getElementById('org-relevante-documenten');
+
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+        />
+      </div>
+
       <div style={css('margin-top: 30px; padding: clamp(16px, 2.4vw, 24px); border: 1px solid #D5E6DB; border-radius: 24px; background: #F3F8F5;')}>
         <div style={css("margin-bottom: 16px; font-family: 'Newsreader', serif; font-size: clamp(21px, 2.6vw, 25px); font-weight: 600; color: #2C4A5E;")}>
           Wilt u dit makkelijk invullen?
@@ -431,7 +444,7 @@ export default function OrganisatieprofielPage({ embedded = false } = {}) {
 
       <div style={css('margin-top: 20px; padding-top: 20px; border-top: 1px solid #E1EAE4;')}>
         <style>{CSS_DOC_TIP}</style>
-        <div className="fwk-doctip" style={css('margin-bottom: 10px;')}>
+        <div id="org-relevante-documenten" className="fwk-doctip" style={css('margin-bottom: 10px; scroll-margin-top: 90px;')}>
           <span tabIndex={0} aria-describedby="fwk-doctip-tekst" style={css('font-size: 14px; font-weight: 800; color: #2C4A5E; cursor: help; border-bottom: 1px dotted #7B8985;')}>
             Relevante documenten
           </span>

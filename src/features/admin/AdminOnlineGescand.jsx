@@ -32,7 +32,10 @@ const VOLGENDE = [
   { status: 'afgewezen', label: 'Afwijzen', stijl: smallDangerStyle },
 ];
 
-export default function AdminOnlineGescand({ notify, diensten = { haalOnlineGescand, telOnlineGescand, werkOnlineGescandBij, neemOnlineGescandOp } }) {
+// Eén vast object: een nieuw object bij elke render maakte 'laad' steeds opnieuw aan, waardoor de lijst eindeloos bleef herladen.
+const STANDAARD_DIENSTEN = { haalOnlineGescand, telOnlineGescand, werkOnlineGescandBij, neemOnlineGescandOp };
+
+export default function AdminOnlineGescand({ notify, diensten = STANDAARD_DIENSTEN }) {
   const [status, setStatus] = useState('nieuw');
   const [zoek, setZoek] = useState('');
   const [rijen, setRijen] = useState([]);

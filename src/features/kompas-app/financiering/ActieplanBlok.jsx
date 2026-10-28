@@ -609,6 +609,7 @@ export function ActieplanOverzicht({ projecten, startProject = '' }) {
           <ActieplanNu items={zichtbaar} projecten={inBeeld} nu={nu} plan={plan} beschikbaar={beschikbaar} maakTaak={maakTaak} naamVanProject={naamVanProject} fondsVan={fondsVan} />
           <StukkenVoorFondsenwerving
             projecten={inBeeld}
+            regelsPerProject={perProject}
             aantalFondsen={new Set(inBeeld.flatMap((p) => (perProject[p.id] || []).filter((r) => r.bronStatus === 'zichtbaar' && r.naam).map((r) => r.naam))).size}
             nu={nu}
           />

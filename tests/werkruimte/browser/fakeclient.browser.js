@@ -69,6 +69,8 @@ export const supabase = {
   functions: { invoke: async (n, opts) => { window.__LOG.push({ tabel: `functions:${n}`, op: 'invoke', filters: [JSON.stringify((opts && opts.body) || {})] }); if (window.__FN) return window.__FN(n, opts && opts.body); return { data: null, error: null }; } },
   rpc: async (naam, args) => {
     window.__LOG.push({ tabel: `rpc:${naam}`, op: 'rpc', filters: [JSON.stringify(args || {})] });
+    // Test kan een RPC zelf nabootsen: window.__RPC = { naam: (args) => ({ data, error }) }.
+    if (window.__RPC && typeof window.__RPC[naam] === 'function') return window.__RPC[naam](args || {});
     if (naam === 'kompas_thema_aantallen') return { data: (window.__THEMA_AANTALLEN || []).map((r) => ({ ...r })), error: null };
     if (naam === 'kompas_premium_teasers') return { data: (window.__TEASERS || []).map((r) => ({ ...r })), error: null };
     if (naam === 'kompas_bron_details') {
