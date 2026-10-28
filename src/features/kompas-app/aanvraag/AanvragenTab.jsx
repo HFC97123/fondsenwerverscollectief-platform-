@@ -18,7 +18,7 @@ import { documentenLijst, fondsenUitDekkingsplan, splitsAanvragen } from './aanv
 // Eén tabblad "Aanvraag indienen": met metProjectplan staat het projectplan bovenaan en daaronder de fondsen waar het lid indient.
 // Het lid dient zelf in bij het fonds; Subsidie Kompas helpt met de tekst en de stukken.
 // start: { fonds?, aanvraagId?, nonce } (alleen nog nodig als een ander scherm direct een aanvraag wil openen).
-export default function AanvragenTab({ project, projecten, onKiesProject, store, assistent, start, metProjectplan = false, onNaarProjectinhoud }) {
+export default function AanvragenTab({ project, projecten, onKiesProject, store, assistent, start, metProjectplan = false, onNaarProjectinhoud, onPlanGeschreven, onNaarDocumentatie }) {
   const projectId = project ? project.id : '';
   // Per fonds werken (criteria, een versie voor een fonds, de aanvraag laten beoordelen) is er met Premium. Met Pro schrijft het lid het projectplan.
   // De server beslist (status.fondsbeoordeling); is die niet bekend, dan blijft het scherm zoals het was.
@@ -205,6 +205,8 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
         onNieuweAanvraag={(fonds, website) => setScherm({ naam: 'nieuw', fonds: fonds || '', website: website || '' })}
         onOpenAanvraag={(id) => setScherm({ naam: 'werk', aanvraagId: id })}
         onNaarProjectinhoud={onNaarProjectinhoud}
+        onPlanGeschreven={onPlanGeschreven}
+        onNaarDocumentatie={onNaarDocumentatie}
         fondsenBlok={fondsenBlok}
         rechtsExtra={<PrivaatfondsKaart fondsLabel="" />}
       />

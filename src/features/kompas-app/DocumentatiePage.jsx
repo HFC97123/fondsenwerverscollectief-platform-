@@ -51,6 +51,7 @@ import { opgeslagenDocumentExport } from './exportBronnen.js';
 // Aanvraag-assistent (Pro/Premium): het tabblad Aanvraag indienen. Het verschijnt alleen als de server de functie voor dit lid aanzet.
 import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
 import AanvragenTab from './aanvraag/AanvragenTab.jsx';
+import GeschrevenBlok from './aanvraag/GeschrevenBlok.jsx';
 import BegrotingTab from './begroting/BegrotingTab.jsx';
 import { huidigeHash, vervangAdres } from '../../app/adres.js';
 
@@ -97,6 +98,8 @@ export default function DocumentatiePage() {
   const [melding, setMelding] = useState('');
   const [gekozen, setGekozen] = useState(leesProjectUitUrl);
   const [tab, setTab] = useState(leesTabUitUrl);
+  const [openPlan, setOpenPlan] = useState(null); // { projectId, nonce }: het net geschreven plan opent direct onder Projectdocumentatie
+  const [startAanvraag, setStartAanvraag] = useState(null); // { aanvraagId, nonce }: een versie voor een fonds openen in Aanvraag indienen
   const [projectFilter, setProjectFilter] = useState(() => leesProjectUitUrl() || 'alle');
   const assistent = useAanvraagAssistent(paid);
 
@@ -114,6 +117,36 @@ export default function DocumentatiePage() {
     setGekozen(id);
     zetProjectInUrl(id);
   }, []);
+
+  // Een tabblad kiezen wist de eenmalige verzoeken (plan direct openen, een aanvraag openen), zodat ze niet terugkomen bij een volgend bezoek.
+  const kiesTab = useCallback((t) => {
+    setOpenPlan(null);
+    setStartAanvraag(null);
+    setTab(t);
+  }, []);
+
+  // Het plan is geschreven (of het lid wil het terugzien): naar Projectdocumentatie, gefilterd op dit project.
+  const naarDocumentatie = useCallback(
+    (id, metOpenPlan = false) => {
+      kiesProject(id);
+      setProjectFilter(id);
+      setStartAanvraag(null);
+      setOpenPlan(metOpenPlan ? { projectId: id, nonce: Date.now() } : null);
+      setTab('bestanden');
+    },
+    [kiesProject],
+  );
+
+  // Terug naar Aanvraag indienen, eventueel direct naar een versie voor een fonds.
+  const naarIndienen = useCallback(
+    (id, aanvraagId) => {
+      kiesProject(id);
+      setOpenPlan(null);
+      setStartAanvraag(aanvraagId ? { aanvraagId, nonce: Date.now() } : null);
+      setTab('plan');
+    },
+    [kiesProject],
+  );
 
   // De balk van Subsidieadvies verandert alleen de hash (stap of project): tabblad en project volgen de URL.
   useEffect(() => {
@@ -169,6 +202,8 @@ export default function DocumentatiePage() {
   const zichtbaar = inProject.filter((d) => filter === 'alle' || d.soort === filter);
   const filterProject = projectFilter !== 'alle' ? (store.projects || []).find((p) => p.id === projectFilter) || null : null;
   const aantalProjecten = new Set(alle.map((d) => d.projectId)).size;
+  // Wat Subsidie Kompas schreef (projectplan, begroting en dekkingsplan): voor het gekozen project, of per project bij "Alle projecten".
+  const blokProjecten = filterProject ? (isEchtId(filterProject.id) && !filterProject.gearchiveerd ? [filterProject] : []) : projecten;
 
   const openInChat = (doc) => {
     store.patch({ activeDoc: { id: doc.id, naam: doc.naam, soort: doc.soort, projectId: doc.projectId || '' } });
@@ -212,7 +247,7 @@ export default function DocumentatiePage() {
             { id: 'bestanden', label: 'Projectdocumentatie', aantal: alle.length },
           ]}
           actief={tabActief}
-          onKies={setTab}
+          onKies={kiesTab}
           label="Indienen"
           testidPrefix="documenten-tab-"
         />
@@ -228,7 +263,10 @@ export default function DocumentatiePage() {
           onKiesProject={kiesProject}
           store={store}
           assistent={assistent}
+          start={startAanvraag}
           onNaarProjectinhoud={() => setTab('inhoud')}
+          onPlanGeschreven={(id) => naarDocumentatie(id, true)}
+          onNaarDocumentatie={(id) => naarDocumentatie(id)}
         />
       ) : (
         <Leeg>
@@ -296,6 +334,18 @@ export default function DocumentatiePage() {
               );
             })}
           </div>
+
+          {blokProjecten.map((p) => (
+            <GeschrevenBlok
+              key={p.id}
+              project={p}
+              store={store}
+              assistent={assistent}
+              openPlan={openPlan && openPlan.projectId === p.id ? openPlan : null}
+              onNaarIndienen={(aanvraagId) => naarIndienen(p.id, aanvraagId)}
+              kopMetProject={blokProjecten.length > 1}
+            />
+          ))}
 
           {filterProject && isEchtId(filterProject.id) && !filterProject.gearchiveerd && <UploadVoorProject project={filterProject} store={store} />}
 

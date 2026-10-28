@@ -20,7 +20,7 @@ const plekNaam = (o) => (inDossier(o) ? 'Projectdossier' : o.waar);
 
 // Ingebed (één tabblad met de fondsen): de host geeft het blok met de fondsen (fondsenBlok) en wat er rechts bij hoort (rechtsExtra). Dan vervallen de kaart
 // Fondsbeoordeling en het blok Uw plannen: de fondsen staan in fondsenBlok.
-export default function ProjectplanTab({ project, projecten, onKiesProject, store, assistent, onNieuweAanvraag, onOpenAanvraag, onNaarProjectinhoud, ingebed = false, fondsenBlok = null, rechtsExtra = null }) {
+export default function ProjectplanTab({ project, projecten, onKiesProject, store, assistent, onNieuweAanvraag, onOpenAanvraag, onNaarProjectinhoud, onPlanGeschreven, onNaarDocumentatie, ingebed = false, fondsenBlok = null, rechtsExtra = null }) {
   const projectId = project ? project.id : '';
   const [lijst, setLijst] = useState(null);
   const [lijstFout, setLijstFout] = useState('');
@@ -103,10 +103,18 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
       return;
     }
 
-    setOpen({ plan: r.antwoord.plan, opgeslagen: r.antwoord.opgeslagen !== false });
     assistent.ververs();
     laad();
     laadStand();
+
+    // Bewaard: het lid komt direct bij Projectdocumentatie › Projectplan uit, waar het plan voortaan staat. Kon het niet worden bewaard, dan blijft het plan hier staan.
+    if (r.antwoord.opgeslagen !== false && onPlanGeschreven) {
+      onPlanGeschreven(projectId);
+
+      return;
+    }
+
+    setOpen({ plan: r.antwoord.plan, opgeslagen: r.antwoord.opgeslagen !== false });
   };
 
   // Het plan wordt maar één keer geschreven: eerst een bevestiging.
@@ -224,6 +232,14 @@ export default function ProjectplanTab({ project, projecten, onKiesProject, stor
               {planGeschreven && (
                 <div className="fwk-aa-klein" data-testid="aa-plan-klaar" style={css('margin-top: 10px;')}>
                   Plan geschreven. Opnieuw schrijven kan niet.
+                  {onNaarDocumentatie && (
+                    <>
+                      {' '}
+                      <button type="button" className="fwk-wp-link" data-testid="aa-plan-naar-documentatie" onClick={() => onNaarDocumentatie(projectId)}>
+                        Bekijk het onder Projectdocumentatie
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
 
