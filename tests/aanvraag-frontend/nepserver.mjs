@@ -19,7 +19,7 @@ export const PLANBRON = {
 
 // ── Een server met de echte regels en een geheugendatabase ──────────────────────────────────────────────────────────────────────────────
 export function maakServer(o = {}) {
-  const s = { aanroepen: [], gebruik: [], planProjecten: new Set(), planIds: new Map(), tabel: new Map(), beoordelingen: new Map(), opties: { vlag: true, tier: 'premium', pagina: { ok: true, tekst: RICHTLIJN }, ...o } };
+  const s = { dekkingsplan: (o && o.dekkingsplan) || [], aanroepen: [], gebruik: [], planProjecten: new Set(), planIds: new Map(), tabel: new Map(), beoordelingen: new Map(), opties: { vlag: true, tier: 'premium', pagina: { ok: true, tekst: RICHTLIJN }, ...o } };
   const maand = (soort) => s.gebruik.filter((x) => x.succes && x.actie === soort).length;
   const deps = {
     modelNaam: 'test', nu: () => NU, vlagAan: () => s.opties.vlag,
@@ -155,6 +155,7 @@ export function maakServer(o = {}) {
         return r.status >= 200 && r.status < 300 ? { data: r.body, error: null } : { data: null, error: { context: { status: r.status, json: async () => r.body } } };
       },
     },
+    rpc: async (naam) => (naam === 'kompas_dekkingsplan' ? { data: s.dekkingsplan || [], error: null } : { data: null, error: { code: '42883', message: 'bestaat niet' } }),
     from(tabel) {
       const q = { select: () => q, eq: () => q, is: () => q, maybeSingle: async () => ({ data: tabel === 'subsidie_kompas_aanvraag_beoordelingen' ? [...s.beoordelingen.values()][0] || null : null, error: null }) };
       return q;

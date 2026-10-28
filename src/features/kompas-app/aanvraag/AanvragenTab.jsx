@@ -3,15 +3,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
-import { Blok, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
+import { Blok, Chip, Leeg, Melding } from '../../../shared/ui/werkplek.jsx';
 import { haalAanvragen } from '../../../data/services/aanvraagAssistent.js';
 import { haalOrganisatieDocumentenOp } from '../../../data/services/organisatiedocumenten.js';
+import { haalDekkingsplan } from '../../../data/services/projectFinanciering.js';
+import { STATUS_LABEL as DP_STATUS, formatEuro, regelUitRpc } from '../financiering/dekkingsplan.js';
 import { AanvraagStijl, Bezig, PrivaatfondsKaart, ProjectKeuze, RuimteBlok } from './Bouwstenen.jsx';
 import AanvraagWerk from './AanvraagWerk.jsx';
 import NieuweAanvraag from './NieuweAanvraag.jsx';
 import ProjectplanTab from './ProjectplanTab.jsx';
 import FondsKaart from './FondsKaart.jsx';
-import { documentenLijst, splitsAanvragen } from './aanvraagModel.js';
+import { documentenLijst, fondsenUitDekkingsplan, splitsAanvragen } from './aanvraagModel.js';
 
 // Eén tabblad "Aanvraag indienen": met metProjectplan staat het projectplan bovenaan en daaronder de fondsen waar het lid indient.
 // Het lid dient zelf in bij het fonds; Subsidie Kompas helpt met de tekst en de stukken.
@@ -25,6 +27,7 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
   const [fout, setFout] = useState('');
   const [scherm, setScherm] = useState({ naam: 'lijst' });
   const [orgDocs, setOrgDocs] = useState([]);
+  const [dpRegels, setDpRegels] = useState([]);
   const huidig = useRef('');
   const laatsteStart = useRef(null);
 
@@ -68,6 +71,26 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
     };
   }, []);
 
+  // De fondsen uit het dekkingsplan van dit project staan onder de aanvragen, zodat het lid er met één klik een aanvraag voor begint. Lukt het ophalen niet, dan blijft dit blok weg.
+  useEffect(() => {
+    let weg = false;
+
+    setDpRegels([]);
+
+    if (!projectId || !fondsToegang) return undefined;
+
+    Promise.resolve()
+      .then(() => haalDekkingsplan(projectId))
+      .then((r) => {
+        if (!weg && r && !r.error && Array.isArray(r.regels)) setDpRegels(r.regels.map(regelUitRpc));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      weg = true;
+    };
+  }, [projectId, fondsToegang]);
+
   // Een verzoek vanuit het tabblad Projectplan: een nieuw fonds beginnen, of een bestaande aanvraag openen.
   useEffect(() => {
     if (!start || start === laatsteStart.current) return;
@@ -104,6 +127,7 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
 
   const { fondsen } = splitsAanvragen(lijst);
   const docsNu = documentenLijst(project.docs, orgDocs);
+  const uitDekkingsplan = fondsenUitDekkingsplan(dpRegels, lijst);
 
   const fondsenBlok = !fondsToegang ? (
     <Blok titel={metProjectplan ? 'Fondsen waar u indient' : 'Aanvragen voor dit project'} testid="aa-fondsen-premium">
@@ -142,6 +166,27 @@ export default function AanvragenTab({ project, projecten, onKiesProject, store,
           </div>
         ))}
       </div>
+      {lijst !== null && !fout && uitDekkingsplan.length > 0 && (
+        <div data-testid="aa-uit-dekkingsplan" style={css('margin-top: 22px;')}>
+          <h3 className="fwk-aa-kaart-titel">Fondsen uit uw dekkingsplan</h3>
+          <p className="fwk-aa-klein" style={css('margin: 0;')}>
+            Kies een fonds om de criteria in te voeren en uw aanvraag voor te bereiden.
+          </p>
+          <ul className="fwk-aa-dp" aria-label="Fondsen uit uw dekkingsplan">
+            {uitDekkingsplan.map((f) => (
+              <li key={f.id}>
+                <button type="button" data-testid="aa-dp-fonds" onClick={() => setScherm({ naam: 'nieuw', fonds: f.naam, website: f.website })} aria-label={`Aanvraag voorbereiden voor ${f.naam}`}>
+                  <span style={css('font-weight: 800; min-width: 0;')}>{f.naam}</span>
+                  <span style={css('display: inline-flex; align-items: center; gap: 8px;')}>
+                    {f.bedrag != null && <span className="fwk-aa-klein">{formatEuro(f.bedrag)}</span>}
+                    <Chip toon={f.status === 'awarded' ? 'groen' : f.status === 'submitted' ? 'blauw' : 'grijs'}>{DP_STATUS[f.status]}</Chip>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Blok>
   );
 

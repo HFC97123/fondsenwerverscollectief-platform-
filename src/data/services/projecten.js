@@ -21,6 +21,7 @@ import { supabase } from '../client.js';
 import { teFinancieren } from '../../features/kompas-app/financiering/dekkingsplan.js';
 import { leesWerkgebied, werkgebiedVoorOpslag } from '../../shared/werkgebied/werkgebied.js';
 import { eigenTermenVoorOpslag, leesEigenTermen } from '../../features/kompas-app/projectinformatie/eigenTermen.js';
+import { leesProjectInfo, projectInfoVoorOpslag } from '../../features/kompas-app/projectinformatie/projectinformatie.js';
 import { budgetKolom, leesOpgeslagenRegels } from '../../features/kompas-app/begroting/begrotingModel.js';
 
 // Doelgroep is voorheen een los tekstveld geweest (target_groups, plain
@@ -112,6 +113,8 @@ function naarProjectVeld(rij, docs) {
     werkgebied: leesWerkgebied(rij.work_area) || undefined,
     // Eigen woorden van het lid ("Overig"). undefined = de kolom bestaat (nog) niet; dan wordt er niets geschreven.
     eigenTermen: 'eigen_termen' in rij ? leesEigenTermen(rij.eigen_termen) : undefined,
+    // Uitgebreide projectdocumentatie (aanleiding, bereik, risico's, enz.). undefined = de kolom bestaat (nog) niet; dan blijven die onderdelen verborgen en wordt er niets geschreven.
+    projectInfo: 'project_info' in rij ? leesProjectInfo(rij.project_info) : undefined,
     periodeVan: rij.period_start || '',
     periodeTot: rij.period_end || '',
     omschrijving: rij.description || '',
@@ -168,6 +171,7 @@ export function naarKolomPatch(project) {
     location: project.regio || null,
     ...werkgebiedKolom(project),
     ...(Array.isArray(project.eigenTermen) ? { eigen_termen: eigenTermenVoorOpslag(project.eigenTermen) } : {}),
+    ...(project.projectInfo && typeof project.projectInfo === 'object' ? { project_info: projectInfoVoorOpslag(project.projectInfo) } : {}),
     period_start: project.periodeVan || null,
     period_end: project.periodeTot || null,
     description: project.omschrijving || null,

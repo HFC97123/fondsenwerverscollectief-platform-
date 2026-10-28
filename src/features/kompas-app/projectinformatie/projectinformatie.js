@@ -66,8 +66,12 @@ const tekst = (w) => (w == null ? '' : String(w));
 // Is dit veld in de huidige fase bewerkbaar? Alleen velden met een bestaande kolom; de rest volgt in fase 2.
 export const piActief = (veld) => veld.opslag === 'kolom';
 
-export function actieveVelden() {
-  return PI_VELDEN.filter(piActief);
+// Zonder project: de velden met een bestaande kolom. Met een project waarvan de kolom project_info bestaat (project.projectInfo is dan een object, ook
+// een leeg), zijn alle 22 onderdelen bewerkbaar. Bestaat de kolom nog niet (undefined), dan blijft alles zoals het was.
+export const heeftProjectInfo = (project) => Boolean(project) && project.projectInfo !== undefined && project.projectInfo !== null;
+
+export function actieveVelden(project) {
+  return heeftProjectInfo(project) ? PI_VELDEN : PI_VELDEN.filter(piActief);
 }
 
 // Leest alle Projectinformatie van een project als { key: tekst }: kolomvelden uit de bestaande projectvelden,
@@ -117,7 +121,7 @@ export function schrijfProjectinformatie(project, waarden) {
 // Voortgang over de velden die nu bewerkbaar zijn: { ingevuld, totaal, perGroep: { [groep]: { ingevuld, totaal } } }.
 export function voortgang(project, alleenActief = true) {
   const waarden = leesProjectinformatie(project);
-  const velden = alleenActief ? actieveVelden() : PI_VELDEN;
+  const velden = alleenActief ? actieveVelden(project) : PI_VELDEN;
   const perGroep = {};
 
   PI_GROEPEN.forEach((g) => {
@@ -170,7 +174,7 @@ export function paneelVelden(project) {
   const waarden = leesProjectinformatie(project);
   const bronnen = (project && project.bronnen) || {};
 
-  return actieveVelden().map((v) => ({ ...v, waarde: waarden[v.key], bron: bronnen[v.project] || '' }));
+  return actieveVelden(project).map((v) => ({ ...v, waarde: waarden[v.key], bron: bronnen[v.project || v.key] || '' }));
 }
 
 export function paneelProjectbreed(project) {
@@ -192,3 +196,24 @@ export function schrijfPaneel(project, waarden) {
 
   return p;
 }
+
+// Kolom project_info (jsonb): { versie, velden: { <key>: <tekst> } }. Alleen bekende sleutels en tekst; rommel valt af.
+export const MAX_PI_VELD_TEKENS = 8000;
+
+export function leesProjectInfo(raw) {
+  const velden = raw && typeof raw === 'object' && raw.velden && typeof raw.velden === 'object' ? raw.velden : {};
+  const uit = {};
+
+  PI_VELDEN.forEach((v) => {
+    if (v.opslag !== 'json') return;
+
+    const t = typeof velden[v.key] === 'string' ? velden[v.key].slice(0, MAX_PI_VELD_TEKENS) : '';
+
+    if (t.trim() !== '') uit[v.key] = t;
+  });
+
+  return { versie: PI_VERSIE, velden: uit };
+}
+
+// Wat naar de database gaat: dezelfde schoonmaak (lege velden worden niet bewaard).
+export const projectInfoVoorOpslag = (info) => leesProjectInfo(info);

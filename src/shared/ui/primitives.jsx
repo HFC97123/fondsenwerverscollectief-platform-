@@ -27,6 +27,7 @@ export function Button({
   block = false,
   disabled = false,
   ariaLabel,
+  testid,
   style,
   type: htmlType = 'button',
 }) {
@@ -36,6 +37,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
+      data-testid={testid}
       style={{
         ...css(`
           cursor: ${disabled ? 'default' : 'pointer'};

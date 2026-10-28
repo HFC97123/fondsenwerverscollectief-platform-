@@ -86,6 +86,9 @@ textarea.fwk-aa-veld { resize: vertical; }
 .fwk-aa-meer[open] > summary::before { content: '▾'; }
 .fwk-aa-meer > summary:focus-visible { outline: 2px solid ${color.groen}; outline-offset: 2px; }
 .fwk-aa-kaarten { display: flex; flex-direction: column; gap: 12px; }
+.fwk-aa-dp { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.fwk-aa-dp button { width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid ${color.lijn}; border-radius: ${radius.xl}; background: ${color.wit}; font: inherit; text-align: left; cursor: pointer; }
+.fwk-aa-dp button:hover, .fwk-aa-dp button:focus-visible { border-color: ${color.donkerblauw}; }
 .fwk-aa-kaart { box-sizing: border-box; padding: 16px 18px; border: 1px solid ${color.lijn}; border-radius: ${radius.xl}; background: ${color.wit}; }
 .fwk-aa-kaart-titel { margin: 0 0 2px; font-family: ${font.tekst}; font-size: 16px; font-weight: 800; color: ${color.donkerblauw}; }
 .fwk-aa-mini { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }

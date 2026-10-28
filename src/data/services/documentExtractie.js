@@ -121,7 +121,7 @@ const ALS_PDF = /application\/pdf|\.pdf$/i;
 // bestandstype niet ondersteund wordt (bijv. afbeeldingen) of het uitlezen
 // mislukt - de upload zelf gaat in dat geval gewoon door, alleen zonder
 // tekst om te laten analyseren.
-export async function extraheerTekst(file) {
+export async function extraheerTekst(file, max = MAX_TEKENS) {
   const kenmerk = `${file.type || ''} ${file.name || ''}`;
   let tekst = '';
 
@@ -130,10 +130,10 @@ export async function extraheerTekst(file) {
   } else if (ALS_XLSX.test(file.name || '')) {
     tekst = await leesXlsx(file);
   } else if (ALS_PDF.test(kenmerk)) {
-    tekst = await leesPdf(file);
+    tekst = await leesPdf(file, max);
   } else if (ALS_TEKST.test(kenmerk)) {
     tekst = await leesAlsTekst(file);
   }
 
-  return tekst.slice(0, MAX_TEKENS);
+  return tekst.slice(0, max);
 }

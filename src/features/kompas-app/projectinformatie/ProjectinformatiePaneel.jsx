@@ -4,8 +4,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button, Field, veldStijl } from '../../../shared/ui/index.js';
+import DossierUitDocument from './DossierUitDocument.jsx';
 import {
   BRON_LABELS,
+  heeftProjectInfo,
   PI_GROEPEN,
   paneelProjectbreed,
   paneelVelden,
@@ -38,6 +40,8 @@ function Formulier({ project, projecten, store }) {
   const [bezig, setBezig] = useState(false);
   const [melding, setMelding] = useState('');
   const [fout, setFout] = useState('');
+  // Onderdelen die het lid uit een document overnam: bij opslaan krijgen ze de herkomst "uit een document" (tot het lid de tekst zelf aanpast).
+  const [uitDocument, setUitDocument] = useState({});
 
   // Nieuwe waarden van buiten (bijvoorbeeld na opslaan of een wijziging via de chat) zonder het formulier te wissen
   // als er niets is aangepast.
@@ -56,6 +60,14 @@ function Formulier({ project, projecten, store }) {
 
   const zet = (key, w) => {
     setWaarden((cur) => ({ ...cur, [key]: w }));
+    setUitDocument((cur) => (cur[key] ? { ...cur, [key]: false } : cur));
+    setMelding('');
+    setFout('');
+  };
+
+  const neemOver = (key, w) => {
+    setWaarden((cur) => ({ ...cur, [key]: w }));
+    setUitDocument((cur) => ({ ...cur, [key]: true }));
     setMelding('');
     setFout('');
   };
@@ -64,7 +76,18 @@ function Formulier({ project, projecten, store }) {
     setBezig(true);
     setFout('');
 
-    Promise.resolve(store.saveProject(schrijfPaneel(project, waarden))).then((id) => {
+    const nieuw = schrijfPaneel(project, waarden);
+    const bronnen = { ...(project.bronnen || {}) };
+
+    Object.keys(uitDocument).forEach((k) => {
+      if (!uitDocument[k]) return;
+
+      const v = velden.find((x) => x.key === k);
+
+      if (v) bronnen[v.project || v.key] = 'upload';
+    });
+
+    Promise.resolve(store.saveProject({ ...nieuw, bronnen })).then((id) => {
       setBezig(false);
 
       if (id === null) {
@@ -73,6 +96,7 @@ function Formulier({ project, projecten, store }) {
         return;
       }
 
+      setUitDocument({});
       setMelding('Projectdocumentatie opgeslagen.');
     });
   };
@@ -121,6 +145,8 @@ function Formulier({ project, projecten, store }) {
         </a>
         .
       </p>
+
+      {heeftProjectInfo(project) && <DossierUitDocument waarden={waarden} onNeem={neemOver} />}
 
       {PI_GROEPEN.map((g) => {
         const groepVelden = velden.filter((v) => v.groep === g.id);

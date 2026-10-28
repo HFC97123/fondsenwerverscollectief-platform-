@@ -301,6 +301,37 @@ sectie('9. Eén tabblad: projectplan en fondsen waar het lid indient');
   await opruimen();
 }
 
+sectie('9b. Fondsen uit het dekkingsplan staan klikbaar onder de aanvragen');
+{
+  const regel = (id, naam, status, extra = {}) => ({ id, program_id: PROJECT, bron_naam: naam, status, requested_amount: 10000, bron_status: 'zichtbaar', ...extra });
+  const dp = maakServer({ dekkingsplan: [
+    regel('r1', 'Stichting Voorbeeldfonds', 'interesting', { website: 'https://www.voorbeeldfonds.nl' }),
+    regel('r2', 'Fonds Twee', 'preparing'),
+    regel('r3', 'Fonds Drie', 'rejected'),
+    regel('r4', 'Verborgen fonds', 'interesting', { bron_status: 'verborgen' }),
+    regel('r5', 'stichting voorbeeldfonds', 'submitted'),
+  ] });
+  client.__reset();
+  client.__zetSupabase(dp.supabase);
+  await act(async () => { root.render(<HarnasEen store={{ orgProfile: { name: 'Stichting Samen Spelen' } }} />); });
+  await wacht(() => $('[data-testid="aa-uit-dekkingsplan"]'));
+  const namen = $$('[data-testid="aa-dp-fonds"]').map((b) => b.textContent);
+  check('twee fondsen uit het dekkingsplan staan onder de aanvragen, geen dubbelen, geen afgewezen of verborgen', namen.length === 2 && /Fonds Twee/.test(namen[0]) && /Stichting Voorbeeldfonds/.test(namen[1]), JSON.stringify(namen));
+  check('het fonds in voorbereiding staat bovenaan met zijn status en bedrag', /In voorbereiding/.test(namen[0]) && /10\.000/.test(namen[0]));
+  await klik($$('[data-testid="aa-dp-fonds"]')[1]);
+  check('een klik opent een nieuwe aanvraag met de naam en de website van het fonds al ingevuld', await wacht(() => $('[data-testid="aa-nieuw"]')) && $('[data-testid="aa-fonds"]').value === 'Stichting Voorbeeldfonds' && $('[data-testid="aa-url-0"]').value === 'https://www.voorbeeldfonds.nl');
+  await opruimen();
+
+  const leeg = maakServer();
+  client.__reset();
+  client.__zetSupabase(leeg.supabase);
+  await act(async () => { root.render(<HarnasEen store={{ orgProfile: { name: 'Stichting Samen Spelen' } }} />); });
+  await wacht(() => $('[data-testid="aa-aanvragen-lijst"]'));
+  await sleep(100);
+  check('zonder dekkingsplan staat er geen blok', !$('[data-testid="aa-uit-dekkingsplan"]'));
+  await opruimen();
+}
+
 sectie('10. Bewerken, opslaan en versies');
 {
   async function openAanvraagEnSchrijf(server) {

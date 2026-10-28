@@ -6792,6 +6792,7 @@ function schoneBronnen(bronnen: { title: string; url: string }[]): { title: stri
 const ZOEKPROFIEL_ACTIE = 'voorstel-zoekprofiel';
 const WERKGEBIED_ACTIE = 'werkgebied-verfijning';
 const TREFWOORDEN_ACTIE = 'trefwoorden-koppelen';
+const DOSSIER_ACTIE = 'dossier-uitlezen';
 const WERKGEBIED_MAX_TEKENS = 6000;
 const ZOEKPROFIEL_MAX_TEKENS = 12000;
 const MELDING_BEDRAG_ONBEKEND = 'Het bedrag dat u bij fondsen zoekt is nog niet bekend, dus de matching op bedrag is beperkt: de financiers zijn gekozen op inhoud, doelgroep en werkgebied, zonder voorgesteld bedrag. Vul de projectbegroting in om een dekkingsplan met bedragen te laten voorstellen.';
@@ -8632,6 +8633,77 @@ Deno.serve(async (req) => {
       console.error('[subsidie-kompas] trefwoorden_koppelen_fout');
 
       return json({ ok: true, voorstellen: herkend.voorstellen, nietGekoppeld: herkend.rest, beschikbaar: false, reden: 'ai-fout' });
+    }
+  }
+
+  // Projectdossier uit een document ("Laat Claude het lezen"): de browser las een Word-, PDF-, Excel- of tekstbestand uit; hier komt alleen die tekst.
+  // De AI stelt per onderdeel van het projectdossier een tekst voor, uitsluitend uit het document, met een letterlijk citaat als bewijs. SCHRIJFT NIETS:
+  // het lid kiest zelf wat overgenomen wordt en bewaart het met het gewone opslaan van het project.
+  if (body.mode === DOSSIER_ACTIE) {
+    if (!profileId) return json({ error: 'Log in om een document te laten uitlezen.' }, 401);
+    if (!isAdmin && tier === 'free') return json({ error: 'Een projectdossier laten invullen uit een document is een Pro- en Premium-functie.', reden: 'alleen-pro' }, 403);
+
+    const dossier = await import('../_shared/dossierUitlezen.ts');
+    const documentTekst = dossier.schoonDossierTekst(body.tekst);
+
+    if (documentTekst.length < dossier.MIN_DOSSIER_TEKENS) return json({ ok: true, voorstellen: [], beschikbaar: true, reden: 'te-weinig-tekst' });
+
+    // Daglimiet per lid (beheer onbeperkt). Kan de teller niet gelezen worden, dan blokkeert dat niets.
+    if (!isAdmin) {
+      try {
+        const sinds = new Date();
+
+        sinds.setUTCHours(0, 0, 0, 0);
+
+        const { count, error: telFout } = await admin.from('kompas_gebruik_log').select('id', { count: 'exact', head: true }).eq('user_id', profileId).eq('action_type', 'dossier_uitlezen').gte('created_at', sinds.toISOString());
+
+        if (!telFout && typeof count === 'number' && count >= dossier.DAGLIMIET_DOSSIER) return json({ ok: true, voorstellen: [], beschikbaar: false, reden: 'daglimiet' });
+      } catch (_e) {
+        // teller onbereikbaar: niet blokkeren
+      }
+    }
+
+    const huidig = Array.isArray(body.huidig) ? body.huidig.slice(0, 40).map((x: unknown) => String(x ?? '').slice(0, 60)) : [];
+    const tStart = Date.now();
+
+    try {
+      const uitkomst = await fetchOpenAiMetTimeout('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [{ role: 'system', content: dossier.dossierSysteem() }, { role: 'user', content: dossier.dossierGebruikersbericht(documentTekst, huidig) }],
+          temperature: 0,
+          max_tokens: 5000,
+          response_format: { type: 'json_object' },
+        }),
+      }, HOOFDCHAT_TIMEOUT_MS);
+
+      if (!uitkomst.ok || !uitkomst.response.ok) {
+        console.error('[subsidie-kompas] dossier_uitlezen_ai_fout', uitkomst.ok ? uitkomst.response.status : 'geen-antwoord');
+
+        return json({ ok: true, voorstellen: [], beschikbaar: false, reden: 'ai-fout' });
+      }
+
+      const data = await uitkomst.response.json();
+      let ruw: unknown = {};
+
+      try {
+        ruw = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+      } catch (_e) {
+        ruw = {};
+      }
+
+      const gelezen = dossier.leesDossierAntwoord(ruw, documentTekst);
+
+      await meldGebruik(admin, { userId: profileId, tier: isAdmin ? 'admin' : tier, actie: 'dossier_uitlezen', projectId: null, model: MODEL, usage: data.usage, duurMs: Date.now() - tStart, succes: true });
+      console.log('[subsidie-kompas] dossier_uitlezen', JSON.stringify({ voorstellen: gelezen.voorstellen.length, afgevallen: gelezen.afgevallen, tekens: documentTekst.length }));
+
+      return json({ ok: true, voorstellen: gelezen.voorstellen, beschikbaar: true, reden: gelezen.voorstellen.length ? null : 'niets-gevonden' });
+    } catch (_e) {
+      console.error('[subsidie-kompas] dossier_uitlezen_fout');
+
+      return json({ ok: true, voorstellen: [], beschikbaar: false, reden: 'ai-fout' });
     }
   }
 

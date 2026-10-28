@@ -209,6 +209,31 @@ export function splitsAanvragen(lijst) {
   };
 }
 
+// Fondsen uit het dekkingsplan van het project waarvoor nog geen aanvraag is gemaakt, om er direct een te beginnen.
+// regels: regelUitRpc-regels; aanvragen: de aanvragen van het project. Verborgen of verwijderde bronnen, afgewezen en ingetrokken regels tellen niet mee.
+const DP_VOLGORDE = { preparing: 0, interesting: 1, submitted: 2, awarded: 3 };
+const dpSleutel = (t) => schoonTekst(t).toLowerCase();
+
+export function fondsenUitDekkingsplan(regels, aanvragen) {
+  const heeft = new Set((Array.isArray(aanvragen) ? aanvragen : []).filter((a) => a && a.soort === 'fonds').map((a) => dpSleutel(a.fondsLabel)));
+  const gezien = new Set();
+  const uit = [];
+
+  (Array.isArray(regels) ? regels : []).forEach((r, i) => {
+    if (!r || r.bronStatus !== 'zichtbaar' || DP_VOLGORDE[r.status] === undefined) return;
+
+    const naam = schoonTekst(r.naam);
+    const sleutel = dpSleutel(naam);
+
+    if (!naam || heeft.has(sleutel) || gezien.has(sleutel)) return;
+
+    gezien.add(sleutel);
+    uit.push({ id: r.id || `dp-${i}`, naam, website: r.website || '', status: r.status, bedrag: r.status === 'awarded' && r.awarded != null ? r.awarded : r.requested, i });
+  });
+
+  return uit.sort((x, y) => DP_VOLGORDE[x.status] - DP_VOLGORDE[y.status] || x.i - y.i);
+}
+
 // ───────────── Plan ─────────────
 
 export function planSamenvatting(plan) {
