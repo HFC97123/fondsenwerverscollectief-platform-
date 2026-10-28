@@ -150,7 +150,7 @@ export function LedenProfielFoto({ userId, fotoPad, initialen, naam, magBewerken
 
           {!voorbeeld && (
             <div style={css('display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 4px;')}>
-              <button type="button" onClick={kies} disabled={bezig} title="JPEG, PNG of WebP, maximaal 5 MB" style={{ ...knop(!fotoPad), ...(bezig ? knopUit : null) }}>
+              <button type="button" onClick={kies} disabled={bezig} title="JPG of PNG" style={{ ...knop(!fotoPad), ...(bezig ? knopUit : null) }}>
                 {fotoPad ? 'Foto wijzigen' : 'Foto toevoegen'}
               </button>
               {fotoPad && (
