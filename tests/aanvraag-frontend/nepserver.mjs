@@ -95,6 +95,8 @@ export function maakServer(o = {}) {
       return { inhoud: JSON.stringify({ oordelen: inv.eisen.map((e, i) => (i === 0 ? { id: e.id, status: 'ontbreekt', citaat: '', verbetering: 'Voeg de begroting zelf toe' } : { id: e.id, status: 'gedekt', citaat: 'start in januari 2027 en loopt twaalf maanden', verbetering: '' })) }), usage: { prompt_tokens: 10, completion_tokens: 5 } };
     },
     meldGebruik: async (m) => { s.gebruik.push(m); },
+    // Afbeeldingen van een formulier overtypen: het model leest ze letterlijk over (hier: het testformulier of { afbeeldingTekst }).
+    leesAfbeeldingen: async (afb) => { s.afbeeldingenGelezen = (s.afbeeldingenGelezen || []).concat([afb.length]); return { tekst: s.opties.afbeeldingTekst ?? FORMULIER, usage: { prompt_tokens: 1200, completion_tokens: 300 } }; },
   };
 
   // Versies (concept/definitief): een geheugenversie van de tabel, met dezelfde vorm als de echte opslag. Uit te zetten met { zonderVersies: true }.

@@ -26,8 +26,8 @@ const PLANBRON = {
 let nu = new Date('2026-10-26T12:00:00Z');
 
 function omgeving(opties = {}) {
-  const o = { tier: 'premium', zonderVragenFuncties: false, modelFaalt: false, vragenAntwoord: null, ...opties };
-  const log = { reserveringen: [], afgerond: [], modelAanroepen: 0, gebruik: [], tellingBeoordelingen: 0 };
+  const o = { tier: 'premium', zonderAfbeeldingen: false, zonderVragenFuncties: false, modelFaalt: false, vragenAntwoord: null, ...opties };
+  const log = { afbeeldingen: [], reserveringen: [], afgerond: [], modelAanroepen: 0, gebruik: [], tellingBeoordelingen: 0 };
   const aanvragen = new Map([
     [AANVRAAG, { id: AANVRAAG, user: USER, program_id: PROJECT, soort: 'fonds', fonds_label: 'Cultuurfonds', criteria: [{ id: 'e1', tekst: 'Past bij het doel van het fonds', soort: 'criterium', gewicht: 2, bronType: 'website', bronStuk: 'x', zekerheid: 'middel' }], vragen: null, stukken: null, schrijf_maand: null, schrijf_aantal: 0 }],
     [ANDERE_AANVRAAG, { id: ANDERE_AANVRAAG, user: ANDER, program_id: PROJECT, soort: 'fonds', fonds_label: 'Ander', criteria: [], vragen: null, stukken: null, schrijf_maand: null, schrijf_aantal: 0 }],
@@ -61,6 +61,7 @@ function omgeving(opties = {}) {
     leesPlanBron: async () => PLANBRON,
     slaBeoordelingOp: async () => null,
     haalPagina: async () => ({ ok: false, reden: 'niet-bereikbaar' }),
+    ...(o.zonderAfbeeldingen ? {} : { leesAfbeeldingen: async (afb) => { log.afbeeldingen.push(afb.length); return o.afbeeldingTekst === null ? null : { tekst: o.afbeeldingTekst ?? FORMULIER, usage: { prompt_tokens: 1200, completion_tokens: 300 } }; } }),
     roep: async (systeem, gebruiker) => {
       log.modelAanroepen += 1;
 
@@ -331,6 +332,68 @@ sectie('7. De kaart per fonds: voortgang in de lijst met aanvragen');
   const nul = await verwerk(vraag({ mode: 'aanvragen', projectId: PROJECT }), o.deps);
 
   check('null (migratie nog niet gedraaid): lijst zonder voortgang', nul.status === 200 && nul.body.aanvragen[0].voortgang === undefined);
+}
+
+sectie('8. Een formulier uit een afbeelding (screenshot, foto, scan)');
+{
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+  const JPG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+  const lees = (e, extra = {}) => verwerk(vraag({ mode: 'vragen-lezen', projectId: PROJECT, aanvraagId: AANVRAAG, ...extra }), e.deps);
+
+  let e = omgeving();
+  let r = await lees(e, { afbeeldingen: [PNG, JPG] });
+  check('twee afbeeldingen zonder tekst: de vragen komen uit de overgetypte tekst', r.status === 200 && r.body.vragen.lijst.length === 3 && e.log.afbeeldingen.length === 1 && e.log.afbeeldingen[0] === 2);
+  check('de tekenlimiet uit het formulier komt mee (1500)', r.body.vragen.lijst[0].maxTekens === 1500);
+  check('het telt als één formulier lezen (één reservering, afgerond als gelukt)', e.log.reserveringen.length === 1 && e.log.afgerond[0].succes === true);
+  check('het gebruik telt de afbeeldingsaanroep en de vragenaanroep samen', e.log.gebruik.length === 1 && e.log.gebruik[0].inputTokens >= 1200 && e.log.gebruik[0].outputTokens >= 300);
+  check('de afbeeldingen worden niet bewaard (alleen vragen en stukken)', JSON.stringify([...e.aanvragen.values()]).indexOf('base64') === -1);
+
+  e = omgeving();
+  r = await lees(e, { formulierTekst: 'Aanvullende vraag: Wat is uw eigen bijdrage? (max. 500 tekens)', afbeeldingen: [PNG] });
+  check('geplakte tekst en afbeelding samen: beide zijn bron', r.status === 200 && e.log.afbeeldingen.length === 1);
+
+  e = omgeving({ afbeeldingTekst: '   ' });
+  r = await lees(e, { afbeeldingen: [PNG] });
+  check('onleesbare afbeelding: 422 afbeelding-onleesbaar, niets verbruikt', r.status === 422 && r.body.reden === 'afbeelding-onleesbaar' && e.log.afgerond.length === 1 && e.log.afgerond[0].succes === false);
+
+  e = omgeving({ afbeeldingTekst: null });
+  r = await lees(e, { afbeeldingen: [PNG] });
+  check('het model faalt bij de afbeelding: een nette fout, niets verbruikt', r.status === 422 && e.log.afgerond[0].succes === false && e.log.modelAanroepen === 0);
+
+  e = omgeving({ zonderAfbeeldingen: true });
+  r = await lees(e, { afbeeldingen: [PNG] });
+  check('zonder afbeeldingsfunctie: 503 afbeeldingen, geen reservering', r.status === 503 && r.body.reden === 'afbeeldingen' && e.log.reserveringen.length === 0);
+
+  e = omgeving();
+  const slecht = [
+    ['geen afbeelding maar een tekst', ['hallo']],
+    ['svg', ['data:image/svg+xml;base64,AAAA']],
+    ['http-adres', ['http://evil.example/x.png']],
+    ['te veel afbeeldingen', [PNG, PNG, PNG, PNG, PNG]],
+    ['te groot', [`data:image/png;base64,${'A'.repeat(900_100)}`]],
+    ['geen lijst', PNG],
+  ];
+
+  for (const [naam, afb] of slecht) {
+    r = await lees(e, { afbeeldingen: afb });
+    check(`ongeldige afbeelding (${naam}): 400, geen reservering, geen model`, r.status === 400 && r.body.reden === 'ongeldige-afbeelding' && e.log.reserveringen.length === 0 && e.log.modelAanroepen === 0 && e.log.afbeeldingen.length === 0);
+  }
+
+  r = await lees(e, { afbeeldingen: [] });
+  check('een lege lijst en geen tekst: nog steeds geen-bron', r.status === 400 && r.body.reden === 'geen-bron');
+
+  // Grote verzoeken: alleen toegestaan voor dit formulier met afbeeldingen.
+  const groot = `data:image/png;base64,${'A'.repeat(800_000)}`;
+  r = await lees(omgeving(), { afbeeldingen: [groot, groot] });
+  check('twee grote afbeeldingen (samen boven de gewone grens van het verzoek) kunnen wel', r.status === 200);
+  r = await verwerk(vraag({ mode: 'versie-bewaren', aanvraagId: AANVRAAG, antwoorden: [{ id: 'a', titel: 't', tekst: 'x' }], extra: 'A'.repeat(700_000) }), omgeving().deps);
+  check('een even groot verzoek voor iets anders blijft 413', r.status === 413);
+  r = await verwerk(vraag({ mode: 'vragen-lezen', projectId: PROJECT, aanvraagId: AANVRAAG, formulierTekst: 'x'.repeat(700_000) }), omgeving().deps);
+  check('een grote tekst zonder afbeeldingen blijft 413', r.status === 413);
+
+  const pro = omgeving({ tier: 'pro' });
+  r = await lees(pro, { afbeeldingen: [PNG] });
+  check('Pro: formulieren lezen blijft Premium, ook met een afbeelding', r.status === 403 && pro.log.afbeeldingen.length === 0);
 }
 
 klaar('aanvraag-vragen');

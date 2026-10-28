@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import * as M from '../../src/features/kompas-app/aanvraag/aanvraagModel.js';
+import * as AF from '../../src/data/services/afbeeldingLezen.js';
 import { check, gelijk, sectie, klaar, stand } from '../verificatie/hulp.mjs';
 
 stand.naam = 'aanvraag-schermen-model';
@@ -249,6 +250,43 @@ sectie('Geschreven documenten voor Projectdocumentatie');
   check('begroting en dekkingsplan hebben hun eigen soort en een toelichting', d[2].naam === 'Concept begroting' && d[2].soort === 'Begroting' && d[3].naam === 'Concept dekkingsplan' && /2 regels/.test(d[2].toelichting) && d[3].soort === 'Concept-dekkingsplan' && /3 financiers/.test(d[3].toelichting));
   check('zonder iets geschreven: niets, ook niet bij een leeg dekkingsplan', M.geschrevenDocs({ id: 'p1', naam: 'X' }, [], 0).length === 0 && M.geschrevenDocs(null, null).length === 0);
   check('de id\'s zijn uniek per document', new Set(d.map((x) => x.id)).size === 4);
+}
+
+sectie('Afbeeldingen van een formulier klaarmaken');
+{
+  const nepCanvas = (log, lengtes) => {
+    let n = 0;
+    return (b, h) => {
+    log.push([b, h]);
+    return { getContext: () => ({ fillRect() {}, drawImage() {}, set fillStyle(v) {} }), toDataURL: () => `data:image/jpeg;base64,${'A'.repeat(lengtes[Math.min(n++, lengtes.length - 1)])}` };
+    };
+  };
+  const foto = (naam, type = 'image/png', size = 1000) => ({ name: naam, type, size });
+
+  check('png, jpg en webp zijn afbeeldingen; pdf, docx en gif niet', AF.isAfbeelding(foto('a.png')) && AF.isAfbeelding(foto('a.jpg', 'image/jpeg')) && AF.isAfbeelding(foto('a.webp', 'image/webp')) && !AF.isAfbeelding(foto('a.pdf', 'application/pdf')) && !AF.isAfbeelding(foto('a.gif', 'image/gif')) && !AF.isAfbeelding(null));
+  check('zonder type beslist de bestandsnaam', AF.isAfbeelding({ name: 'IMG_1.JPEG', type: '' }) && !AF.isAfbeelding({ name: 'a.docx', type: '' }));
+
+  const log = [];
+  const groot = await AF.verkleinAfbeelding(foto('scherm.png'), { laad: async () => ({ naturalWidth: 3200, naturalHeight: 1600 }), maakCanvas: nepCanvas(log, [1000]) });
+  check('een grote afbeelding wordt verkleind tot 1600 px langste zijde', groot.ok && groot.dataUrl.startsWith('data:image/jpeg;base64,') && log[0][0] === 1600 && log[0][1] === 800);
+  gelijk('naam blijft bewaard voor het scherm', groot.naam, 'scherm.png');
+
+  const logK = [];
+  const klein = await AF.verkleinAfbeelding(foto('k.png'), { laad: async () => ({ width: 400, height: 300 }), maakCanvas: nepCanvas(logK, [500]) });
+  check('een kleine afbeelding wordt niet groter gemaakt', klein.ok && logK[0][0] === 400 && logK[0][1] === 300);
+
+  const logT = [];
+  const zwaar = await AF.verkleinAfbeelding(foto('z.png'), { laad: async () => ({ width: 1600, height: 1600 }), maakCanvas: nepCanvas(logT, [AF.MAX_DATAURL_TEKENS + 5000, AF.MAX_DATAURL_TEKENS + 5000, AF.MAX_DATAURL_TEKENS + 5000, 1000]) });
+  check('te zware uitkomst: eerst lagere kwaliteit, dan kleiner, tot het binnen de grens past', zwaar.ok && logT.length >= 2 && logT[1][0] < logT[0][0] && zwaar.dataUrl.length <= AF.MAX_DATAURL_TEKENS);
+
+  const nooit = await AF.verkleinAfbeelding(foto('n.png'), { laad: async () => ({ width: 1600, height: 1600 }), maakCanvas: nepCanvas([], [AF.MAX_DATAURL_TEKENS * 2]) });
+  check('past het nooit: een duidelijke melding, geen data', nooit.ok === false && /verkleind/.test(nooit.melding));
+
+  const fout = await AF.verkleinAfbeelding(foto('kapot.png'), { laad: async () => { throw new Error('x'); } });
+  check('een bestand dat niet laadt geeft een melding', fout.ok === false && /kon niet worden gelezen/.test(fout.melding));
+  check('geen afbeelding: melding over PNG, JPG of WebP', (await AF.verkleinAfbeelding(foto('a.gif', 'image/gif'))).melding === 'Kies een afbeelding als PNG, JPG of WebP.');
+  check('te groot bronbestand wordt geweigerd voor het laden', (await AF.verkleinAfbeelding(foto('x.png', 'image/png', 16 * 1024 * 1024), { laad: async () => { throw new Error('mag niet laden'); } })).melding === 'Deze afbeelding is te groot (maximaal 15 MB).');
+  check('zonder canvas-context lukt het niet maar het breekt niet', AF.canvasNaarDataUrl({}, 100, 100, { maakCanvas: () => ({ getContext: () => null }) }) === null);
 }
 
 klaar('aanvraag-schermen-model');

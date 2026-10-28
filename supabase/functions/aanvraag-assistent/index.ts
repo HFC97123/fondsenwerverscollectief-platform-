@@ -93,6 +93,7 @@ Deno.serve(async (req) => {
   // Dynamisch geladen: een verzoek met de vlag uit kost zo weinig mogelijk, en een fout in deze modules raakt alleen deze functie.
   const { verwerk, aanvraagVlagAan } = await import('../_shared/aanvraagHandler.ts');
   const { legGebruik, tokensUitUsage } = await import('../_shared/gebruikLog.ts');
+  const { AFBEELDING_SYSTEEM } = await import('../_shared/aanvraagVragen.ts');
   const { safeFetchPublicPage } = await import('../_shared/safeFetch.ts');
   const { extractReadableText } = await import('../_shared/readableText.ts');
   const admin: any = createClient(url, serviceKey);
@@ -509,6 +510,39 @@ Deno.serve(async (req) => {
         const tokens = tokensUitUsage(data?.usage);
 
         return { inhoud: jsonUitTekst(leesTekst(data)), usage: { prompt_tokens: tokens.input, completion_tokens: tokens.output } };
+      } catch (_e) {
+        return null;
+      }
+    },
+
+    // Een formulier uit afbeeldingen (screenshot, foto, scan) letterlijk overtypen. De afbeeldingen komen uit de browser (al verkleind), worden hier alleen doorgegeven en niet bewaard (store: false).
+    leesAfbeeldingen: async (afbeeldingen: string[]) => {
+      try {
+        const res = await fetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
+          body: JSON.stringify({
+            model: MODEL,
+            input: [
+              { role: 'developer', content: AFBEELDING_SYSTEEM },
+              { role: 'user', content: [{ type: 'input_text', text: 'Typ de tekst van deze afbeeldingen over.' }, ...afbeeldingen.map((a) => ({ type: 'input_image', image_url: a, detail: 'high' }))] },
+            ],
+            max_output_tokens: 8000,
+            reasoning: { effort: 'low' },
+            store: false,
+          }),
+        });
+
+        if (!res.ok) return null;
+
+        const data = await res.json();
+
+        if (data?.status === 'failed' || data?.status === 'incomplete') return null;
+
+        const tokens = tokensUitUsage(data?.usage);
+
+        return { tekst: leesTekst(data), usage: { prompt_tokens: tokens.input, completion_tokens: tokens.output } };
       } catch (_e) {
         return null;
       }

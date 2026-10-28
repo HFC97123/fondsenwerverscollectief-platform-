@@ -1,16 +1,24 @@
-// De vragen uit het aanvraagformulier van een fonds. Veel formulieren zitten achter een inlog; het lid levert de tekst aan (Word, PDF of geplakt) en wij maken er een vragenlijst en
-// een lijst met stukken van. Per vraag is een tekenlimiet nodig (of "dit fonds heeft geen limiet"): zonder limiet schrijven wij niet. Het bestand zelf bewaren we niet, alleen de vragen.
+// De vragen uit het aanvraagformulier van een fonds. Veel formulieren zitten achter een inlog; het lid levert het formulier aan (Word, PDF, screenshot of foto, of geplakte tekst) en wij maken er een vragenlijst en
+// een lijst met stukken van. Per vraag is een tekenlimiet nodig (of "dit fonds heeft geen limiet"): zonder limiet schrijven wij niet. Het bestand of de afbeelding zelf bewaren we niet, alleen de vragen.
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
 import { Blok, Chip, Melding } from '../../../shared/ui/werkplek.jsx';
 import { bewaarVragen, haalVragen, leesFormulier } from '../../../data/services/aanvraagAssistent.js';
-import { extraheerTekst } from '../../../data/services/documentExtractie.js';
+import { extraheerTekst, leesPdfAlsAfbeeldingen } from '../../../data/services/documentExtractie.js';
+import { MAX_AFBEELDINGEN, canvasNaarDataUrl, isAfbeelding, verkleinAfbeelding } from '../../../data/services/afbeeldingLezen.js';
 import { Bezig } from './Bouwstenen.jsx';
 import StukkenLijst from './StukkenLijst.jsx';
 import { LIMIET_ATTENTIE, MAX_VRAGEN, leesLimiet, limietOk, nieuweVraag, tekenTelling, vragenZonderLimiet } from './aanvraagModel.js';
 
 const MIN_FORMULIER_TEKENS = 20;
+
+// De lezers van bestanden en afbeeldingen; los te zetten zodat de schermen zonder echte browser te testen zijn.
+export const formulierHulp = {
+  extraheerTekst,
+  verkleinAfbeelding,
+  pdfAlsAfbeeldingen: (f) => leesPdfAlsAfbeeldingen(f, { max: MAX_AFBEELDINGEN, canvasNaarDataUrl }),
+};
 
 function VraagRij({ vraag, nummer, onWijzig, onWeg, uit }) {
   const [limiet, setLimiet] = useState(vraag.maxTekens ? String(vraag.maxTekens) : '');
@@ -69,6 +77,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
   const [stukken, setStukken] = useState([]);
   const [tekst, setTekst] = useState(formulierStart || '');
   const [bestand, setBestand] = useState('');
+  const [afbeeldingen, setAfbeeldingen] = useState([]); // [{ naam, dataUrl }]: screenshots, foto's of scanpagina's; gaan mee om te laten overtypen
   const [bezig, setBezig] = useState('');
   const [fout, setFout] = useState('');
   const [melding, setMelding] = useState('');
@@ -129,32 +138,104 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
 
   const zegFout = (r) => setFout(r && r.melding ? r.melding : 'Dit lukte nu niet. Probeer het later opnieuw.');
 
-  const leesBestand = async (f) => {
+  const voegAfbeeldingenToe = async (bestanden) => {
     setFout('');
-    setBezig('Het bestand wordt gelezen.');
+    setBezig(bestanden.length > 1 ? 'De afbeeldingen worden klaargemaakt.' : 'De afbeelding wordt klaargemaakt.');
 
-    const t = await extraheerTekst(f);
+    const nieuweLijst = [];
+    let eerste = '';
+
+    for (const f of bestanden) {
+      const r = await formulierHulp.verkleinAfbeelding(f);
+
+      if (r.ok) nieuweLijst.push({ naam: r.naam, dataUrl: r.dataUrl });
+      else if (!eerste) eerste = r.melding;
+    }
 
     if (!levend.current) return;
 
     setBezig('');
 
-    if (!t || tekenTelling(t) < MIN_FORMULIER_TEKENS) {
-      setFout('In dit bestand kon geen tekst worden gelezen. Gebruik een Word-bestand (.docx) of een PDF met selecteerbare tekst, of plak de vragen.');
+    setAfbeeldingen((huidig) => {
+      const samen = [...huidig, ...nieuweLijst];
+
+      if (samen.length > MAX_AFBEELDINGEN) setFout(`U kunt maximaal ${MAX_AFBEELDINGEN} afbeeldingen tegelijk gebruiken. Kies de pagina's met de vragen.`);
+
+      return samen.slice(0, MAX_AFBEELDINGEN);
+    });
+
+    if (eerste) setFout(eerste);
+  };
+
+  const leesBestand = async (f) => {
+    setFout('');
+
+    if (isAfbeelding(f)) {
+      await voegAfbeeldingenToe([f]);
 
       return;
     }
 
-    setTekst(t);
-    setBestand(f.name);
+    if (/^image\//i.test(String(f.type || ''))) {
+      setFout('Kies een afbeelding als PNG, JPG of WebP.');
+
+      return;
+    }
+
+    setBezig('Het bestand wordt gelezen.');
+
+    const t = await formulierHulp.extraheerTekst(f);
+
+    if (!levend.current) return;
+
+    if (t && tekenTelling(t) >= MIN_FORMULIER_TEKENS) {
+      setBezig('');
+      setTekst(t);
+      setBestand(f.name);
+
+      return;
+    }
+
+    // Een PDF zonder selecteerbare tekst is meestal een scan: die lezen we als afbeeldingen.
+    const isPdf = /pdf$/i.test(String(f.type || '')) || /\.pdf$/i.test(String(f.name || ''));
+
+    if (isPdf) {
+      setBezig('Dit lijkt een scan. De pagina’s worden klaargemaakt om te lezen.');
+
+      const p = await formulierHulp.pdfAlsAfbeeldingen(f);
+
+      if (!levend.current) return;
+
+      setBezig('');
+
+      if (p && p.ok) {
+        setAfbeeldingen((huidig) => [...huidig, ...p.paginas.map((dataUrl, i) => ({ naam: `${f.name} (pagina ${i + 1})`.slice(0, 80), dataUrl }))].slice(0, MAX_AFBEELDINGEN));
+
+        if (p.totaal > p.paginas.length) setFout(`Alleen de eerste ${p.paginas.length} pagina’s worden gelezen. Is er meer? Gebruik dan een uitsnede met de vragen.`);
+
+        return;
+      }
+    }
+
+    setBezig('');
+    setFout('In dit bestand kon geen tekst worden gelezen. Gebruik een Word-bestand (.docx), een PDF, een screenshot of foto van de vragen, of plak de vragen.');
+  };
+
+  const plakAfbeelding = (e) => {
+    const items = e.clipboardData && e.clipboardData.files ? [...e.clipboardData.files].filter(isAfbeelding) : [];
+
+    if (!items.length) return;
+
+    e.preventDefault();
+    voegAfbeeldingenToe(items);
   };
 
   const lees = async () => {
     setFout('');
     setMelding('');
-    setBezig('De vragen en de stukken worden uit uw formulier gehaald. Dit duurt even.');
+    setBezig(afbeeldingen.length ? 'Uw formulier wordt gelezen en de vragen en de stukken worden eruit gehaald. Dit duurt even.' : 'De vragen en de stukken worden uit uw formulier gehaald. Dit duurt even.');
 
-    const r = await leesFormulier({ projectId: project.id, aanvraagId, formulierTekst: tekst });
+    const r = await leesFormulier({ projectId: project.id, aanvraagId, formulierTekst: tekst, afbeeldingen: afbeeldingen.map((a) => a.dataUrl) });
 
     if (!levend.current) return;
 
@@ -169,6 +250,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
 
     setLijst(r.antwoord.vragen.lijst);
     setStukken(r.antwoord.stukken);
+    setAfbeeldingen([]);
     setFase('controle');
     onStand({ bevestigd: false });
     onGewijzigd();
@@ -272,7 +354,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
     return (
       <Blok titel="De vragen uit het aanvraagformulier" testid="aa-formulier-blok">
         <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
-          Veel formulieren zitten achter een inlog. Daar kunnen wij niet in kijken. Kopieer de vragen naar een Word-bestand of PDF en voeg dat hier toe, of plak de vragen in het tekstvak. Het bestand blijft op uw computer; alleen de tekst van de vragen gaat mee.
+          Veel formulieren zitten achter een inlog. Daar kunnen wij niet in kijken. Voeg het formulier hier toe als Word-bestand, PDF, screenshot of foto, of plak de vragen in het tekstvak. U kunt ook een screenshot plakken (Ctrl+V of ⌘V). Wij lezen eruit hoeveel vragen er zijn en hoeveel tekens elk antwoord mag hebben. Een Word-bestand of PDF met tekst blijft op uw computer; alleen de tekst gaat mee. Een afbeelding wordt verkleind en naar onze server gestuurd om te worden gelezen; wij bewaren die niet.
         </p>
         <Melding toon="waarschuwing" testid="aa-limiet-attentie">
           {LIMIET_ATTENTIE}
@@ -282,37 +364,54 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
           <label htmlFor="aa-formulier-tekst" className="fwk-aa-label">
             Vragen uit het formulier{bestand ? ` (uit ${bestand})` : ''}
           </label>
-          <textarea id="aa-formulier-tekst" data-testid="aa-formulier-tekst" className="fwk-aa-veld" rows={8} value={tekst} onChange={(e) => setTekst(e.target.value)} placeholder="Plak hier de vragen, bijvoorbeeld: 1. Beschrijf de aanleiding van uw project (max. 1500 tekens) …" />
+          <textarea id="aa-formulier-tekst" data-testid="aa-formulier-tekst" className="fwk-aa-veld" rows={8} value={tekst} onChange={(e) => setTekst(e.target.value)} onPaste={plakAfbeelding} placeholder="Plak hier de vragen, bijvoorbeeld: 1. Beschrijf de aanleiding van uw project (max. 1500 tekens) …" />
+          {afbeeldingen.length > 0 && (
+            <ul style={css('list-style: none; margin: 10px 0 0; padding: 0; display: flex; gap: 10px; flex-wrap: wrap;')} data-testid="aa-formulier-afbeeldingen" aria-label="Afbeeldingen van het formulier">
+              {afbeeldingen.map((a, i) => (
+                <li key={`${a.naam}-${i}`} style={css('display: flex; flex-direction: column; gap: 4px; width: 112px;')}>
+                  <img src={a.dataUrl} alt={`Voorbeeld van ${a.naam}`} style={css('width: 112px; height: 80px; object-fit: cover; object-position: top; border: 1px solid var(--fwk-border, #D8DEE4); border-radius: 8px; background: #fff;')} />
+                  <span className="fwk-aa-klein" style={css('overflow: hidden; text-overflow: ellipsis; white-space: nowrap;')} title={a.naam}>{a.naam}</span>
+                  <button type="button" className="fwk-wp-link" disabled={Boolean(bezig)} onClick={() => setAfbeeldingen((l) => l.filter((_, n) => n !== i))} aria-label={`Haal ${a.naam} weg`}>
+                    Weghalen
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <div style={css('display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 6px;')} className="fwk-aa-klein">
             <span>{tekenTelling(tekst).toLocaleString('nl-NL')} tekens</span>
             <span>
               <input
                 ref={invoer}
                 type="file"
-                accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                multiple
                 data-testid="aa-formulier-bestand"
-                aria-label="Word-bestand of PDF met de vragen"
+                aria-label="Word-bestand, PDF of afbeelding met de vragen"
                 style={css('position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;')}
                 onChange={(e) => {
-                  const f = e.target.files && e.target.files[0];
+                  const fs = e.target.files ? [...e.target.files] : [];
 
                   e.target.value = '';
 
-                  if (f) leesBestand(f);
+                  const fotos = fs.filter(isAfbeelding);
+
+                  if (fotos.length > 1 || (fotos.length === 1 && fs.length === 1)) voegAfbeeldingenToe(fotos);
+                  else if (fs[0]) leesBestand(fs[0]);
                 }}
               />
               <Button variant="outline" size="s" onClick={() => invoer.current && invoer.current.click()} disabled={Boolean(bezig)}>
-                Word of PDF kiezen
+                Word, PDF of afbeelding kiezen
               </Button>
             </span>
           </div>
         </div>
 
         <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px;')}>
-          <Button onClick={lees} disabled={Boolean(bezig) || tekenTelling(tekst) < MIN_FORMULIER_TEKENS} ariaLabel="Maak een vragenlijst en een lijst met stukken">
+          <Button onClick={lees} disabled={Boolean(bezig) || (tekenTelling(tekst) < MIN_FORMULIER_TEKENS && afbeeldingen.length === 0)} ariaLabel="Maak een vragenlijst en een lijst met stukken">
             Maak een vragenlijst en een lijst met stukken →
           </Button>
-          <span className="fwk-aa-klein">Dit telt als één formulier lezen van uw maandruimte.</span>
+          <span className="fwk-aa-klein">Dit telt als één formulier lezen van uw maandruimte, ook met meerdere afbeeldingen.</span>
         </div>
         {bezigBlok}
         {foutBlok}

@@ -37,6 +37,7 @@ import { maakBegrotingVoorstel, MAX_TEKENS_VOORSTEL } from './begrotingVoorstel.
 import { sluitNaToevoegen } from './begrotingSluit.ts';
 import { leesBegrotingUpload, MAX_TEKENS_UPLOAD, MIN_TEKENS_UPLOAD } from './begrotingUpload.ts';
 import {
+  schoneAfbeeldingen,
   bouwVragenBericht,
   leesVragen,
   maandSleutel,
@@ -57,6 +58,7 @@ import { tierConfigVoor } from './tierConfig.ts';
 import { bouwFeiten, fondsSleutel, MIN_FEITEN, planGereedheid, schrijfPlan, sectiesUitCriteria, STANDAARD_SECTIES, type PlanBron } from './projectplan.ts';
 
 export const MAX_BODY_TEKENS = 600_000;
+export const MAX_BODY_MET_AFBEELDINGEN = 3_200_000; // alleen voor vragen-lezen met afbeeldingen van het formulier
 export const MAX_PAGINAS = 2;
 export const MAX_FONDSLABEL = 200;
 
@@ -278,6 +280,8 @@ export interface HandlerDeps {
   lijstVoortgang?(userId: string, aanvraagIds: string[]): Promise<Record<string, AanvraagVoortgang> | null>; // null = niet te lezen (bijvoorbeeld de migratie is er nog niet): dan blijft de kaart zoals voorheen
   haalPagina(url: string): Promise<PaginaUitkomst>;
   roep: ModelAanroep;
+  // Typt de tekst over uit afbeeldingen van een formulier (screenshot, foto, scan). Ontbreekt dit, dan kan de server alleen tekst lezen.
+  leesAfbeeldingen?(afbeeldingen: string[]): Promise<{ tekst: string; usage?: any } | null>;
   meldGebruik(melding: GebruikMelding): Promise<void>; // gooit nooit
 }
 
@@ -381,7 +385,8 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
   if (!config) return fout(403, 'geen-toegang', 'De aanvraag-assistent is er voor Pro en Premium.');
 
   // 4. Verzoek lezen.
-  if (verzoek.bodyText.length > MAX_BODY_TEKENS) return fout(413, 'te-groot', 'Het verzoek is te groot.');
+  // Boven de gewone grens kan alleen een formulier met afbeeldingen (zie hieronder, na het lezen van de modus).
+  if (verzoek.bodyText.length > MAX_BODY_MET_AFBEELDINGEN || (verzoek.bodyText.length > MAX_BODY_TEKENS && !verzoek.bodyText.includes('"afbeeldingen"'))) return fout(413, 'te-groot', 'Het verzoek is te groot.');
 
   let body: any;
 
@@ -396,6 +401,9 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
   const modus = body.mode as Modus;
 
   if (!MODI.includes(modus)) return fout(400, 'ongeldig', 'Ongeldige aanvraag.');
+
+  // Een groot verzoek mag alleen met afbeeldingen van het formulier; al het andere blijft bij de oude grens.
+  if (verzoek.bodyText.length > MAX_BODY_TEKENS && !(modus === 'vragen-lezen' && Array.isArray(body.afbeeldingen))) return fout(413, 'te-groot', 'Het verzoek is te groot.');
 
   // 4b. Per fonds werken (criteria, versies van een fonds, vragen, beoordelen) is er alleen met Premium. Pro schrijft wel het projectplan en bewerkt het (versies van het algemene plan, zie hieronder). De server weigert, ook als een
   // client de knoppen toch zou tonen of een verzoek zelf opstelt. De lijst en het openen van aanvragen blijven open voor Pro, maar alleen voor het eigen projectplan (zie hieronder).
@@ -732,10 +740,13 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
     // ── vragen-lezen: het formulier (Word, PDF of geplakt) omzetten in een vragenlijst en een lijst met stukken ─────────────
     if (modus === 'vragen-lezen') {
-      const formulier = tekstVeld(body.formulierTekst, MAX_FORMULIER_TEKENS + 1).trim();
+      let formulier = tekstVeld(body.formulierTekst, MAX_FORMULIER_TEKENS + 1).trim();
+      const afbeeldingen = schoneAfbeeldingen(body.afbeeldingen);
 
+      if (afbeeldingen === null) return fout(400, 'ongeldige-afbeelding', 'Deze afbeelding kon niet worden gebruikt. Kies een PNG, JPG of WebP en maak hem niet te groot (maximaal 4 afbeeldingen).');
       if (formulier.length > MAX_FORMULIER_TEKENS) return fout(413, 'richtlijn-te-lang', 'De tekst van het formulier is te lang. Plak alleen de vragen.');
-      if (formulier.length < 20) return fout(400, 'geen-bron', 'Plak de vragen van het formulier of voeg het bestand toe.');
+      if (afbeeldingen.length > 0 && !deps.leesAfbeeldingen) return fout(503, 'afbeeldingen', 'Een formulier uit een afbeelding lezen is nu niet beschikbaar. Plak de vragen of voeg een Word-bestand of PDF toe.');
+      if (afbeeldingen.length === 0 && formulier.length < 20) return fout(400, 'geen-bron', 'Plak de vragen van het formulier of voeg het bestand toe.');
 
       const gebruikt = await deps.telRijen(userId, 'eisen', sinds);
 
@@ -754,10 +765,28 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
       let usage = { prompt_tokens: 0, completion_tokens: 0 };
 
       try {
+        // Eerst de afbeeldingen overtypen; die tekst komt achter de eventueel geplakte tekst en gaat door dezelfde controle (letterlijk bronstuk).
+        if (afbeeldingen.length > 0) {
+          const gelezen = await deps.leesAfbeeldingen!(afbeeldingen);
+
+          usage = { prompt_tokens: Number(gelezen?.usage?.prompt_tokens ?? 0) || 0, completion_tokens: Number(gelezen?.usage?.completion_tokens ?? 0) || 0 };
+
+          const overgetypt = tekstVeld(gelezen?.tekst, MAX_FORMULIER_TEKENS).trim();
+
+          if (overgetypt.length < 20) {
+            await deps.rondAf(plek.id, userId, false).catch(() => undefined);
+            await deps.meldGebruik({ userId, tier: tierLabel, actie: 'aanvraag_vragen', projectId: pid, model: deps.modelNaam, inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens, duurMs: Date.now() - start, succes: false });
+
+            return fout(422, 'afbeelding-onleesbaar', 'Wij konden de tekst in deze afbeelding niet lezen. Neem de afbeelding scherper of groter op, of plak de vragen. Er is niets verbruikt van uw maandruimte.');
+          }
+
+          formulier = `${formulier}\n\n${overgetypt}`.trim().slice(0, MAX_FORMULIER_TEKENS);
+        }
+
         const antwoord = await deps.roep(VRAGEN_SYSTEEM, bouwVragenBericht(formulier));
 
         if (antwoord) {
-          usage = { prompt_tokens: Number(antwoord.usage?.prompt_tokens ?? 0) || 0, completion_tokens: Number(antwoord.usage?.completion_tokens ?? 0) || 0 };
+          usage = { prompt_tokens: usage.prompt_tokens + (Number(antwoord.usage?.prompt_tokens ?? 0) || 0), completion_tokens: usage.completion_tokens + (Number(antwoord.usage?.completion_tokens ?? 0) || 0) };
 
           try {
             uitkomst = leesVragen(JSON.parse(antwoord.inhoud || '{}'), formulier);

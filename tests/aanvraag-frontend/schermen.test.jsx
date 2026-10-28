@@ -563,6 +563,78 @@ sectie('11. Aanvraag indienen: formulier, tekenlimieten, antwoorden per vraag en
   check('zonder gevonden vragen: een duidelijke melding en geen vragenlijst bewaard', await wacht(() => /Wij vonden geen vragen/.test(tekst())) && !W.s.tabel.get(rijW.id).vragen && $$('[data-testid="aa-vraag-rij"]').length === 0);
   await opruimen();
 
+  // Het formulier als afbeelding (screenshot, foto, scan): verkleind in de browser, overgetypt op de server, daarna dezelfde vragenlijst met tekenlimieten.
+  const { formulierHulp } = await import('../../src/features/kompas-app/aanvraag/FormulierBlok.jsx');
+  const echteHulp = { ...formulierHulp };
+  const DATA = (n) => `data:image/jpeg;base64,${'QUJD'.repeat(n)}`;
+  const nepFoto = (naam, type = 'image/png') => new window.File([new Uint8Array([1, 2, 3])], naam, { type });
+  const kiesBestanden = async (bestanden) => {
+    const input = $('[data-testid="aa-formulier-bestand"]');
+    Object.defineProperty(input, 'files', { value: bestanden, configurable: true });
+    await act(async () => { input.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  };
+  let verkleind = 0;
+
+  formulierHulp.verkleinAfbeelding = async (f) => (/\.gif$/.test(f.name) ? { ok: false, melding: 'Kies een afbeelding als PNG, JPG of WebP.' } : { ok: true, naam: f.name, dataUrl: DATA(++verkleind) });
+  formulierHulp.extraheerTekst = async () => '';
+  formulierHulp.pdfAlsAfbeeldingen = async () => ({ ok: true, paginas: [DATA(7), DATA(8)], totaal: 2 });
+
+  const A = maakServer();
+  const rijA = await openWerk(A);
+  await wacht(() => $('[data-testid="aa-formulier-tekst"]'));
+  check('de uitleg noemt afbeeldingen en dat de afbeelding niet wordt bewaard', /screenshot of foto/.test(tekst()) && /wij bewaren die niet/.test(tekst()) && /Word, PDF of afbeelding kiezen/.test(tekst()));
+  check('het bestandsveld neemt ook png, jpg en webp aan', /\.png/.test($('[data-testid="aa-formulier-bestand"]').getAttribute('accept')) && /image\/webp/.test($('[data-testid="aa-formulier-bestand"]').getAttribute('accept')));
+  check('zonder tekst en zonder afbeelding is de knop uit', knop('Maak een vragenlijst en een lijst met stukken').disabled === true);
+
+  await kiesBestanden([nepFoto('screenshot.png')]);
+  check('een screenshot kiezen toont een miniatuur met naam en weghalen', await wacht(() => $$('[data-testid="aa-formulier-afbeeldingen"] li').length === 1) && /screenshot\.png/.test($('[data-testid="aa-formulier-afbeeldingen"]').textContent));
+  check('met een afbeelding is de knop aan, ook zonder tekst', knop('Maak een vragenlijst en een lijst met stukken').disabled === false);
+
+  await kiesBestanden([nepFoto('anders.gif', 'image/gif')]);
+  check('een ander afbeeldingstype geeft een duidelijke melding', await wacht(() => /Kies een afbeelding als PNG, JPG of WebP/.test(tekst())));
+
+  // Plakken uit het klembord (Ctrl+V op het tekstvak)
+  const plak = new window.Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(plak, 'clipboardData', { value: { files: [nepFoto('geplakt.png')] } });
+  await act(async () => { $('[data-testid="aa-formulier-tekst"]').dispatchEvent(plak); });
+  check('een geplakte screenshot komt erbij en de plak-actie wordt overgenomen', await wacht(() => $$('[data-testid="aa-formulier-afbeeldingen"] li').length === 2) && plak.defaultPrevented === true);
+
+  // Tekst plakken blijft gewoon tekst (geen afbeelding in het klembord)
+  const plakTekst = new window.Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(plakTekst, 'clipboardData', { value: { files: [] } });
+  await act(async () => { $('[data-testid="aa-formulier-tekst"]').dispatchEvent(plakTekst); });
+  check('geplakte tekst wordt niet tegengehouden', plakTekst.defaultPrevented === false && $$('[data-testid="aa-formulier-afbeeldingen"] li').length === 2);
+
+  await klik($('[aria-label="Haal geplakt.png weg"]'));
+  check('weghalen haalt die afbeelding uit de lijst', await wacht(() => $$('[data-testid="aa-formulier-afbeeldingen"] li').length === 1));
+
+  // Een PDF zonder tekst wordt als scan gelezen: de pagina's worden afbeeldingen
+  await kiesBestanden([new window.File([new Uint8Array([1])], 'scan.pdf', { type: 'application/pdf' })]);
+  check('een PDF zonder tekst wordt als scan gelezen: de pagina’s komen erbij als afbeeldingen', await wacht(() => $$('[data-testid="aa-formulier-afbeeldingen"] li').length === 3) && /scan\.pdf \(pagina 2\)/.test($('[data-testid="aa-formulier-afbeeldingen"]').textContent));
+
+  const gebruikA = A.s.gebruik.length;
+  await klik(knop('Maak een vragenlijst en een lijst met stukken'));
+  check('het formulier wordt uit de afbeeldingen gelezen: 3 vragen, limiet 1500 bij vraag 1', await wacht(() => $$('[data-testid="aa-vraag-rij"]').length === 3) && $('[aria-label="Tekenlimiet van vraag 1"]').value === '1500' && /Tekenlimiet ontbreekt bij 2 vragen/.test(tekst()));
+  check('de server kreeg de 3 afbeeldingen in één keer en las ze één keer over', JSON.stringify(A.s.afbeeldingenGelezen) === '[3]' && A.s.vragenGelezen === 1);
+  check('dit telde als één formulier lezen, niet als drie', A.s.gebruik.slice(gebruikA).filter((x) => x.succes && x.actie === 'aanvraag_vragen').length === 1);
+  check('de afbeeldingen zelf zijn nergens bewaard', !JSON.stringify(A.s.tabel.get(rijA.id)).includes('data:image') && !JSON.stringify([...A.s.versies.values()]).includes('data:image'));
+  check('na het lezen zijn de afbeeldingen uit het scherm gehaald', $$('[data-testid="aa-formulier-afbeeldingen"]').length === 0);
+  await opruimen();
+
+  // De afbeelding is onleesbaar: een eerlijke melding en de maandruimte blijft ongemoeid.
+  const B = maakServer({ afbeeldingTekst: 'x' });
+  const rijB = await openWerk(B);
+  await wacht(() => $('[data-testid="aa-formulier-tekst"]'));
+  await kiesBestanden([nepFoto('wazig.png')]);
+  await wacht(() => $$('[data-testid="aa-formulier-afbeeldingen"] li').length === 1);
+  await klik(knop('Maak een vragenlijst en een lijst met stukken'));
+  check('een onleesbare afbeelding geeft een melding en geen vragenlijst', await wacht(() => $('[data-testid="aa-formulier-fout"]')) && !B.s.tabel.get(rijB.id).vragen && $$('[data-testid="aa-vraag-rij"]').length === 0);
+  check('de afbeelding blijft staan zodat het lid een andere kan kiezen', $$('[data-testid="aa-formulier-afbeeldingen"] li').length === 1);
+  check('een onleesbare afbeelding telde niet mee voor de maand', B.s.gebruik.filter((x) => x.succes && x.actie === 'aanvraag_vragen').length === 0);
+  await opruimen();
+
+  Object.assign(formulierHulp, echteHulp);
+
   // Een server zonder deze functie: het blok verdwijnt en alles werkt zoals voorheen.
   const Z = maakServer({ zonderVragen: true });
   await openWerk(Z);

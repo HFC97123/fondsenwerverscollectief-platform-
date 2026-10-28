@@ -74,6 +74,31 @@ async function leesPdf(file, max = MAX_TEKENS) {
 // Voor wie meer tekst uit een PDF nodig heeft dan de standaardgrens (bijvoorbeeld een begroting).
 export const leesPdfTekst = (file, max = MAX_TEKENS) => leesPdf(file, max);
 
+// Een PDF zonder selecteerbare tekst (een scan): de eerste pagina's als afbeeldingen (JPEG-data-URL's), om te laten overtypen. -> { ok, paginas } met de dataUrl's.
+export async function leesPdfAlsAfbeeldingen(file, { max = 4, canvasNaarDataUrl, maakCanvas } = {}) {
+  try {
+    const lib = await pdfjsLib();
+    const doc = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const uit = [];
+
+    for (let i = 1; i <= Math.min(doc.numPages, max); i += 1) {
+      const pagina = await doc.getPage(i);
+      const vp = pagina.getViewport({ scale: 1.6 });
+      const canvas = maakCanvas ? maakCanvas(Math.ceil(vp.width), Math.ceil(vp.height)) : Object.assign(document.createElement('canvas'), { width: Math.ceil(vp.width), height: Math.ceil(vp.height) });
+
+      await pagina.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+
+      const url = canvasNaarDataUrl(canvas, canvas.width, canvas.height, maakCanvas ? { maakCanvas } : {});
+
+      if (url) uit.push(url);
+    }
+
+    return { ok: uit.length > 0, paginas: uit, totaal: doc.numPages };
+  } catch (e) {
+    return { ok: false, paginas: [], totaal: 0 };
+  }
+}
+
 // Excel (.xlsx): per werkblad de rijen als tekst, cellen gescheiden door " | ". Formules worden als hun uitkomst gelezen.
 async function leesXlsx(file) {
   try {

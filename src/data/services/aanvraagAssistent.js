@@ -149,9 +149,15 @@ export function haalVragen(aanvraagId) {
   return isTekst(aanvraagId) ? roep({ mode: 'vragen', aanvraagId }) : ongeldig();
 }
 
-// De tekst van het formulier (uit Word, PDF of geplakt) omzetten in een voorstel voor de vragenlijst en de lijst met stukken. Telt als één formulier lezen.
-export function leesFormulier({ projectId, aanvraagId, formulierTekst }) {
-  return isTekst(projectId) && isTekst(aanvraagId) && isTekst(formulierTekst) ? roep({ mode: 'vragen-lezen', projectId, aanvraagId, formulierTekst: String(formulierTekst) }) : ongeldig();
+// De tekst van het formulier (uit Word, PDF of geplakt), en/of afbeeldingen ervan (screenshot, foto, scan; maximaal 4 data-URL's), omzetten in een voorstel voor de vragenlijst en de lijst met stukken.
+// De afbeeldingen worden op de server eerst overgetypt en niet bewaard. Telt als één formulier lezen.
+export function leesFormulier({ projectId, aanvraagId, formulierTekst = '', afbeeldingen = [] }) {
+  const fotos = Array.isArray(afbeeldingen) ? afbeeldingen.filter(isTekst) : [];
+  const tekst = typeof formulierTekst === 'string' ? formulierTekst : '';
+
+  if (!isTekst(projectId) || !isTekst(aanvraagId) || (!tekst && fotos.length === 0)) return ongeldig();
+
+  return roep({ mode: 'vragen-lezen', projectId, aanvraagId, ...(tekst ? { formulierTekst: tekst } : {}), ...(fotos.length ? { afbeeldingen: fotos } : {}) });
 }
 
 // vragen: de lijst [{ id, tekst, maxTekens, geenLimiet }]; bevestig: true vraagt de server om de lijst te bevestigen (elke vraag heeft een limiet of 'geen limiet').
