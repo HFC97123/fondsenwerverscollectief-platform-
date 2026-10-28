@@ -702,10 +702,11 @@ export async function verwerk(verzoek: HandlerVerzoek, deps: HandlerDeps): Promi
 
       if (body.vragen !== undefined) {
         const bevestig = body.bevestig === true;
-        const vragen = schoneVragen(body.vragen, bevestig);
+        const zonderFormulier = body.zonderFormulier === true;
+        const vragen = schoneVragen(body.vragen, bevestig, zonderFormulier);
 
         if (!vragen) {
-          return bevestig && Array.isArray(body.vragen) && schoneVragen(body.vragen, false)
+          return bevestig && Array.isArray(body.vragen) && schoneVragen(body.vragen, false, zonderFormulier)
             ? fout(400, 'limiet', 'Vul bij elke vraag de tekenlimiet in, of geef aan dat dit fonds geen limiet heeft. Zonder tekenlimiet kunnen wij geen antwoord voor u schrijven.')
             : fout(400, 'ongeldig', 'De vragenlijst klopt niet. Controleer de vragen en probeer het opnieuw.');
         }

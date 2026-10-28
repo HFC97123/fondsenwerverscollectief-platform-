@@ -161,14 +161,15 @@ export function leesFormulier({ projectId, aanvraagId, formulierTekst = '', afbe
 }
 
 // vragen: de lijst [{ id, tekst, maxTekens, geenLimiet }]; bevestig: true vraagt de server om de lijst te bevestigen (elke vraag heeft een limiet of 'geen limiet').
+// zonderFormulier: dit fonds heeft geen aanvraagformulier; de lijst zijn dan de onderdelen die het lid kiest (projectplan, aanbiedingsbrief, ...).
 // stukken: [{ id, tekst, bron, sleutel, maxLeeftijdMaanden, nietVanToepassing, klaar, documentNaam }]. Elk van de twee mag ontbreken.
-export function bewaarVragen({ aanvraagId, vragen, bevestig = false, stukken }) {
+export function bewaarVragen({ aanvraagId, vragen, bevestig = false, stukken, zonderFormulier = false }) {
   if (!isTekst(aanvraagId)) return ongeldig();
 
   return roep({
     mode: 'vragen-bewaren',
     aanvraagId,
-    ...(vragen !== undefined ? { vragen, bevestig: bevestig === true } : {}),
+    ...(vragen !== undefined ? { vragen, bevestig: bevestig === true, ...(zonderFormulier === true ? { zonderFormulier: true } : {}) } : {}),
     ...(stukken !== undefined ? { stukken } : {}),
   });
 }

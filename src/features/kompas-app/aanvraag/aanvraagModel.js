@@ -414,6 +414,25 @@ export function nieuweVraag(lijst, tekst) {
   return { id: volgendId(lijst, 'v'), tekst: schoonTekst(tekst).slice(0, 500), maxTekens: null, geenLimiet: false };
 }
 
+// Fondsen zonder aanvraagformulier vragen meestal een projectplan en een aanbiedingsbrief; die twee staan klaar, de rest kiest het lid zelf.
+export const VASTE_ONDERDELEN = [
+  { sleutel: 'projectplan', tekst: 'Projectplan' },
+  { sleutel: 'aanbiedingsbrief', tekst: 'Aanbiedingsbrief' },
+];
+
+// Onderdelen als vragenlijst: zonder tekenlimiet tenzij het fonds er een noemt (dan vult het lid die in).
+export function onderdelenLijst(teksten) {
+  const uit = [];
+
+  for (const t of Array.isArray(teksten) ? teksten : []) {
+    const tekst = schoonTekst(t).slice(0, 500);
+
+    if (tekst.length >= 3 && !uit.some((x) => x.tekst.toLowerCase() === tekst.toLowerCase()) && uit.length < MAX_VRAGEN) uit.push({ id: volgendId(uit, 'v'), tekst, maxTekens: null, geenLimiet: true });
+  }
+
+  return uit;
+}
+
 export function nieuwStuk(lijst, tekst) {
   return { id: volgendId(lijst, 's'), tekst: schoonTekst(tekst).slice(0, 200), bron: 'lid', sleutel: null, maxLeeftijdMaanden: null, nietVanToepassing: false, klaar: false, documentNaam: '' };
 }

@@ -252,6 +252,15 @@ sectie('Geschreven documenten voor Projectdocumentatie');
   check('de id\'s zijn uniek per document', new Set(d.map((x) => x.id)).size === 4);
 }
 
+sectie('Een fonds zonder aanvraagformulier: onderdelen');
+{
+  gelijk('de vaste onderdelen zijn projectplan en aanbiedingsbrief', M.VASTE_ONDERDELEN.map((o) => o.tekst), ['Projectplan', 'Aanbiedingsbrief']);
+  const l = M.onderdelenLijst(['Projectplan', 'Aanbiedingsbrief', ' motivatiebrief ', 'projectplan', 'x', '']);
+  gelijk('de lijst heeft unieke onderdelen met nummers, zonder dubbelen en te korte', l.map((v) => [v.id, v.tekst]), [['v1', 'Projectplan'], ['v2', 'Aanbiedingsbrief'], ['v3', 'motivatiebrief']]);
+  check('onderdelen hebben geen tekenlimiet en tellen als "geen limiet", zodat ze meteen bevestigd kunnen worden', l.every((v) => v.geenLimiet === true && v.maxTekens === null) && M.vragenZonderLimiet(l) === 0);
+  check('rare invoer breekt niets', M.onderdelenLijst(null).length === 0 && M.onderdelenLijst('x').length === 0);
+}
+
 sectie('Afbeeldingen van een formulier klaarmaken');
 {
   const nepCanvas = (log, lengtes) => {

@@ -563,6 +563,48 @@ sectie('11. Aanvraag indienen: formulier, tekenlimieten, antwoorden per vraag en
   check('zonder gevonden vragen: een duidelijke melding en geen vragenlijst bewaard', await wacht(() => /Wij vonden geen vragen/.test(tekst())) && !W.s.tabel.get(rijW.id).vragen && $$('[data-testid="aa-vraag-rij"]').length === 0);
   await opruimen();
 
+  // Een fonds zonder aanvraagformulier: projectplan, aanbiedingsbrief en eigen onderdelen; en altijd weer wisselen naar een formulier.
+  const Q = maakServer();
+  const rijQ = await openWerk(Q);
+  await wacht(() => $('[data-testid="aa-formulier-keuze"]'));
+  check('bovenaan staat de keuze: met of zonder aanvraagformulier, met "met formulier" gekozen', !!$('[data-testid="aa-formulier-keuze"]') && $('[data-testid="aa-keuze-formulier"]').getAttribute('aria-checked') === 'true' && $('[data-testid="aa-keuze-zonder"]').getAttribute('aria-checked') === 'false' && /U kunt hier altijd wisselen/.test(tekst()));
+  await klik($('[data-testid="aa-keuze-zonder"]'));
+  check('"geen formulier" toont projectplan en aanbiedingsbrief, allebei aangevinkt', await wacht(() => $('[data-testid="aa-onderdelen-keuze"]')) && $$('[data-testid="aa-onderdelen-keuze"] input[type="checkbox"]').length === 2 && $$('[data-testid="aa-onderdelen-keuze"] input[type="checkbox"]').every((c) => c.checked) && /Projectplan/.test($('[data-testid="aa-onderdelen-keuze"]').textContent) && /Aanbiedingsbrief/.test($('[data-testid="aa-onderdelen-keuze"]').textContent));
+  check('de toelichting rechts verandert mee, en noemt dat een fonds kan veranderen', /Een fonds zonder formulier/.test($('[data-testid="aa-formulier-toelichting"]').textContent) && !!$('[data-testid="aa-onderdelen-uitleg"]') && /Vraagt het toch een formulier achter een inlog/.test($('[data-testid="aa-wissel-toelichting"]').textContent) && !$('[data-testid="aa-limiet-attentie"]'));
+  check('het uploadvak en de tekenlimiet-waarschuwing horen er dan niet bij', !$('[data-testid="aa-formulier-bestand"]') && !$('[data-testid="aa-formulier-tekst"]'));
+  await typ($('[aria-label="Ander onderdeel toevoegen"]'), 'Motivatiebrief');
+  await klik(knop('+ Onderdeel toevoegen'));
+  check('een eigen onderdeel komt erbij', await wacht(() => /Motivatiebrief/.test($('[data-testid="aa-onderdelen-keuze"]').textContent)));
+  await klik($('[data-testid="aa-onderdelen-keuze"] input[type="checkbox"]'));
+  check('uitvinken haalt een onderdeel uit de keuze', $$('[data-testid="aa-onderdelen-keuze"] input[type="checkbox"]')[0].checked === false);
+  await klik($('[data-testid="aa-onderdelen-keuze"] input[type="checkbox"]'));
+  await klik(knop('Ga verder met deze onderdelen'));
+  check('de onderdelen staan als lijst, zonder dat een tekenlimiet nodig is', await wacht(() => $$('[data-testid="aa-vraag-rij"]').length === 3) && !/Limiet nodig/.test(tekst()) && knop('Bevestig de vragenlijst').disabled === false && /Dit fonds heeft geen aanvraagformulier/.test(tekst()));
+  check('de standaardstukken staan er ook (ANBI, statuten, jaarrekening, jaarverslag)', $$('[data-testid="aa-stuk"]').length === 4 && /ANBI-status/.test(tekst()) && /Statuten/.test(tekst()));
+  check('er is niets gelezen en niets van de maand verbruikt', !Q.s.vragenGelezen && Q.s.gebruik.filter((x) => x.actie === 'aanvraag_vragen' || x.actie === 'aanvraag_antwoorden').length === 0);
+  await klik(knop('Bevestig de vragenlijst'));
+  check('bevestigen bewaart de onderdelen met de markering "zonder formulier"', await wacht(() => Q.s.tabel.get(rijQ.id).vragen && Q.s.tabel.get(rijQ.id).vragen.bevestigd === true) && Q.s.tabel.get(rijQ.id).vragen.zonderFormulier === true && Q.s.tabel.get(rijQ.id).vragen.lijst.map((v) => v.tekst).join('|') === 'Projectplan|Aanbiedingsbrief|Motivatiebrief' && Q.s.tabel.get(rijQ.id).vragen.lijst.every((v) => v.geenLimiet));
+  check('het samenvattingsblok spreekt over onderdelen, zonder "geen limiet" achter elk onderdeel', await wacht(() => $('[data-testid="aa-vragen-samenvatting"]')) && /Wat dit fonds vraagt/.test($('[data-testid="aa-formulier-blok"]').textContent) && !/geen limiet/.test($('[data-testid="aa-vragen-samenvatting"]').textContent) && !!knop('Ga verder met de teksten'));
+  await klik(knop('Ga verder met de teksten'));
+  check('daarna schrijft het lid per onderdeel, zoals bij vragen', await wacht(() => $$('[data-testid="aa-vraagknop"]').length === 3) && /Aanbiedingsbrief/.test($$('[data-testid="aa-vraagknop"]')[1].textContent));
+
+  // Wisselen kan altijd: het fonds vraagt toch een formulier achter een inlog.
+  await klik($('[data-testid="aa-stap-vragenlijst"]'));
+  await wacht(() => $('[data-testid="aa-wissel"]'));
+  check('bij een bevestigde lijst staat "Dit fonds vraagt toch een formulier" klaar', /Dit fonds vraagt toch een formulier/.test($('[data-testid="aa-wissel"]').textContent));
+  await klik($('[data-testid="aa-wissel"]'));
+  check('wisselen opent de lijst weer en toont de keuze met "met formulier"', await wacht(() => $('[data-testid="aa-formulier-tekst"]')) && $('[data-testid="aa-keuze-formulier"]').getAttribute('aria-checked') === 'true' && Q.s.tabel.get(rijQ.id).vragen.bevestigd === false);
+  check('de toelichting is weer die van het formulier, en de oude lijst blijft bewaard tot er een nieuwe is', /Het aanvraagformulier/.test($('[data-testid="aa-formulier-toelichting"]').textContent) && Q.s.tabel.get(rijQ.id).vragen.lijst.length === 3 && /Terug naar de huidige lijst/.test($('[data-testid="aa-wissel-uitleg"]').textContent));
+  check('de stappen na de vragenlijst zijn weer dicht', $('[data-testid="aa-stap-antwoorden"]').disabled === true);
+  await typ($('[data-testid="aa-formulier-tekst"]'), FORMULIER);
+  await klik(knop('Maak een vragenlijst en een lijst met stukken'));
+  check('het formulier wordt gelezen en vervangt de onderdelen; de markering is weg', await wacht(() => $$('[data-testid="aa-vraag-rij"]').length === 3 && /Beschrijf de aanleiding/.test($$('[data-testid="aa-vraag-rij"] textarea')[0].value)) && Q.s.tabel.get(rijQ.id).vragen.zonderFormulier === undefined && /Uw vragenlijst/.test($('[data-testid="aa-formulier-blok"]').textContent));
+  check('in de lijst staat nu ook "Dit fonds heeft geen formulier" om terug te wisselen', /Dit fonds heeft geen formulier/.test($('[data-testid="aa-wissel"]').textContent));
+  await klik($('[data-testid="aa-wissel"]'));
+  await klik($('[data-testid="aa-wissel-uitleg"] button'));
+  check('"Terug naar de huidige lijst" brengt de vragen terug zonder iets te verliezen', await wacht(() => $$('[data-testid="aa-vraag-rij"]').length === 3) && Q.s.tabel.get(rijQ.id).vragen.lijst.length === 3);
+  await opruimen();
+
   // Het formulier als afbeelding (screenshot, foto, scan): verkleind in de browser, overgetypt op de server, daarna dezelfde vragenlijst met tekenlimieten.
   const { formulierHulp } = await import('../../src/features/kompas-app/aanvraag/FormulierBlok.jsx');
   const echteHulp = { ...formulierHulp };
@@ -582,7 +624,7 @@ sectie('11. Aanvraag indienen: formulier, tekenlimieten, antwoorden per vraag en
   const A = maakServer();
   const rijA = await openWerk(A);
   await wacht(() => $('[data-testid="aa-formulier-tekst"]'));
-  check('de uitleg noemt afbeeldingen en dat de afbeelding niet wordt bewaard', /screenshot of foto/.test(tekst()) && /wij bewaren die niet/.test(tekst()) && /Word, PDF of afbeelding kiezen/.test(tekst()));
+  check('de uitleg noemt afbeeldingen en dat de afbeelding niet wordt bewaard', /maak een screenshot/.test(tekst()) && /wij bewaren die niet/.test(tekst()) && /Formulier uploaden/.test(tekst()) && !!$('[data-testid="aa-formulier-toelichting"]'));
   check('het bestandsveld neemt ook png, jpg en webp aan', /\.png/.test($('[data-testid="aa-formulier-bestand"]').getAttribute('accept')) && /image\/webp/.test($('[data-testid="aa-formulier-bestand"]').getAttribute('accept')));
   check('zonder tekst en zonder afbeelding is de knop uit', knop('Maak een vragenlijst en een lijst met stukken').disabled === true);
 

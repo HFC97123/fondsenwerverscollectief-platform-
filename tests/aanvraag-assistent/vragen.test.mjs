@@ -1,7 +1,7 @@
 // Aanvraag-assistent: het formulier van een fonds (vragen met tekenlimiet, stukken) en antwoorden schrijven, met nagebootste verbindingen.
 //   node tests/aanvraag-assistent/run.mjs   (vanuit de repo-root)
 import { verwerk } from '../../supabase/functions/_shared/aanvraagHandler.ts';
-import { leesVragen, schoneVragen, schoneStukken, sectiesUitVragen, standaardStukken, MAX_HERSCHRIJVEN_PER_MAAND } from '../../supabase/functions/_shared/aanvraagVragen.ts';
+import { leesVragen, opdrachtVoor, schoneVragen, schoneStukken, sectiesUitVragen, standaardStukken, MAX_HERSCHRIJVEN_PER_MAAND } from '../../supabase/functions/_shared/aanvraagVragen.ts';
 import { check, gelijk, sectie, klaar, stand } from '../verificatie/hulp.mjs';
 
 stand.naam = 'aanvraag-vragen';
@@ -246,6 +246,41 @@ sectie('5. De vragenlijst bevestigen: eerst de tekenlimiet');
   gelijk('andermans aanvraag wijzigen: 404', (await verwerk(vraag({ mode: 'vragen-bewaren', aanvraagId: AANVRAAG, stukken: [{ tekst: 'Iets' }] }, 'ander-token'), e.deps)).status, 404);
 }
 
+sectie('5b. Een fonds zonder aanvraagformulier: projectplan, aanbiedingsbrief en zelf gekozen onderdelen');
+{
+  const e = omgeving();
+  const onderdelen = [{ id: 'v1', tekst: 'Projectplan', maxTekens: null, geenLimiet: true }, { id: 'v2', tekst: 'Aanbiedingsbrief', maxTekens: null, geenLimiet: true }];
+  let r = await verwerk(vraag({ mode: 'vragen-bewaren', aanvraagId: AANVRAAG, vragen: onderdelen, bevestig: true, zonderFormulier: true }), e.deps);
+
+  check('zonder formulier: onderdelen zonder limiet kunnen meteen bevestigd worden', r.status === 200 && r.body.vragen.bevestigd === true && r.body.vragen.zonderFormulier === true);
+  check('en de server onthoudt dat dit fonds geen formulier heeft', e.aanvragen.get(AANVRAAG).vragen.zonderFormulier === true && e.aanvragen.get(AANVRAAG).vragen.lijst.length === 2);
+
+  r = await verwerk(vraag({ mode: 'vragen-bewaren', aanvraagId: AANVRAAG, vragen: [...onderdelen, { id: 'v3', tekst: 'Motivatiebrief', maxTekens: 2000, geenLimiet: false }], bevestig: true, zonderFormulier: true }), e.deps);
+  check('een eigen onderdeel met een limiet van het fonds kan erbij', r.status === 200 && r.body.vragen.lijst[2].maxTekens === 2000);
+
+  r = await verwerk(vraag({ mode: 'vragen-bewaren', aanvraagId: AANVRAAG, vragen: [{ id: 'v1', tekst: 'Projectplan', maxTekens: null, geenLimiet: false }], bevestig: true, zonderFormulier: true }), e.deps);
+  check('ook zonder formulier geldt: een onderdeel zonder limiet en zonder "geen limiet" wordt niet bevestigd', r.status === 400 && r.body.reden === 'limiet');
+
+  // Wisselen kan altijd: het fonds vraagt toch een formulier achter een inlog. Dan wordt de lijst gelezen en is de markering weg.
+  const w = omgeving();
+  await verwerk(vraag({ mode: 'vragen-bewaren', aanvraagId: AANVRAAG, vragen: onderdelen, bevestig: true, zonderFormulier: true }), w.deps);
+  r = await verwerk(vraag({ mode: 'vragen-bewaren', aanvraagId: AANVRAAG, vragen: onderdelen, bevestig: false, zonderFormulier: true }), w.deps);
+  check('de lijst weer openen (om te wisselen) bewaart de onderdelen en laat de markering staan', r.status === 200 && r.body.vragen.bevestigd === false && r.body.vragen.zonderFormulier === true);
+  await lezen(w);
+  check('daarna een formulier lezen vervangt de lijst en haalt de markering weg', w.aanvragen.get(AANVRAAG).vragen.zonderFormulier === undefined && w.aanvragen.get(AANVRAAG).vragen.lijst.length === 3);
+
+  // Zonder markering blijft het oude gedrag
+  check('zonder markering geen veld in de lijst', schoneVragen([{ id: 'v1', tekst: 'Een vraag', maxTekens: 500 }], true).zonderFormulier === undefined);
+  check('met markering wel', schoneVragen([{ id: 'v1', tekst: 'Een vraag', geenLimiet: true }], true, true).zonderFormulier === true);
+
+  // Schrijven kan voor onderdelen, met een duidelijke opdracht voor projectplan en aanbiedingsbrief
+  check('de aanbiedingsbrief krijgt een opdracht voor een brief', /brief aan het fonds/.test(opdrachtVoor('Aanbiedingsbrief')) && /aanhef/.test(opdrachtVoor('Aanbiedingsbrief')));
+  check('het projectplan krijgt een opdracht voor een samenhangende tekst', /aanleiding/.test(opdrachtVoor('Projectplan')) && /begroting op hoofdlijnen/.test(opdrachtVoor('Projectplan')));
+  check('een gewone vraag blijft precies zoals die is', opdrachtVoor('Wie is de doelgroep?') === 'Wie is de doelgroep?');
+  check('hoofdletters en leestekens maken niet uit', /brief aan het fonds/.test(opdrachtVoor(' aanbiedingsbrief. ')));
+  gelijk('sectiesUitVragen gebruikt die opdracht als vraag', sectiesUitVragen(onderdelen).map((d) => /brief|aanleiding/.test(d.vraag)), [true, true]);
+  gelijk('en de titel blijft de naam van het onderdeel', sectiesUitVragen(onderdelen).map((d) => d.titel), ['Projectplan', 'Aanbiedingsbrief']);
+}
 sectie('6. Antwoorden schrijven: één beoordeling per fonds');
 {
   const e = omgeving();

@@ -228,13 +228,13 @@ export function StatusChip({ tekst, toon }) {
 }
 
 // Een korte checklist in de zijkant: wat het lid alvast kan verzamelen. Staat bij de stappen 1, 2 en 4; de volledige lijst (afvinken, koppelen) is stap 3.
-export function AlvastVerzamelen({ stukken, docs = [], gelezen = false, onNaarStukken }) {
+export function AlvastVerzamelen({ stukken, docs = [], gelezen = false, zonderFormulier = false, onNaarStukken }) {
   const lijst = alvastLijst(stukken, docs);
 
   return (
     <Blok titel="Alvast verzamelen" testid="aa-alvast">
       <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
-        {gelezen ? 'Dit heeft u straks nodig. Wat al in uw documenten staat, herkennen wij.' : 'Dit vragen bijna alle fondsen. Zodra wij uw formulier gelezen hebben, vullen wij aan met wat dit fonds extra vraagt.'}
+        {gelezen ? 'Dit heeft u straks nodig. Wat al in uw documenten staat, herkennen wij.' : zonderFormulier ? 'Dit vragen bijna alle fondsen. Wat dit fonds extra vraagt, voegt u zelf toe bij de stukken.' : 'Dit vragen bijna alle fondsen. Zodra wij uw formulier gelezen hebben, vullen wij aan met wat dit fonds extra vraagt.'}
       </p>
       {lijst.length === 0 ? (
         <p className="fwk-aa-klein" style={css('margin: 0;')}>Er zijn geen stukken nodig.</p>

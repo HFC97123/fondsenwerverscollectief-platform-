@@ -9,7 +9,7 @@ import { beoordeelAanvraag, bewaarCriteria, haalAanvraag, haalBeoordeling, schri
 import { haalOrganisatieDocumentenOp } from '../../../data/services/organisatiedocumenten.js';
 import { AanvraagStijl, AlvastVerzamelen, Bezig, Keuzekaart, PrivaatfondsKaart, RuimteBlok, Stappen, VierStappen } from './Bouwstenen.jsx';
 import BeoordelingResultaat from './BeoordelingResultaat.jsx';
-import FormulierBlok from './FormulierBlok.jsx';
+import FormulierBlok, { FormulierToelichting } from './FormulierBlok.jsx';
 import VersieEditor from './VersieEditor.jsx';
 import {
   SOORTEN_KEUZE,
@@ -241,7 +241,7 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
   const [tekst, setTekst] = useState('');
   const [bevestigPlan, setBevestigPlan] = useState(false);
   const [stap, setStap] = useState('vragenlijst'); // vragenlijst | antwoorden | stukken | controle
-  const [formulier, setFormulier] = useState({ geladen: false, weg: false, bevestigd: false, lijst: [], stukken: [] }); // wat FormulierBlok meldt; weg = de server kan dit niet (dan werkt de aanvraag zoals voorheen)
+  const [formulier, setFormulier] = useState({ geladen: false, weg: false, bevestigd: false, keuze: 'formulier', lijst: [], stukken: [] }); // wat FormulierBlok meldt; weg = de server kan dit niet (dan werkt de aanvraag zoals voorheen)
   const [werkStatus, setWerkStatus] = useState(null); // wat het antwoordenscherm meldt: beantwoord, stukken, definitief, niet-opgeslagen
   const editorRef = useRef(null);
   const startStapRef = useRef(startStap);
@@ -507,6 +507,7 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
       geladen: true,
       weg: Boolean(d.weg),
       bevestigd: Boolean(d.bevestigd),
+      keuze: d.zonderFormulier === true ? 'zonder' : d.zonderFormulier === false ? 'formulier' : f.keuze,
       lijst: Array.isArray(d.lijst) ? d.lijst : d.bevestigd ? f.lijst : [],
       stukken: Array.isArray(d.stukken) ? d.stukken : f.stukken,
     }));
@@ -742,9 +743,9 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
             </Melding>
           )}
 
-          <BronnenBlok bronnen={bronnen} inlogSignaal={voorlopig && voorlopig.inlogSignaal} beperkteLijst={voorlopig && voorlopig.beperkteLijst} />
 
-          <FormulierBlok project={project} aanvraagId={aanvraagId} formulierStart={(voorlopig && voorlopig.formulierTekst) || ''} docs={documentenLijst(project.docs, orgDocs)} assistent={assistent} onGewijzigd={onGewijzigd} onStand={zetFormulierStand} onOpen={(w) => { zetFormulierStand({ bevestigd: true, lijst: w.lijst, stukken: w.stukken }); setStap('antwoorden'); }} />
+          <FormulierBlok project={project} aanvraagId={aanvraagId} formulierStart={(voorlopig && voorlopig.formulierTekst) || ''} docs={documentenLijst(project.docs, orgDocs)} assistent={assistent} onGewijzigd={onGewijzigd} onStand={zetFormulierStand} onKeuze={(k) => setFormulier((f) => ({ ...f, keuze: k }))} onOpen={(w) => { zetFormulierStand({ bevestigd: true, lijst: w.lijst, stukken: w.stukken }); setStap('antwoorden'); }} />
+          <BronnenBlok bronnen={formulier.keuze === 'zonder' && Array.isArray(bronnen) ? bronnen.filter((b) => b.type !== 'lid') : bronnen} inlogSignaal={voorlopig && voorlopig.inlogSignaal} beperkteLijst={voorlopig && voorlopig.beperkteLijst} />
 
 
           {formulier.weg ? (
@@ -763,7 +764,8 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
         </div>
 
         <div className="fwk-wp-stapel">
-          {toonStappen && stap === 'vragenlijst' && <AlvastVerzamelen stukken={werkStatus && werkStatus.stukken ? werkStatus.stukken : formulier.stukken} docs={docsNu} gelezen={formulier.bevestigd} onNaarStukken={formulier.bevestigd ? () => kiesStap('stukken') : undefined} />}
+          {toonStappen && stap === 'vragenlijst' && <FormulierToelichting heeftVragen={formulier.lijst.length > 0} bevestigd={formulier.bevestigd} keuze={formulier.keuze} />}
+          {toonStappen && stap === 'vragenlijst' && <AlvastVerzamelen stukken={werkStatus && werkStatus.stukken ? werkStatus.stukken : formulier.stukken} docs={docsNu} gelezen={formulier.bevestigd} zonderFormulier={formulier.keuze === 'zonder'} onNaarStukken={formulier.bevestigd ? () => kiesStap('stukken') : undefined} />}
           <RuimteBlok status={status} />
           <Blok titel="Wat betekent “Zeker”?">
             <div style={css('display: flex; flex-direction: column; gap: 10px;')} className="fwk-aa-tekst">

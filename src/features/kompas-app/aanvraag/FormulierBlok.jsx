@@ -9,7 +9,7 @@ import { extraheerTekst, leesPdfAlsAfbeeldingen } from '../../../data/services/d
 import { MAX_AFBEELDINGEN, canvasNaarDataUrl, isAfbeelding, verkleinAfbeelding } from '../../../data/services/afbeeldingLezen.js';
 import { Bezig } from './Bouwstenen.jsx';
 import StukkenLijst from './StukkenLijst.jsx';
-import { LIMIET_ATTENTIE, MAX_VRAGEN, leesLimiet, limietOk, nieuweVraag, tekenTelling, vragenZonderLimiet } from './aanvraagModel.js';
+import { LIMIET_ATTENTIE, MAX_VRAGEN, VASTE_ONDERDELEN, leesLimiet, limietOk, nieuweVraag, onderdelenLijst, tekenTelling, vragenZonderLimiet } from './aanvraagModel.js';
 
 const MIN_FORMULIER_TEKENS = 20;
 
@@ -71,7 +71,7 @@ function VraagRij({ vraag, nummer, onWijzig, onWeg, uit }) {
 }
 
 // props: project, aanvraagId, formulierStart (tekst uit "Nieuwe aanvraag"), docs, onOpen({ vragen, stukken }), onStand({ bevestigd }), assistent
-export default function FormulierBlok({ project, aanvraagId, formulierStart = '', docs = [], onOpen, onStand = () => {}, assistent, onGewijzigd = () => {} }) {
+export default function FormulierBlok({ project, aanvraagId, formulierStart = '', docs = [], onOpen, onStand = () => {}, onKeuze = () => {}, assistent, onGewijzigd = () => {} }) {
   const [fase, setFase] = useState('laden'); // laden | invoer | controle | bevestigd | weg
   const [lijst, setLijst] = useState([]);
   const [stukken, setStukken] = useState([]);
@@ -82,6 +82,11 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
   const [fout, setFout] = useState('');
   const [melding, setMelding] = useState('');
   const [nieuw, setNieuw] = useState('');
+  const [zonderForm, setZonderForm] = useState(false); // de huidige lijst bestaat uit onderdelen (fonds zonder aanvraagformulier), niet uit vragen van een formulier
+  const [keuze, setKeuze] = useState('formulier'); // wat het lid in het invoerscherm kiest: 'formulier' | 'zonder'; nooit vastgezet
+  const [vast, setVast] = useState(() => Object.fromEntries(VASTE_ONDERDELEN.map((o) => [o.sleutel, true])));
+  const [eigen, setEigen] = useState([]); // eigen onderdelen (tekst)
+  const [eigenNieuw, setEigenNieuw] = useState('');
   const levend = useRef(true);
   const invoer = useRef(null);
 
@@ -122,8 +127,15 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
 
       if (v && Array.isArray(v.lijst) && v.lijst.length) {
         setLijst(v.lijst);
+        setZonderForm(v.zonderFormulier === true);
+
+        if (v.zonderFormulier === true) {
+          setKeuze('zonder');
+          onKeuze('zonder');
+        }
+
         setFase(v.bevestigd ? 'bevestigd' : 'controle');
-        onStand({ bevestigd: Boolean(v.bevestigd), lijst: v.lijst, stukken: Array.isArray(r.antwoord.stukken) ? r.antwoord.stukken : [] });
+        onStand({ bevestigd: Boolean(v.bevestigd), lijst: v.lijst, stukken: Array.isArray(r.antwoord.stukken) ? r.antwoord.stukken : [], zonderFormulier: v.zonderFormulier === true });
       } else {
         setFase('invoer');
         onStand({ bevestigd: false });
@@ -251,8 +263,9 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
     setLijst(r.antwoord.vragen.lijst);
     setStukken(r.antwoord.stukken);
     setAfbeeldingen([]);
+    setZonderForm(false);
     setFase('controle');
-    onStand({ bevestigd: false });
+    onStand({ bevestigd: false, lijst: r.antwoord.vragen.lijst, stukken: r.antwoord.stukken, zonderFormulier: false });
     onGewijzigd();
   };
 
@@ -265,7 +278,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
     setMelding('');
     setBezig(bevestig ? 'De vragenlijst wordt bevestigd.' : 'De vragenlijst wordt bewaard.');
 
-    const r = await bewaarVragen({ aanvraagId, vragen: lijst, bevestig, stukken });
+    const r = await bewaarVragen({ aanvraagId, vragen: lijst, bevestig, stukken, zonderFormulier: zonderForm });
 
     if (!levend.current) return;
 
@@ -283,7 +296,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
 
     if (bevestig) {
       setFase('bevestigd');
-      onStand({ bevestigd: true, lijst: r.antwoord.vragen.lijst, stukken: r.antwoord.stukken });
+      onStand({ bevestigd: true, lijst: r.antwoord.vragen.lijst, stukken: r.antwoord.stukken, zonderFormulier: zonderForm });
     } else {
       setMelding('De vragenlijst is bewaard.');
     }
@@ -293,7 +306,7 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
     setFout('');
     setBezig('De vragenlijst wordt weer geopend.');
 
-    const r = await bewaarVragen({ aanvraagId, vragen: lijst, bevestig: false });
+    const r = await bewaarVragen({ aanvraagId, vragen: lijst, bevestig: false, zonderFormulier: zonderForm });
 
     if (!levend.current) return;
 
@@ -306,7 +319,53 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
     }
 
     setFase('controle');
-    onStand({ bevestigd: false });
+    onStand({ bevestigd: false, lijst, stukken, zonderFormulier: zonderForm });
+  };
+
+  // Het lid kan altijd wisselen: een fonds vraagt soms toch een formulier achter een inlog, of juist niet. Een bevestigde lijst wordt daarvoor eerst weer geopend; er gaat niets verloren.
+  const wissel = async (naar) => {
+    setFout('');
+
+    if (fase === 'bevestigd') {
+      setBezig('De vragenlijst wordt weer geopend.');
+
+      const r = await bewaarVragen({ aanvraagId, vragen: lijst, bevestig: false, zonderFormulier: zonderForm });
+
+      if (!levend.current) return;
+
+      setBezig('');
+
+      if (!r.ok) {
+        zegFout(r);
+
+        return;
+      }
+    }
+
+    setKeuze(naar);
+    setFase('invoer');
+    onStand({ bevestigd: false, lijst, stukken, zonderFormulier: zonderForm });
+    onKeuze(naar); // na onStand: de keuze van het lid gaat voor op het soort van de huidige lijst
+  };
+
+  const kiesKeuze = (naar) => {
+    setKeuze(naar);
+    onKeuze(naar);
+    setFout('');
+  };
+
+  // Geen formulier: de gekozen onderdelen worden de lijst, zonder tekenlimiet tenzij het fonds er een noemt.
+  const startZonder = () => {
+    const teksten = [...VASTE_ONDERDELEN.filter((o) => vast[o.sleutel]).map((o) => o.tekst), ...eigen];
+    const nieuweLijst = onderdelenLijst(teksten);
+
+    if (!nieuweLijst.length) return;
+
+    setFout('');
+    setLijst(nieuweLijst);
+    setZonderForm(true);
+    setFase('controle');
+    onStand({ bevestigd: false, lijst: nieuweLijst, stukken, zonderFormulier: true });
   };
 
   const wijzigStukken = async (nieuweLijst) => {
@@ -351,64 +410,165 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
   ) : null;
 
   if (fase === 'invoer') {
+    const uploadKnop = (
+      <span>
+        <input
+          ref={invoer}
+          type="file"
+          accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          multiple
+          data-testid="aa-formulier-bestand"
+          aria-label="Word-bestand, PDF of afbeelding met de vragen"
+          style={css('position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;')}
+          onChange={(e) => {
+            const fs = e.target.files ? [...e.target.files] : [];
+
+            e.target.value = '';
+
+            const fotos = fs.filter(isAfbeelding);
+
+            if (fotos.length > 1 || (fotos.length === 1 && fs.length === 1)) voegAfbeeldingenToe(fotos);
+            else if (fs[0]) leesBestand(fs[0]);
+          }}
+        />
+        <Button size="s" onClick={() => invoer.current && invoer.current.click()} disabled={Boolean(bezig)} ariaLabel="Formulier uploaden">
+          Formulier uploaden
+        </Button>
+      </span>
+    );
+    const heeftBron = tekenTelling(tekst) >= MIN_FORMULIER_TEKENS || afbeeldingen.length > 0;
+
+    const keuzeEl = (
+      <div style={css('margin-bottom: 14px;')}>
+        <div className="fwk-aa-label" id="aa-keuze-label">Heeft dit fonds een aanvraagformulier met vragen?</div>
+        <div role="radiogroup" aria-labelledby="aa-keuze-label" style={css('display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px;')} data-testid="aa-formulier-keuze">
+          {[
+            ['formulier', 'Ja, met een formulier', 'U uploadt of plakt de vragen.'],
+            ['zonder', 'Nee, geen formulier', 'Het fonds vraagt bijvoorbeeld een projectplan en een aanbiedingsbrief.'],
+          ].map(([waarde, kop, uitleg]) => (
+            <button
+              key={waarde}
+              type="button"
+              role="radio"
+              aria-checked={keuze === waarde}
+              data-testid={`aa-keuze-${waarde}`}
+              disabled={Boolean(bezig)}
+              onClick={() => kiesKeuze(waarde)}
+              style={css(`flex: 1 1 220px; text-align: left; cursor: pointer; border-radius: 12px; padding: 10px 12px; font: inherit; color: inherit; border: 1.5px solid ${keuze === waarde ? '#4E9A6B' : '#D8DEE4'}; background: ${keuze === waarde ? '#EAF4EE' : '#fff'};`)}
+            >
+              <span className="fwk-aa-tekst" style={css('display: block; font-weight: 800;')}>{kop}</span>
+              <span className="fwk-aa-klein" style={css('display: block; margin-top: 2px;')}>{uitleg}</span>
+            </button>
+          ))}
+        </div>
+        <p className="fwk-aa-klein" style={css('margin: 8px 0 0;')}>Wij weten niet van elk fonds wat het vraagt, en dat kan veranderen. U kunt hier altijd wisselen.</p>
+        {lijst.length > 0 && (
+          <p className="fwk-aa-klein" style={css('margin: 6px 0 0;')} data-testid="aa-wissel-uitleg">
+            U had al een lijst. Een nieuwe lijst vervangt die. Teksten die u al bewaarde in een versie blijven bestaan.{' '}
+            <button
+              type="button"
+              className="fwk-wp-link"
+              onClick={() => {
+                const terug = zonderForm ? 'zonder' : 'formulier';
+
+                setKeuze(terug);
+                onKeuze(terug);
+                setFase('controle');
+              }}
+            >
+              Terug naar de huidige lijst
+            </button>
+          </p>
+        )}
+      </div>
+    );
+
+    if (keuze === 'zonder') {
+      const aantal = VASTE_ONDERDELEN.filter((o) => vast[o.sleutel]).length + eigen.length;
+
+      return (
+        <Blok titel="Wat vraagt dit fonds om in te sturen?" testid="aa-formulier-blok">
+          {keuzeEl}
+          <fieldset style={css('border: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;')} data-testid="aa-onderdelen-keuze">
+            <legend className="fwk-aa-label" style={css('padding: 0; margin-bottom: 6px;')}>Teksten die u zelf indient</legend>
+            {VASTE_ONDERDELEN.map((o) => (
+              <label key={o.sleutel} className="fwk-aa-tekst" style={css('display: flex; gap: 8px; align-items: center; cursor: pointer;')}>
+                <input type="checkbox" checked={Boolean(vast[o.sleutel])} disabled={Boolean(bezig)} onChange={(e) => setVast((v) => ({ ...v, [o.sleutel]: e.target.checked }))} />
+                {o.tekst}
+              </label>
+            ))}
+            {eigen.map((t, i) => (
+              <div key={`${t}-${i}`} className="fwk-aa-tekst" style={css('display: flex; gap: 8px; align-items: center;')}>
+                <span>{t}</span>
+                <button type="button" className="fwk-wp-link" disabled={Boolean(bezig)} onClick={() => setEigen((l) => l.filter((_, n) => n !== i))} aria-label={`Haal ${t} weg`}>
+                  Weghalen
+                </button>
+              </div>
+            ))}
+          </fieldset>
+          <div style={css('display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px;')}>
+            <input className="fwk-aa-veld" style={css('flex: 1 1 240px; width: auto; min-height: 38px;')} aria-label="Ander onderdeel toevoegen" maxLength={200} value={eigenNieuw} placeholder="Een ander onderdeel, bijvoorbeeld: Motivatiebrief" onChange={(e) => setEigenNieuw(e.target.value)} />
+            <Button
+              size="s"
+              variant="outline"
+              disabled={eigenNieuw.trim().length < 3 || eigen.length >= 10}
+              onClick={() => {
+                setEigen((l) => [...l, eigenNieuw.trim()]);
+                setEigenNieuw('');
+              }}
+            >
+              + Onderdeel toevoegen
+            </Button>
+          </div>
+          <p className="fwk-aa-klein" style={css('margin: 12px 0 0;')}>
+            Een tekenlimiet is hier niet nodig. Noemt het fonds er toch een, dan vult u die in de volgende stap in. De algemene stukken (ANBI-status, statuten, jaarverslag, jaarrekening) kiest u daarna bij “Stukken die het fonds vraagt”.
+          </p>
+          <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px;')}>
+            <Button onClick={startZonder} disabled={Boolean(bezig) || aantal === 0} ariaLabel="Ga verder met deze onderdelen">
+              Ga verder met deze onderdelen →
+            </Button>
+            <span className="fwk-aa-klein">Dit kost niets van uw maandruimte; die gaat pas op als wij iets voor u schrijven of beoordelen.</span>
+          </div>
+          {bezigBlok}
+          {foutBlok}
+        </Blok>
+      );
+    }
+
     return (
-      <Blok titel="De vragen uit het aanvraagformulier" testid="aa-formulier-blok">
-        <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
-          Veel formulieren zitten achter een inlog. Daar kunnen wij niet in kijken. Voeg het formulier hier toe als Word-bestand, PDF, screenshot of foto, of plak de vragen in het tekstvak. U kunt ook een screenshot plakken (Ctrl+V of ⌘V). Wij lezen eruit hoeveel vragen er zijn en hoeveel tekens elk antwoord mag hebben. Een Word-bestand of PDF met tekst blijft op uw computer; alleen de tekst gaat mee. Een afbeelding wordt verkleind en naar onze server gestuurd om te worden gelezen; wij bewaren die niet.
-        </p>
-        <Melding toon="waarschuwing" testid="aa-limiet-attentie">
-          {LIMIET_ATTENTIE}
-        </Melding>
+      <Blok titel="De vragen uit het aanvraagformulier" testid="aa-formulier-blok" actie={uploadKnop}>
+        {keuzeEl}
+        {!heeftBron && (
+          <div style={css('border: 1.5px dashed var(--fwk-border, #C9D3CF); border-radius: 12px; padding: 18px 16px; text-align: center; background: #FAFCFB;')} data-testid="aa-formulier-leeg">
+            <p className="fwk-aa-tekst" style={css('margin: 0 0 4px; font-weight: 700;')}>Nog geen vragen</p>
+            <p className="fwk-aa-klein" style={css('margin: 0;')}>Upload het formulier met de knop rechtsboven (Word, PDF of screenshot). Of plak de vragen hieronder.</p>
+          </div>
+        )}
+
+        {afbeeldingen.length > 0 && (
+          <ul style={css('list-style: none; margin: 0 0 12px; padding: 0; display: flex; gap: 10px; flex-wrap: wrap;')} data-testid="aa-formulier-afbeeldingen" aria-label="Afbeeldingen van het formulier">
+            {afbeeldingen.map((a, i) => (
+              <li key={`${a.naam}-${i}`} style={css('display: flex; flex-direction: column; gap: 4px; width: 112px;')}>
+                <img src={a.dataUrl} alt={`Voorbeeld van ${a.naam}`} style={css('width: 112px; height: 80px; object-fit: cover; object-position: top; border: 1px solid var(--fwk-border, #D8DEE4); border-radius: 8px; background: #fff;')} />
+                <span className="fwk-aa-klein" style={css('overflow: hidden; text-overflow: ellipsis; white-space: nowrap;')} title={a.naam}>{a.naam}</span>
+                <button type="button" className="fwk-wp-link" disabled={Boolean(bezig)} onClick={() => setAfbeeldingen((l) => l.filter((_, n) => n !== i))} aria-label={`Haal ${a.naam} weg`}>
+                  Weghalen
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div style={css('margin-top: 14px;')}>
           <label htmlFor="aa-formulier-tekst" className="fwk-aa-label">
-            Vragen uit het formulier{bestand ? ` (uit ${bestand})` : ''}
+            {bestand ? `Vragen uit ${bestand}` : 'Of plak de vragen uit het formulier'}
           </label>
-          <textarea id="aa-formulier-tekst" data-testid="aa-formulier-tekst" className="fwk-aa-veld" rows={8} value={tekst} onChange={(e) => setTekst(e.target.value)} onPaste={plakAfbeelding} placeholder="Plak hier de vragen, bijvoorbeeld: 1. Beschrijf de aanleiding van uw project (max. 1500 tekens) …" />
-          {afbeeldingen.length > 0 && (
-            <ul style={css('list-style: none; margin: 10px 0 0; padding: 0; display: flex; gap: 10px; flex-wrap: wrap;')} data-testid="aa-formulier-afbeeldingen" aria-label="Afbeeldingen van het formulier">
-              {afbeeldingen.map((a, i) => (
-                <li key={`${a.naam}-${i}`} style={css('display: flex; flex-direction: column; gap: 4px; width: 112px;')}>
-                  <img src={a.dataUrl} alt={`Voorbeeld van ${a.naam}`} style={css('width: 112px; height: 80px; object-fit: cover; object-position: top; border: 1px solid var(--fwk-border, #D8DEE4); border-radius: 8px; background: #fff;')} />
-                  <span className="fwk-aa-klein" style={css('overflow: hidden; text-overflow: ellipsis; white-space: nowrap;')} title={a.naam}>{a.naam}</span>
-                  <button type="button" className="fwk-wp-link" disabled={Boolean(bezig)} onClick={() => setAfbeeldingen((l) => l.filter((_, n) => n !== i))} aria-label={`Haal ${a.naam} weg`}>
-                    Weghalen
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div style={css('display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 6px;')} className="fwk-aa-klein">
-            <span>{tekenTelling(tekst).toLocaleString('nl-NL')} tekens</span>
-            <span>
-              <input
-                ref={invoer}
-                type="file"
-                accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                multiple
-                data-testid="aa-formulier-bestand"
-                aria-label="Word-bestand, PDF of afbeelding met de vragen"
-                style={css('position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;')}
-                onChange={(e) => {
-                  const fs = e.target.files ? [...e.target.files] : [];
-
-                  e.target.value = '';
-
-                  const fotos = fs.filter(isAfbeelding);
-
-                  if (fotos.length > 1 || (fotos.length === 1 && fs.length === 1)) voegAfbeeldingenToe(fotos);
-                  else if (fs[0]) leesBestand(fs[0]);
-                }}
-              />
-              <Button variant="outline" size="s" onClick={() => invoer.current && invoer.current.click()} disabled={Boolean(bezig)}>
-                Word, PDF of afbeelding kiezen
-              </Button>
-            </span>
-          </div>
+          <textarea id="aa-formulier-tekst" data-testid="aa-formulier-tekst" className="fwk-aa-veld" rows={heeftBron ? 8 : 5} value={tekst} onChange={(e) => setTekst(e.target.value)} onPaste={plakAfbeelding} placeholder="Plak hier de vragen, bijvoorbeeld: 1. Beschrijf de aanleiding van uw project (max. 1500 tekens) …" />
+          <div className="fwk-aa-klein" style={css('margin-top: 6px;')}>{tekenTelling(tekst).toLocaleString('nl-NL')} tekens</div>
         </div>
 
         <div style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px;')}>
-          <Button onClick={lees} disabled={Boolean(bezig) || (tekenTelling(tekst) < MIN_FORMULIER_TEKENS && afbeeldingen.length === 0)} ariaLabel="Maak een vragenlijst en een lijst met stukken">
+          <Button onClick={lees} disabled={Boolean(bezig) || !heeftBron} ariaLabel="Maak een vragenlijst en een lijst met stukken">
             Maak een vragenlijst en een lijst met stukken →
           </Button>
           <span className="fwk-aa-klein">Dit telt als één formulier lezen van uw maandruimte, ook met meerdere afbeeldingen.</span>
@@ -421,24 +581,28 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
 
   if (fase === 'bevestigd') {
     return (
-      <Blok titel="Vragen uit het aanvraagformulier" aantal={lijst.length} testid="aa-formulier-blok" actie={<Chip toon="groen">Tekenlimieten ingevuld</Chip>}>
+      <Blok titel={zonderForm ? 'Wat dit fonds vraagt' : 'Vragen uit het aanvraagformulier'} aantal={lijst.length} testid="aa-formulier-blok" actie={<Chip toon="groen">{zonderForm ? 'Onderdelen bevestigd' : 'Tekenlimieten ingevuld'}</Chip>}>
         <ol style={css('margin: 0 0 14px; padding-left: 22px; display: flex; flex-direction: column; gap: 8px;')} data-testid="aa-vragen-samenvatting">
           {lijst.map((v) => (
             <li key={v.id} className="fwk-aa-tekst">
-              {v.tekst} <span className="fwk-aa-klein">({v.geenLimiet ? 'geen limiet' : `${v.maxTekens.toLocaleString('nl-NL')} tekens`})</span>
+              {v.tekst}{' '}
+              {(!zonderForm || !v.geenLimiet) && <span className="fwk-aa-klein">({v.geenLimiet ? 'geen limiet' : `${v.maxTekens.toLocaleString('nl-NL')} tekens`})</span>}
             </li>
           ))}
         </ol>
         <div style={css('display: flex; gap: 10px; flex-wrap: wrap; align-items: center;')}>
           <Button onClick={() => onOpen({ lijst, stukken })} disabled={Boolean(bezig)} ariaLabel="Open uw aanvraag per vraag">
-            Ga verder met de antwoorden →
+            {zonderForm ? 'Ga verder met de teksten →' : 'Ga verder met de antwoorden →'}
           </Button>
           <Button variant="outline" onClick={pasAan} disabled={Boolean(bezig)} ariaLabel="Vragenlijst aanpassen">
-            Vragenlijst aanpassen
+            {zonderForm ? 'Onderdelen aanpassen' : 'Vragenlijst aanpassen'}
           </Button>
+          <button type="button" className="fwk-wp-link" onClick={() => wissel(zonderForm ? 'formulier' : 'zonder')} disabled={Boolean(bezig)} data-testid="aa-wissel">
+            {zonderForm ? 'Dit fonds vraagt toch een formulier' : 'Dit fonds heeft geen formulier'}
+          </button>
         </div>
         <p className="fwk-aa-klein" style={css('margin: 12px 0 0;')}>
-          Per vraag krijgt u een eigen antwoordvak met tekenteller, en een checklist met stukken. U dient zelf in; wij dienen nooit iets voor u in.
+          {zonderForm ? 'Per onderdeel krijgt u een eigen vak om te schrijven en aan te passen, en een checklist met stukken.' : 'Per vraag krijgt u een eigen antwoordvak met tekenteller, en een checklist met stukken.'} U dient zelf in; wij dienen nooit iets voor u in.
         </p>
         {bezigBlok}
         {foutBlok}
@@ -448,13 +612,10 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
 
   // controle
   return (
-    <Blok titel="Uw vragenlijst" aantal={lijst.length} testid="aa-formulier-blok" actie={<Chip toon={zonder ? 'oranje' : 'groen'}>{zonder ? `Tekenlimiet ontbreekt bij ${zonder} ${zonder === 1 ? 'vraag' : 'vragen'}` : 'Alle tekenlimieten ingevuld'}</Chip>}>
+    <Blok titel={zonderForm ? 'Wat dit fonds vraagt' : 'Uw vragenlijst'} aantal={lijst.length} testid="aa-formulier-blok" actie={<Chip toon={zonder ? 'oranje' : 'groen'}>{zonder ? `Tekenlimiet ontbreekt bij ${zonder} ${zonder === 1 ? 'vraag' : 'vragen'}` : zonderForm ? 'Klaar om te bevestigen' : 'Alle tekenlimieten ingevuld'}</Chip>}>
       <p className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
-        Wij hebben de vragen uit uw formulier gehaald. Controleer ze, pas ze aan en vul per vraag de tekenlimiet in.
+        {zonderForm ? 'Dit fonds heeft geen aanvraagformulier. Dit zijn de teksten die u indient. Pas ze aan, haal weg of voeg toe. Noemt het fonds een tekenlimiet voor een onderdeel, vul die dan in.' : 'Wij hebben de vragen uit uw formulier gehaald. Controleer ze, pas ze aan en vul per vraag de tekenlimiet in.'}
       </p>
-      <Melding toon="waarschuwing" testid="aa-limiet-attentie">
-        {LIMIET_ATTENTIE}
-      </Melding>
 
       <ul className="fwk-wp-rijen" style={css('margin-top: 12px;')}>
         {lijst.map((v, i) => (
@@ -462,23 +623,23 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
         ))}
       </ul>
       <div style={css('display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px;')}>
-        <input className="fwk-aa-veld" style={css('flex: 1 1 240px; width: auto; min-height: 38px;')} aria-label="Eigen vraag toevoegen" maxLength={500} value={nieuw} placeholder="Een vraag die we misten" onChange={(e) => setNieuw(e.target.value)} />
+        <input className="fwk-aa-veld" style={css('flex: 1 1 240px; width: auto; min-height: 38px;')} aria-label="Eigen vraag toevoegen" maxLength={500} value={nieuw} placeholder={zonderForm ? 'Een onderdeel dat het fonds vraagt' : 'Een vraag die we misten'} onChange={(e) => setNieuw(e.target.value)} />
         <Button
           size="s"
           variant="outline"
           disabled={!nieuw.trim() || nieuw.trim().length < 3 || lijst.length >= MAX_VRAGEN}
           onClick={() => {
-            setLijst((l) => [...l, nieuweVraag(l, nieuw)]);
+            setLijst((l) => [...l, zonderForm ? { ...nieuweVraag(l, nieuw), geenLimiet: true } : nieuweVraag(l, nieuw)]);
             setNieuw('');
           }}
         >
-          + Vraag toevoegen
+          {zonderForm ? '+ Onderdeel toevoegen' : '+ Vraag toevoegen'}
         </Button>
       </div>
 
       <h3 style={css('margin: 22px 0 6px; font-size: 17px;')}>Stukken die het fonds vraagt</h3>
       <p className="fwk-aa-klein" style={css('margin: 0 0 8px;')}>
-        Wij hebben uw formulier doorzocht naar bijlagen. Haal weg wat niet klopt of voeg iets toe. Onder uw aanvraag vinkt u ze later af.
+        {zonderForm ? 'Dit zijn de algemene stukken die fondsen meestal vragen. Haal weg wat niet nodig is of voeg iets toe. Onder uw aanvraag vinkt u ze later af.' : 'Wij hebben uw formulier doorzocht naar bijlagen. Haal weg wat niet klopt of voeg iets toe. Onder uw aanvraag vinkt u ze later af.'}
       </p>
       <StukkenLijst stukken={stukken} docs={docs} bewerken uit={Boolean(bezig)} onWijzig={wijzigStukken} />
 
@@ -489,9 +650,14 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
         <Button variant="outline" onClick={() => bewaar(false)} disabled={Boolean(bezig) || lijst.length === 0 || lijst.some((v) => v.tekst.trim().length < 3)} ariaLabel="Bewaar voor later">
           Bewaar voor later
         </Button>
-        <button type="button" className="fwk-wp-link" onClick={() => setFase('invoer')} disabled={Boolean(bezig)}>
-          Een ander formulier gebruiken
+        <button type="button" className="fwk-wp-link" onClick={() => wissel(zonderForm ? 'formulier' : 'formulier')} disabled={Boolean(bezig)}>
+          {zonderForm ? 'Dit fonds vraagt toch een formulier' : 'Een ander formulier gebruiken'}
         </button>
+        {!zonderForm && (
+          <button type="button" className="fwk-wp-link" onClick={() => wissel('zonder')} disabled={Boolean(bezig)} data-testid="aa-wissel">
+            Dit fonds heeft geen formulier
+          </button>
+        )}
         {!kanBevestigen && zonder > 0 && <span className="fwk-aa-klein">Vul bij elke vraag de tekenlimiet in om verder te gaan.</span>}
       </div>
       {bezigBlok}
@@ -501,6 +667,55 @@ export default function FormulierBlok({ project, aanvraagId, formulierStart = ''
           <Melding toon="succes">{melding}</Melding>
         </div>
       )}
+    </Blok>
+  );
+}
+
+// Het vak rechts naast de vragen: uitleg over het formulier, de inlog en de tekenlimiet (zoals het vak bij het concept projectplan).
+// keuze: 'formulier' | 'zonder' (fonds zonder aanvraagformulier). Het lid kan altijd wisselen.
+export function FormulierToelichting({ heeftVragen = false, bevestigd = false, keuze = 'formulier' }) {
+  const zonder = keuze === 'zonder';
+
+  return (
+    <Blok
+      titel={zonder ? 'Een fonds zonder formulier' : 'Het aanvraagformulier'}
+      testid="aa-formulier-toelichting"
+      actie={<Chip toon={bevestigd ? 'groen' : 'blauw'}>{bevestigd ? (zonder ? 'Onderdelen bevestigd' : 'Vragenlijst bevestigd') : heeftVragen ? 'Controleren' : zonder ? 'Kies de onderdelen' : 'Eerst uploaden'}</Chip>}
+    >
+      {zonder ? (
+        <>
+          <p className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
+            Niet elk fonds heeft een aanvraagformulier. Soms vraagt het fonds alleen een projectplan, een aanbiedingsbrief en de algemene stukken, zoals de ANBI-status, de statuten en het jaarverslag.
+          </p>
+          <p className="fwk-aa-klein" style={css('margin: 0 0 10px;')} data-testid="aa-onderdelen-uitleg">
+            Kies wat dit fonds vraagt. U kunt per onderdeel een concept laten schrijven en het laten toetsen aan de criteria van het fonds, ook de aanbiedingsbrief. De algemene stukken vinkt u af bij Stukken.
+          </p>
+          <Melding toon="info" testid="aa-limiet-attentie-zonder">
+            Noemt het fonds toch een tekenlimiet voor een onderdeel? Vul die dan in. Dan houden wij ons eraan.
+          </Melding>
+        </>
+      ) : (
+        <>
+          <p className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
+            Veel formulieren zitten achter een inlog. Daar kunnen wij niet in kijken. Daarom haalt u de vragen zelf op en geeft u ze aan ons.
+          </p>
+          <ol className="fwk-aa-klein" style={css('margin: 0 0 12px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px;')} data-testid="aa-formulier-stappenlijst">
+            <li>Log in bij het fonds en open het aanvraagformulier.</li>
+            <li>Kopieer de vragen naar een Word-bestand of PDF, of maak een screenshot.</li>
+            <li>Upload het bestand met de knop <b>Formulier uploaden</b> bovenaan. U kunt een screenshot ook plakken (Ctrl+V of ⌘V).</li>
+            <li>Wij lezen hoeveel vragen er zijn en hoeveel tekens elk antwoord mag hebben. Daarna verschijnt per vraag een vak met de tekenlimiet, dat u zelf kunt aanpassen.</li>
+          </ol>
+          <Melding toon="waarschuwing" testid="aa-limiet-attentie">
+            {LIMIET_ATTENTIE}
+          </Melding>
+          <p className="fwk-aa-klein" style={css('margin: 12px 0 0;')}>
+            Een Word-bestand of PDF met tekst blijft op uw computer; alleen de tekst gaat mee. Een afbeelding wordt verkleind en naar onze server gestuurd om te worden gelezen; wij bewaren die niet.
+          </p>
+        </>
+      )}
+      <p className="fwk-aa-klein" style={css('margin: 12px 0 0;')} data-testid="aa-wissel-toelichting">
+        Een fonds kan veranderen wat het vraagt. Vraagt het toch een formulier achter een inlog, of juist niet? Dan wisselt u hierboven met één klik. U dient zelf in; wij dienen nooit iets voor u in.
+      </p>
     </Blok>
   );
 }

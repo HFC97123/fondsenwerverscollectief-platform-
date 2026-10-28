@@ -26,6 +26,7 @@ export interface Vraag {
 export interface VragenLijst {
   bevestigd: boolean;
   lijst: Vraag[];
+  zonderFormulier?: boolean; // dit fonds heeft geen aanvraagformulier met vragen: de lijst zijn de onderdelen die het lid kiest (projectplan, aanbiedingsbrief, ...)
 }
 
 export type StukBron = 'standaard' | 'formulier' | 'website' | 'lid';
@@ -184,7 +185,7 @@ export function leesVragen(ruw: unknown, bronTekst: string): VragenUitkomst {
 
 // Maakt van de lijst van de client een veilige lijst vragen. De tekenlimiet is verplicht: een getal, of "dit fonds heeft geen limiet". Alleen dan is de lijst bevestigd.
 // Geen geldige lijst = null.
-export function schoneVragen(invoer: unknown, bevestig: boolean): VragenLijst | null {
+export function schoneVragen(invoer: unknown, bevestig: boolean, zonderFormulier = false): VragenLijst | null {
   if (!Array.isArray(invoer) || invoer.length < 1 || invoer.length > MAX_VRAGEN) return null;
 
   const lijst: Vraag[] = [];
@@ -221,7 +222,7 @@ export function schoneVragen(invoer: unknown, bevestig: boolean): VragenLijst | 
 
   if (bevestig && !compleet) return null;
 
-  return { bevestigd: bevestig && compleet, lijst };
+  return { bevestigd: bevestig && compleet, lijst, ...(zonderFormulier ? { zonderFormulier: true } : {}) };
 }
 
 const STUK_BRONNEN: readonly StukBron[] = ['standaard', 'formulier', 'website', 'lid'];
@@ -275,6 +276,21 @@ export function schoneStukken(invoer: unknown): Stuk[] | null {
 // ───────────────────────── Antwoorden schrijven ─────────────────────────
 
 // Elke vraag van het formulier wordt een onderdeel, in de volgorde van het formulier, met de tekenlimiet erbij. Alleen de gevraagde vragen (of alle).
+// Fondsen zonder aanvraagformulier vragen meestal een projectplan en een aanbiedingsbrief. Heet een onderdeel zo, dan krijgt het model een duidelijkere opdracht; voor al het andere blijft de tekst van het onderdeel de vraag.
+export function opdrachtVoor(tekst: string): string {
+  const t = tekst.trim().toLowerCase().replace(/[^a-z ]/g, '').trim();
+
+  if (t === 'aanbiedingsbrief' || t === 'begeleidende brief' || t === 'motivatiebrief') {
+    return `${tekst}: een korte brief aan het fonds met een aanhef, in een paar alinea's waar het project over gaat en wat de organisatie aan het fonds vraagt, en een nette afsluiting. Alleen met gegevens uit de feiten.`;
+  }
+
+  if (t === 'projectplan') {
+    return `${tekst}: een samenhangende tekst over de aanleiding, het doel, de doelgroep, de activiteiten, het verwachte resultaat en de begroting op hoofdlijnen.`;
+  }
+
+  return tekst;
+}
+
 export function sectiesUitVragen(vragen: Vraag[], alleenIds?: string[]): SectieDef[] {
   const kies = alleenIds && alleenIds.length ? new Set(alleenIds) : null;
 
@@ -286,7 +302,7 @@ export function sectiesUitVragen(vragen: Vraag[], alleenIds?: string[]): SectieD
       return {
         id: v.id,
         titel,
-        vraag: v.tekst,
+        vraag: opdrachtVoor(v.tekst),
         feitSleutels: 'alle',
         vraagBijOntbreken: `Wat is uw antwoord op: ${v.tekst}`.slice(0, 200),
         ...(v.maxTekens ? { maxTekens: v.maxTekens } : {}),
