@@ -74,7 +74,7 @@ function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding, numme
 // formulier: { projectId, vragen: { lijst }, stukken, docs } voor een aanvraag die per vraag van het formulier is opgebouwd; dan wordt 'plan' niet gebruikt.
 // stap (alleen met formulier): 'antwoorden' | 'stukken' | 'controle'. Met zonderKop staan de kop en de stappenbalk buiten dit scherm (AanvraagWerk) en meldt dit scherm zijn stand via onStatus.
 // De ref geeft probeerSluiten() (vraagt eerst om opslaan als er niet-opgeslagen tekst is) en bewaarNu() (bewaart stil; true = er is niets meer niet-opgeslagen).
-const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planProp, formulier = null, stap = 'antwoorden', zonderKop = false, onStatus = () => {}, onNaarStukken = null, zonderAlvast = false, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {}, terugTekst = '← Terug naar het fonds', intro = '', zonderDefinitief = false, definitiefSlot = null }, ref) {
+const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planProp, formulier = null, stap = 'antwoorden', zonderKop = false, onStatus = () => {}, onNaarStukken = null, zonderAlvast = false, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {}, terugTekst = '← Terug naar het fonds', intro = '', zonderDefinitief = false, definitiefSlot = null, blokTitel = '' }, ref) {
   const plan = formulier ? planUitVragen(formulier.vragen) : planProp;
   const [fase, setFase] = useState('laden'); // laden | klaar | zonder
   const [versies, setVersies] = useState([]);
@@ -603,6 +603,11 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
   // Het projectplan in Projectdocumentatie: hier maakt het lid een vaste kopie ("Maak definitief" in de lijst), niet de definitieve versie van een aanvraag voor een fonds.
   const conceptBlok = (
     <Blok titel="Concept projectplan" testid="aa-versie-definitief" actie={<Chip toon="blauw">Concept</Chip>}>
+      {intro && (
+        <p className="fwk-aa-klein" style={css('margin: 0 0 10px;')}>
+          {intro} Wat nog ontbreekt, staat als <mark className="fwk-aa-markering">[aanvullen]</mark>: vul het zelf in. U beslist en past het aan; wij dienen niets voor u in.
+        </p>
+      )}
       <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
         Werkt u nog aan de tekst? Dan is het een concept. Is hij af, maak hem dan definitief: dat is een vaste kopie van uw laatst opgeslagen versie, die u onder Projectdocumentatie terugvindt. Het concept blijft bewerkbaar.
       </p>
@@ -962,7 +967,7 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
       <div className="fwk-wp-kolommen">
         <div className="fwk-wp-stapel">
           <Blok
-            titel={formulier ? 'Uw aanvraag' : 'Uw tekst'}
+            titel={blokTitel || (formulier ? 'Uw aanvraag' : 'Uw tekst')}
             aantal={formulier ? onderdelen.length || undefined : undefined}
             testid="aa-versie-tekst"
             actie={
@@ -983,6 +988,7 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
               ) : undefined
             }
           >
+            {!zonderDefinitief && (
             <p className="fwk-aa-klein" style={css('margin: 0 0 16px;')}>
               {formulier
                 ? 'Dit zijn de vragen uit het formulier van het fonds, in dezelfde volgorde. Wij schrijven een concept uit uw projectgegevens, begroting en dekkingsplan. Wat we niet weten, staat als '
@@ -993,6 +999,7 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
                   : 'Dit is uw tekst. Wat we niet wisten, staat als '}
               <mark className="fwk-aa-markering">[aanvullen]</mark>. {formulier ? 'U kopieert het antwoord daarna zelf in het formulier van het fonds. Alle antwoorden voor dit fonds tellen in een maand samen als één beoordeling. U beslist en past het aan; wij dienen niets voor u in.' : 'U beslist en past het aan; wij dienen niets voor u in.'}
             </p>
+            )}
 
             {opHuidigeDefinitief && !onopgeslagen && <Melding toon="info">Dit is de definitieve versie. Past u iets aan en slaat u op, dan wordt dat een nieuw concept en blijft deze versie bewaard.</Melding>}
             {!opgeslagen && (

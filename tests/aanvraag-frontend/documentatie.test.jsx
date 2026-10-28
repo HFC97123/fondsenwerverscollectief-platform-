@@ -285,7 +285,7 @@ for (const tier of ['pro', 'premium']) {
   await klik(knop('Ja, schrijf het plan'));
   const opent = await wacht(() => $$('[data-testid="aa-onderdeel"] textarea').length === 8);
   check(`${tier}: het concept opent met een tekstvak per onderdeel`, opent);
-  check(`${tier}: de uitleg zegt dat het de eerste aanzet is en dat u de tekst zelf aanpast`, /eerste aanzet van uw projectplan/.test(tekst()) && /Pas de tekst zelf aan/.test(tekst()) && !/ontbreekt\. Wat nog ontbreekt/.test(tekst()));
+  check(`${tier}: de uitleg zegt dat het de eerste aanzet is en dat u de tekst zelf aanpast`, /eerste aanzet van uw projectplan/.test(tekst()) && /Pas de tekst zelf aan/.test(tekst()) && !/ontbreekt\. Wat nog ontbreekt/.test(tekst()) && /Uw projectplan voor Samen Spelen/.test($('[data-testid="aa-versie-tekst"]').textContent) && !/Uw tekst/.test($('[data-testid="aa-versie-tekst"]').textContent) && /eerste aanzet van uw projectplan/.test($('[data-testid="aa-versie-definitief"]').textContent) && !/eerste aanzet/.test($('[data-testid="aa-versie-tekst"]').textContent));
   check(`${tier}: er is een weg terug naar de lijst en naar Aanvraag indienen`, !!knop('Terug naar de lijst') && !!$('[data-testid="gb-naar-indienen"]'));
   check(`${tier}: het concept heeft Maak definitief en een exportmenu, en niet de definitieve versie van een fonds`, !!$('[data-testid="maak-definitief"]') && !!$('[aria-label="Plan exporteren"]') && !$('[aria-label="Maak definitief"]'));
 

@@ -207,6 +207,7 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, defini
                 nieuwePlan={nieuw}
                 titel={titel}
                 kop="Concept projectplan"
+                blokTitel={`Uw projectplan voor ${project && project.naam ? project.naam : 'dit project'}`}
                 projectNaam={project && project.naam}
                 store={store}
                 onSluit={onSluit}
