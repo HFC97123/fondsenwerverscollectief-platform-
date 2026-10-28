@@ -31,7 +31,7 @@ try:
             tekst = g.inner_text().replace('\xa0', ' ')
             ok(f'{w}: 1 Deze week toont 5 acties als regels', g.locator('[data-testid="ap-taak"]').count() == 5)
             ok(f'{w}: 2 de fondsnaam staat één keer per regel', all(g.locator('[data-testid="ap-taak"]').nth(k).inner_text().count(f) == 1 for k, f in enumerate(F)), tekst[:400])
-            ok(f'{w}: 3 beide vaste voorstellen heten hetzelfde (geen "Contact opnemen" ernaast)', tekst.count('Kansrijkheid en indiendatum of vergaderdatum toetsen') == 4 and 'Contact opnemen' not in tekst and ' met Stichting Aviom' not in tekst, tekst[:600])
+            ok(f'{w}: 3 beide vaste voorstellen heten hetzelfde (geen "Contact opnemen" ernaast)', tekst.count('Kansrijkheid en indiendatum en/of vergaderdatum toetsen') == 4 and 'Contact opnemen' not in tekst and ' met Stichting Aviom' not in tekst, tekst[:600])
             ok(f'{w}: 4 dezelfde uitleg staat één keer boven de groep', tekst.count('Er is nog geen indiendatum bekend') == 1 and g.get_by_test_id('ap-gedeelde-notitie').count() == 1 and 'Bij 4 acties' in tekst)
             ok(f'{w}: 5 een eigen notitie blijft bij de eigen regel', 'Vóór de eerste aanvraag' in g.locator('[data-testid="ap-taak"]').filter(has_text='Begroting laten controleren').inner_text())
             ok(f'{w}: 6 hoge prioriteit is een stip, geen woord "Hoog"; normaal toont niets', g.get_by_test_id('ap-prio-hoog').count() == 4 and 'Hoog' not in tekst and 'Normaal' not in tekst)

@@ -99,8 +99,9 @@ export function korteActie(titel, fonds) {
 
   t = t
     // Beide vaste voorstellen zijn dezelfde actie en heten daarom hetzelfde.
-    .replace(/^kansrijkheid en indiendatum( of vergaderdatum)? toetsen$/i, 'Kansrijkheid en indiendatum of vergaderdatum toetsen')
-    .replace(/^contact opnemen over passendheid, aanvraag en behandeltermijn$/i, 'Kansrijkheid en indiendatum of vergaderdatum toetsen');
+    // Alleen de weergave: de opgeslagen titel blijft gelijk, zodat het herkennen van dubbele voorstellen blijft werken.
+    .replace(/^kansrijkheid en indiendatum( (en\/)?of vergaderdatum)? toetsen$/i, 'Kansrijkheid en indiendatum en/of vergaderdatum toetsen')
+    .replace(/^contact opnemen over passendheid, aanvraag en behandeltermijn$/i, 'Kansrijkheid en indiendatum en/of vergaderdatum toetsen');
 
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
