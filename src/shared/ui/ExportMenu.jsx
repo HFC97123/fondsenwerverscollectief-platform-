@@ -54,6 +54,7 @@ function bepaalPositie(knop, breedte, hoogte, rechts) {
  * @param {'links'|'rechts'} [props.uitlijnen]  Aan welke kant van de knop het menu uitlijnt
  * @param {(tekst: string, soort: 'ok'|'fout'|'status') => void} [props.onMelding]  Zonder dit toont het menu zelf een korte melding
  * @param {string} [props.ariaLabel]
+ * @param {'standaard'|'geen'|'eigen'} [props.huisstijl]  De keuze van een Premium-lid voor dit document; Pro krijgt altijd de Subsidie Kompas-huisstijl
  */
 export default function ExportMenu({
   bouwModel,
@@ -63,6 +64,7 @@ export default function ExportMenu({
   onMelding,
   ariaLabel = 'Exporteren',
   uitlijnen = 'links',
+  huisstijl,
 }) {
   const [open, setOpen] = useState(false);
   const [bezig, setBezig] = useState(false);
@@ -186,7 +188,7 @@ export default function ExportMenu({
     setMeldingPositie(null);
 
     try {
-      const { melding } = await voerExportUit({ formaat, bouwModel, onStatus: (t) => meld(t, 'status') });
+      const { melding } = await voerExportUit({ formaat, bouwModel, huisstijl, onStatus: (t) => meld(t, 'status') });
 
       meld(melding, 'ok');
     } catch (e) {

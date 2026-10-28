@@ -1,4 +1,4 @@
--- Projectdocumentatie: concept en definitief (vaste versies van projectplan, begroting en dekkingsplan) en de eigen huisstijl voor Premium.
+-- Projectdocumentatie: concept en definitief (vaste versies van projectplan, begroting, dekkingsplan en het samengevoegde document) en de eigen huisstijl voor Premium.
 -- Nog NIET toegepast. Terugdraaien: supabase/voorstellen/20261028150000_definitieve_documenten_huisstijl_rollback.sql (alleen na akkoord).
 begin;
 
@@ -7,7 +7,7 @@ create table if not exists public.subsidie_kompas_definitieve_documenten (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   program_id uuid not null,
-  soort text not null check (soort in ('projectplan', 'begroting', 'dekkingsplan')),
+  soort text not null check (soort in ('projectplan', 'begroting', 'dekkingsplan', 'samengevoegd')),
   naam text not null default '' check (char_length(naam) <= 160),
   versie integer not null default 1 check (versie >= 1 and versie <= 200),
   inhoud jsonb not null check (jsonb_typeof(inhoud) = 'object' and pg_column_size(inhoud) <= 500000),

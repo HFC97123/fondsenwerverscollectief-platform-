@@ -52,7 +52,7 @@ import { opgeslagenDocumentExport } from './exportBronnen.js';
 import { useAanvraagAssistent } from './aanvraag/useAanvraagAssistent.js';
 import AanvragenTab from './aanvraag/AanvragenTab.jsx';
 import { PlanVenster, geschrevenExport, useDefinitieveDocs, useGeschrevenDocs } from './aanvraag/GeschrevenDocs.jsx';
-import { DefinitiefVerwijderKnop, ExcelKnop, MaakDefinitiefKnop } from './aanvraag/DefinitieveDocs.jsx';
+import { DefinitiefVerwijderKnop, ExcelKnop, MaakDefinitiefKnop, SamengevoegdBlok, SamengevoegdExport } from './aanvraag/DefinitieveDocs.jsx';
 import BegrotingTab from './begroting/BegrotingTab.jsx';
 import { huidigeHash, vervangAdres } from '../../app/adres.js';
 import { datumTekst, organisatieDocsVoorLijst } from './aanvraag/aanvraagModel.js';
@@ -62,7 +62,7 @@ import { haalOrganisatieDocumentenOp } from '../../data/services/organisatiedocu
 // elk echt document hier altijd een .docx - geen verzonnen Excel/PDF-variant.
 // Het label links in de rij van een door Subsidie Kompas geschreven document.
 const GESCHREVEN_BADGE = { plan: 'PLAN', fonds: 'PLAN', begroting: 'BEGR', dekking: 'DEKK' };
-const DEFINITIEF_BADGE = { projectplan: 'plan', begroting: 'begroting', dekkingsplan: 'dekking' };
+const DEFINITIEF_BADGE = { projectplan: 'plan', begroting: 'begroting', dekkingsplan: 'dekking', samengevoegd: 'plan' };
 const WORD_STIJL = { label: 'DOCX', bg: '#EAF1F6', color: '#2C4A5E' };
 
 // Op het scherm heet de soort Concept-dekkingsplan gewoon Dekkingsplan; de naam in de opslag blijft zoals hij was. Of een document nog concept of definitief is, staat bij het document zelf.
@@ -388,6 +388,15 @@ export default function DocumentatiePage() {
 
           {filterProject && isEchtId(filterProject.id) && !filterProject.gearchiveerd && <UploadVoorProject project={filterProject} store={store} />}
 
+          {filterProject && isEchtId(filterProject.id) && !filterProject.gearchiveerd && (
+            <SamengevoegdBlok
+              project={filterProject}
+              planDoc={alle.find((x) => x.projectId === filterProject.id && x.gegenereerd === 'plan' && x.aanvraagId) || null}
+              onMelding={setMelding}
+              onKlaar={definitief.ververs}
+            />
+          )}
+
           {zichtbaar.length > 0 && (
             <ul style={css('list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;')}>
               {zichtbaar.map((d) => (
@@ -397,6 +406,7 @@ export default function DocumentatiePage() {
                   project={(store.projects || []).find((p) => p.id === d.projectId) || null}
                   store={store}
                   paid={paid}
+                  premium={Boolean(app.isAdmin) || app.subscriptionTier === 'premium'}
                   onOpenInChat={openInChat}
                   onMelding={setMelding}
                   onOpenGeschreven={(doc) => (doc.gegenereerd === 'fonds' ? naarIndienen(doc.projectId, doc.aanvraagId) : setPlanOpen(doc.definitief ? { projectId: doc.projectId, definitiefId: doc.definitiefId } : { projectId: doc.projectId, aanvraagId: doc.aanvraagId }))}
@@ -438,12 +448,12 @@ function UploadVoorProject({ project, store }) {
   );
 }
 
-function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding, onOpenGeschreven, onVerversDefinitief }) {
+function DocumentRij({ doc: d, project, store, paid, premium = false, onOpenInChat, onMelding, onOpenGeschreven, onVerversDefinitief }) {
   const beheer = useDocumentenBeheer(project || { id: '', docs: [] }, store);
   const kanVerwijderen = Boolean(!d.gegenereerd && project && isEchtId(project.id) && isEchtId(String(d.id)));
   const heeftTekst = Boolean(d.tekst && String(d.tekst).trim());
   const geschrevenBouw = d.gegenereerd ? geschrevenExport({ doc: d, project, store }) : null;
-  const isExcel = d.gegenereerd === 'begroting' || d.gegenereerd === 'dekking' || (d.definitief && d.definitiefSoort !== 'projectplan');
+  const isExcel = d.gegenereerd === 'begroting' || d.gegenereerd === 'dekking' || (d.definitief && d.definitiefSoort !== 'projectplan' && d.definitiefSoort !== 'samengevoegd');
 
   return (
     <li data-testid="documenten-rij" data-project-id={d.projectId} style={css('display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF;')}>
@@ -501,6 +511,7 @@ function DocumentRij({ doc: d, project, store, paid, onOpenInChat, onMelding, on
         {isExcel && <ExcelKnop doc={d} project={project} store={store} onMelding={onMelding} />}
         {d.concept && d.gegenereerd !== 'fonds' && <MaakDefinitiefKnop doc={d} project={project} onMelding={onMelding} onKlaar={onVerversDefinitief} />}
         {d.definitief && <DefinitiefVerwijderKnop doc={d} onMelding={onMelding} onKlaar={onVerversDefinitief} />}
+        {d.definitief && d.definitiefSoort === 'samengevoegd' && <SamengevoegdExport doc={d} store={store} premium={premium} paid={paid} onMelding={onMelding} />}
         {geschrevenBouw && <ExportMenu toegestaan={paid} uitlijnen="rechts" onMelding={onMelding} ariaLabel={`${d.naam} exporteren`} bouwModel={geschrevenBouw} />}
         {heeftTekst && <ExportMenu toegestaan={paid} uitlijnen="rechts" onMelding={onMelding} ariaLabel={`${d.naam} exporteren`} bouwModel={opgeslagenDocumentExport({ doc: d, store })} />}
         {kanVerwijderen && <DocumentVerwijderKnop doc={d} beheer={beheer} />}

@@ -17,7 +17,7 @@ function hexZonderHekje(hex) {
  * @returns {Footer}
  */
 export function createFooter(theme, { documentType } = {}) {
-  const label = documentType ? `${theme.branding.footerLabel} · ${documentType}` : theme.branding.footerLabel;
+  const label = [theme.branding.footerLabel, documentType].filter(Boolean).join(' · ');
 
   return new Footer({
     children: [

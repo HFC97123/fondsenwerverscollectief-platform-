@@ -14,7 +14,7 @@ import { supabase } from '../../data/client.js';
 import { haalProfiel, tierVan } from '../../data/services/profile.js';
 import { haalBudgetUitTekst } from '../../data/services/chat.js';
 import { bouwBestandsnaam, downloadBlob } from './exportBestand.js';
-import { themaVoorExport } from '../document-theme/huisstijl.js';
+import { themaVoorExport, themaVoorKeuze } from '../document-theme/huisstijl.js';
 import { haalHuisstijl } from '../../data/services/huisstijl.js';
 
 export const EXPORT_FORMATEN = {
@@ -130,9 +130,10 @@ async function begrotingExcel({ tekst, project, organisatieNaam }, onStatus) {
  * @param {'docx'|'xlsx'|'pdf'} opties.formaat
  * @param {() => Promise<Object>|Object} opties.bouwModel  Haalt de gegevens van de huidige context op en geeft een exportmodel (exportModel.js)
  * @param {(tekst: string) => void} [opties.onStatus]
+ * @param {'standaard'|'geen'|'eigen'} [opties.huisstijl]  Alleen Premium (en beheerders) kiest; Pro krijgt altijd de Subsidie Kompas-huisstijl
  * @returns {Promise<{ bestandsnaam: string, melding: string }>}
  */
-export async function voerExportUit({ formaat, bouwModel, onStatus }) {
+export async function voerExportUit({ formaat, bouwModel, onStatus, huisstijl: huisstijlKeuze }) {
   const fmt = EXPORT_FORMATEN[formaat];
 
   if (!fmt) {
@@ -166,7 +167,10 @@ export async function voerExportUit({ formaat, bouwModel, onStatus }) {
 
     if (rechten.premium) {
       try {
-        thema = themaVoorExport({ premium: true, huisstijl: await haalHuisstijl() });
+        // 'standaard' en 'geen' hebben geen eigen huisstijl nodig; alleen 'eigen' (of geen keuze) leest die uit de database.
+        const eigen = huisstijlKeuze === 'standaard' || huisstijlKeuze === 'geen' ? null : await haalHuisstijl();
+
+        thema = themaVoorKeuze({ premium: true, huisstijl: eigen, keuze: huisstijlKeuze });
       } catch (e) {
         thema = null;
       }

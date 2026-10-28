@@ -96,6 +96,45 @@ export function bouwHuisstijlThema(huisstijl) {
   });
 }
 
+// Zonder huisstijl: een rustig, neutraal document in zwart en grijs, zonder logo en zonder naam van Subsidie Kompas. Voor Premium-leden die hun document zonder opmaak willen, bijvoorbeeld om het zelf in hun eigen sjabloon te zetten.
+export const NEUTRAAL_KLEUREN = { primair: '#222222', accent: '#6B6B6B' };
+
+export function neutraalThema() {
+  const basis = SubsidieKompasTheme;
+
+  return createDocumentTheme('neutraal', {
+    colors: {
+      ...basis.colors,
+      primary: NEUTRAAL_KLEUREN.primair,
+      accent: NEUTRAAL_KLEUREN.accent,
+      secondary: '#EEEEEE',
+      background: '#FFFFFF',
+      text: '#222222',
+      textSoft: '#555555',
+      tableHeaderBg: '#E3E3E3',
+      tableHeaderText: '#222222',
+      gridLine: '#CCCCCC',
+      hyperlink: '#222222',
+    },
+    fonts: { ...basis.fonts },
+    typography: { ...basis.typography },
+    layout: { ...basis.layout },
+    branding: { organizationName: '', footerLabel: '', logo: { path: '', width: 0, height: 0 } },
+  });
+}
+
+// De keuzes bij een document: 'standaard' (Subsidie Kompas), 'geen' (neutraal) of 'eigen' (de eigen huisstijl van het lid).
+export const HUISSTIJL_KEUZES = ['standaard', 'geen', 'eigen'];
+
+// Pro heeft altijd de Subsidie Kompas-huisstijl; Premium (en beheerders) kiest. Zonder keuze geldt de eigen huisstijl als die er is, anders Subsidie Kompas.
+export function themaVoorKeuze({ premium, huisstijl, keuze }) {
+  if (!premium) return SubsidieKompasTheme;
+  if (keuze === 'geen') return neutraalThema();
+  if (keuze === 'standaard') return SubsidieKompasTheme;
+
+  return themaVoorExport({ premium, huisstijl });
+}
+
 // Welk thema bij een export hoort: Premium (en beheerders) met een eigen huisstijl krijgt die; iedereen anders de Subsidie Kompas-huisstijl.
 export function themaVoorExport({ premium, huisstijl }) {
   return premium && normaliseerHuisstijl(huisstijl) ? bouwHuisstijlThema(huisstijl) : SubsidieKompasTheme;

@@ -309,5 +309,66 @@ for (const tier of ['pro', 'premium']) {
   await act(async () => { root.render(<div />); });
 }
 
+sectie('6. Eén samengevoegd document: projectplan met begroting en dekkingsplan, huisstijl bij Pro vast en bij Premium te kiezen');
+for (const tier of ['pro', 'premium']) {
+  const S = maakServer({ tier, dekkingsplan: [{ id: 'r1' }, { id: 'r2' }] });
+
+  defTabel = maakDefTabel();
+  await toon(S, tier);
+  await wacht(() => aantal('Begroting') === 1);
+  check(`${tier}: bij Alle projecten staat het blok er niet`, !$('[data-testid="samengevoegd-blok"]'));
+  await act(async () => {
+    const sel = $('[data-testid="documenten-projectfilter"]');
+
+    Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(sel, PROJECT);
+    sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+  check(`${tier}: zonder projectplan staat er een blok dat zegt eerst een plan te schrijven, zonder knop`, !!$('[data-testid="samengevoegd-blok"]') && !!$('[data-testid="samengevoegd-geen-plan"]') && !$('[data-testid="samengevoegd-maak"]'));
+
+  await klik($('[data-testid="documenten-tab-plan"]'));
+  await wacht(() => $('[data-testid="aa-projectplan"]'));
+  await klik(knop('Start algemeen plan'));
+  await klik(knop('Ja, schrijf het plan'));
+  await wacht(() => $('[data-testid="aa-versie-editor"]'));
+  await klik(knop('Terug naar de lijst'));
+  await wacht(() => $('[data-testid="samengevoegd-maak"]'));
+  check(`${tier}: met een projectplan staat er een knop Eén samengevoegd document maken`, !!$('[data-testid="samengevoegd-maak"]') && !$('[data-testid="samengevoegd-geen-plan"]'));
+  check(`${tier}: het blok legt uit dat begroting, dekkingsplan, brief en andere stukken ook los blijven bestaan`, /blijven daarnaast ook los bestaan/.test($('[data-testid="samengevoegd-blok"]').textContent) && /aanbevelingsbrief/.test($('[data-testid="samengevoegd-blok"]').textContent));
+
+  await klik($('[data-testid="samengevoegd-maak"]'));
+  check(`${tier}: de knop vraagt eerst om een bevestiging, zonder dat er al iets is bewaard`, await wacht(() => $('[data-testid="samengevoegd-vraag"]')) && defTabel.rijen.length === 0);
+  await klik($('[data-testid="samengevoegd-nee"]'));
+  check(`${tier}: Annuleren bewaart niets en zet de knop terug`, !!$('[data-testid="samengevoegd-maak"]') && defTabel.rijen.length === 0);
+
+  await klik($('[data-testid="samengevoegd-maak"]'));
+  await wacht(() => $('[data-testid="samengevoegd-ja"]'));
+  await klik($('[data-testid="samengevoegd-ja"]'));
+  const rij = defTabel.rijen[0];
+  check(`${tier}: er is één definitief samengevoegd document bewaard, versie 1, met plan, project en financieringsregels`, await wacht(() => defTabel.rijen.length === 1) && rij.soort === 'samengevoegd' && rij.versie === 1 && !!rij.inhoud.plan && rij.inhoud.project.id === PROJECT && Array.isArray(rij.inhoud.finRegels) && rij.inhoud.finRegels.length === 2 && !('docs' in rij.inhoud.project));
+  check(`${tier}: de lijst toont het samengevoegde document bovenaan, met een melding waar het staat`, await wacht(() => $$('[data-testid="documenten-rij"]')[0] && $$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="samengevoegd-export"]')) && /is gemaakt \(versie 1\)/.test(tekst()));
+
+  const regel = $$('[data-testid="documenten-rij"]')[0];
+
+  check(`${tier}: de regel heeft Word en PDF (exportmenu) maar geen Excel en geen Maak definitief`, !!regel.querySelector('[aria-label$="exporteren"]') && !regel.querySelector('[data-testid="document-excel"]') && !regel.querySelector('[data-testid="maak-definitief"]') && !!regel.querySelector('[data-testid="definitief-verwijder"]'));
+
+  if (tier === 'pro') {
+    check('pro: de huisstijl staat vast op Subsidie Kompas, zonder keuzelijst', !!regel.querySelector('[data-testid="samengevoegd-huisstijl-vast"]') && /Subsidie Kompas/.test(regel.querySelector('[data-testid="samengevoegd-huisstijl-vast"]').textContent) && !regel.querySelector('[data-testid="samengevoegd-huisstijl"]'));
+  } else {
+    const keuzes = regel.querySelector('[data-testid="samengevoegd-huisstijl"]');
+
+    check('premium: er is een keuzelijst met Subsidie Kompas, Geen huisstijl en Mijn huisstijl', !!keuzes && [...keuzes.options].map((o) => o.value).join() === 'standaard,geen,eigen' && !regel.querySelector('[data-testid="samengevoegd-huisstijl-vast"]'));
+    await act(async () => {
+      keuzes.value = 'geen';
+      keuzes.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    check('premium: de keuze Geen huisstijl blijft staan', $$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="samengevoegd-huisstijl"]').value === 'geen');
+  }
+
+  await klik($$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="definitief-verwijder"]'));
+  await klik($$('[data-testid="documenten-rij"]')[0].querySelector('[data-testid="definitief-verwijder-ja"]'));
+  check(`${tier}: verwijderen haalt alleen het samengevoegde document weg`, await wacht(() => defTabel.rijen.length === 0));
+  await act(async () => { root.render(<div />); });
+}
+
 console.log(`\ndocumentatie-geschreven: ${stand.ok} OK, ${stand.fout} FAIL`);
 process.exit(stand.fout ? 1 : 0);

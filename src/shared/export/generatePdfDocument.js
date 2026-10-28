@@ -150,6 +150,11 @@ export async function generatePdfDocument({ title, organizationName, documentTyp
   // ---- inhoud (1-op-1 dezelfde blocks als de Word-export)
   (content?.blocks || []).forEach((blok) => {
     switch (blok.type) {
+      case 'pagebreak':
+        // Een nieuwe pagina, bijvoorbeeld voor een bijlage; de eerstvolgende kop begint bovenaan.
+        inhoud.push({ text: '', pageBreak: 'after', fontSize: 1, margin: [0, 0, 0, 0] });
+        break;
+
       case 'heading':
         inhoud.push({
           text: veilig(blok.text),
@@ -216,7 +221,7 @@ export async function generatePdfDocument({ title, organizationName, documentTyp
     }
   });
 
-  const voetLabel = documentType ? `${theme.branding.footerLabel} · ${documentType}` : theme.branding.footerLabel;
+  const voetLabel = [theme.branding.footerLabel, documentType].filter(Boolean).join(' · ');
 
   const definitie = {
     info: { title: veilig(title || ''), author: theme.branding.organizationName, creator: theme.branding.organizationName },

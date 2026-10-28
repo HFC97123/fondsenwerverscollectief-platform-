@@ -4,7 +4,7 @@
 import { supabase } from '../client.js';
 
 const TABEL = 'subsidie_kompas_definitieve_documenten';
-export const DEFINITIEF_SOORTEN = ['projectplan', 'begroting', 'dekkingsplan'];
+export const DEFINITIEF_SOORTEN = ['projectplan', 'begroting', 'dekkingsplan', 'samengevoegd'];
 
 async function huidigeGebruiker() {
   if (!supabase) return null;

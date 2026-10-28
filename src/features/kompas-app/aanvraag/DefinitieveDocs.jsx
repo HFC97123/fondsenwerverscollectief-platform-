@@ -1,14 +1,17 @@
 // Knoppen bij de geschreven documenten in Projectdocumentatie: "Maak definitief" (een vaste kopie van het concept), de Excel van begroting en dekkingsplan, en verwijderen van een definitieve versie.
 // Alles met een korte bevestiging in de regel zelf; er verschijnt geen pop-up.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
+import ExportMenu from '../../../shared/ui/ExportMenu.jsx';
+import { haalHuisstijl } from '../../../data/services/huisstijl.js';
 import { haalDekkingsplan } from '../../../data/services/projectFinanciering.js';
 import { haalDefinitiefDocument, maakDefinitief, verwijderDefinitief } from '../../../data/services/definitieveDocumenten.js';
 import { downloadBegrotingConcept, downloadBegrotingDefinitief } from '../begroting/begrotingExport.js';
 import { regelUitRpc } from '../financiering/dekkingsplan.js';
 import { aantalAanvullenInPlan, begrotingMomentopname, DEFINITIEF_NAAM, definitiefSoortVan, planMomentopname } from './aanvraagModel.js';
 import { leesPlanActueel } from './planLezen.js';
+import { SAMENGEVOEGD_NAAM, bouwSamengevoegdModel, samengevoegdMomentopname } from './samengevoegd.js';
 
 const FOUT_TEKST = {
   'niet-toegestaan': 'Definitief maken hoort bij Pro en Premium.',
@@ -179,5 +182,159 @@ export function DefinitiefVerwijderKnop({ doc, onKlaar, onMelding }) {
     <Button variant="outline" size="s" onClick={() => setVraag(true)} testid="definitief-verwijder" ariaLabel={`${doc.naam} versie ${doc.versie} verwijderen`}>
       Verwijderen
     </Button>
+  );
+}
+
+// ── Eén samengevoegd document: het projectplan met begroting en dekkingsplan als bijlagen ─────────────────────────────────────────────────
+
+// Het blok boven de lijst met documenten van één project: één knop die een vaste kopie maakt van het plan, de begroting en het dekkingsplan samen.
+// planDoc: de regel van het concept projectplan (met aanvraagId); zonder plan is er nog niets om samen te voegen.
+export function SamengevoegdBlok({ project, planDoc, onKlaar, onMelding }) {
+  const [stap, setStap] = useState('rust'); // rust | laden | vragen | bewaren
+  const [klaar, setKlaar] = useState(null);
+
+  const begin = async () => {
+    setStap('laden');
+    onMelding('');
+
+    try {
+      const plan = await leesPlanActueel(planDoc.aanvraagId);
+
+      if (!plan) throw new Error('plan');
+
+      const res = await haalDekkingsplan(project.id);
+      const finRegels = res && !res.error && Array.isArray(res.regels) ? res.regels.map(regelUitRpc) : [];
+
+      setKlaar({ inhoud: samengevoegdMomentopname({ plan, project, finRegels, projectNaam: project.naam }), aanvullen: aantalAanvullenInPlan(plan) });
+      setStap('vragen');
+    } catch (e) {
+      onMelding('Het samengevoegde document kon niet worden gemaakt. Probeer het opnieuw.');
+      setStap('rust');
+    }
+  };
+
+  const bewaar = async () => {
+    setStap('bewaren');
+
+    const r = await maakDefinitief({ projectId: project.id, soort: 'samengevoegd', naam: SAMENGEVOEGD_NAAM, inhoud: klaar.inhoud });
+
+    if (r.ok) {
+      onMelding(`${SAMENGEVOEGD_NAAM} is gemaakt (versie ${r.versie}). U vindt het bovenaan de lijst: kies daar de huisstijl en download het als Word of PDF.`);
+      setKlaar(null);
+      setStap('rust');
+      onKlaar();
+    } else {
+      onMelding(FOUT_TEKST[r.reden] || FOUT_TEKST.fout);
+      setStap('vragen');
+    }
+  };
+
+  const nog = klaar ? klaar.aanvullen : 0;
+
+  return (
+    <div data-testid="samengevoegd-blok" style={css('box-sizing: border-box; margin: 0 0 14px; padding: 14px 16px; border: 1px solid #D5E0D9; border-radius: 14px; background: #F4F8F5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;')}>
+      <div style={css('flex: 1 1 320px; min-width: 0;')}>
+        <strong style={css("display: block; font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E;")}>Alles in één document</strong>
+        <span style={css("display: block; margin-top: 2px; font-family: 'Mulish', sans-serif; font-size: 13.5px; line-height: 1.5; color: #4B5C58;")}>
+          Vraagt het fonds één bestand? Maak dan een document met het projectplan en daarachter, als bijlagen, de begroting en het dekkingsplan. Die twee blijven daarnaast ook los bestaan, net als uw aanbevelingsbrief en andere stukken.
+        </span>
+      </div>
+      {!planDoc ? (
+        <span data-testid="samengevoegd-geen-plan" style={css(meldingStijl)}>Schrijf eerst een projectplan.</span>
+      ) : stap === 'vragen' || stap === 'bewaren' ? (
+        <span data-testid="samengevoegd-vraag" style={css('display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;')}>
+          <span style={css(meldingStijl)}>
+            {nog > 0 ? `Er ${nog === 1 ? 'staat nog 1 plek' : `staan nog ${nog} plekken`} met [aanvullen] in het plan. ` : ''}
+            Een vaste kopie bewaren van plan, begroting en dekkingsplan?
+          </span>
+          <Button variant="dark" size="s" onClick={bewaar} disabled={stap === 'bewaren'} testid="samengevoegd-ja">
+            {stap === 'bewaren' ? 'Bezig…' : 'Ja, maak het document'}
+          </Button>
+          <Button variant="outline" size="s" onClick={() => setStap('rust')} disabled={stap === 'bewaren'} testid="samengevoegd-nee">
+            Annuleren
+          </Button>
+        </span>
+      ) : (
+        <Button variant="dark" size="s" onClick={begin} disabled={stap === 'laden'} testid="samengevoegd-maak" ariaLabel="Maak één samengevoegd document van projectplan, begroting en dekkingsplan">
+          {stap === 'laden' ? 'Even geduld…' : 'Eén samengevoegd document maken'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// De laatste keuze blijft in het geheugen van deze sessie; er wordt niets in de browser bewaard.
+let onthoudenKeuze = null;
+const leesKeuze = () => onthoudenKeuze;
+const bewaarKeuze = (k) => {
+  onthoudenKeuze = k === 'standaard' || k === 'geen' || k === 'eigen' ? k : null;
+};
+
+// Word en PDF van het samengevoegde document, met de huisstijl. Pro: altijd Subsidie Kompas (verplicht). Premium kiest: Subsidie Kompas, geen huisstijl of de eigen huisstijl.
+export function SamengevoegdExport({ doc, store, premium, paid, onMelding, laadHuisstijl = haalHuisstijl }) {
+  const [keuze, setKeuze] = useState(() => leesKeuze() || 'standaard');
+  const [eigen, setEigen] = useState(null); // null = nog laden; false = geen eigen huisstijl; anders het object
+
+  useEffect(() => {
+    if (!premium) return undefined;
+
+    let weg = false;
+
+    Promise.resolve(laadHuisstijl()).then((h) => {
+      if (weg) return;
+
+      setEigen(h || false);
+
+      // Heeft het lid een eigen huisstijl en nog nooit gekozen, dan is dat de vanzelfsprekende keuze.
+      if (h && !leesKeuze()) setKeuze('eigen');
+    });
+
+    return () => {
+      weg = true;
+    };
+  }, [premium, laadHuisstijl]);
+
+  const bouw = async () => {
+    const d = await haalDefinitiefDocument(doc.definitiefId);
+
+    if (!d || !d.inhoud) return null;
+
+    return bouwSamengevoegdModel({ inhoud: d.inhoud, organisatieNaam: orgNaam(store) });
+  };
+
+  const gebruikt = premium ? (keuze === 'eigen' && eigen === false ? 'standaard' : keuze) : 'standaard';
+
+  return (
+    <span data-testid="samengevoegd-export" style={css('display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;')}>
+      {premium ? (
+        <label style={css(`display: inline-flex; align-items: center; gap: 6px; ${meldingStijl}`)}>
+          Huisstijl
+          <select
+            data-testid="samengevoegd-huisstijl"
+            aria-label="Huisstijl voor dit document"
+            value={keuze}
+            onChange={(e) => {
+              setKeuze(e.target.value);
+              bewaarKeuze(e.target.value);
+            }}
+            style={css("cursor: pointer; box-sizing: border-box; min-height: 34px; padding: 4px 10px; border: 1px solid #D5E0D9; border-radius: 999px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 700; color: #2C4A5E;")}
+          >
+            <option value="standaard">Subsidie Kompas</option>
+            <option value="geen">Geen huisstijl</option>
+            <option value="eigen">{eigen === false ? 'Mijn huisstijl (nog niet ingesteld)' : 'Mijn huisstijl'}</option>
+          </select>
+        </label>
+      ) : (
+        <span data-testid="samengevoegd-huisstijl-vast" title="Bij Pro krijgen uw documenten de Subsidie Kompas-huisstijl. Met Premium kunt u ook zonder huisstijl of in uw eigen huisstijl." style={css(meldingStijl)}>
+          Huisstijl: Subsidie Kompas
+        </span>
+      )}
+      {premium && keuze === 'eigen' && eigen === false && (
+        <a className="fwk-wp-link" data-testid="samengevoegd-huisstijl-instellen" href="#/kompas/organisatie" style={css('font-size: 12.5px;')}>
+          Eigen huisstijl uploaden
+        </a>
+      )}
+      <ExportMenu toegestaan={paid} uitlijnen="rechts" formaten={['docx', 'pdf']} onMelding={onMelding} ariaLabel={`${doc.naam} exporteren`} bouwModel={bouw} huisstijl={gebruikt} />
+    </span>
   );
 }

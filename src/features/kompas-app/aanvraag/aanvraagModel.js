@@ -648,8 +648,8 @@ export function organisatieDocsVoorLijst(orgDocs) {
 
 // ---- Definitieve versies ("Maak definitief") ----
 // Een definitieve versie is een vaste kopie van een concept; de lijst toont ze bovenaan, onder de naam zonder "Concept".
-export const DEFINITIEF_NAAM = { projectplan: 'Projectplan', begroting: 'Begroting', dekkingsplan: 'Dekkingsplan' };
-const DEFINITIEF_SOORT = { projectplan: 'Projectplan', begroting: 'Begroting', dekkingsplan: 'Concept-dekkingsplan' };
+export const DEFINITIEF_NAAM = { projectplan: 'Projectplan', begroting: 'Begroting', dekkingsplan: 'Dekkingsplan', samengevoegd: 'Projectplan met begroting en dekkingsplan' };
+const DEFINITIEF_SOORT = { projectplan: 'Projectplan', begroting: 'Begroting', dekkingsplan: 'Concept-dekkingsplan', samengevoegd: 'Projectplan' };
 const GENEREERD_NAAR_DEFINITIEF = { plan: 'projectplan', begroting: 'begroting', dekking: 'dekkingsplan' };
 
 // Het soort definitief document dat bij een concept-regel hoort, of null (een concept voor een fonds wordt niet definitief; dat staat in Aanvraag indienen).

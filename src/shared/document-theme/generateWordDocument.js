@@ -22,7 +22,7 @@
 // functioneel noodzakelijk: index.js bevat de side-effect import die
 // 'subsidieKompas' in het thema-register zet (themes/subsidieKompasTheme.js);
 // zonder die ene import zou getDocumentTheme() niets gevonden hebben.
-import { Document, Packer } from 'docx';
+import { Document, Packer, PageBreak, Paragraph } from 'docx';
 import {
   getDocumentTheme,
   getPageSetup,
@@ -45,6 +45,10 @@ function blokNaarElementen(blok, theme) {
 
       return [maakKop(blok.text, theme)];
     }
+
+    case 'pagebreak':
+      // Een nieuwe pagina, bijvoorbeeld voor een bijlage.
+      return [new Paragraph({ children: [new PageBreak()] })];
 
     case 'bullets':
       return createBulletList(blok.items, theme);
