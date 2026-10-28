@@ -1,6 +1,6 @@
-// "Laat Claude meedenken" + "Overig, anders namelijk" onder de projectomschrijving.
+// "Slimme associatie" + "Overig, anders namelijk" onder de projectomschrijving.
 // - Het lid typt eigen woorden die in geen lijst staan; die blijven bij het project staan en zichtbaar.
-// - Op verzoek (knop, nooit automatisch) stelt Claude disciplines, doelgroepen en werkgebieden voor uit de omschrijving en koppelt de eigen
+// - Op verzoek (knop, nooit automatisch) stelt de slimme associatie (AI) disciplines, doelgroepen en werkgebieden voor uit de omschrijving en koppelt de eigen
 //   woorden op betekenis aan bestaande waarden. Elk voorstel noemt waarom. Niets wordt toegepast zonder dat het lid het kiest.
 import React, { useMemo, useState } from 'react';
 import { css } from '../../../shared/lib/css.js';
@@ -14,8 +14,8 @@ const LABEL = { discipline: 'Discipline', doelgroep: 'Doelgroep', regio: 'Werkge
 const sleutel = (t) => String(t || '').toLowerCase().trim();
 
 const MELDING = {
-  daglimiet: 'Claude heeft vandaag al veel voor u meegedacht. Morgen kan het weer; uw woorden blijven bewaard.',
-  storing: 'Claude kan nu even niet meedenken. Uw woorden blijven bewaard; probeer het straks opnieuw.',
+  daglimiet: 'De slimme associatie is vandaag al veel gebruikt. Morgen kan het weer; uw woorden blijven bewaard.',
+  storing: 'De slimme associatie is nu even niet beschikbaar. Uw woorden blijven bewaard; probeer het straks opnieuw.',
 };
 
 export default function SlimmeHerkenning({ form, setVeld, onDenk = haalTrefwoordVoorstellen }) {
@@ -111,7 +111,7 @@ export default function SlimmeHerkenning({ form, setVeld, onDenk = haalTrefwoord
           disabled={!kanDenken || stand.status === 'bezig'}
           style={css("cursor: pointer; min-height: 40px; padding: 0 18px; border: none; border-radius: 10px; background: #4E9A6C; font-family: 'Mulish', sans-serif; font-size: 13.5px; font-weight: 800; color: #fff;")}
         >
-          {stand.status === 'bezig' ? 'Claude denkt mee…' : 'Laat Claude meedenken'}
+          {stand.status === 'bezig' ? 'Bezig met associëren…' : 'Slimme associatie'}
         </button>
         {!kanDenken && <span style={css('font-size: 12.5px; font-weight: 600; color: #7B8985;')}>Vul eerst een omschrijving in (of een eigen woord).</span>}
       </div>
@@ -124,13 +124,13 @@ export default function SlimmeHerkenning({ form, setVeld, onDenk = haalTrefwoord
 
       {stand.status === 'klaar' && zichtbaar.length === 0 && (
         <div data-testid="np-denk-niets" role="status" style={css('font-size: 13px; font-weight: 700; color: #7B8985;')}>
-          Claude vindt geen nieuwe suggesties meer: wat uit uw tekst volgt, staat al bij uw project of is al aangeboden.
+          Geen nieuwe suggesties meer: wat uit uw tekst volgt, staat al bij uw project of is al aangeboden.
         </div>
       )}
 
       {zichtbaar.length > 0 && (
         <div data-testid="np-denk-voorstellen" style={css('display: grid; gap: 6px;')}>
-          <span style={css('font-size: 12.5px; font-weight: 700; color: #7B8985;')}>Claude stelt voor (u kiest zelf):</span>
+          <span style={css('font-size: 12.5px; font-weight: 700; color: #7B8985;')}>Voorgesteld op basis van uw tekst en woorden (u kiest zelf):</span>
           {zichtbaar.map((v) => (
             <span key={`${v.categorie}:${v.naam}`} style={css('display: flex; align-items: center; gap: 8px; flex-wrap: wrap;')}>
               <span style={chip}>

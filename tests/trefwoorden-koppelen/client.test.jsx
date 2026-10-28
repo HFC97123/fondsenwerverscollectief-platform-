@@ -1,4 +1,4 @@
-// Slimme herkenning, clientkant: eigen woorden ("Overig"), de knop "Laat Claude meedenken", voorstellen kiezen, opslag en service.
+// Slimme herkenning, clientkant: eigen woorden ("Overig"), de knop "Slimme associatie", voorstellen kiezen, opslag en service.
 import { JSDOM } from 'jsdom';
 
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true });
@@ -121,7 +121,7 @@ sectie('4. Scherm: eigen woorden toevoegen en laten staan');
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-sectie('5. Scherm: Claude laten meedenken, voorstel kiezen');
+sectie('5. Scherm: slimme associatie, voorstel kiezen');
 {
   aanroepen.length = 0;
   const voorstellen = [
@@ -155,7 +155,7 @@ sectie('6. Scherm: uitval en grenzen');
   check('te weinig tekst en geen woorden: knop is uit', q('np-denk-mee').disabled === true);
   await typ(q('np-overig-invoer'), 'drummen');
   await klik(q('np-overig-toevoegen'));
-  check('met een eigen woord kan Claude wel meedenken', q('np-denk-mee').disabled === false);
+  check('met een eigen woord kan de slimme associatie wel draaien', q('np-denk-mee').disabled === false);
 
   await toon({ naam: 'x', omschrijving: OMSCHRIJVING, eigenTermen: [{ woord: 'drummen', koppelingen: [] }], discipline: [], doelgroep: [], regio: '' }, denker({ beschikbaar: false, voorstellen: [], reden: 'daglimiet' }));
   await klik(q('np-denk-mee'));
@@ -163,7 +163,7 @@ sectie('6. Scherm: uitval en grenzen');
 
   await toon({ naam: 'x', omschrijving: OMSCHRIJVING, discipline: [], doelgroep: [], regio: '' }, denker({ beschikbaar: false, voorstellen: [], reden: 'storing' }));
   await klik(q('np-denk-mee'));
-  check('storing: nette melding', q('np-denk-melding').textContent.includes('even niet meedenken'));
+  check('storing: nette melding', q('np-denk-melding').textContent.includes('even niet beschikbaar'));
 
   await toon({ naam: 'x', omschrijving: OMSCHRIJVING, discipline: ['Muziek'], doelgroep: [], regio: '' }, denker({ beschikbaar: true, reden: null, voorstellen: [{ categorie: 'discipline', naam: 'Muziek', bewijs: 'drumlessen', eigenWoord: null }] }));
   await klik(q('np-denk-mee'));
