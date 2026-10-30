@@ -616,9 +616,6 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
       </p>
       <div style={css('margin: 0 0 12px;')}>
         <HuisstijlKiezer premium={premium} hs={hs} organisatieNaam={orgNaamTekst} testid="plan-huisstijl" />
-        <p className="fwk-aa-klein" style={css('margin: 6px 0 0;')}>
-          {premium ? 'De huisstijl komt pas op het document als u het downloadt. U kunt hem dus ook nog kiezen of uploaden nadat u het plan definitief hebt gemaakt.' : 'Uw documenten hebben de Subsidie Kompas-huisstijl. Met Premium zet u er uw eigen logo en kleuren op.'}
-        </p>
       </div>
       <div className="fwk-aa-acties">
         {definitiefSlot}

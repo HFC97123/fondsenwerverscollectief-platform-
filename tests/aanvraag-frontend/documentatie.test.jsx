@@ -334,7 +334,7 @@ for (const tier of ['pro', 'premium']) {
   await klik(knop('Terug naar de lijst'));
   await wacht(() => $('[data-testid="samengevoegd-maak"]'));
   check(`${tier}: met een projectplan staat er een knop Samenvoegen tot één document`, !!$('[data-testid="samengevoegd-maak"]') && !$('[data-testid="samengevoegd-geen-plan"]'));
-  check(`${tier}: de kop zegt Projectplan, begroting en dekkingsplan samenvoegen, en het blok legt uit dat begroting, dekkingsplan, brief en andere stukken ook los blijven bestaan`, /Projectplan, begroting en dekkingsplan samenvoegen/.test($('[data-testid="samengevoegd-blok"]').textContent) && /Sommige fondsen vragen om één bestand/.test($('[data-testid="samengevoegd-blok"]').textContent) && /blijven daarnaast ook los bestaan/.test($('[data-testid="samengevoegd-blok"]').textContent) && /aanbevelingsbrief/.test($('[data-testid="samengevoegd-blok"]').textContent));
+  check(`${tier}: de kop zegt Projectplan, begroting en dekkingsplan samenvoegen, en het blok legt uit dat begroting, dekkingsplan, brief en andere stukken ook los blijven bestaan`, /Projectplan, begroting en dekkingsplan samenvoegen/.test($('[data-testid="samengevoegd-blok"]').textContent) && /Ze blijven ook los bestaan/.test($('[data-testid="samengevoegd-blok"]').textContent));
 
   await klik($('[data-testid="samengevoegd-maak"]'));
   check(`${tier}: de knop vraagt eerst om een bevestiging, zonder dat er al iets is bewaard`, await wacht(() => $('[data-testid="samengevoegd-vraag"]')) && defTabel.rijen.length === 0);
@@ -384,12 +384,11 @@ for (const tier of ['pro', 'premium']) {
   await wacht(() => $('[data-testid="aa-versie-editor"]'));
 
   if (tier === 'pro') {
-    check('pro: bij het concept staat de vaste Subsidie Kompas-huisstijl, zonder keuzelijst of upload', !!$('[data-testid="plan-huisstijl-vast"]') && !$('[data-testid="plan-huisstijl"]') && !$('[data-testid="plan-huisstijl-upload"]') && /Met Premium zet u er uw eigen logo en kleuren op/.test($('[data-testid="aa-versie-definitief"]').textContent));
+    check('pro: bij het concept staat de vaste Subsidie Kompas-huisstijl, zonder keuzelijst of upload', !!$('[data-testid="plan-huisstijl-vast"]') && !$('[data-testid="plan-huisstijl"]') && !$('[data-testid="plan-huisstijl-upload"]'));
   } else {
     const keuze = $('[data-testid="plan-huisstijl"]');
 
     check('premium: bij het concept staat een keuzelijst met drie keuzes en een knop om de eigen huisstijl te uploaden', !!keuze && [...keuze.options].map((o) => o.value).join() === 'standaard,geen,eigen' && !!$('[data-testid="plan-huisstijl-upload"]') && !$('[data-testid="plan-huisstijl-vast"]'));
-    check('premium: de uitleg zegt dat de huisstijl pas bij het downloaden op het document komt, ook na Maak definitief', /pas op het document als u het downloadt/.test($('[data-testid="aa-versie-definitief"]').textContent));
     check('premium: het paneel met logo, naam en kleuren staat er nog niet', !$('[data-testid="huisstijl-premium"]'));
     await klik($('[data-testid="plan-huisstijl-upload"]'));
     check('premium: de knop opent hier ter plekke dezelfde invoer als in het Organisatieprofiel (logo, naam, twee kleuren, bewaren)', await wacht(() => $('[data-testid="huisstijl-premium"]')) && !!$('[data-testid="huisstijl-logo-kies"]') && !!$('[data-testid="huisstijl-naam"]') && !!$('[data-testid="huisstijl-primair"]') && !!$('[data-testid="huisstijl-accent"]') && !!$('[data-testid="huisstijl-bewaar"]') && /Uw eigen huisstijl/.test($('[data-testid="huisstijl"]').textContent));
@@ -418,7 +417,7 @@ sectie('8. Een eigen huisstijl uploaden bij het samenvoegen: bewaren kiest hem m
     $('[data-testid="huisstijl-naam"]').dispatchEvent(new window.Event('input', { bubbles: true }));
   });
   await klik($('[data-testid="huisstijl-bewaar"]'));
-  check('bewaren slaat de huisstijl op, sluit het paneel en kiest Mijn huisstijl voor dit document', await wacht(() => bewaard && bewaard.naam === huisstijl.naam) && await wacht(() => !$('[data-testid="huisstijl-premium"]')) && $('[data-testid="samengevoegd-huisstijl"]').value === 'eigen' && /bewaard en gekozen/.test($('[data-testid="samengevoegd-huisstijl-bericht"]').textContent) && !$('[data-testid="samengevoegd-huisstijl-nog-niet"]') && !/nog niet ingesteld/.test($('[data-testid="samengevoegd-huisstijl"]').textContent));
+  check('bewaren slaat de huisstijl op, sluit het paneel en kiest Mijn huisstijl voor dit document', await wacht(() => bewaard && bewaard.naam === huisstijl.naam) && await wacht(() => !$('[data-testid="huisstijl-premium"]')) && $('[data-testid="samengevoegd-huisstijl"]').value === 'eigen' && /Huisstijl bewaard en gekozen/.test($('[data-testid="samengevoegd-huisstijl-bericht"]').textContent) && !$('[data-testid="samengevoegd-huisstijl-nog-niet"]') && !/nog niet ingesteld/.test($('[data-testid="samengevoegd-huisstijl"]').textContent));
   check('de knop heet nu Mijn huisstijl aanpassen', !!$('[data-testid="samengevoegd-huisstijl-upload"]') && /Mijn huisstijl aanpassen/.test($('[data-testid="samengevoegd-huisstijl-upload"]').textContent));
   await act(async () => { root.render(<div />); });
 }

@@ -99,6 +99,23 @@ export async function leesPdfAlsAfbeeldingen(file, { max = 4, canvasNaarDataUrl,
   }
 }
 
+// De eerste pagina van een PDF op een bestaand canvas (voor het uitlezen van logo en kleuren).
+export async function leesPdfPagina(file, canvas, schaal = 1.4) {
+  const lib = await pdfjsLib();
+  const doc = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pagina = await doc.getPage(1);
+  const vp = pagina.getViewport({ scale: schaal });
+
+  canvas.width = Math.ceil(vp.width);
+  canvas.height = Math.ceil(vp.height);
+
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await pagina.render({ canvasContext: ctx, viewport: vp }).promise;
+}
+
 // Excel (.xlsx): per werkblad de rijen als tekst, cellen gescheiden door " | ". Formules worden als hun uitkomst gelezen.
 async function leesXlsx(file) {
   try {

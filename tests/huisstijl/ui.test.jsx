@@ -90,5 +90,43 @@ sectie('3. Premium met een opgeslagen huisstijl en fouten');
   await act(async () => { root.render(<div />); });
 }
 
+sectie('4. Uit een document halen');
+{
+  const bewaard = [];
+  const lees = async () => ({ logo: PNG, logoBreedte: 96, logoHoogte: 48 });
+  const uitDocument = async (f) => (f.name === 'leeg.pdf' ? { fout: 'We vonden geen logo of kleuren in dit bestand.' } : { bron: 'word', kleuren: ['#C8102E', '#1F6FB2', '#00A19A'], logo: { logo: PNG, logoBreedte: 96, logoHoogte: 48 } });
+  const kies = async (naam) => {
+    const veld = $('[data-testid="huisstijl-document"]');
+
+    await act(async () => {
+      Object.defineProperty(veld, 'files', { value: [{ name: naam, type: '', size: 10 }], configurable: true });
+      veld.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+  };
+
+  await act(async () => { root.render(<HuisstijlPaneel premium organisatieNaam="Stichting Voorbeeld" laad={async () => null} bewaar={async (h) => { bewaard.push(h); return { ok: true, huisstijl: h }; }} lees={lees} uitDocument={uitDocument} />); });
+  await wacht(() => $('[data-testid="huisstijl-premium"]'));
+  check('er is een knop om een document te uploaden (Word, Excel, PDF of afbeelding)', !!$('[data-testid="huisstijl-document-kies"]') && /Word, Excel, PDF/.test($('[data-testid="huisstijl-premium"]').textContent) && /\.docx/.test($('[data-testid="huisstijl-document"]').getAttribute('accept')) && /\.pdf/.test($('[data-testid="huisstijl-document"]').getAttribute('accept')));
+  check('er wordt niets bewaard of getoond voordat er een bestand is gekozen', !$('[data-testid="huisstijl-gevonden"]') && bewaard.length === 0);
+
+  await kies('brief.docx');
+  check('na het lezen staan het logo en de eerste twee kleuren in het voorbeeld', await wacht(() => !!$('[data-testid="huisstijl-voorbeeld-logo"]')) && $('[data-testid="huisstijl-primair"]').value === '#c8102e' && $('[data-testid="huisstijl-accent"]').value === '#1f6fb2');
+  check('de melding zegt wat er gevonden is en dat het lid moet controleren en bewaren', /Gevonden: logo en 3 kleuren\. Controleer en bewaar\./.test($('[data-testid="huisstijl-melding"]').textContent));
+  check('er is nog niets bewaard', bewaard.length === 0);
+
+  const kleuren = [...document.querySelectorAll('[data-testid="huisstijl-gevonden-kleur"]')];
+
+  check('alle gevonden kleuren staan als keuze', kleuren.length === 3);
+  await klik(kleuren[2]);
+  check('een kleur aanklikken zet hem als hoofdkleur', $('[data-testid="huisstijl-primair"]').value === '#00a19a');
+
+  await klik($('[data-testid="huisstijl-bewaar"]'));
+  check('Huisstijl bewaren bewaart logo en kleuren van het voorstel', await wacht(() => bewaard.length === 1) && bewaard[0].primair === '#00A19A' && bewaard[0].accent === '#1F6FB2' && /^data:image\/png/.test(bewaard[0].logo));
+
+  await kies('leeg.pdf');
+  check('een bestand zonder logo of kleuren geeft een korte foutmelding en laat de huisstijl staan', await wacht(() => /geen logo of kleuren/.test($('[data-testid="huisstijl-melding"]').textContent)) && $('[data-testid="huisstijl-primair"]').value === '#00a19a');
+  await act(async () => { root.render(<div />); });
+}
+
 console.log(`\nhuisstijl-scherm: ${stand.ok} OK, ${stand.fout} FAIL`);
 process.exit(stand.fout ? 1 : 0);

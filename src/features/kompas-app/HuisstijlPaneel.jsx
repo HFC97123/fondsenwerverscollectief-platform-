@@ -7,6 +7,7 @@ import { css } from '../../shared/lib/css.js';
 import { Button } from '../../shared/ui/index.js';
 import { SubsidieKompasTheme, normaliseerHuisstijl } from '../../shared/document-theme/index.js';
 import { bewaarHuisstijl, haalHuisstijl, verkleinLogo } from '../../data/services/huisstijl.js';
+import { HUISSTIJL_BESTAND_ACCEPT, leesHuisstijlUitBestand } from './huisstijlUitDocument.js';
 
 const KOP = "margin: 0 0 4px; font-family: 'Newsreader', serif; font-size: 20px; font-weight: 600; color: #2C4A5E;";
 const KLEIN = "margin: 0; font-family: 'Mulish', sans-serif; font-size: 13.5px; line-height: 1.55; color: #4B5C58;";
@@ -35,13 +36,15 @@ function Voorbeeld({ h, naamTerugval }) {
 
 // compact: dezelfde invoer, maar kleiner en zonder eigen kop, om hem op de plek zelf te tonen (bij het schrijven van het projectplan of bij het samenvoegen).
 // onBewaard(huisstijl | null): meldt wat er is bewaard (null = terug naar Subsidie Kompas), zodat de plek ervoor de keuze kan bijwerken.
-export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = haalHuisstijl, bewaar = bewaarHuisstijl, lees = verkleinLogo, compact = false, onBewaard = null }) {
+export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = haalHuisstijl, bewaar = bewaarHuisstijl, lees = verkleinLogo, uitDocument = leesHuisstijlUitBestand, compact = false, onBewaard = null }) {
   const [h, setH] = useState(LEEG);
   const [eigen, setEigen] = useState(false); // staat er een eigen huisstijl opgeslagen?
   const [geladen, setGeladen] = useState(false);
   const [bezig, setBezig] = useState(false);
   const [melding, setMelding] = useState(null); // { tekst, fout }
   const bestandRef = useRef(null);
+  const documentRef = useRef(null);
+  const [gevonden, setGevonden] = useState([]); // kleuren uit het laatst gelezen document
 
   useEffect(() => {
     if (!premium) return undefined;
@@ -84,6 +87,36 @@ export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = 
 
     if (r.fout) setMelding({ tekst: r.fout, fout: true });
     else zet({ logo: r.logo, logoBreedte: r.logoBreedte, logoHoogte: r.logoHoogte });
+  };
+
+  const kiesDocument = async (e) => {
+    const f = e.target.files && e.target.files[0];
+
+    e.target.value = '';
+
+    if (!f) return;
+
+    setBezig(true);
+    setMelding(null);
+
+    const r = await uitDocument(f);
+
+    setBezig(false);
+
+    if (r.fout) {
+      setMelding({ tekst: r.fout, fout: true });
+
+      return;
+    }
+
+    setGevonden(r.kleuren);
+    setH((cur) => ({
+      ...cur,
+      ...(r.logo ? { logo: r.logo.logo, logoBreedte: r.logo.logoBreedte, logoHoogte: r.logo.logoHoogte } : {}),
+      ...(r.kleuren[0] ? { primair: r.kleuren[0] } : {}),
+      ...(r.kleuren[1] ? { accent: r.kleuren[1] } : {}),
+    }));
+    setMelding({ tekst: `Gevonden: ${[r.logo ? 'logo' : '', r.kleuren.length ? `${r.kleuren.length} ${r.kleuren.length === 1 ? 'kleur' : 'kleuren'}` : ''].filter(Boolean).join(' en ')}. Controleer en bewaar.`, fout: false });
   };
 
   const opslaan = async () => {
@@ -155,6 +188,25 @@ export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = 
 
           <div style={css('display: flex; flex-wrap: wrap; gap: 22px; margin-top: 16px; align-items: flex-start;')}>
             <div style={css('flex: 1 1 300px; display: grid; gap: 14px; min-width: 0;')}>
+              <div style={css('display: grid; gap: 6px;')}>
+                <span style={css(LABEL)}>Uit een document halen</span>
+                <div style={css('display: flex; flex-wrap: wrap; gap: 10px; align-items: center;')}>
+                  <input ref={documentRef} type="file" accept={HUISSTIJL_BESTAND_ACCEPT} data-testid="huisstijl-document" onChange={kiesDocument} style={css('display: none;')} />
+                  <Button variant="outline" onClick={() => documentRef.current && documentRef.current.click()} disabled={bezig || !geladen} testid="huisstijl-document-kies">
+                    {bezig ? 'Bezig…' : 'Document uploaden'}
+                  </Button>
+                  <span style={css(KLEIN)}>Word, Excel, PDF of afbeelding</span>
+                </div>
+                {gevonden.length > 0 && (
+                  <div data-testid="huisstijl-gevonden" style={css('display: flex; flex-wrap: wrap; gap: 8px; align-items: center;')}>
+                    <span style={css(KLEIN)}>Gevonden kleuren, klik voor hoofdkleur:</span>
+                    {gevonden.map((k) => (
+                      <button key={k} type="button" data-testid="huisstijl-gevonden-kleur" title={k} aria-label={`Hoofdkleur ${k}`} onClick={() => zet({ primair: k })} style={css(`cursor: pointer; width: 28px; height: 28px; border-radius: 8px; border: 2px solid ${h.primair === k ? '#2C4A5E' : '#D5E0D9'}; background: ${k};`)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div style={css('display: grid; gap: 6px;')}>
                 <span style={css(LABEL)}>Logo</span>
                 <div style={css('display: flex; flex-wrap: wrap; gap: 10px; align-items: center;')}>

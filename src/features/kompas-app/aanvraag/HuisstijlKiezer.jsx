@@ -45,7 +45,7 @@ export function useHuisstijlKeuze(premium, laad = haalHuisstijl) {
   return { keuze, zet, eigen, setEigen, gebruikt: premium ? (keuze === 'eigen' && !eigen ? 'standaard' : keuze) : 'standaard' };
 }
 
-export default function HuisstijlKiezer({ premium, hs, organisatieNaam = '', laad = haalHuisstijl, testid = 'huisstijl-kiezer', bewaar, lees }) {
+export default function HuisstijlKiezer({ premium, hs, organisatieNaam = '', laad = haalHuisstijl, testid = 'huisstijl-kiezer', bewaar, lees, uitDocument }) {
   const [open, setOpen] = useState(false);
   const [bericht, setBericht] = useState('');
 
@@ -58,7 +58,7 @@ export default function HuisstijlKiezer({ premium, hs, organisatieNaam = '', laa
   }
 
   const heeftEigen = Boolean(hs.eigen);
-  const paneelProps = { premium: true, compact: true, organisatieNaam, laad, ...(bewaar ? { bewaar } : {}), ...(lees ? { lees } : {}) };
+  const paneelProps = { premium: true, compact: true, organisatieNaam, laad, ...(bewaar ? { bewaar } : {}), ...(lees ? { lees } : {}), ...(uitDocument ? { uitDocument } : {}) };
 
   return (
     <div data-testid={`${testid}-blok`} style={css('display: grid; gap: 8px; min-width: 0;')}>
@@ -87,7 +87,7 @@ export default function HuisstijlKiezer({ premium, hs, organisatieNaam = '', laa
 
       {hs.keuze === 'eigen' && !heeftEigen && !open && (
         <span data-testid={`${testid}-nog-niet`} style={css(KLEIN)}>
-          U hebt nog geen eigen huisstijl. Tot die er is, krijgt uw document de Subsidie Kompas-huisstijl.
+          Nog geen eigen huisstijl: Subsidie Kompas wordt gebruikt.
         </span>
       )}
 
@@ -103,7 +103,7 @@ export default function HuisstijlKiezer({ premium, hs, organisatieNaam = '', laa
           onBewaard={(h) => {
             hs.setEigen(h || false);
             hs.zet(h ? 'eigen' : 'standaard');
-            setBericht(h ? 'Uw huisstijl is bewaard en gekozen voor dit document. U vindt hem ook in uw Organisatieprofiel.' : 'Uw documenten hebben weer de Subsidie Kompas-huisstijl.');
+            setBericht(h ? 'Huisstijl bewaard en gekozen.' : 'Weer Subsidie Kompas.');
             setOpen(false);
           }}
         />
