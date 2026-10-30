@@ -208,6 +208,24 @@ export default function Header() {
 
   if (isCollectief === false) return null;
 
+  // Klik op logo of naam: uitgelogd naar de Collectief-pagina, ingelogd meteen naar het ledengedeelte
+  // op die pagina (blok #account). De pagina rendert pas na de wissel, dus even wachten op het blok.
+  const naarCollectief = () => {
+    goNetwerk();
+
+    if (!isLoggedIn) return;
+
+    let pogingen = 0;
+    const scrollNaarLeden = () => {
+      const blok = document.getElementById('account');
+
+      if (blok) blok.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else if (pogingen++ < 20) setTimeout(scrollNaarLeden, 50);
+    };
+
+    setTimeout(scrollNaarLeden, 50);
+  };
+
   const tierLabelMobiel = isAdmin ? 'Admin' : TIER_LABEL[subscriptionTier] || 'Free';
 
   return (
@@ -221,7 +239,7 @@ export default function Header() {
           'max-width: 1180px; margin: 0 auto; padding: 14px clamp(16px, 4vw, 32px); display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;',
         )}
       >
-        <div onClick={goHome} style={css('display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; flex: 1 1 auto;')}>
+        <div onClick={naarCollectief} data-testid="logo-collectief" style={css('display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; flex: 1 1 auto;')}>
           <img
             src="/uploads/collectief-logo.png"
             alt="Het Fondsenwervers Collectief logo"
