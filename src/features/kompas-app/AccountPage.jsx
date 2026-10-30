@@ -12,6 +12,7 @@ import {
   wisCheckoutResultaat,
 } from '../../data/services/billing.js';
 import { bewaarOnboarding, haalAankopen, haalOnboarding } from '../../data/services/onboarding.js';
+import { websiteLabel, zetMijnLedengegevens } from '../../data/services/ledenlijst.js';
 import { useCheckoutTerugkeer } from './useCheckoutTerugkeer.js';
 import ExportMenu from '../../shared/ui/ExportMenu.jsx';
 import { gesprekExport } from './exportBronnen.js';
@@ -65,6 +66,9 @@ export default function AccountPage() {
   // raken. Beide zijn puur informatief: ze bepalen nergens toegang.
   const [onboarding, setOnboarding] = useState(null);
   const [onboardingForm, setOnboardingForm] = useState({ organisatie: '', functie: '' });
+  // Ledenprofiel (zelfde velden als op de Collectief-pagina): website en zichtbaarheid in de ledenlijst.
+  const [ledenForm, setLedenForm] = useState({ website: '', profielZichtbaar: false, emailZichtbaar: false });
+  const [ledenFout, setLedenFout] = useState('');
   const [onboardingOpslaan, setOnboardingOpslaan] = useState(false);
   const [aankopen, setAankopen] = useState([]);
 
@@ -100,6 +104,14 @@ export default function AccountPage() {
     };
   }, [app.profile && app.profile.id]);
 
+  useEffect(() => {
+    const p = app.profile;
+
+    if (p) {
+      setLedenForm({ website: websiteLabel(p.website || ''), profielZichtbaar: Boolean(p.profiel_zichtbaar), emailZichtbaar: Boolean(p.email_zichtbaar) });
+    }
+  }, [app.profile && app.profile.id, app.profile && app.profile.website, app.profile && app.profile.profiel_zichtbaar, app.profile && app.profile.email_zichtbaar]);
+
   const bewaarOrganisatieFunctie = async () => {
     const userId = app.profile && app.profile.id;
 
@@ -108,6 +120,16 @@ export default function AccountPage() {
     }
 
     setOnboardingOpslaan(true);
+    setLedenFout('');
+
+    const leden = await zetMijnLedengegevens(ledenForm);
+
+    if (leden.fout) {
+      setLedenFout(leden.fout);
+      setOnboardingOpslaan(false);
+
+      return;
+    }
 
     await bewaarOnboarding(userId, {
       organisatie: onboardingForm.organisatie.trim(),
@@ -116,6 +138,8 @@ export default function AccountPage() {
       doel: onboarding && onboarding.doel,
       overgeslagen: false,
     });
+
+    if (app.herlaadProfiel) await app.herlaadProfiel();
 
     setOnboardingOpslaan(false);
     setMelding('Uw gegevens zijn bewaard.');
@@ -188,6 +212,37 @@ export default function AccountPage() {
             placeholder="Niet ingevuld"
           />
         </Field>
+        <Field label="Website">
+          <Input
+            value={ledenForm.website}
+            onChange={(e) => setLedenForm((p) => ({ ...p, website: e.target.value }))}
+            placeholder="www.mijnwebsite.nl"
+            ariaLabel="Website"
+          />
+        </Field>
+        <div style={css('grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #2C4A5E;')}>
+          <label style={css('display: flex; gap: 10px; align-items: flex-start; cursor: pointer;')}>
+            <input
+              type="checkbox"
+              checked={ledenForm.profielZichtbaar}
+              onChange={(e) => setLedenForm((p) => ({ ...p, profielZichtbaar: e.target.checked }))}
+              style={css('margin-top: 3px;')}
+              data-testid="account-profiel-zichtbaar"
+            />
+            <span>Mijn profiel is zichtbaar in de ledenlijst van het Collectief (alleen voor leden)</span>
+          </label>
+          <label style={css('display: flex; gap: 10px; align-items: flex-start; cursor: pointer;')}>
+            <input
+              type="checkbox"
+              checked={ledenForm.emailZichtbaar}
+              onChange={(e) => setLedenForm((p) => ({ ...p, emailZichtbaar: e.target.checked }))}
+              style={css('margin-top: 3px;')}
+              data-testid="account-email-zichtbaar"
+            />
+            <span>Andere leden mogen mijn e-mailadres zien</span>
+          </label>
+          {ledenFout && <div role="alert" style={css('font-size: 13px; color: #B3412F;')}>{ledenFout}</div>}
+        </div>
         <div style={css('grid-column: 1 / -1;')}>
           <Button size="s" variant="outline" disabled={onboardingOpslaan} onClick={bewaarOrganisatieFunctie}>
             {onboardingOpslaan ? 'Bezig…' : 'Gegevens bewaren'}
