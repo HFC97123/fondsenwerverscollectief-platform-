@@ -1411,7 +1411,7 @@ export function WebsiteProvider({ children, route, param }) {
             title: titel,
             body: (stRef.current.qDraft.body || '').trim(),
             author: stRef.current.memberName || 'Lid van het Collectief',
-            role: 'Lid',
+            role: stRef.current.profile?.role === 'admin' ? 'Eigenaar' : 'Lid',
             replies: [],
           },
           ...stRef.current.memberQuestions,

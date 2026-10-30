@@ -237,7 +237,7 @@ export default function NetwerkPage() {
                 onGewijzigd={vernieuwProfiel}
               />
               <div style={css("font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E;")}>{profileFullName}</div>
-              <div style={css('font-size: 14px; color: #4B5C58; margin-top: 4px;')}>Lid van het Collectief</div>
+              <div style={css('font-size: 14px; color: #4B5C58; margin-top: 4px;')}>{profile && profile.role === 'admin' ? 'Eigenaar van het Collectief' : 'Lid van het Collectief'}</div>
               <div
                 onClick={logout}
                 style={css(
