@@ -58,7 +58,6 @@ import { haalFondsOmvang, zetFondsOmvang, zetFunderPrive, OMVANG_KEUZES, haalOve
 import OverigeVeldenSectie from './shared/OverigeVeldenSectie.jsx';
 import AdminEditModal from './shared/AdminEditModal.jsx';
 import ContributionEditor from './shared/ContributionEditor.jsx';
-import { OMVANG_KEUZES, haalFondsOmvangKeuze, zetFondsOmvangKeuze } from '../../data/services/fondsOmvang.js';
 import {
   badgeStyle,
   inputStyle,
@@ -1404,6 +1403,11 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
               </select>
             </Veld>
           </VeldGrid>
+          <p style={css('margin: 6px 0 0; font-size: 12.5px; color: #82918B;')}>
+            Groot (overheid, EU en grote fondsen met een aanvraagformulier): de volledige lijst uit het aanvraagformulier. Klein
+            (fondsen buiten beeld): meestal de basisset met een aanbevelingsbrief. Automatisch: overheid, EU en Pro worden groot,
+            Premium wordt klein.
+          </p>
         </>
       ) : null}
 
@@ -1447,9 +1451,6 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
           "Premium exclusief" is nog niet beschikbaar: de bijbehorende databasewijziging is nog niet toegepast.
         </p>
       )}
-
-      <SectieKop>Checklist stukken voor leden</SectieKop>
-      <FondsOmvangKeuze funderId={row.id} notify={notify} />
 
       <SectieKop muted>Technische status</SectieKop>
       <VeldGrid>
@@ -1499,68 +1500,6 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
 // AdminDeadlines.jsx. Lezen/schrijven uitsluitend via de admin-only RPC's
 // (admin_list_funder_datamomenten / admin_upsert_funder_datamoment /
 // admin_verwijder_funder_datamoment).
-// Klein of groot fonds voor de checklist "Stukken voor fondsenwerving" van leden. Slaat meteen op (los van "Opslaan" hierboven).
-function FondsOmvangKeuze({ funderId, notify }) {
-  const [keuze, setKeuze] = useState(null);
-  const [bezig, setBezig] = useState(false);
-  const [fout, setFout] = useState('');
-
-  useEffect(() => {
-    let weg = false;
-
-    haalFondsOmvangKeuze(funderId).then((r) => {
-      if (weg) return;
-      if (r.error) setFout('Deze keuze is nog niet beschikbaar (databasewijziging ontbreekt).');
-      else setKeuze(r.keuze);
-    });
-
-    return () => {
-      weg = true;
-    };
-  }, [funderId]);
-
-  const kies = async (e) => {
-    const nieuw = e.target.value;
-    const oud = keuze;
-
-    setKeuze(nieuw);
-    setBezig(true);
-
-    const r = await zetFondsOmvangKeuze(funderId, nieuw);
-
-    setBezig(false);
-
-    if (!r.ok) {
-      setKeuze(oud);
-      setFout('Opslaan is niet gelukt.');
-    } else if (notify) {
-      notify('success', 'Klein of groot fonds opgeslagen.');
-    }
-  };
-
-  return (
-    <>
-      <p style={css('margin: -8px 0 14px; font-size: 12.5px; color: #82918B;')}>
-        Bepaalt welke stukken leden in hun checklist zien. Groot (overheid, EU en grote fondsen met een aanvraagformulier): de volledige lijst
-        uit het aanvraagformulier. Klein (fondsen buiten beeld): meestal de basisset met een aanbevelingsbrief. Automatisch: overheid, EU en
-        Pro worden groot, Premium wordt klein. Wordt meteen opgeslagen.
-      </p>
-      <VeldGrid>
-        <Veld label="Klein of groot fonds">
-          <select data-testid="fonds-omvang" style={inputStyle} value={keuze || 'auto'} disabled={keuze === null || bezig} onChange={kies}>
-            {OMVANG_KEUZES.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </Veld>
-      </VeldGrid>
-      {fout && <p style={css('margin: 6px 0 0; font-size: 12.5px; color: #9E3B2C;')}>{fout}</p>}
-    </>
-  );
-}
-
 function FunderDatamomentenSectie({ funderId, notify }) {
   const [datamomenten, setDatamomenten] = useState([]);
   const [laden, setLaden] = useState(true);
