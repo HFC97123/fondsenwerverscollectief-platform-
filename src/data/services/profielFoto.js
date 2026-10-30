@@ -14,7 +14,7 @@ import { supabase } from '../client.js';
 export const PROFIEL_BUCKET = 'profile-images';
 export const MAX_FOTO_BYTES = 5 * 1024 * 1024;
 export const FOTO_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
-export const MAX_BIO_TEKENS = 1200;
+export const MAX_BIO_TEKENS = 2000;
 
 const MELDING_UPLOAD = 'De foto kon niet worden opgeslagen. Probeer het later opnieuw.';
 const MELDING_VERWIJDEREN = 'De foto kon niet worden verwijderd. Probeer het later opnieuw.';

@@ -36,10 +36,10 @@ check('twee paden zijn verschillend (geen overschrijven)', maakFotoPad(UID, 'ima
 
 // --- bio
 check('bio getrimd', normaliseerBio('  hoi  ') === 'hoi' && normaliseerBio(null) === '' && normaliseerBio(undefined) === '' && normaliseerBio(5) === '');
-check('bio 1200 tekens ok, 1201 niet', valideerBio('x'.repeat(1200)).ok && !valideerBio('x'.repeat(1201)).ok && MAX_BIO_TEKENS === 1200);
+check('bio 2000 tekens ok, 2001 niet', valideerBio('x'.repeat(2000)).ok && !valideerBio('x'.repeat(2001)).ok && MAX_BIO_TEKENS === 2000);
 check('lege bio is toegestaan (verwijdert beschrijving)', valideerBio('   ').ok && valideerBio('   ').bio === '');
 check('meerregelige bio blijft intact', valideerBio('a\n\nb').bio === 'a\n\nb');
-check('te lange bio noemt aantallen', /1200/.test(valideerBio('x'.repeat(1300)).fout) && /1300/.test(valideerBio('x'.repeat(1300)).fout));
+check('te lange bio noemt aantallen', /2000/.test(valideerBio('x'.repeat(2100)).fout) && /2100/.test(valideerBio('x'.repeat(2100)).fout));
 
 // --- upload / vervangen / verwijderen met stub-Supabase
 let s = nieuw();
@@ -87,7 +87,7 @@ s = nieuw();
 res = await slaBioOp('  Werkzaam als zelfstandig fondsenwerver.  ');
 check('bio opslaan: RPC zet_mijn_bio met getrimde tekst, zonder id', res.ok && s.log[0].naam === 'zet_mijn_bio' && s.log[0].args.p_bio === 'Werkzaam als zelfstandig fondsenwerver.' && Object.keys(s.log[0].args).join() === 'p_bio');
 s = nieuw();
-res = await slaBioOp('x'.repeat(1201));
+res = await slaBioOp('x'.repeat(2001));
 check('bio te lang: geweigerd zonder RPC', res.fout && s.log.length === 0);
 s = nieuw('rpc');
 res = await slaBioOp('hoi');
@@ -106,6 +106,8 @@ const code = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n'
 check('migratie: bucket privé, 5 MB, alleen jpeg/png/webp', /'profile-images', 'profile-images', false, 5242880, array\['image\/jpeg', 'image\/png', 'image\/webp'\]/.test(code));
 check('migratie: bucket NIET publiek', !/profile-images'[^)]*true/.test(code));
 check('migratie: bio max 1200 en avatar_path als tekst (geen base64-kolom)', /bio text constraint profiles_bio_lengte check \(bio is null or char_length\(bio\) <= 1200\)/.test(code) && /avatar_path text constraint/.test(code));
+const sql2 = readFileSync('supabase/migrations/20261030100000_bio_2000_tekens.sql', 'utf8').split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+check('migratie 2000: constraint en functie staan allebei op 2000, niets op 1200', /char_length\(bio\) <= 2000/.test(sql2) && /char_length\(v_bio\) > 2000/.test(sql2) && !/1200/.test(sql2));
 check('migratie: alleen twee kolommen toegevoegd', (code.match(/add column if not exists/g) || []).length === 2);
 check('migratie: geen UPDATE-policy of -grant op profiles of storage (geen overschrijven)', !/for update/i.test(code) && !/grant\s+update/i.test(code) && !/on public\.profiles\s+for/i.test(code));
 check('migratie: precies 3 storage-policies (select/insert/delete), alleen authenticated', (code.match(/create policy/g) || []).length === 3 && (code.match(/for (select|insert|delete) to authenticated/g) || []).length === 3 && !/to anon|to public/i.test(code));

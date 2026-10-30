@@ -88,7 +88,7 @@ export const supabase = {
       if (window.__FAIL === 'bio') return fout('bio mislukt');
       if (!id) return fout('Niet ingelogd');
       const bio = (args.p_bio || '').replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '') || null;
-      if (bio && bio.length > 1200) return fout('De beschrijving mag maximaal 1200 tekens bevatten');
+      if (bio && bio.length > 2000) return fout('De beschrijving mag maximaal 2000 tekens bevatten');
       if (!goedgekeurd()) return fout('Profiel niet gevonden of nog niet goedgekeurd');
       d.profiel[id] = { ...(d.profiel[id] || {}), bio };
       bewaar(d);
