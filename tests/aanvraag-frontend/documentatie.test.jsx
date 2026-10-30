@@ -332,8 +332,8 @@ for (const tier of ['pro', 'premium']) {
   await wacht(() => $('[data-testid="aa-versie-editor"]'));
   await klik(knop('Terug naar de lijst'));
   await wacht(() => $('[data-testid="samengevoegd-maak"]'));
-  check(`${tier}: met een projectplan staat er een knop Eén samengevoegd document maken`, !!$('[data-testid="samengevoegd-maak"]') && !$('[data-testid="samengevoegd-geen-plan"]'));
-  check(`${tier}: het blok legt uit dat begroting, dekkingsplan, brief en andere stukken ook los blijven bestaan`, /blijven daarnaast ook los bestaan/.test($('[data-testid="samengevoegd-blok"]').textContent) && /aanbevelingsbrief/.test($('[data-testid="samengevoegd-blok"]').textContent));
+  check(`${tier}: met een projectplan staat er een knop Samenvoegen tot één document`, !!$('[data-testid="samengevoegd-maak"]') && !$('[data-testid="samengevoegd-geen-plan"]'));
+  check(`${tier}: de kop zegt Projectplan, begroting en dekkingsplan samenvoegen, en het blok legt uit dat begroting, dekkingsplan, brief en andere stukken ook los blijven bestaan`, /Projectplan, begroting en dekkingsplan samenvoegen/.test($('[data-testid="samengevoegd-blok"]').textContent) && /Sommige fondsen vragen om één bestand/.test($('[data-testid="samengevoegd-blok"]').textContent) && /blijven daarnaast ook los bestaan/.test($('[data-testid="samengevoegd-blok"]').textContent) && /aanbevelingsbrief/.test($('[data-testid="samengevoegd-blok"]').textContent));
 
   await klik($('[data-testid="samengevoegd-maak"]'));
   check(`${tier}: de knop vraagt eerst om een bevestiging, zonder dat er al iets is bewaard`, await wacht(() => $('[data-testid="samengevoegd-vraag"]')) && defTabel.rijen.length === 0);

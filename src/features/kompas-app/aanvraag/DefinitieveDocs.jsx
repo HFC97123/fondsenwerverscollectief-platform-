@@ -234,9 +234,9 @@ export function SamengevoegdBlok({ project, planDoc, onKlaar, onMelding }) {
   return (
     <div data-testid="samengevoegd-blok" style={css('box-sizing: border-box; margin: 0 0 14px; padding: 14px 16px; border: 1px solid #D5E0D9; border-radius: 14px; background: #F4F8F5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;')}>
       <div style={css('flex: 1 1 320px; min-width: 0;')}>
-        <strong style={css("display: block; font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E;")}>Alles in één document</strong>
+        <strong style={css("display: block; font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E;")}>Projectplan, begroting en dekkingsplan samenvoegen</strong>
         <span style={css("display: block; margin-top: 2px; font-family: 'Mulish', sans-serif; font-size: 13.5px; line-height: 1.5; color: #4B5C58;")}>
-          Vraagt het fonds één bestand? Maak dan een document met het projectplan en daarachter, als bijlagen, de begroting en het dekkingsplan. Die twee blijven daarnaast ook los bestaan, net als uw aanbevelingsbrief en andere stukken.
+          Sommige fondsen vragen om één bestand. Voeg dan het projectplan samen met de begroting en het dekkingsplan, die als bijlagen achter het plan komen. Ze blijven daarnaast ook los bestaan, net als uw aanbevelingsbrief en andere stukken.
         </span>
       </div>
       {!planDoc ? (
@@ -255,8 +255,8 @@ export function SamengevoegdBlok({ project, planDoc, onKlaar, onMelding }) {
           </Button>
         </span>
       ) : (
-        <Button variant="dark" size="s" onClick={begin} disabled={stap === 'laden'} testid="samengevoegd-maak" ariaLabel="Maak één samengevoegd document van projectplan, begroting en dekkingsplan">
-          {stap === 'laden' ? 'Even geduld…' : 'Eén samengevoegd document maken'}
+        <Button variant="dark" size="s" onClick={begin} disabled={stap === 'laden'} testid="samengevoegd-maak" ariaLabel="Projectplan, begroting en dekkingsplan samenvoegen tot één document">
+          {stap === 'laden' ? 'Even geduld…' : 'Samenvoegen tot één document'}
         </Button>
       )}
     </div>
