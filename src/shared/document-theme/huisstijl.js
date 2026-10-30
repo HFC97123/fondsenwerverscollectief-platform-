@@ -1,7 +1,7 @@
-// De eigen huisstijl voor documenten (Premium): een logo, twee kleuren en de naam op het voorblad en in de voettekst.
+// De eigen huisstijl voor documenten (Premium): een logo, twee kleuren, een tekstkleur, een lettertype uit een korte lijst, de naam op het voorblad en in de voettekst, en het voorblad aan of uit.
 // Alles komt uit één klein object (zie normaliseerHuisstijl); het gaat door dezelfde Word-, PDF- en Excel-generatoren als de Subsidie Kompas-huisstijl,
-// die voor Pro en als terugval blijft gelden. Lettertype en marges blijven die van Subsidie Kompas: Arial in Word en Excel, Helvetica in PDF
-// (een eigen lettertype zou op de computer van de lezer kunnen ontbreken en dan stilletjes op iets anders terugvallen).
+// die voor Pro en als terugval blijft gelden. De marges blijven die van Subsidie Kompas. Het lettertype is er een uit een korte lijst van lettertypen die overal
+// aanwezig zijn (een ander lettertype zou op de computer van de lezer kunnen ontbreken en dan stilletjes op iets anders terugvallen); in PDF is dat Helvetica of Times.
 // Zuivere functies: geen netwerk, geen opslag.
 import { createDocumentTheme } from './documentTheme.js';
 import { SubsidieKompasTheme } from './themes/subsidieKompasTheme.js';
@@ -11,6 +11,13 @@ export const MAX_HUISSTIJL_NAAM = 80;
 export const MAX_LOGO_TEKENS = 250000; // data-URL van het logo (ongeveer 180 KB aan beeld)
 export const LOGO_MAX_HOOGTE_PX = 48; // zoals het Subsidie Kompas-logo op het voorblad
 export const LOGO_MAX_BREEDTE_PX = 180;
+
+// Lettertypen die op vrijwel elke computer met Word staan, en welk standaard PDF-lettertype erbij hoort.
+export const HUISSTIJL_LETTERTYPES = ['Arial', 'Calibri', 'Georgia', 'Times New Roman'];
+export const STANDAARD_LETTERTYPE = 'Arial';
+const PDF_LETTERTYPE = { Arial: 'Helvetica', Calibri: 'Helvetica', Georgia: 'Times', 'Times New Roman': 'Times' };
+
+export const pdfLettertype = (naam) => PDF_LETTERTYPE[naam] || 'Helvetica';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const LOGO = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
@@ -25,9 +32,12 @@ export function normaliseerHuisstijl(ruw) {
   const logo = typeof ruw.logo === 'string' && ruw.logo.length <= MAX_LOGO_TEKENS && LOGO.test(ruw.logo) ? ruw.logo : '';
   const primair = hex(ruw.primair, '');
   const accent = hex(ruw.accent, '');
+  const tekst = hex(ruw.tekst, '');
+  const lettertype = HUISSTIJL_LETTERTYPES.includes(ruw.lettertype) ? ruw.lettertype : '';
+  const voorblad = ruw.voorblad !== false;
 
   // Leeg object = geen eigen huisstijl.
-  if (!naam && !logo && !primair && !accent) return null;
+  if (!naam && !logo && !primair && !accent && !tekst && !lettertype && voorblad) return null;
 
   const b = Number(ruw.logoBreedte);
   const h = Number(ruw.logoHoogte);
@@ -38,6 +48,9 @@ export function normaliseerHuisstijl(ruw) {
     naam,
     primair: primair || SubsidieKompasTheme.colors.primary,
     accent: accent || SubsidieKompasTheme.colors.accent,
+    tekst: tekst || SubsidieKompasTheme.colors.text,
+    lettertype: lettertype || STANDAARD_LETTERTYPE,
+    voorblad,
     logo,
     logoBreedte: maten.breedte,
     logoHoogte: maten.hoogte,
@@ -84,14 +97,17 @@ export function bouwHuisstijlThema(huisstijl) {
       tableHeaderBg: h.primair,
       tableHeaderText: isDonker(h.primair) ? '#FFFFFF' : '#2E3A38',
       hyperlink: h.primair,
+      text: h.tekst,
+      textSoft: h.tekst === basis.colors.text ? basis.colors.textSoft : mengMetWit(h.tekst, 0.3),
     },
-    fonts: { ...basis.fonts },
+    fonts: { heading: h.lettertype, body: h.lettertype, table: h.lettertype, caption: h.lettertype },
     typography: { ...basis.typography },
     layout: { ...basis.layout },
     branding: {
       organizationName: h.naam || basis.branding.organizationName,
       footerLabel: h.naam || basis.branding.footerLabel,
       logo: h.logo ? { path: h.logo, width: h.logoBreedte, height: h.logoHoogte } : { ...basis.branding.logo },
+      voorblad: h.voorblad,
     },
   });
 }

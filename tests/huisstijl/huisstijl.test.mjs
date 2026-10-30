@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { check, gelijk, sectie, klaar } from '../verificatie/hulp.mjs';
-import { HUISSTIJL_VERSIE, bouwHuisstijlThema, isDonker, mengMetWit, normaliseerHuisstijl, pasLogoMaten, themaVoorExport } from '../../src/shared/document-theme/huisstijl.js';
+import { HUISSTIJL_LETTERTYPES, HUISSTIJL_VERSIE, bouwHuisstijlThema, pdfLettertype, isDonker, mengMetWit, normaliseerHuisstijl, pasLogoMaten, themaVoorExport } from '../../src/shared/document-theme/huisstijl.js';
 import { SubsidieKompasTheme } from '../../src/shared/document-theme/index.js';
 import { generateWordDocument } from '../../src/shared/document-theme/generateWordDocument.js';
 import { generatePdfDocument } from '../../src/shared/export/generatePdfDocument.js';
@@ -65,6 +65,47 @@ sectie('3. Word, PDF en Excel met de eigen huisstijl');
   const stijlen = await zipX.file('xl/styles.xml').async('string');
 
   check('Excel: de kleuren van de eigen huisstijl staan in de opmaak', /7A1F3D/i.test(stijlen) && !/2C4A5E/i.test(stijlen), stijlen.slice(0, 80));
+}
+
+sectie('3b. Lettertype, tekstkleur en voorblad');
+{
+  const n = normaliseerHuisstijl({ ...H, lettertype: 'Georgia', tekst: '#112233', voorblad: false });
+  const std = normaliseerHuisstijl(H);
+
+  check('schoonmaken: lettertype uit de lijst, tekstkleur, voorblad uit', n.lettertype === 'Georgia' && n.tekst === '#112233' && n.voorblad === false);
+  check('zonder keuze: Arial, de Subsidie Kompas-tekstkleur en met voorblad', std.lettertype === 'Arial' && std.tekst === SubsidieKompasTheme.colors.text && std.voorblad === true);
+  check('een lettertype buiten de lijst valt terug op Arial', normaliseerHuisstijl({ ...H, lettertype: 'Comic Sans' }).lettertype === 'Arial' && HUISSTIJL_LETTERTYPES.join() === 'Arial,Calibri,Georgia,Times New Roman');
+  check('alleen een ander lettertype of alleen het voorblad uit is al een huisstijl', normaliseerHuisstijl({ lettertype: 'Calibri' }).lettertype === 'Calibri' && normaliseerHuisstijl({ voorblad: false }).voorblad === false && normaliseerHuisstijl({ voorblad: true }) === null);
+  check('PDF-lettertypen: Arial en Calibri als Helvetica, Georgia en Times als Times', pdfLettertype('Arial') === 'Helvetica' && pdfLettertype('Calibri') === 'Helvetica' && pdfLettertype('Georgia') === 'Times' && pdfLettertype('Times New Roman') === 'Times' && pdfLettertype('x') === 'Helvetica');
+
+  const t = bouwHuisstijlThema({ ...H, lettertype: 'Georgia', tekst: '#112233', voorblad: false });
+
+  check('thema: alle lettertypen, de tekstkleur en het voorblad', t.fonts.body === 'Georgia' && t.fonts.heading === 'Georgia' && t.fonts.table === 'Georgia' && t.colors.text === '#112233' && t.branding.voorblad === false);
+  check('thema zonder keuze blijft Arial met de vaste tekstkleuren', bouwHuisstijlThema(H).fonts.body === 'Arial' && bouwHuisstijlThema(H).colors.text === SubsidieKompasTheme.colors.text && bouwHuisstijlThema(H).colors.textSoft === SubsidieKompasTheme.colors.textSoft);
+
+  const model = bouwDocumentModel({ tekst: '# Projectplan\n\n## Aanleiding\n\nKinderen sporten te weinig.', soort: 'Projectplan', organisatieNaam: 'Stichting Voorbeeld', projectNaam: 'Samen Spelen', titel: 'Projectplan Samen Spelen' });
+  const kern = { title: 'Plan voor Samen Spelen', documentType: model.documentType, organizationName: 'Stichting Voorbeeld', content: { blocks: model.blocks } };
+  const lees = async (blob) => JSZip.loadAsync(await blob.arrayBuffer());
+  const woordTekst = async (theme) => { const z = await lees(await generateWordDocument({ ...kern, theme })); return { xml: await z.file('word/document.xml').async('string'), media: Object.keys(z.files).filter((f) => f.startsWith('word/media/')) }; };
+
+  const met = await woordTekst(bouwHuisstijlThema({ ...H, lettertype: 'Georgia', tekst: '#112233' }));
+  const zonder = await woordTekst(t);
+
+  check('Word: het gekozen lettertype en de tekstkleur staan in het document', /Georgia/.test(met.xml) && !/Arial/.test(met.xml) && met.xml.includes('112233'));
+  check('Word met voorblad: logo, Datum en Versie', met.media.length >= 1 && /Datum/.test(met.xml) && /Versie/.test(met.xml));
+  check('Word zonder voorblad: de titel en de tekst staan er, maar geen logo, datum of versie', zonder.media.length === 0 && !/Datum/.test(zonder.xml) && !/Versie/.test(zonder.xml) && /Plan voor Samen Spelen/.test(zonder.xml) && /Kinderen sporten te weinig/.test(zonder.xml));
+
+  const pdfTekst = async (theme) => Buffer.from(await (await generatePdfDocument({ ...kern, theme })).arrayBuffer()).toString('latin1');
+  const pdfTimes = await pdfTekst(bouwHuisstijlThema({ ...H, lettertype: 'Georgia' }));
+  const pdfSans = await pdfTekst(bouwHuisstijlThema(H));
+
+  check('PDF: Georgia geeft een Times-lettertype en Arial Helvetica', /BaseFont\s*\/Times/.test(pdfTimes) && !/BaseFont\s*\/Helvetica/.test(pdfTimes) && /BaseFont\s*\/Helvetica/.test(pdfSans) && !/BaseFont\s*\/Times/.test(pdfSans));
+  check('PDF zonder voorblad is een geldig bestand', (await pdfTekst(t)).startsWith('%PDF-'));
+
+  const xl = await generateStructuredExcel(bouwDocumentModel({ tekst: '# T\n\n## A\n\ntekst', soort: 'Projectplan' }), { theme: bouwHuisstijlThema({ ...H, lettertype: 'Georgia' }) });
+  const stijlen = await (await lees(xl)).file('xl/styles.xml').async('string');
+
+  check('Excel: het gekozen lettertype staat in de opmaak', /name val="Georgia"/.test(stijlen) && !/name val="Arial"/.test(stijlen), stijlen.slice(0, 200));
 }
 
 sectie('4. Opslag');

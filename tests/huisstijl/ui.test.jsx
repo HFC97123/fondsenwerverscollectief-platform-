@@ -49,7 +49,7 @@ sectie('2. Premium: kiezen, bewaren en terugzetten');
   check('de knop Terug naar Subsidie Kompas-huisstijl is er nog niet', !$('[data-testid="huisstijl-terug"]'));
 
   await klik($('[data-testid="huisstijl-bewaar"]'));
-  check('bewaren zonder iets te kiezen geeft een nette melding en bewaart niets', await wacht(() => $('[data-testid="huisstijl-melding"]')) && /Kies een logo, een naam of een kleur/.test($('[data-testid="huisstijl-melding"]').textContent) && aangeroepen.length === 0);
+  check('bewaren zonder iets te kiezen geeft een nette melding en bewaart niets', await wacht(() => $('[data-testid="huisstijl-melding"]')) && /Kies een logo, een naam, een kleur of een lettertype/.test($('[data-testid="huisstijl-melding"]').textContent) && aangeroepen.length === 0);
 
   const bestand = $('[data-testid="huisstijl-bestand"]');
   await act(async () => {
@@ -125,6 +125,28 @@ sectie('4. Uit een document halen');
 
   await kies('leeg.pdf');
   check('een bestand zonder logo of kleuren geeft een korte foutmelding en laat de huisstijl staan', await wacht(() => /geen logo of kleuren/.test($('[data-testid="huisstijl-melding"]').textContent)) && $('[data-testid="huisstijl-primair"]').value === '#00a19a');
+  await act(async () => { root.render(<div />); });
+}
+
+sectie('5. Lettertype, tekstkleur en voorblad');
+{
+  const bewaard = [];
+
+  await act(async () => { root.render(<HuisstijlPaneel premium organisatieNaam="Stichting Voorbeeld" laad={async () => null} bewaar={async (h) => { bewaard.push(h); return { ok: true, huisstijl: h }; }} lees={async () => ({ logo: PNG, logoBreedte: 96, logoHoogte: 48 })} />); });
+  await wacht(() => $('[data-testid="huisstijl-premium"]'));
+  const sel = $('[data-testid="huisstijl-lettertype"]');
+
+  check('lettertype: een korte lijst, standaard Arial', !!sel && [...sel.options].map((o) => o.value).join() === 'Arial,Calibri,Georgia,Times New Roman' && sel.value === 'Arial');
+  check('voorblad staat standaard aan en de tekstkleur heeft een startwaarde', $('[data-testid="huisstijl-voorblad"]').checked === true && /^#[0-9a-f]{6}$/.test($('[data-testid="huisstijl-tekst"]').value));
+  check('het voorbeeld toont het voorblad (logovak)', /geen logo|logo/.test($('[data-testid="huisstijl-voorbeeld"]').textContent) || !!$('[data-testid="huisstijl-voorbeeld-logo"]'));
+
+  await act(async () => { sel.value = 'Georgia'; sel.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  check('het voorbeeld gebruikt het gekozen lettertype', /Georgia/.test($('[data-testid="huisstijl-voorbeeld"]').getAttribute('style')));
+  await klik($('[data-testid="huisstijl-voorblad"]'));
+  check('voorblad uitzetten haalt het logovak uit het voorbeeld', !/geen logo/.test($('[data-testid="huisstijl-voorbeeld"]').textContent) && !$('[data-testid="huisstijl-voorbeeld-logo"]'));
+
+  await klik($('[data-testid="huisstijl-bewaar"]'));
+  check('alleen een ander lettertype en het voorblad uit is genoeg om te bewaren, en wordt zo bewaard', await wacht(() => bewaard.length === 1) && bewaard[0].lettertype === 'Georgia' && bewaard[0].voorblad === false && /^#[0-9A-F]{6}$/.test(bewaard[0].tekst));
   await act(async () => { root.render(<div />); });
 }
 

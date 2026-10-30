@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import { Button } from '../../shared/ui/index.js';
 import { SubsidieKompasTheme, normaliseerHuisstijl } from '../../shared/document-theme/index.js';
+import { HUISSTIJL_LETTERTYPES, STANDAARD_LETTERTYPE } from '../../shared/document-theme/huisstijl.js';
 import { bewaarHuisstijl, haalHuisstijl, verkleinLogo } from '../../data/services/huisstijl.js';
 import { HUISSTIJL_BESTAND_ACCEPT, leesHuisstijlUitBestand } from './huisstijlUitDocument.js';
 
@@ -14,28 +15,29 @@ const KLEIN = "margin: 0; font-family: 'Mulish', sans-serif; font-size: 13.5px; 
 const LABEL = "display: grid; gap: 6px; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 700; color: #2C4A5E;";
 const VELD = "box-sizing: border-box; min-height: 40px; padding: 8px 12px; border: 1px solid #D5E0D9; border-radius: 10px; font-family: 'Mulish', sans-serif; font-size: 14px; color: #2E3A38; background: #FFFFFF;";
 
-const LEEG = { naam: '', primair: SubsidieKompasTheme.colors.primary, accent: SubsidieKompasTheme.colors.accent, logo: '', logoBreedte: 0, logoHoogte: 0 };
+const LEEG = { naam: '', primair: SubsidieKompasTheme.colors.primary, accent: SubsidieKompasTheme.colors.accent, tekst: SubsidieKompasTheme.colors.text, lettertype: STANDAARD_LETTERTYPE, voorblad: true, logo: '', logoBreedte: 0, logoHoogte: 0 };
 
 // Een klein voorbeeld van een voorblad en een tabelkop in de gekozen huisstijl.
 function Voorbeeld({ h, naamTerugval }) {
   const naam = h.naam || naamTerugval;
+  const lettertype = `${h.lettertype || STANDAARD_LETTERTYPE}, Arial, sans-serif`;
 
   return (
-    <div data-testid="huisstijl-voorbeeld" aria-label="Voorbeeld van een document" style={css('box-sizing: border-box; width: 100%; max-width: 300px; padding: 18px 18px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; box-shadow: 0 2px 10px rgba(44,74,94,0.06);')}>
-      <div style={css('min-height: 52px; display: flex; align-items: center;')}>
-        {h.logo ? <img src={h.logo} alt="" data-testid="huisstijl-voorbeeld-logo" style={{ maxWidth: 160, maxHeight: 48, objectFit: 'contain' }} /> : <span style={css("font-family: 'Mulish', sans-serif; font-size: 12px; color: #9AA6A2;")}>geen logo</span>}
-      </div>
-      <div style={css(`margin-top: 10px; font-family: Arial, sans-serif; font-size: 18px; font-weight: 700; color: ${h.primair};`)}>Projectplan</div>
+    <div data-testid="huisstijl-voorbeeld" aria-label="Voorbeeld van een document" style={css(`box-sizing: border-box; width: 100%; max-width: 300px; padding: 18px 18px 14px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FFFFFF; box-shadow: 0 2px 10px rgba(44,74,94,0.06); font-family: ${lettertype};`)}>
+      {h.voorblad !== false && (
+        <div style={css('min-height: 52px; display: flex; align-items: center;')}>
+          {h.logo ? <img src={h.logo} alt="" data-testid="huisstijl-voorbeeld-logo" style={{ maxWidth: 160, maxHeight: 48, objectFit: 'contain' }} /> : <span style={css('font-size: 12px; color: #9AA6A2;')}>geen logo</span>}
+        </div>
+      )}
+      <div style={css(`margin-top: 10px; font-size: 18px; font-weight: 700; color: ${h.primair};`)}>Projectplan</div>
       <div style={css(`height: 3px; width: 56px; margin: 6px 0 10px; background: ${h.accent};`)} />
-      <div style={css(`padding: 5px 8px; background: ${h.primair}; color: #FFFFFF; font-family: Arial, sans-serif; font-size: 11px; font-weight: 700;`)}>Onderdeel</div>
-      <div style={css('padding: 5px 8px; border: 1px solid #D8DEDC; border-top: none; font-family: Arial, sans-serif; font-size: 11px; color: #2E3A38;')}>Aanleiding en doel</div>
-      <div style={css('margin-top: 12px; font-family: Arial, sans-serif; font-size: 10px; color: #4B5C58;')}>{naam}</div>
+      <div style={css(`padding: 5px 8px; background: ${h.primair}; color: #FFFFFF; font-size: 11px; font-weight: 700;`)}>Onderdeel</div>
+      <div style={css(`padding: 5px 8px; border: 1px solid #D8DEDC; border-top: none; font-size: 11px; color: ${h.tekst || '#2E3A38'};`)}>Aanleiding en doel</div>
+      <div style={css(`margin-top: 12px; font-size: 10px; color: ${h.tekst || '#4B5C58'};`)}>{naam}</div>
     </div>
   );
 }
 
-// compact: dezelfde invoer, maar kleiner en zonder eigen kop, om hem op de plek zelf te tonen (bij het schrijven van het projectplan of bij het samenvoegen).
-// onBewaard(huisstijl | null): meldt wat er is bewaard (null = terug naar Subsidie Kompas), zodat de plek ervoor de keuze kan bijwerken.
 export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = haalHuisstijl, bewaar = bewaarHuisstijl, lees = verkleinLogo, uitDocument = leesHuisstijlUitBestand, compact = false, onBewaard = null }) {
   const [h, setH] = useState(LEEG);
   const [eigen, setEigen] = useState(false); // staat er een eigen huisstijl opgeslagen?
@@ -122,10 +124,10 @@ export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = 
   const opslaan = async () => {
     const schoon = normaliseerHuisstijl(h);
     // Zonder logo, naam of andere kleuren is het gewoon de Subsidie Kompas-huisstijl: daar hoeft niets voor bewaard te worden.
-    const standaard = !h.logo && !h.naam.trim() && h.primair.toUpperCase() === LEEG.primair.toUpperCase() && h.accent.toUpperCase() === LEEG.accent.toUpperCase();
+    const standaard = !h.logo && !h.naam.trim() && h.primair.toUpperCase() === LEEG.primair.toUpperCase() && h.accent.toUpperCase() === LEEG.accent.toUpperCase() && String(h.tekst).toUpperCase() === LEEG.tekst.toUpperCase() && h.lettertype === LEEG.lettertype && h.voorblad !== false;
 
     if (!schoon || standaard) {
-      setMelding({ tekst: 'Kies een logo, een naam of een kleur.', fout: true });
+      setMelding({ tekst: 'Kies een logo, een naam, een kleur of een lettertype.', fout: true });
 
       return;
     }
@@ -239,7 +241,29 @@ export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = 
                 </label>
               </div>
 
-              <p style={css(KLEIN)}>Het lettertype en de marges blijven gelijk, zodat uw document op elke computer hetzelfde eruitziet.</p>
+              <div style={css('display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;')}>
+                <label style={css(LABEL)}>
+                  Tekstkleur
+                  <input type="color" data-testid="huisstijl-tekst" value={h.tekst} onChange={(e) => zet({ tekst: e.target.value.toUpperCase() })} style={css('width: 72px; height: 40px; padding: 2px; border: 1px solid #D5E0D9; border-radius: 10px; background: #FFFFFF; cursor: pointer;')} />
+                </label>
+                <label style={css(LABEL)}>
+                  Lettertype
+                  <select data-testid="huisstijl-lettertype" value={h.lettertype} onChange={(e) => zet({ lettertype: e.target.value })} style={css(VELD)}>
+                    {HUISSTIJL_LETTERTYPES.map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label style={css(`${LABEL} display: flex; align-items: center; gap: 8px;`)}>
+                <input type="checkbox" data-testid="huisstijl-voorblad" checked={h.voorblad !== false} onChange={(e) => zet({ voorblad: e.target.checked })} style={css('width: 18px; height: 18px; cursor: pointer;')} />
+                Met voorblad
+              </label>
+
+              <p style={css(KLEIN)}>Deze lettertypen staan op vrijwel elke computer. Marges blijven gelijk.</p>
 
               <div style={css('display: flex; flex-wrap: wrap; gap: 10px; align-items: center;')}>
                 <Button variant="dark" onClick={opslaan} disabled={bezig || !geladen} testid="huisstijl-bewaar">

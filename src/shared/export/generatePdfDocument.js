@@ -12,6 +12,7 @@
 // zwaarder wordt. Lettertype: Helvetica (standaard PDF-lettertype, metrisch
 // gelijk aan het Arial van het Word-thema; niets in te sluiten).
 import { getDocumentTheme } from '../document-theme/index.js';
+import { pdfLettertype } from '../document-theme/huisstijl.js';
 
 const PT_PER_MM = 72 / 25.4;
 const PT_PER_PX = 0.75;
@@ -96,13 +97,13 @@ export async function generatePdfDocument({ title, organizationName, documentTyp
   const lineHeight = layout.lineSpacing / 240;
   const naPt = layout.paragraphSpacingAfter / 20;
   const voorPt = layout.sectionSpacingBefore / 20;
-  const font = 'Helvetica';
+  const font = pdfLettertype(theme.fonts.body);
   const koppen = { 1: typography.heading1Size / 2, 2: typography.heading2Size / 2, 3: typography.heading3Size / 2 };
   const basis = typography.bodySize / 2;
 
   const [pdfMakeModule, fontModule, logo] = await Promise.all([
     import('pdfmake/build/pdfmake'),
-    import('pdfmake/build/standard-fonts/Helvetica.js'),
+    font === 'Times' ? import('pdfmake/build/standard-fonts/Times.js') : import('pdfmake/build/standard-fonts/Helvetica.js'),
     laadLogoDataUrl(theme),
   ]);
   const pdfMake = pdfMakeModule.default || pdfMakeModule;
@@ -113,7 +114,10 @@ export async function generatePdfDocument({ title, organizationName, documentTyp
   // ---- voorblad (zelfde onderdelen en volgorde als createCover)
   const inhoud = [];
 
-  if (logo) {
+  // Zonder voorblad (eigen huisstijl) begint het document gewoon met de titel: geen logo en geen regels met organisatie, datum en versie.
+  const zonderVoorblad = theme.branding.voorblad === false;
+
+  if (logo && !zonderVoorblad) {
     inhoud.push({
       image: logo,
       width: theme.branding.logo.width * PT_PER_PX,
@@ -125,9 +129,9 @@ export async function generatePdfDocument({ title, organizationName, documentTyp
   inhoud.push({
     text: veilig(title || theme.branding.organizationName),
     bold: true,
-    fontSize: (typography.heading1Size + 8) / 2,
+    fontSize: zonderVoorblad ? koppen[1] : (typography.heading1Size + 8) / 2,
     color: colors.primary,
-    margin: [0, 36, 0, naPt],
+    margin: [0, zonderVoorblad ? 0 : 36, 0, naPt],
   });
 
   [
@@ -135,7 +139,7 @@ export async function generatePdfDocument({ title, organizationName, documentTyp
     ['Datum', new Date().toLocaleDateString('nl-NL')],
     ['Versie', '1.0'],
   ]
-    .filter(([, waarde]) => waarde)
+    .filter(([, waarde]) => waarde && !zonderVoorblad)
     .forEach(([label, waarde]) => {
       inhoud.push({
         text: [

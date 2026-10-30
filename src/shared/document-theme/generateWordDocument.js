@@ -128,7 +128,9 @@ export async function generateWordDocument({ title, organizationName, documentTy
   const theme = eigenThema || getDocumentTheme(themeName);
   const logoImage = await laadLogoAfbeelding(theme);
 
-  const coverElementen = createCover(theme, {
+  // Zonder voorblad (eigen huisstijl) begint het document gewoon met de titel.
+  const zonderVoorblad = theme.branding.voorblad === false;
+  const coverElementen = zonderVoorblad ? blokNaarElementen({ type: 'heading', level: 1, text: title || theme.branding.organizationName || '' }, theme) : createCover(theme, {
     title: title || theme.branding.organizationName,
     // Expliciet `null` (niet weglaten/`undefined`): createCover valt anders
     // terug op theme.branding.organizationName ("Subsidie Kompas") als
