@@ -42,6 +42,8 @@ import AdminAccessTierBulkActie from './shared/AdminAccessTierBulkActie.jsx';
 import BulkBewerkModal from './shared/BulkBewerkModal.jsx';
 import AdminPagination from './shared/AdminPagination.jsx';
 import { haalAlgemeneBeschrijving, zetAlgemeneBeschrijving } from '../../data/services/adminBeschrijving.js';
+import { haalOverigeVelden, zetOverigeVelden, gewijzigdeVelden } from '../../data/services/adminFondsInstellingen.js';
+import OverigeVeldenSectie from './shared/OverigeVeldenSectie.jsx';
 import AdminEditModal from './shared/AdminEditModal.jsx';
 import ContributionEditor from './shared/ContributionEditor.jsx';
 import {
@@ -574,6 +576,8 @@ export default function AdminDeadlines({ notify }) {
       vergaderingToelichting: row.vergadering_toelichting || '',
       algemeneBeschrijving: '',
       algemeneBeschrijvingBeschikbaar: false,
+      overig: {},
+      overigBeschikbaar: false,
     };
 
     setForm(basis);
@@ -587,12 +591,15 @@ export default function AdminDeadlines({ notify }) {
     }
 
     const beschrijving = await haalAlgemeneBeschrijving('subsidieregelingen', row.id);
+    const overig = await haalOverigeVelden('subsidieregelingen', row.id);
 
     const volledig = {
       ...basis,
       themas: koppelingen.themas,
       algemeneBeschrijving: beschrijving.tekst,
       algemeneBeschrijvingBeschikbaar: beschrijving.beschikbaar,
+      overig: overig.velden,
+      overigBeschikbaar: overig.beschikbaar,
       doelgroepen: koppelingen.doelgroepen,
       regios: koppelingen.regios,
     };
@@ -673,6 +680,22 @@ export default function AdminDeadlines({ notify }) {
       laad();
 
       return;
+    }
+
+    if (form.overigBeschikbaar && initialFormRef.current) {
+      const overigGewijzigd = gewijzigdeVelden(form.overig, initialFormRef.current.overig);
+
+      if (Object.keys(overigGewijzigd).length > 0) {
+        const overigRes = await zetOverigeVelden('subsidieregelingen', row.id, overigGewijzigd);
+
+        if (!overigRes.ok) {
+          notify('error', 'Regeling bijgewerkt, maar de overige gegevens konden niet worden opgeslagen.');
+          setEditingId(null);
+          laad();
+
+          return;
+        }
+      }
     }
 
     // Algemene beschrijving: alleen opslaan als de beheerder ze gewijzigd heeft en de database de RPC kent.
@@ -1428,6 +1451,7 @@ function RegelingBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, d
         />
         Beoordeeld — toegangsniveau is leidend voor deze regeling
       </label>
+      <OverigeVeldenSectie tabel="subsidieregelingen" form={form} setForm={setForm} />
     </AdminEditModal>
   );
 }

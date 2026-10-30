@@ -54,6 +54,8 @@ import AdminAccessTierBulkActie from './shared/AdminAccessTierBulkActie.jsx';
 import BulkBewerkModal from './shared/BulkBewerkModal.jsx';
 import AdminPagination from './shared/AdminPagination.jsx';
 import { haalAlgemeneBeschrijving, zetAlgemeneBeschrijving } from '../../data/services/adminBeschrijving.js';
+import { haalFondsOmvang, zetFondsOmvang, zetFunderPrive, OMVANG_KEUZES, haalOverigeVelden, zetOverigeVelden, gewijzigdeVelden } from '../../data/services/adminFondsInstellingen.js';
+import OverigeVeldenSectie from './shared/OverigeVeldenSectie.jsx';
 import AdminEditModal from './shared/AdminEditModal.jsx';
 import ContributionEditor from './shared/ContributionEditor.jsx';
 import { OMVANG_KEUZES, haalFondsOmvangKeuze, zetFondsOmvangKeuze } from '../../data/services/fondsOmvang.js';
@@ -102,6 +104,13 @@ const LEEG_BEWERKING = {
   contactpersoonFunctie: '',
   email: '',
   telefoon: '',
+  contactpersoonPrive: true,
+  emailPrive: true,
+  telefoonPrive: true,
+  omvang: 'auto',
+  omvangBeschikbaar: false,
+  overig: {},
+  overigBeschikbaar: false,
   algemeenEmail: '',
   algemeenTelefoon: '',
   // Vervolgopdracht - gestructureerd adres (naast, niet in plaats van, het
@@ -583,6 +592,13 @@ export default function AdminFunders({ notify }) {
       contactpersoonFunctie: row.contactpersoon_functie || '',
       email: row.email || '',
       telefoon: row.telefoon || '',
+      contactpersoonPrive: row.contactpersoon_prive !== false,
+      emailPrive: row.email_prive !== false,
+      telefoonPrive: row.telefoon_prive !== false,
+      omvang: 'auto',
+      omvangBeschikbaar: false,
+      overig: {},
+      overigBeschikbaar: false,
       algemeenEmail: row.algemeen_email || '',
       algemeenTelefoon: row.algemeen_telefoon || '',
       straat: row.straat || '',
@@ -614,12 +630,18 @@ export default function AdminFunders({ notify }) {
     const exRij = exclusiviteit.rijen.find((r) => r.funder_id === row.id) || null;
 
     const beschrijving = await haalAlgemeneBeschrijving('funders', row.id);
+    const omvang = await haalFondsOmvang(row.id);
+    const overig = await haalOverigeVelden('funders', row.id);
 
     const volledig = {
       ...basis,
       themas: koppelingen.themas,
       algemeneBeschrijving: beschrijving.tekst,
       algemeneBeschrijvingBeschikbaar: beschrijving.beschikbaar,
+      omvang: omvang.waarde,
+      omvangBeschikbaar: omvang.beschikbaar,
+      overig: overig.velden,
+      overigBeschikbaar: overig.beschikbaar,
       doelgroepen: koppelingen.doelgroepen,
       regios: koppelingen.regios,
       premiumExclusive: !!exRij?.premium_exclusive,
@@ -704,6 +726,49 @@ export default function AdminFunders({ notify }) {
         laad();
 
         return;
+      }
+    }
+
+    // Verborgen-voor-leden-vinkjes en omvang: alleen opslaan als de beheerder ze gewijzigd heeft.
+    const begin = initialFormRef.current;
+
+    if (begin && (form.contactpersoonPrive !== begin.contactpersoonPrive || form.emailPrive !== begin.emailPrive || form.telefoonPrive !== begin.telefoonPrive)) {
+      const priveRes = await zetFunderPrive(row.id, { contactpersoon: form.contactpersoonPrive, email: form.emailPrive, telefoon: form.telefoonPrive });
+
+      if (!priveRes.ok) {
+        notify('error', 'Funder bijgewerkt, maar de privacy-instelling van de contactgegevens kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
+    }
+
+    if (begin && form.omvangBeschikbaar && form.omvang !== begin.omvang) {
+      const omvangRes = await zetFondsOmvang(row.id, form.omvang);
+
+      if (!omvangRes.ok) {
+        notify('error', 'Funder bijgewerkt, maar de omvang kon niet worden opgeslagen.');
+        setEditingId(null);
+        laad();
+
+        return;
+      }
+    }
+
+    if (begin && form.overigBeschikbaar) {
+      const overigGewijzigd = gewijzigdeVelden(form.overig, begin.overig);
+
+      if (Object.keys(overigGewijzigd).length > 0) {
+        const overigRes = await zetOverigeVelden('funders', row.id, overigGewijzigd);
+
+        if (!overigRes.ok) {
+          notify('error', 'Funder bijgewerkt, maar de overige gegevens konden niet worden opgeslagen.');
+          setEditingId(null);
+          laad();
+
+          return;
+        }
       }
     }
 
@@ -1165,6 +1230,15 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
           <input style={inputStyle} type="tel" value={form.telefoon} onChange={set('telefoon')} />
         </Veld>
       </VeldGrid>
+      <div style={css('display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; font-size: 13px;')} data-testid="admin-prive-vlaggen">
+        <span>Verborgen voor leden:</span>
+        {[['contactpersoonPrive', 'Naam'], ['emailPrive', 'E-mail'], ['telefoonPrive', 'Telefoon']].map(([sleutel, label]) => (
+          <label key={sleutel} style={css('display: inline-flex; gap: 6px; align-items: center;')}>
+            <input type="checkbox" checked={Boolean(form[sleutel])} onChange={(e) => setForm((f) => ({ ...f, [sleutel]: e.target.checked }))} data-testid={`admin-prive-${sleutel}`} />
+            {label}
+          </label>
+        ))}
+      </div>
 
       <SectieKop muted>Algemene contactinformatie</SectieKop>
       <VeldGrid>
@@ -1316,6 +1390,23 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
         </Veld>
       </VeldGrid>
 
+      {form.omvangBeschikbaar ? (
+        <>
+          <SectieKop>Omvang</SectieKop>
+          <VeldGrid>
+            <Veld label="Groot of klein fonds (bepaalt de checklist met stukken)">
+              <select style={inputStyle} value={form.omvang} onChange={set('omvang')} data-testid="admin-fonds-omvang">
+                {OMVANG_KEUZES.map((k) => (
+                  <option key={k.value} value={k.value}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
+            </Veld>
+          </VeldGrid>
+        </>
+      ) : null}
+
       <SectieKop>Toegang</SectieKop>
       <VeldGrid>
         <Veld label="Toegangsniveau">
@@ -1387,6 +1478,7 @@ function FunderBewerkPaneel({ row, form, setForm, onCancel, onSave, opslaan, dir
         />
         Beoordeeld — toegangsniveau is leidend voor deze funder
       </label>
+      <OverigeVeldenSectie tabel="funders" form={form} setForm={setForm} />
     </AdminEditModal>
   );
 }
