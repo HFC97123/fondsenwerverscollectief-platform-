@@ -12,6 +12,7 @@ import { useApp } from './useKompasApp.js';
 import { useKompas } from './KompasStore.jsx';
 import { chatHref } from './chat/gesprekUrl.js';
 import { ADVIES_PADEN } from './advies/adviesLinks.js';
+import { naar } from '../../app/routes.js';
 
 // Mijn Subsidie Kompas = wie u bent en wat u doet (Projecten en Organisatie, met een eigen tweede balk).
 // Subsidieadvies = het werk in vier stappen (Fondsen, Begroting, Deadlines, Indienen), ook met een eigen tweede balk.
@@ -42,6 +43,9 @@ const NAV_CSS = `
 .fwk-wn-link:hover { color: #4E9A6C !important; }
 .fwk-wn-link:focus-visible, .fwk-wn-merk:focus-visible, .fwk-wn-org:focus-visible, .fwk-wn-menu a:focus-visible, .fwk-wn-menu button:focus-visible { outline: 2px solid #4E9A6C; outline-offset: 2px; }
 .fwk-wn-org:hover { background: #EAF4EE !important; border-color: #A8D5BA !important; }
+.fwk-wn-collectief { opacity: 0.92; transition: opacity .15s ease; }
+.fwk-wn-collectief:hover { opacity: 1; text-decoration: underline !important; }
+.fwk-wn-collectief:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
 .fwk-wn-menu a:hover, .fwk-wn-menu button:hover { background: #F2F6F4; }
 @media (max-width: 760px) {
   .fwk-wn-merk-tekst { display: none; }
@@ -111,6 +115,23 @@ export default function KompasWerkNav({ pad }) {
     setOpen(false);
   }, [pad]);
 
+  // Smalle balk bovenaan: terug naar Het Fondsenwervers Collectief, meteen bij het ledengedeelte
+  // van de Collectief-pagina (zelfde gedrag als het logo in de kop van de website).
+  const naarCollectief = (e) => {
+    e.preventDefault();
+    naar('/netwerk');
+
+    let pogingen = 0;
+    const scrollNaarLeden = () => {
+      const blok = document.getElementById('account');
+
+      if (blok) blok.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else if (pogingen++ < 20) setTimeout(scrollNaarLeden, 50);
+    };
+
+    setTimeout(scrollNaarLeden, 50);
+  };
+
   const uitloggen = () => {
     setOpen(false);
     Promise.resolve(app.logout()).finally(() => app.goHome());
@@ -120,6 +141,22 @@ export default function KompasWerkNav({ pad }) {
   // nav over het contextpaneel (Eerdere gesprekken, Organisatie, ...) en maakte "Sluiten" onbereikbaar.
   // Het organisatiemenu hieronder heeft zijn eigen z-index en blijft boven de pagina.
   return (
+    <>
+    <div style={css('background: #2C4A5E;')}>
+      <div style={css("max-width: 1120px; margin: 0 auto; padding: 6px clamp(16px, 4vw, 24px); font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 700;")}>
+        <a
+          className="fwk-wn-collectief"
+          href="/netwerk"
+          onClick={naarCollectief}
+          data-testid="werknav-collectief"
+          style={css('color: #FFFFFF; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;')}
+        >
+          <span aria-hidden="true">←</span>
+          <img src="/uploads/collectief-logo-white.png" alt="" style={css('width: 24px; height: 24px; object-fit: contain; display: block;')} />
+          Terug naar Het Fondsenwervers Collectief
+        </a>
+      </div>
+    </div>
     <nav
       aria-label="Hoofdnavigatie Subsidie Kompas"
       data-testid="kompas-werknav"
@@ -204,5 +241,6 @@ export default function KompasWerkNav({ pad }) {
         </div>
       </div>
     </nav>
+    </>
   );
 }
