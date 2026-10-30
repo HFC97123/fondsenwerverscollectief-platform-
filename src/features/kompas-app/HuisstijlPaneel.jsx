@@ -33,7 +33,9 @@ function Voorbeeld({ h, naamTerugval }) {
   );
 }
 
-export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = haalHuisstijl, bewaar = bewaarHuisstijl, lees = verkleinLogo }) {
+// compact: dezelfde invoer, maar kleiner en zonder eigen kop, om hem op de plek zelf te tonen (bij het schrijven van het projectplan of bij het samenvoegen).
+// onBewaard(huisstijl | null): meldt wat er is bewaard (null = terug naar Subsidie Kompas), zodat de plek ervoor de keuze kan bijwerken.
+export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = haalHuisstijl, bewaar = bewaarHuisstijl, lees = verkleinLogo, compact = false, onBewaard = null }) {
   const [h, setH] = useState(LEEG);
   const [eigen, setEigen] = useState(false); // staat er een eigen huisstijl opgeslagen?
   const [geladen, setGeladen] = useState(false);
@@ -105,6 +107,8 @@ export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = 
       setH({ ...LEEG, ...r.huisstijl });
       setEigen(true);
       setMelding({ tekst: 'Uw huisstijl is bewaard. Uw volgende exports gebruiken hem.', fout: false });
+
+      if (onBewaard) onBewaard(r.huisstijl);
     } else {
       setMelding({ tekst: 'Bewaren lukte niet. Probeer het opnieuw.', fout: true });
     }
@@ -121,14 +125,16 @@ export default function HuisstijlPaneel({ premium, organisatieNaam = '', laad = 
       setH(LEEG);
       setEigen(false);
       setMelding({ tekst: 'Uw documenten hebben weer de Subsidie Kompas-huisstijl.', fout: false });
+
+      if (onBewaard) onBewaard(null);
     } else {
       setMelding({ tekst: 'Terugzetten lukte niet. Probeer het opnieuw.', fout: true });
     }
   };
 
   return (
-    <section data-testid="huisstijl" style={css('margin-top: 28px; padding-top: 22px; border-top: 1px solid #E1EAE4;')}>
-      <h2 style={css(KOP)}>Huisstijl voor uw documenten</h2>
+    <section data-testid="huisstijl" style={css(compact ? 'margin-top: 10px; padding: 14px 16px; border: 1px solid #E1EAE4; border-radius: 12px; background: #FBFDFC;' : 'margin-top: 28px; padding-top: 22px; border-top: 1px solid #E1EAE4;')}>
+      <h2 style={css(compact ? KOP.replace('20px', '16px') : KOP)}>{compact ? 'Uw eigen huisstijl' : 'Huisstijl voor uw documenten'}</h2>
 
       {!premium && (
         <div data-testid="huisstijl-pro">

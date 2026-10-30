@@ -227,6 +227,8 @@ function CriteriaBlok({ criteria, onWijzig, onWeg, onToevoegen, gewijzigd, bewaa
 
 // props: project, aanvraagId (mag leeg zijn als de criteria niet bewaard konden worden), fondsLabel, voorlopig (net opgehaald), assistent, store, onTerug
 export default function AanvraagWerk({ project, startStap = '', aanvraagId: startId, fondsLabel: startFonds, voorlopig, assistent, store, onTerug, onGewijzigd }) {
+  // Het per fonds schrijven en beoordelen is er alleen met Premium; de status van de server zegt dat.
+  const premiumStatus = Boolean(assistent && assistent.status && assistent.status.fondsbeoordeling);
   const [aanvraagId] = useState(startId || '');
   const [aanvraag, setAanvraag] = useState(null);
   const [laden, setLaden] = useState(Boolean(startId));
@@ -460,7 +462,7 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
     return (
       <>
         <AanvraagStijl />
-        <VersieEditor aanvraagId={aanvraagId} plan={plan.plan} opgeslagen={plan.opgeslagen} nieuwePlan={plan.nieuw} titel={aanvraagTitel(fondsLabel)} kop={aanvraagTitel(fondsLabel)} projectNaam={project.naam} store={store} onSluit={() => setPlan(null)} onGewijzigd={onGewijzigd} />
+        <VersieEditor aanvraagId={aanvraagId} plan={plan.plan} opgeslagen={plan.opgeslagen} nieuwePlan={plan.nieuw} titel={aanvraagTitel(fondsLabel)} kop={aanvraagTitel(fondsLabel)} projectNaam={project.naam} store={store} premium={premiumStatus} onSluit={() => setPlan(null)} onGewijzigd={onGewijzigd} />
       </>
     );
   }
@@ -718,6 +720,7 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
           <VersieEditor
             key={editorSleutel}
             ref={editorRef}
+            premium={premiumStatus}
             aanvraagId={aanvraagId}
             formulier={{ projectId: project.id, vragen: { lijst: formulier.lijst }, stukken: formulier.stukken, docs: docsNu }}
             stap={stap === 'vragenlijst' ? 'antwoorden' : stap}

@@ -340,6 +340,7 @@ export default function DocumentatiePage() {
           definitiefId={planOpen.definitiefId || ''}
           nieuw={Boolean(planOpen.nieuw)}
           store={store}
+          premium={Boolean(app.isAdmin) || app.subscriptionTier === 'premium'}
           onSluit={() => setPlanOpen(null)}
           onNaarIndienen={() => naarIndienen(planOpen.projectId)}
           onDefinitiefGemaakt={definitief.ververs}

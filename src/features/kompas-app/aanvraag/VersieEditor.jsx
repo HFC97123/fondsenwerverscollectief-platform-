@@ -11,6 +11,7 @@ import { Blok, Chip, Melding } from '../../../shared/ui/werkplek.jsx';
 import { bewaarVersie, bewaarVragen, haalVersie, haalVersies, schrijfAntwoorden, verwijderVersie, wijzigVersie } from '../../../data/services/aanvraagAssistent.js';
 import { AlvastVerzamelen, Bezig } from './Bouwstenen.jsx';
 import PlanEditor from './PlanEditor.jsx';
+import HuisstijlKiezer, { useHuisstijlKeuze } from './HuisstijlKiezer.jsx';
 import StukkenLijst from './StukkenLijst.jsx';
 import { aantalAanvullen, datumTekst, limietenUitPlan, onderdelenGelijk, onderdelenLeeg, onderdelenNaarTekst, onderdelenUitPlan, onderdelenUitVersie, onderdelenVoorVragen, onderdeelTekens, planUitVragen, telAntwoorden, telStukken, versieNaam } from './aanvraagModel.js';
 
@@ -74,7 +75,9 @@ function Onderdeel({ onderdeel, index, limiet, vragen, onTekst, onMelding, numme
 // formulier: { projectId, vragen: { lijst }, stukken, docs } voor een aanvraag die per vraag van het formulier is opgebouwd; dan wordt 'plan' niet gebruikt.
 // stap (alleen met formulier): 'antwoorden' | 'stukken' | 'controle'. Met zonderKop staan de kop en de stappenbalk buiten dit scherm (AanvraagWerk) en meldt dit scherm zijn stand via onStatus.
 // De ref geeft probeerSluiten() (vraagt eerst om opslaan als er niet-opgeslagen tekst is) en bewaarNu() (bewaart stil; true = er is niets meer niet-opgeslagen).
-const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planProp, formulier = null, stap = 'antwoorden', zonderKop = false, onStatus = () => {}, onNaarStukken = null, zonderAlvast = false, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {}, terugTekst = '← Terug naar het fonds', intro = '', zonderDefinitief = false, definitiefSlot = null, blokTitel = '' }, ref) {
+const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planProp, formulier = null, stap = 'antwoorden', zonderKop = false, onStatus = () => {}, onNaarStukken = null, zonderAlvast = false, opgeslagen = true, nieuwePlan = false, titel, kop, projectNaam, store, onSluit, onGewijzigd = () => {}, terugTekst = '← Terug naar het fonds', intro = '', zonderDefinitief = false, definitiefSlot = null, blokTitel = '', premium = false }, ref) {
+  const hs = useHuisstijlKeuze(premium);
+  const orgNaamTekst = (store && store.orgProfile && store.orgProfile.name) || '';
   const plan = formulier ? planUitVragen(formulier.vragen) : planProp;
   const [fase, setFase] = useState('laden'); // laden | klaar | zonder
   const [versies, setVersies] = useState([]);
@@ -611,9 +614,15 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
       <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
         Werkt u nog aan de tekst? Dan is het een concept. Is hij af, maak hem dan definitief: dat is een vaste kopie van uw laatst opgeslagen versie, die u onder Projectdocumentatie terugvindt. Het concept blijft bewerkbaar.
       </p>
+      <div style={css('margin: 0 0 12px;')}>
+        <HuisstijlKiezer premium={premium} hs={hs} organisatieNaam={orgNaamTekst} testid="plan-huisstijl" />
+        <p className="fwk-aa-klein" style={css('margin: 6px 0 0;')}>
+          {premium ? 'De huisstijl komt pas op het document als u het downloadt. U kunt hem dus ook nog kiezen of uploaden nadat u het plan definitief hebt gemaakt.' : 'Uw documenten hebben de Subsidie Kompas-huisstijl. Met Premium zet u er uw eigen logo en kleuren op.'}
+        </p>
+      </div>
       <div className="fwk-aa-acties">
         {definitiefSlot}
-        <ExportMenu toegestaan uitlijnen="rechts" onMelding={setMelding} ariaLabel="Plan exporteren" bouwModel={bouwModel} />
+        <ExportMenu toegestaan uitlijnen="rechts" onMelding={setMelding} ariaLabel="Plan exporteren" bouwModel={bouwModel} huisstijl={hs.gebruikt} />
       </div>
     </Blok>
   );
@@ -623,13 +632,16 @@ const VersieEditor = forwardRef(function VersieEditor({ aanvraagId, plan: planPr
             <p className="fwk-aa-klein" style={css('margin: 0 0 12px;')}>
               Werkt u nog aan de tekst? Dan is het een concept. Is hij af, maak hem dan definitief: die versie blijft bewaard en u downloadt hem om zelf in te dienen. Terug naar concept kan altijd.
             </p>
+            <div style={css('margin: 0 0 12px;')}>
+              <HuisstijlKiezer premium={premium} hs={hs} organisatieNaam={orgNaamTekst} testid="plan-huisstijl" />
+            </div>
             <div className="fwk-aa-acties">
               {!opHuidigeDefinitief || onopgeslagen ? (
                 <Button size="s" variant="dark" onClick={maakDefinitief} disabled={leeg || Boolean(bezig)} ariaLabel="Maak definitief">
                   Maak definitief
                 </Button>
               ) : null}
-              <ExportMenu toegestaan formaten={['docx', 'pdf']} uitlijnen="rechts" onMelding={setMelding} ariaLabel="Download voor indienen" bouwModel={bouwModel} />
+              <ExportMenu toegestaan formaten={['docx', 'pdf']} uitlijnen="rechts" onMelding={setMelding} ariaLabel="Download voor indienen" bouwModel={bouwModel} huisstijl={hs.gebruikt} />
             </div>
             {opHuidigeDefinitief && !onopgeslagen && (
               <div style={css('margin-top: 10px;')}>

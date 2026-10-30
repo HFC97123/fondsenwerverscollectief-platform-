@@ -97,7 +97,7 @@ export function useDefinitieveDocs({ projecten, actief }) {
 
 // Het geopende concept: het plan met export, en de weg terug naar Aanvraag indienen.
 // aanvraagId, of algemeen: dan zoekt dit scherm zelf het concept projectplan van het project (net geschreven). nieuw: toon de melding waar het is bewaard.
-export function PlanVenster({ project, aanvraagId = '', algemeen = false, definitiefId = '', nieuw = false, store, onSluit, onNaarIndienen, onDefinitiefGemaakt = () => {} }) {
+export function PlanVenster({ project, aanvraagId = '', algemeen = false, definitiefId = '', nieuw = false, store, premium = false, onSluit, onNaarIndienen, onDefinitiefGemaakt = () => {} }) {
   const [plan, setPlan] = useState(null);
   const [planId, setPlanId] = useState('');
   const [meld, setMeld] = useState('');
@@ -214,6 +214,7 @@ export function PlanVenster({ project, aanvraagId = '', algemeen = false, defini
                 terugTekst="← Terug naar de lijst"
                 intro="Dit is de eerste aanzet van uw projectplan. Pas de tekst zelf aan, ook de onderdelen die al geschreven zijn."
                 zonderDefinitief
+                premium={premium}
                 definitiefSlot={<MaakDefinitiefKnop doc={{ gegenereerd: 'plan', aanvraagId: planId, projectId, projectNaam: project && project.naam, naam: 'Concept projectplan' }} project={project} onMelding={setMeld} onKlaar={onDefinitiefGemaakt} />}
               />
             </>

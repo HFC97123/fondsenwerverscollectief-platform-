@@ -5,6 +5,7 @@ import { css } from '../../../shared/lib/css.js';
 import { Button } from '../../../shared/ui/index.js';
 import ExportMenu from '../../../shared/ui/ExportMenu.jsx';
 import { haalHuisstijl } from '../../../data/services/huisstijl.js';
+import HuisstijlKiezer, { useHuisstijlKeuze } from './HuisstijlKiezer.jsx';
 import { haalDekkingsplan } from '../../../data/services/projectFinanciering.js';
 import { haalDefinitiefDocument, maakDefinitief, verwijderDefinitief } from '../../../data/services/definitieveDocumenten.js';
 import { downloadBegrotingConcept, downloadBegrotingDefinitief } from '../begroting/begrotingExport.js';
@@ -263,36 +264,9 @@ export function SamengevoegdBlok({ project, planDoc, onKlaar, onMelding }) {
   );
 }
 
-// De laatste keuze blijft in het geheugen van deze sessie; er wordt niets in de browser bewaard.
-let onthoudenKeuze = null;
-const leesKeuze = () => onthoudenKeuze;
-const bewaarKeuze = (k) => {
-  onthoudenKeuze = k === 'standaard' || k === 'geen' || k === 'eigen' ? k : null;
-};
-
 // Word en PDF van het samengevoegde document, met de huisstijl. Pro: altijd Subsidie Kompas (verplicht). Premium kiest: Subsidie Kompas, geen huisstijl of de eigen huisstijl.
-export function SamengevoegdExport({ doc, store, premium, paid, onMelding, laadHuisstijl = haalHuisstijl }) {
-  const [keuze, setKeuze] = useState(() => leesKeuze() || 'standaard');
-  const [eigen, setEigen] = useState(null); // null = nog laden; false = geen eigen huisstijl; anders het object
-
-  useEffect(() => {
-    if (!premium) return undefined;
-
-    let weg = false;
-
-    Promise.resolve(laadHuisstijl()).then((h) => {
-      if (weg) return;
-
-      setEigen(h || false);
-
-      // Heeft het lid een eigen huisstijl en nog nooit gekozen, dan is dat de vanzelfsprekende keuze.
-      if (h && !leesKeuze()) setKeuze('eigen');
-    });
-
-    return () => {
-      weg = true;
-    };
-  }, [premium, laadHuisstijl]);
+export function SamengevoegdExport({ doc, store, premium, paid, onMelding, laadHuisstijl = haalHuisstijl, bewaarHuisstijl, leesLogo }) {
+  const hs = useHuisstijlKeuze(premium, laadHuisstijl);
 
   const bouw = async () => {
     const d = await haalDefinitiefDocument(doc.definitiefId);
@@ -302,39 +276,10 @@ export function SamengevoegdExport({ doc, store, premium, paid, onMelding, laadH
     return bouwSamengevoegdModel({ inhoud: d.inhoud, organisatieNaam: orgNaam(store) });
   };
 
-  const gebruikt = premium ? (keuze === 'eigen' && eigen === false ? 'standaard' : keuze) : 'standaard';
-
   return (
-    <span data-testid="samengevoegd-export" style={css('display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;')}>
-      {premium ? (
-        <label style={css(`display: inline-flex; align-items: center; gap: 6px; ${meldingStijl}`)}>
-          Huisstijl
-          <select
-            data-testid="samengevoegd-huisstijl"
-            aria-label="Huisstijl voor dit document"
-            value={keuze}
-            onChange={(e) => {
-              setKeuze(e.target.value);
-              bewaarKeuze(e.target.value);
-            }}
-            style={css("cursor: pointer; box-sizing: border-box; min-height: 34px; padding: 4px 10px; border: 1px solid #D5E0D9; border-radius: 999px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 13px; font-weight: 700; color: #2C4A5E;")}
-          >
-            <option value="standaard">Subsidie Kompas</option>
-            <option value="geen">Geen huisstijl</option>
-            <option value="eigen">{eigen === false ? 'Mijn huisstijl (nog niet ingesteld)' : 'Mijn huisstijl'}</option>
-          </select>
-        </label>
-      ) : (
-        <span data-testid="samengevoegd-huisstijl-vast" title="Bij Pro krijgen uw documenten de Subsidie Kompas-huisstijl. Met Premium kunt u ook zonder huisstijl of in uw eigen huisstijl." style={css(meldingStijl)}>
-          Huisstijl: Subsidie Kompas
-        </span>
-      )}
-      {premium && keuze === 'eigen' && eigen === false && (
-        <a className="fwk-wp-link" data-testid="samengevoegd-huisstijl-instellen" href="#/kompas/organisatie" style={css('font-size: 12.5px;')}>
-          Eigen huisstijl uploaden
-        </a>
-      )}
-      <ExportMenu toegestaan={paid} uitlijnen="rechts" formaten={['docx', 'pdf']} onMelding={onMelding} ariaLabel={`${doc.naam} exporteren`} bouwModel={bouw} huisstijl={gebruikt} />
+    <span data-testid="samengevoegd-export" style={css('display: inline-flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;')}>
+      <HuisstijlKiezer premium={premium} hs={hs} organisatieNaam={orgNaam(store)} laad={laadHuisstijl} bewaar={bewaarHuisstijl} lees={leesLogo} testid="samengevoegd-huisstijl" />
+      <ExportMenu toegestaan={paid} uitlijnen="rechts" formaten={['docx', 'pdf']} onMelding={onMelding} ariaLabel={`${doc.naam} exporteren`} bouwModel={bouw} huisstijl={hs.gebruikt} />
     </span>
   );
 }
