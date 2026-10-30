@@ -11,6 +11,7 @@ import { AanvraagStijl, AlvastVerzamelen, Bezig, Keuzekaart, PrivaatfondsKaart, 
 import BeoordelingResultaat from './BeoordelingResultaat.jsx';
 import FormulierBlok, { FormulierToelichting } from './FormulierBlok.jsx';
 import VersieEditor from './VersieEditor.jsx';
+import { SamengevoegdPerFondsBlok } from './DefinitieveDocs.jsx';
 import {
   SOORTEN_KEUZE,
   aanvraagTekstStatus,
@@ -714,6 +715,8 @@ export default function AanvraagWerk({ project, startStap = '', aanvraagId: star
       </div>
 
       {toonStappen && <VierStappen stappen={werkStappen} actief={stap} onKies={kiesStap} />}
+
+      {premiumStatus && toonStappen && aanvraagId && stap === 'controle' && <SamengevoegdPerFondsBlok project={project} aanvraagId={aanvraagId} fondsLabel={fondsLabel} store={store} onGewijzigd={onGewijzigd} />}
 
       {formulier.bevestigd && !formulier.weg && (
         <div style={stap === 'vragenlijst' ? { display: 'none' } : undefined}>

@@ -10,9 +10,9 @@ import { haalDekkingsplan } from '../../../data/services/projectFinanciering.js'
 import { haalDefinitiefDocument, maakDefinitief, verwijderDefinitief } from '../../../data/services/definitieveDocumenten.js';
 import { downloadBegrotingConcept, downloadBegrotingDefinitief } from '../begroting/begrotingExport.js';
 import { regelUitRpc } from '../financiering/dekkingsplan.js';
-import { aantalAanvullenInPlan, begrotingMomentopname, DEFINITIEF_NAAM, definitiefSoortVan, planMomentopname } from './aanvraagModel.js';
+import { aantalAanvullenInPlan, begrotingMomentopname, DEFINITIEF_NAAM, definitiefSoortVan, kortFondsLabel as kortLabel, planMomentopname } from './aanvraagModel.js';
 import { leesPlanActueel } from './planLezen.js';
-import { SAMENGEVOEGD_NAAM, bouwSamengevoegdModel, samengevoegdMomentopname } from './samengevoegd.js';
+import { SAMENGEVOEGD_NAAM, bouwSamengevoegdModel, samengevoegdFondsNaam, samengevoegdMomentopname } from './samengevoegd.js';
 
 const FOUT_TEKST = {
   'niet-toegestaan': 'Definitief maken hoort bij Pro en Premium.',
@@ -260,6 +260,96 @@ export function SamengevoegdBlok({ project, planDoc, onKlaar, onMelding }) {
           {stap === 'laden' ? 'Even geduld…' : 'Samenvoegen tot één document'}
         </Button>
       )}
+    </div>
+  );
+}
+
+// Per fondsaanvraag (alleen Premium): hetzelfde document, met het dekkingsplan op dit fonds afgestemd. Staat in het scherm van de aanvraag, bij Controle.
+// Het plan is dat van deze aanvraag; project en begroting blijven zoals ze zijn.
+export function SamengevoegdPerFondsBlok({ project, aanvraagId, fondsLabel, store, onGewijzigd = () => {} }) {
+  const [stap, setStap] = useState('rust'); // rust | laden | vragen | bewaren
+  const [klaar, setKlaar] = useState(null);
+  const [bericht, setBericht] = useState('');
+  const [gemaakt, setGemaakt] = useState(null); // { id, naam, versie }
+  const naam = samengevoegdFondsNaam(fondsLabel);
+
+  const begin = async () => {
+    setStap('laden');
+    setBericht('');
+    setGemaakt(null);
+
+    try {
+      const plan = aanvraagId ? await leesPlanActueel(aanvraagId) : null;
+
+      if (!plan) {
+        setBericht('Schrijf eerst het projectplan bij dit fonds.');
+        setStap('rust');
+
+        return;
+      }
+
+      const res = await haalDekkingsplan(project.id);
+      const finRegels = res && !res.error && Array.isArray(res.regels) ? res.regels.map(regelUitRpc) : [];
+
+      setKlaar({ inhoud: samengevoegdMomentopname({ plan, project, finRegels, projectNaam: project.naam, fondsLabel }), aanvullen: aantalAanvullenInPlan(plan) });
+      setStap('vragen');
+    } catch (e) {
+      setBericht('Het document kon niet worden gemaakt. Probeer het opnieuw.');
+      setStap('rust');
+    }
+  };
+
+  const bewaar = async () => {
+    setStap('bewaren');
+
+    const r = await maakDefinitief({ projectId: project.id, soort: 'samengevoegd', naam, inhoud: klaar.inhoud });
+
+    if (r.ok) {
+      setGemaakt({ id: r.id, naam, versie: r.versie });
+      setBericht(`Gemaakt (versie ${r.versie}). U vindt het ook bij Projectdocumentatie.`);
+      setKlaar(null);
+      setStap('rust');
+      onGewijzigd();
+    } else {
+      setBericht(FOUT_TEKST[r.reden] || FOUT_TEKST.fout);
+      setStap('vragen');
+    }
+  };
+
+  const nog = klaar ? klaar.aanvullen : 0;
+
+  return (
+    <div data-testid="samengevoegd-fonds-blok" style={css('box-sizing: border-box; margin: 0 0 14px; padding: 14px 16px; border: 1px solid #D5E0D9; border-radius: 14px; background: #F4F8F5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;')}>
+      <div style={css('flex: 1 1 320px; min-width: 0;')}>
+        <strong style={css("display: block; font-family: 'Newsreader', serif; font-size: 18px; font-weight: 600; color: #2C4A5E;")}>Samenvoegen voor dit fonds</strong>
+        <span style={css("display: block; margin-top: 2px; font-family: 'Mulish', sans-serif; font-size: 13.5px; line-height: 1.5; color: #4B5C58;")}>
+          Plan, begroting en dekkingsplan in één bestand. Het dekkingsplan staat afgestemd op dit fonds.
+        </span>
+      </div>
+      {stap === 'vragen' || stap === 'bewaren' ? (
+        <span data-testid="samengevoegd-fonds-vraag" style={css('display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;')}>
+          <span style={css(meldingStijl)}>
+            {nog > 0 ? `Er ${nog === 1 ? 'staat nog 1 plek' : `staan nog ${nog} plekken`} met [aanvullen] in het plan. ` : ''}
+            Een vaste kopie bewaren?
+          </span>
+          <Button variant="dark" size="s" onClick={bewaar} disabled={stap === 'bewaren'} testid="samengevoegd-fonds-ja">
+            {stap === 'bewaren' ? 'Bezig…' : 'Ja, maak het document'}
+          </Button>
+          <Button variant="outline" size="s" onClick={() => setStap('rust')} disabled={stap === 'bewaren'} testid="samengevoegd-fonds-nee">
+            Annuleren
+          </Button>
+        </span>
+      ) : (
+        <Button variant="dark" size="s" onClick={begin} disabled={stap === 'laden'} testid="samengevoegd-fonds-maak" ariaLabel={`Samenvoegen voor ${kortLabel(fondsLabel)}`}>
+          {stap === 'laden' ? 'Even geduld…' : 'Samenvoegen'}
+        </Button>
+      )}
+      {bericht && (
+        <span data-testid="samengevoegd-fonds-bericht" style={css(`${meldingStijl} flex-basis: 100%;`)}>
+          {bericht}
+        </span>
+      )}
+      {gemaakt && <SamengevoegdExport doc={{ definitiefId: gemaakt.id, naam: gemaakt.naam }} store={store} premium paid onMelding={setBericht} />}
     </div>
   );
 }

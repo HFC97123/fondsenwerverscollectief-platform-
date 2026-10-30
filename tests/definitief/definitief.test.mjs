@@ -10,7 +10,7 @@ import { neutraalThema, themaVoorKeuze, themaVoorExport } from '../../src/shared
 import { SubsidieKompasTheme } from '../../src/shared/document-theme/index.js';
 import { generateWordDocument } from '../../src/shared/document-theme/generateWordDocument.js';
 import { generatePdfDocument } from '../../src/shared/export/generatePdfDocument.js';
-import { SAMENGEVOEGD_NAAM, begrotingBlokken, bouwSamengevoegdModel, dekkingsplanBlokken, samengevoegdMomentopname } from '../../src/features/kompas-app/aanvraag/samengevoegd.js';
+import { SAMENGEVOEGD_NAAM, begrotingBlokken, bouwSamengevoegdModel, dekkingsplanBlokken, isDitFonds, samengevoegdFondsNaam, samengevoegdMomentopname } from '../../src/features/kompas-app/aanvraag/samengevoegd.js';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
 
@@ -166,6 +166,50 @@ sectie('4. Eén samengevoegd document: projectplan met begroting en dekkingsplan
 
   check('PDF: een echt PDF-bestand met meerdere pagina’s (plan en bijlagen)', bytes.startsWith('%PDF') && paginas(bytes) >= 3, `pagina's: ${paginas(bytes)}`);
   check('PDF zonder huisstijl lukt ook en is geen kopie van die met huisstijl', Buffer.from(await pdfGeen.arrayBuffer()).toString('latin1').startsWith('%PDF') && pdfGeen.size !== pdf.size);
+}
+
+sectie('5. Samenvoegen per fondsaanvraag: het dekkingsplan staat afgestemd op dit fonds');
+{
+  const plan = { secties: [{ id: 'a', titel: 'Aanleiding', tekst: 'Een plan.', vraag: 'Waarom?', status: 'geschreven', aantalAanvullen: 0 }] };
+  const project = { id: 'p1', naam: 'Samen Spelen', eigenBijdrage: '200', begroting: 1000, budgetRegels: [nieuweRegel('uitvoering', { omschrijving: 'Coördinator', bedrag: '1000' })] };
+  const fin = [
+    { id: 'f1', naam: 'Regeling A', funder: 'Stichting Eén', status: 'submitted', requested: 300, awarded: null },
+    { id: 'f2', naam: 'Stichting Twee', funder: '', status: 'awarded', requested: 100, awarded: 100 },
+    { id: 'f3', naam: 'Kwartaalronde donatieaanvraag Stichting Drie', funder: 'Stichting Drie', status: 'preparing', requested: 250, awarded: null },
+  ];
+  const tabel = (blokken, kop) => JSON.stringify(blokken.filter((b) => b.type === 'table').map((b) => b.rows));
+  const m = samengevoegdMomentopname({ plan, project, finRegels: fin, projectNaam: 'Samen Spelen', fondsLabel: 'Kwartaalronde donatieaanvraag mens, natuur en cultuur Stichting Drie' });
+
+  check('de momentopname bewaart het fonds (korte naam)', m.fonds && m.fonds.label === 'Stichting Drie');
+  check('zonder fonds geen fonds in de momentopname', !('fonds' in samengevoegdMomentopname({ plan, project, finRegels: fin })));
+  gelijk('de naam bevat het fonds', samengevoegdFondsNaam('Kwartaalronde donatieaanvraag mens, natuur en cultuur Stichting Drie'), 'Projectplan, begroting en dekking, Stichting Drie');
+  check('de regel van dit fonds wordt herkend, ook via de regelingnaam', isDitFonds(fin[2], 'Stichting Drie') && !isDitFonds(fin[0], 'Stichting Drie') && isDitFonds(fin[1], 'Stichting Twee'));
+
+  const dk = dekkingsplanBlokken(m.project, m.finRegels, m.fonds);
+  const t = tabel(dk);
+
+  check('de tekst zegt bij welk fonds het hoort', dk.some((b) => /hoort bij de aanvraag bij Stichting Drie/.test(b.text || '')));
+  check('gevraagd bij dit fonds (250) staat erin', /Gevraagd bij Stichting Drie","€ 250/.test(t));
+  check('elders toegekend (100) en elders aangevraagd (300)', /Elders toegekend","€ 100/.test(t) && /Elders aangevraagd","€ 300/.test(t));
+  check('nog te financieren na dit fonds: 1000 - 200 - 100 - 300 - 250 = 150', /Nog te financieren na dit fonds","€ 150/.test(t), t);
+  const lijst = JSON.parse(t)[1];
+
+  check('dit fonds staat bovenaan de lijst en is gemarkeerd; de rest behoudt zijn status', lijst[0][0].includes('(dit fonds)') && lijst[0][1] === 'In voorbereiding' && lijst.length === 3 && lijst[1][1] === 'Aangevraagd');
+  check('het gewone dekkingsplan (zonder fonds) blijft ongewijzigd', !/Gevraagd bij|dit fonds/.test(tabel(dekkingsplanBlokken(m.project, m.finRegels))));
+
+  const zonderBedrag = dekkingsplanBlokken(m.project, [{ ...fin[2], requested: null }, fin[1]], m.fonds);
+
+  check('zonder bedrag bij dit fonds: niets verzonnen, wel een eerlijke zin', !/Gevraagd bij/.test(tabel(zonderBedrag)) && zonderBedrag.some((b) => /nog geen bedrag ingevuld/.test(b.text || '')) && /Nog te financieren zonder dit fonds/.test(tabel(zonderBedrag)));
+  check('fonds niet in het dekkingsplan: eerlijke zin', dekkingsplanBlokken(m.project, [fin[0]], m.fonds).some((b) => /staat nog niet in het dekkingsplan/.test(b.text || '')));
+
+  const model = bouwSamengevoegdModel({ inhoud: m, organisatieNaam: 'Stichting' });
+
+  check('titel en bestandsnaam bevatten het fonds', /Stichting Drie/.test(model.titel) && model.bestandsDelen.includes('Stichting Drie'));
+  check('plan en begroting blijven gelijk aan het gewone document', JSON.stringify(begrotingBlokken(m.project)) === JSON.stringify(bouwSamengevoegdModel({ inhoud: samengevoegdMomentopname({ plan, project, finRegels: fin, projectNaam: 'Samen Spelen' }) }).blocks.filter((b, i, a) => i > a.findIndex((x) => x.text === 'Bijlage 1: Begroting') - 1 && i < a.findIndex((x) => x.text === 'Bijlage 1: Begroting') + begrotingBlokken(m.project).length)));
+
+  const sql = (await import('node:fs')).readFileSync('supabase/migrations/20261030130000_samenvoeging_per_fonds_premium.sql', 'utf8');
+
+  check('database: een samenvoeging met fonds vraagt Premium', /inhoud \? 'fonds'/.test(sql) && /current_user_has_premium_access\(\)/.test(sql) && /current_user_has_pro_access\(\)/.test(sql));
 }
 
 klaar('definitief');

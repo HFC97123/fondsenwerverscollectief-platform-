@@ -516,6 +516,12 @@ sectie('11. Aanvraag indienen: formulier, tekenlimieten, antwoorden per vraag en
 
   await klik($('[data-testid="aa-stap-controle"]'));
   check('stap 4 toont Klaar om in te dienen?, downloaden en versies', await wacht(() => $('[data-testid="aa-versie-klaar"]')) && !!$('[data-testid="aa-versie-definitief"]') && !!$('[data-testid="aa-versie-lijst"]'));
+  check('Premium: bij Controle staat het blok "Samenvoegen voor dit fonds"', !!$('[data-testid="samengevoegd-fonds-blok"]') && /Samenvoegen voor dit fonds/.test($('[data-testid="samengevoegd-fonds-blok"]').textContent));
+  await klik($('[data-testid="samengevoegd-fonds-maak"]'));
+  check('zonder projectplan bij dit fonds: een korte, eerlijke zin', await wacht(() => /Schrijf eerst het projectplan bij dit fonds/.test(($('[data-testid="samengevoegd-fonds-bericht"]') || {}).textContent || '')) && !$('[data-testid="samengevoegd-fonds-vraag"]'));
+  await klik($('[data-testid="aa-stap-antwoorden"]'));
+  check('bij Antwoorden staat het blok niet', !$('[data-testid="samengevoegd-fonds-blok"]'));
+  await klik($('[data-testid="aa-stap-controle"]'));
   check('Klaar om in te dienen? toont de stand: antwoorden compleet, stukken ontbreken nog', /Alle 3 vragen hebben een antwoord/.test($('[data-testid="aa-versie-klaar"]').textContent) && /2 stukken ontbreken nog/.test($('[data-testid="aa-versie-klaar"]').textContent) && /Wij dienen nooit iets voor u in/.test($('[data-testid="aa-versie-klaar"]').textContent));
 
   await klik($('[data-testid="aa-stap-antwoorden"]'));
