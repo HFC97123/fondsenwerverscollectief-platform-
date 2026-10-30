@@ -5,7 +5,7 @@ import { supabase } from '../client.js';
 
 export const PROFILE_FIELDS = `
   id, first_name, last_name, email, member_type, motivation, status, role,
-  bio, avatar_path, created_at, approved_at, approved_by, subscription_tier, subscription_active,
+  bio, avatar_path, website, profiel_zichtbaar, email_zichtbaar, created_at, approved_at, approved_by, subscription_tier, subscription_active,
   trial_started_at, trial_ends_at, subscription_started_at, subscription_ends_at,
   stripe_customer_id, stripe_subscription_id
 `;

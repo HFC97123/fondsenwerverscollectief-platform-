@@ -55,12 +55,12 @@ export const supabase = {
   from: (n) => (window.__PROFILEFOUT && n === 'profiles' ? { select: () => ({ eq: () => ({ single: async () => ({ data: null, error: { message: 'x' } }) }) }) } : maak(n)),
   auth: {
     getUser: async () => ({ data: { user: window.__GEENSESSIE ? null : me() } }),
-    getSession: async () => ({ data: { session: sessie() }, error: null }),
+    getSession: async () => ({ data: { session: window.__GEENSESSIE ? null : sessie() }, error: null }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     signOut: async () => ({ error: null }),
   },
   functions: { invoke: async () => ({ data: null, error: null }) },
-  rpc: async () => ({ data: null, error: null }),
+  rpc: async (naam, args) => (window.__RPC ? window.__RPC(naam, args) : { data: null, error: null }),
   storage: { from: () => ({ list: async () => ({ data: [], error: null }) }) },
 };
 export async function query(fn, fb = null) { try { return await fn(supabase); } catch (e) { return { data: fb, error: e }; } }

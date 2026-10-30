@@ -1,8 +1,8 @@
 // Het eigen ledenprofiel op de Netwerk-pagina: profielfoto (toevoegen, wijzigen,
 // verwijderen) en de beschrijving ("Over mij"). Leden kunnen alleen hun eigen
 // profiel wijzigen (RPC's zet_mijn_avatar / zet_mijn_bio, zie
-// data/services/profielFoto.js). Professionele context (werkgever, functie,
-// type opdrachten, thema's, ervaring) hoort in de beschrijving, niet in losse velden.
+// data/services/profielFoto.js). Daarnaast: organisatie, functie en website (LedenGegevens) en de
+// schakelaar "zichtbaar in de ledenlijst" (ZichtbaarheidSchakelaar), zie data/services/ledenlijst.js.
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import ProfielAvatar from '../../shared/ui/ProfielAvatar.jsx';
@@ -15,6 +15,8 @@ import {
   valideerFoto,
   verwijderProfielFoto,
 } from '../../data/services/profielFoto.js';
+import { haalOnboarding, bewaarOnboarding } from '../../data/services/onboarding.js';
+import { MAX_WEBSITE_TEKENS, veiligeWebsite, websiteLabel, zetMijnLedengegevens } from '../../data/services/ledenlijst.js';
 
 const knop = (primair) =>
   css(
@@ -310,6 +312,236 @@ export function LedenProfielBio({ bio, magBewerken, onGewijzigd }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+const veld = css(
+  "width: 100%; box-sizing: border-box; padding: 11px 14px; border: 1px solid #D5E0D9; border-radius: 12px; background: #FFFFFF; font-family: 'Mulish', sans-serif; font-size: 15px; color: #2E3A38; outline: none;",
+);
+const veldLabel = css('font-size: 12.5px; font-weight: 700; color: #2C4A5E; margin-bottom: 6px;');
+const gegevenRij = css('display: grid; grid-template-columns: 110px 1fr; gap: 10px; font-size: 14.5px; line-height: 1.5; padding: 6px 0; border-bottom: 1px solid #EEF2EF;');
+const gegevenNaam = css('color: #7B8985; font-weight: 600;');
+const gegevenWaarde = css('color: #2C4A5E; font-weight: 600; overflow-wrap: anywhere;');
+
+// Organisatie, functie, website en of het e-mailadres zichtbaar is voor andere leden.
+export function LedenGegevens({ profile, magBewerken, onGewijzigd }) {
+  const userId = profile && profile.id;
+  const [onboarding, setOnboarding] = useState(null);
+  const [bewerk, setBewerk] = useState(false);
+  const [form, setForm] = useState({ organisatie: '', functie: '', website: '', emailZichtbaar: false });
+  const [bezig, setBezig] = useState(false);
+  const [fout, setFout] = useState('');
+  const [melding, setMelding] = useState('');
+
+  useEffect(() => {
+    let actief = true;
+
+    if (userId) {
+      haalOnboarding(userId).then((data) => {
+        if (actief) setOnboarding(data || {});
+      });
+    }
+
+    return () => {
+      actief = false;
+    };
+  }, [userId]);
+
+  if (!profile) return null;
+
+  const org = (onboarding && onboarding.organisatie) || '';
+  const functie = (onboarding && onboarding.functie) || '';
+  const site = profile.website || '';
+
+  const start = () => {
+    setForm({ organisatie: org, functie, website: websiteLabel(site), emailZichtbaar: Boolean(profile.email_zichtbaar) });
+    setFout('');
+    setMelding('');
+    setBewerk(true);
+  };
+
+  const opslaan = async () => {
+    if (bezig) return;
+
+    setBezig(true);
+    setFout('');
+
+    const r1 = await zetMijnLedengegevens({
+      website: form.website,
+      profielZichtbaar: Boolean(profile.profiel_zichtbaar),
+      emailZichtbaar: form.emailZichtbaar,
+    });
+
+    if (r1.fout) {
+      setFout(r1.fout);
+      setBezig(false);
+
+      return;
+    }
+
+    const r2 = await bewaarOnboarding(userId, {
+      organisatie: form.organisatie.trim(),
+      functie: form.functie.trim(),
+      waarNaarOpZoek: onboarding && onboarding.waar_naar_op_zoek,
+      doel: onboarding && onboarding.doel,
+      overgeslagen: false,
+    });
+
+    if (r2.fout) {
+      setFout('Organisatie en functie konden niet worden opgeslagen. Probeer het later opnieuw.');
+      setBezig(false);
+
+      return;
+    }
+
+    setOnboarding((o) => ({ ...(o || {}), organisatie: form.organisatie.trim(), functie: form.functie.trim() }));
+
+    if (onGewijzigd) await onGewijzigd();
+
+    setBewerk(false);
+    setBezig(false);
+    setMelding('Uw gegevens zijn opgeslagen.');
+  };
+
+  const zet = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+
+  return (
+    <div data-testid="leden-gegevens" style={css('margin-bottom: 28px; max-width: 560px;')}>
+      <div style={css('font-size: 12.5px; font-weight: 700; color: #4E9A6C; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;')}>
+        Mijn gegevens
+      </div>
+
+      {!bewerk && (
+        <>
+          <div style={gegevenRij}>
+            <span style={gegevenNaam}>Organisatie</span>
+            <span style={gegevenWaarde}>{org || '—'}</span>
+          </div>
+          <div style={gegevenRij}>
+            <span style={gegevenNaam}>Functie</span>
+            <span style={gegevenWaarde}>{functie || '—'}</span>
+          </div>
+          <div style={gegevenRij}>
+            <span style={gegevenNaam}>Website</span>
+            <span style={gegevenWaarde}>
+              {veiligeWebsite(site) ? (
+                <a href={veiligeWebsite(site)} target="_blank" rel="noopener noreferrer" style={css('color: #4E9A6C;')}>
+                  {websiteLabel(site)}
+                </a>
+              ) : (
+                '—'
+              )}
+            </span>
+          </div>
+          <div style={gegevenRij}>
+            <span style={gegevenNaam}>E-mailadres</span>
+            <span style={gegevenWaarde}>
+              {profile.email || '—'}{' '}
+              <span style={css('font-weight: 600; color: #7B8985; font-size: 13px;')}>
+                ({profile.email_zichtbaar ? 'zichtbaar voor leden' : 'alleen voor u'})
+              </span>
+            </span>
+          </div>
+
+          {magBewerken && (
+            <div style={css('margin-top: 14px;')}>
+              <button type="button" onClick={start} style={knop(false)} data-testid="leden-gegevens-bewerken">
+                Gegevens bewerken
+              </button>
+            </div>
+          )}
+
+          {melding && (
+            <div role="status" style={okStijl}>
+              {melding}
+            </div>
+          )}
+        </>
+      )}
+
+      {bewerk && (
+        <div style={css('display: grid; gap: 12px;')}>
+          <label>
+            <div style={veldLabel}>Organisatie</div>
+            <input value={form.organisatie} onChange={zet('organisatie')} maxLength={200} style={veld} placeholder="Waar werkt u?" />
+          </label>
+          <label>
+            <div style={veldLabel}>Functie</div>
+            <input value={form.functie} onChange={zet('functie')} maxLength={200} style={veld} placeholder="Bijvoorbeeld: zelfstandig fondsenwerver" />
+          </label>
+          <label>
+            <div style={veldLabel}>Website</div>
+            <input value={form.website} onChange={zet('website')} maxLength={MAX_WEBSITE_TEKENS} style={veld} placeholder="www.mijnwebsite.nl" data-testid="leden-website" />
+          </label>
+          <label style={css('display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; color: #2C4A5E; cursor: pointer;')}>
+            <input type="checkbox" checked={form.emailZichtbaar} onChange={zet('emailZichtbaar')} style={css('margin-top: 4px;')} data-testid="leden-email-zichtbaar" />
+            <span>Andere leden mogen mijn e-mailadres zien ({profile.email})</span>
+          </label>
+          <div style={css('display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;')}>
+            <button type="button" onClick={opslaan} disabled={bezig} style={{ ...knop(true), ...(bezig ? knopUit : null) }}>
+              {bezig ? 'Bezig met opslaan…' : 'Opslaan'}
+            </button>
+            <button type="button" onClick={() => setBewerk(false)} disabled={bezig} style={knop(false)}>
+              Annuleren
+            </button>
+          </div>
+          {fout && (
+            <div role="alert" style={foutStijl}>
+              {fout}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Schakelaar rechtsboven in het profiel: staat u in de ledenlijst of niet?
+export function ZichtbaarheidSchakelaar({ profile, magBewerken, onGewijzigd }) {
+  const [bezig, setBezig] = useState(false);
+  const [fout, setFout] = useState('');
+
+  if (!profile || !magBewerken) return null;
+
+  const aan = Boolean(profile.profiel_zichtbaar);
+
+  const wissel = async () => {
+    if (bezig) return;
+
+    setBezig(true);
+    setFout('');
+
+    const r = await zetMijnLedengegevens({ website: profile.website, profielZichtbaar: !aan, emailZichtbaar: profile.email_zichtbaar });
+
+    if (r.fout) setFout(r.fout);
+    else if (onGewijzigd) await onGewijzigd();
+
+    setBezig(false);
+  };
+
+  return (
+    <div style={css('display: flex; flex-direction: column; align-items: flex-end; gap: 4px;')}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={aan}
+        onClick={wissel}
+        disabled={bezig}
+        data-testid="profiel-zichtbaar"
+        style={css(
+          `display: inline-flex; align-items: center; gap: 10px; cursor: pointer; padding: 7px 14px 7px 8px; border-radius: 999px; border: 1.5px solid ${aan ? '#4E9A6C' : '#E1EAE4'}; background: #FFFFFF; font-family: inherit; font-size: 13.5px; font-weight: 700; color: #2C4A5E;${bezig ? ' opacity: 0.6;' : ''}`,
+        )}
+      >
+        <span
+          aria-hidden="true"
+          style={css(`width: 36px; height: 20px; border-radius: 999px; background: ${aan ? '#4E9A6C' : '#C9D3CE'}; position: relative; flex-shrink: 0;`)}
+        >
+          <span style={css(`position: absolute; top: 2px; left: ${aan ? '18px' : '2px'}; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF;`)} />
+        </span>
+        {aan ? 'Zichtbaar in de ledenlijst' : 'Niet zichtbaar in de ledenlijst'}
+      </button>
+      {fout && <div role="alert" style={css('font-size: 12.5px; color: #B3412F;')}>{fout}</div>}
     </div>
   );
 }
