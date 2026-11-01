@@ -278,7 +278,7 @@ export const collections = [
       { name: 'session_date', label: 'Datum', type: 'date', required: true },
       { name: 'session_time', label: 'Tijd', type: 'text', placeholder: '10:00' },
       { name: 'host', label: 'Onder leiding van', type: 'text', placeholder: 'o.l.v. ...' },
-      { name: 'mode', label: 'Vorm', type: 'select', options: ['Online', 'Utrecht', 'Amsterdam', 'Hybride'] },
+      { name: 'mode', label: 'Vorm', type: 'select', options: ['Online', 'Op locatie', 'Training', 'Utrecht', 'Amsterdam', 'Hybride'] },
       { name: 'signup_url', label: 'Aanmeldlink', type: 'text', placeholder: 'https://...' },
     ],
     title: (row) => row.title,

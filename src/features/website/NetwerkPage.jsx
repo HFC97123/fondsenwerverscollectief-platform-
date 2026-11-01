@@ -11,6 +11,7 @@ import { css } from '../../shared/lib/css.js';
 import { useApp } from './WebsiteProvider.jsx';
 import { LedenGegevens, LedenProfielBio, LedenProfielFoto, ZichtbaarheidSchakelaar } from './LedenProfiel.jsx';
 import LedenLijst from './LedenLijst.jsx';
+import EigenaarKaart from './EigenaarKaart.jsx';
 
 const sectie = css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 72px;');
 const sectieKop = css("font-family: 'Newsreader', serif; font-size: clamp(23px, 3.2vw, 28px); font-weight: 600; color: #2C4A5E;");
@@ -219,6 +220,9 @@ export default function NetwerkPage() {
           )}
         </div>
       </div>
+
+      {/* EIGENAAR: voor iedereen zichtbaar, ook zonder account */}
+      <EigenaarKaart vernieuwSleutel={profile ? `${profile.bio}-${profile.avatar_path}-${profile.website}` : ''} />
 
       {/* LOGIN / ACCOUNT / PROFIEL */}
       <div id="account" style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 56px;')}>

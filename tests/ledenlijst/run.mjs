@@ -29,5 +29,12 @@ check('schakelaar is role=switch', /role="switch"/.test(profiel) && /aria-checke
 check('website-link veilig (alleen http/https, noopener)', /veiligeWebsite/.test(lijst) && /rel="noopener noreferrer"/.test(lijst) && /\^https\?:\\\/\\\//.test(dienst));
 check('RPC-namen', dienst.includes("rpc('ledenlijst')") && dienst.includes("rpc('zet_mijn_ledengegevens'"));
 
+// eigenaar-kaart
+const eig = lees('supabase/migrations/20261101100000_eigenaar_kaart.sql');
+check('eigenaar: RPC voor bezoekers zonder account, zonder e-mail', /grant execute on function public\.collectief_eigenaar\(\) to anon, authenticated/.test(eig) && !/email/i.test(eig.split('create or replace function public.is_eigenaar_foto')[0].replace(/--.*\n/g, '')));
+check('eigenaar: alleen de foto van de eigenaar is zonder inloggen te zien', /to anon, authenticated\s+using \(bucket_id = 'profile-images' and public\.is_eigenaar_foto\(name\)\)/.test(eig));
+check('eigenaar: kaart staat buiten de inlogvoorwaarde in de pagina', /<EigenaarKaart/.test(netwerk) && !/isLoggedIn[^\n]*\n[^\n]*<EigenaarKaart/.test(netwerk));
+check('eigenaar: niet dubbel in de ledenlijst', /lid\.rol !== 'admin'/.test(lijst));
+
 console.log(`\nRESULTAAT: ${ok} OK, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

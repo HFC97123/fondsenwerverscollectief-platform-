@@ -52,3 +52,18 @@ export async function zetMijnLedengegevens({ website, profielZichtbaar, emailZic
     return { fout: 'Opslaan is niet gelukt. Probeer het later opnieuw.' };
   }
 }
+
+// De eigenaar van het Collectief: voor iedereen zichtbaar, ook zonder inloggen (migratie 20261101100000_eigenaar_kaart).
+// -> { eigenaar: { naam, avatar_path, bio, website, organisatie, functie } | null }
+export async function haalEigenaar() {
+  if (!supabase) return { eigenaar: null };
+
+  try {
+    const { data, error } = await supabase.rpc('collectief_eigenaar');
+    const rij = Array.isArray(data) ? data[0] : data;
+
+    return error || !rij || !rij.naam ? { eigenaar: null } : { eigenaar: rij };
+  } catch (e) {
+    return { eigenaar: null };
+  }
+}

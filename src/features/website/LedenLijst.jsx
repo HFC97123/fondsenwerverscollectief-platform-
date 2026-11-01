@@ -99,14 +99,14 @@ export default function LedenLijst({ profiel, vernieuwSleutel }) {
 
       {leden === null && !fout && <div style={css('font-size: 14.5px; color: #7B8985;')}>Leden laden…</div>}
       {fout && <div style={css('font-size: 14.5px; color: #B3412F;')}>{fout}</div>}
-      {leden && leden.length === 0 && !fout && (
+      {leden && leden.filter((lid) => lid.rol !== 'admin').length === 0 && !fout && (
         <div style={css('background: #FFFFFF; border-radius: 18px; padding: 22px; font-size: 14.5px; color: #7B8985;')}>
           Er staan nog geen leden in de lijst.
         </div>
       )}
-      {leden && leden.length > 0 && (
+      {leden && leden.filter((lid) => lid.rol !== 'admin').length > 0 && (
         <div style={css('display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;')}>
-          {leden.map((lid) => (
+          {leden.filter((lid) => lid.rol !== 'admin').map((lid) => (
             <LidKaart key={lid.id} lid={lid} />
           ))}
         </div>
