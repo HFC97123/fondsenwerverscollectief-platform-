@@ -222,12 +222,12 @@ export default function NetwerkPage() {
       </div>
 
       {/* EIGENAAR: voor iedereen zichtbaar, ook zonder account */}
-      <EigenaarKaart vernieuwSleutel={profile ? `${profile.bio}-${profile.avatar_path}-${profile.website}` : ''} />
+      <EigenaarKaart vernieuwSleutel={profile ? `${profile.bio}-${profile.avatar_path}-${profile.website}` : ''} kanBewerken={Boolean(isLoggedIn && profile && profile.role === 'admin')} />
 
       {/* LOGIN / ACCOUNT / PROFIEL */}
       <div id="account" style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 56px;')}>
-        {isLoggedIn && (
-          <AccountKaart profile={profile} profileFullName={profileFullName} profileInitials={profileInitials} isApproved={isApproved} vernieuwProfiel={vernieuwProfiel} logout={logout} />
+        {isLoggedIn && !(profile && profile.role === 'admin') && (
+          <AccountKaart profile={profile} profileFullName={profileFullName} profileInitials={profileInitials} logout={logout} />
         )}
 
       </div>

@@ -33,18 +33,13 @@ check('de kaart staat er', !!kaart);
 check('ingeklapt: "Ingelogd als" en naam', /Ingelogd als/.test(kaart.textContent) && /Jan Jansen/.test(kaart.textContent));
 check('ingeklapt: functie en organisatie onder de naam', /Zelfstandig fondsenwerver/.test(q('[data-testid="account-regel"]').textContent) && /Stichting Voorbeeld/.test(q('[data-testid="account-regel"]').textContent));
 check('ingeklapt: foto (initialen) staat er', !!q('[data-avatar]'));
-check('ingeklapt: geen profielonderdelen', !q('[data-testid="account-uitgeklapt"]') && !/Over mij/.test(kaart.textContent) && !/Mijn opgeslagen artikelen/.test(kaart.textContent));
-check('knop om uit te klappen', /Mijn profiel/.test(q('[data-testid="account-uitklap"]').textContent) && q('[data-testid="account-uitklap"]').getAttribute('aria-expanded') === 'false');
-
-await act(async () => { klik(q('[data-testid="account-uitklap"]')); await sleep(60); });
-check('uitgeklapt: profiel zichtbaar', !!q('[data-testid="account-uitgeklapt"]') && /Over mij/.test(q('[data-testid="account-kaart"]').textContent));
-check('uitgeklapt: knop wordt inklappen', /Inklappen/.test(q('[data-testid="account-uitklap"]').textContent) && q('[data-testid="account-uitklap"]').getAttribute('aria-expanded') === 'true');
-
-await act(async () => { klik(q('[data-testid="account-uitklap"]')); await sleep(30); });
-check('weer ingeklapt', !q('[data-testid="account-uitgeklapt"]'));
+check('geen dubbel profiel onder de kaart', !/Over mij/i.test(kaart.textContent) && !q('[data-testid="account-uitgeklapt"]'));
+const bew = q('[data-testid="profiel-bewerken"]');
+check('Bewerken-knop leidt naar Account', !!bew && bew.getAttribute('href') === '#/kompas/account' && /Bewerken/.test(bew.textContent));
+check('Bewerken-knop verschijnt bij de muis (hover-stijl aanwezig)', kaart.className.includes('fwk-bewerk-kaart') && /fwk-bewerk-kaart:hover \.fwk-bewerk-knop/.test(document.body.innerHTML));
 
 await act(async () => { klik(q('[data-testid="account-uitloggen"]')); await sleep(10); });
-check('uitloggen werkt vanuit de balk', uitgelogd === 1);
+check('uitloggen werkt vanuit de kaart', uitgelogd === 1);
 
 // zonder onboarding-gegevens: alleen de soort
 client.zetOnboarding({ data: null, error: null });

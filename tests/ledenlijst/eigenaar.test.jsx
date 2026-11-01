@@ -38,6 +38,10 @@ check('website als veilige link', q('[data-testid="eigenaar-kaart"] a').getAttri
 check('de RPC wordt zonder gegevens van de bezoeker aangeroepen', client.log.some((x) => x.naam === 'collectief_eigenaar' && x.args === undefined));
 check('er wordt geen e-mailadres getoond', !/@/.test(q('[data-testid="eigenaar-kaart"]').textContent));
 
+check('bezoeker ziet geen Bewerken-knop', !q('[data-testid="profiel-bewerken"]'));
+await act(async () => { wortel.render(<EigenaarKaart key="2b" kanBewerken />); await sleep(60); });
+check('de eigenaar zelf ziet Bewerken naar Account', q('[data-testid="profiel-bewerken"]') && q('[data-testid="profiel-bewerken"]').getAttribute('href') === '#/kompas/account');
+
 // onveilig webadres wordt geen link
 client.zet({ data: [{ naam: 'Aisya', avatar_path: null, bio: 'Kort.', website: 'javascript:alert(1)' }], error: null });
 await act(async () => { wortel.render(<EigenaarKaart key="3" />); await sleep(60); });

@@ -25,7 +25,10 @@ check('foto alleen van zichtbare leden', /mag_profielfoto_zien/.test(mig) && /p\
 check('profiel laadt de nieuwe velden', /website, profiel_zichtbaar, email_zichtbaar/.test(velden));
 check('ledenlijst alleen voor ingelogde goedgekeurde leden', /isLoggedIn && isApproved && \(\s*<LedenLijst/.test(netwerk));
 const account = lees('src/features/website/AccountKaart.jsx');
-check('schakelaar en gegevens in het eigen profiel (uitklapbare kaart)', account.includes('<ZichtbaarheidSchakelaar') && account.includes('<LedenGegevens') && /<AccountKaart/.test(netwerk));
+const accountPagina = lees('src/features/kompas-app/AccountPage.jsx');
+check('Collectief-kaart: geen dubbel profiel meer, wel Bewerken-knop naar Account', !account.includes('<LedenGegevens') && account.includes('<BewerkKnop') && /#\/kompas\/account/.test(lees('src/features/website/BewerkKnop.jsx')) && /<AccountKaart/.test(netwerk));
+check('eigenaar bewerkt via de eigen kaart (geen dubbele kaart)', /kanBewerken=\{Boolean\(isLoggedIn && profile && profile\.role === 'admin'\)\}/.test(netwerk) && /isLoggedIn && !\(profile && profile\.role === 'admin'\)/.test(netwerk));
+check('Account-pagina: foto en over mij te wijzigen', accountPagina.includes('<LedenProfielFoto') && accountPagina.includes('<LedenProfielBio') && accountPagina.includes('account-profiel-zichtbaar'));
 check('schakelaar is role=switch', /role="switch"/.test(profiel) && /aria-checked/.test(profiel));
 check('website-link veilig (alleen http/https, noopener)', /veiligeWebsite/.test(lijst) && /rel="noopener noreferrer"/.test(lijst) && /\^https\?:\\\/\\\//.test(dienst));
 check('RPC-namen', dienst.includes("rpc('ledenlijst')") && dienst.includes("rpc('zet_mijn_ledengegevens'"));
