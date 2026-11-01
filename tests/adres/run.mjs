@@ -22,13 +22,15 @@ check('slash achteraan weg', publiekPad('/kompas/deadlines/') === '/subsidie-kom
 
 check('Collectief-pagina: intern /netwerk, in de adresbalk /collectief', publiekPad('/netwerk') === '/collectief' && publiekeUrl('/netwerk?x=1') === '/collectief?x=1');
 
+check('Account van het Collectief: intern /account, in de adresbalk /collectief/account', publiekPad('/account') === '/collectief/account' && internPad('/collectief/account') === '/account' && internPad('/collectief/account/') === '/account');
+
 // publiek -> intern
 check('/collectief opent de Collectief-pagina, het oude /netwerk blijft werken', internPad('/collectief') === '/netwerk' && internPad('/collectief/') === '/netwerk' && internPad('/netwerk') === '/netwerk');
 check('terug: chat', internPad('/subsidie-kompas') === '/kompas' && internPad('/subsidie-kompas/') === '/kompas');
 check('terug: app-pagina', internPad('/subsidie-kompas/deadlines') === '/kompas/deadlines');
 check('terug: hoe het werkt', internPad('/subsidie-kompas/hoe-het-werkt') === '/hoe-het-werkt');
 check('terug: collectief', internPad('/actueel') === '/actueel' && internPad('/') === '/');
-check('heen en terug voor elke route', ['/', '/actueel', '/kompas', '/kompas/dashboard', '/kompas/projecten/x', '/hoe-het-werkt', '/kompas/abonneren', '/wachtwoord-instellen', '/beheer'].every((p) => internPad(publiekPad(p)) === p));
+check('heen en terug voor elke route', ['/', '/actueel', '/kompas', '/kompas/dashboard', '/kompas/projecten/x', '/hoe-het-werkt', '/kompas/abonneren', '/wachtwoord-instellen', '/beheer', '/netwerk', '/account'].every((p) => internPad(publiekPad(p)) === p));
 
 // urls met query
 check('query blijft', publiekeUrl('#/kompas?conversation=1&focus=2') === '/subsidie-kompas?conversation=1&focus=2');

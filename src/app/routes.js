@@ -31,6 +31,8 @@ export const routes = [
   // de pagina al voordat iemand het registratieformulier ooit te zien
   // krijgt — rechtstreeks in strijd met 'direct toegang, geen wachttijd'.
   { pad: '/netwerk', area: AREA.website, titel: 'Ledengedeelte', toegang: 'publiek' },
+  // Het account van het Collectief (profiel: foto, over mij, gegevens, zichtbaarheid). Publiek bereikbaar; de pagina vraagt zelf om in te loggen.
+  { pad: '/account', area: AREA.website, titel: 'Account', toegang: 'publiek' },
 
   // De paden volgen de links in het goedgekeurde ontwerp.
   { pad: '/hoe-het-werkt', area: AREA.marketing, titel: 'Hoe het werkt', toegang: 'publiek' },

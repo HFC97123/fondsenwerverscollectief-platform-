@@ -13,7 +13,6 @@ import {
 } from '../../data/services/billing.js';
 import { bewaarOnboarding, haalAankopen, haalOnboarding } from '../../data/services/onboarding.js';
 import { websiteLabel, zetMijnLedengegevens } from '../../data/services/ledenlijst.js';
-import { LedenProfielBio, LedenProfielFoto } from '../website/LedenProfiel.jsx';
 import { useCheckoutTerugkeer } from './useCheckoutTerugkeer.js';
 import ExportMenu from '../../shared/ui/ExportMenu.jsx';
 import { gesprekExport } from './exportBronnen.js';
@@ -188,25 +187,6 @@ export default function AccountPage() {
         <Notice tone="info">
           De betaling is niet afgerond. Er is niets in rekening gebracht en uw membership is niet gewijzigd.
         </Notice>
-      )}
-
-      {app.profile && (
-        <div data-testid="account-profielfoto-bio" style={css('margin-bottom: 14px; padding: 18px; border: 1px solid #E1EAE4; border-radius: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 28px; align-items: start;')}>
-          <div style={css('text-align: center;')}>
-            <LedenProfielFoto
-              userId={app.profile.id}
-              fotoPad={app.profile.avatar_path}
-              initialen={String(app.naam || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')}
-              naam={app.naam || ''}
-              magBewerken
-              onGewijzigd={app.herlaadProfiel}
-            />
-          </div>
-          <div>
-            <div style={css('margin-bottom: 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; color: #9AA6A2;')}>OVER MIJ</div>
-            <LedenProfielBio bio={app.profile.bio} magBewerken onGewijzigd={app.herlaadProfiel} />
-          </div>
-        </div>
       )}
 
       <div style={css('margin-bottom: 14px; padding: 14px 18px; border: 1px solid #E1EAE4; border-radius: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;')}>

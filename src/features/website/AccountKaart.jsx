@@ -1,5 +1,5 @@
 // Het account van het ingelogde lid op de Collectief-pagina: een smalle kaart (ingelogd als, foto, naam, soort en organisatie).
-// Wijzigen gaat via de Bewerken-knop (bij de muis erover) naar Mijn Subsidie Kompas › Account.
+// Wijzigen gaat via de Bewerken-knop (bij de muis erover) naar de Account-pagina van het Collectief.
 import React, { useEffect, useState } from 'react';
 import { css } from '../../shared/lib/css.js';
 import ProfielAvatar from '../../shared/ui/ProfielAvatar.jsx';

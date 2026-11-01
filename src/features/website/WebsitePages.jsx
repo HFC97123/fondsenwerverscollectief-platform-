@@ -11,6 +11,7 @@ import HomePage from './HomePage.jsx';
 import ActueelPage from './ActueelPage.jsx';
 import ArticlePage from './ArticlePage.jsx';
 import NetwerkPage from './NetwerkPage.jsx';
+import AccountPagina from './AccountPagina.jsx';
 import FellowPage from './FellowPage.jsx';
 import OrgPage from './OrgPage.jsx';
 import OrientPage from './OrientPage.jsx';
@@ -36,6 +37,7 @@ export default function WebsitePages({ route, param }) {
         <ActueelPage />
         <ArticlePage />
         <NetwerkPage />
+        <AccountPagina />
         <FellowPage />
         <OrgPage />
         <OrientPage />

@@ -35,7 +35,7 @@ check('ingeklapt: functie en organisatie onder de naam', /Zelfstandig fondsenwer
 check('ingeklapt: foto (initialen) staat er', !!q('[data-avatar]'));
 check('geen dubbel profiel onder de kaart', !/Over mij/i.test(kaart.textContent) && !q('[data-testid="account-uitgeklapt"]'));
 const bew = q('[data-testid="profiel-bewerken"]');
-check('Bewerken-knop leidt naar Account', !!bew && bew.getAttribute('href') === '#/kompas/account' && /Bewerken/.test(bew.textContent));
+check('Bewerken-knop leidt naar het Account van het Collectief', !!bew && bew.getAttribute('href') === '#/account' && /Bewerken/.test(bew.textContent));
 check('Bewerken-knop verschijnt bij de muis (hover-stijl aanwezig)', kaart.className.includes('fwk-bewerk-kaart') && /fwk-bewerk-kaart:hover \.fwk-bewerk-knop/.test(document.body.innerHTML));
 
 await act(async () => { klik(q('[data-testid="account-uitloggen"]')); await sleep(10); });

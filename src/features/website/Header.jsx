@@ -124,7 +124,7 @@ function AccountMenu({ compact }) {
                   style={menuItemStijl}
                   onClick={() => {
                     setOpen(false);
-                    naar('/kompas/account');
+                    naar('/account');
                   }}
                 >
                   Mijn account
@@ -332,7 +332,7 @@ export default function Header() {
                 {isLoggedIn ? (
                   <>
                     <div
-                      onClick={() => naar('/kompas/account')}
+                      onClick={() => naar('/account')}
                       style={css('cursor: pointer; padding: 13px 4px; font-size: 16px; font-weight: 600; color: #2C4A5E;')}
                     >
                       Mijn account
