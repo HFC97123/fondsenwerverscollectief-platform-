@@ -189,7 +189,7 @@ export default function OrgPage() {
               Liever persoonlijk contact?
             </div>
             <div style={css('font-size: 15px; line-height: 1.6; color: #4B5C58; flex-grow: 1; margin-bottom: 24px;')}>
-              Verbind met een ervaren fondsenwerver uit het netwerk, of plaats een vacature binnen het Collectief.
+              Verbind met een ervaren fondsenwerver uit het Collectief, of plaats een vacature binnen het Collectief.
             </div>
             <div
               onClick={goNetwerk}

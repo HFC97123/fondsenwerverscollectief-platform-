@@ -27,7 +27,7 @@ export const FAQ_SECTIONS = [
       {
         q: 'Bij wie kan ik terecht met een vraag?',
         blocks: [
-          'Neem contact op via de contactpagina van Het Fondsenwervers Collectief. Leden kunnen hun vraag ook in het netwerk stellen bij vakgenoten.',
+          'Neem contact op via de contactpagina van Het Fondsenwervers Collectief. Leden kunnen hun vraag ook in het Collectief stellen bij vakgenoten.',
         ],
       },
     ],

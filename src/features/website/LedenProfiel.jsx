@@ -1,4 +1,4 @@
-// Het eigen ledenprofiel op de Netwerk-pagina: profielfoto (toevoegen, wijzigen,
+// Het eigen ledenprofiel op de Collectief-pagina: profielfoto (toevoegen, wijzigen,
 // verwijderen) en de beschrijving ("Over mij"). Leden kunnen alleen hun eigen
 // profiel wijzigen (RPC's zet_mijn_avatar / zet_mijn_bio, zie
 // data/services/profielFoto.js). Daarnaast: organisatie, functie en website (LedenGegevens) en de

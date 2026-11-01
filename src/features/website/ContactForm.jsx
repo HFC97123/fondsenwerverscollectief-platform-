@@ -156,7 +156,7 @@ export default function ContactForm() {
               Benieuwd naar het Collectief?
             </div>
             <div style={css('font-size: 15px; line-height: 1.6; color: #4B5C58; margin-bottom: 18px;')}>
-              Ontdek wat het Collectief u biedt: netwerk, intervisie, kennisdeling en vacatures.
+              Ontdek wat het Collectief u biedt: intervisie, kennisdeling en vacatures.
             </div>
             <div
               onClick={goNetwerk}

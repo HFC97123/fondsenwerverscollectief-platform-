@@ -56,7 +56,7 @@ export default function FellowPage() {
         <div style={kaart}>
           <div style={kaartKop}>Collectief</div>
           <div style={kaartTekst}>
-            Netwerk, intervisie, praktijkgidsen en kant-en-klare templates. Leer van elkaars aanvragen, afwijzingen en
+            Intervisie, praktijkgidsen en kant-en-klare templates. Leer van elkaars aanvragen, afwijzingen en
             toekenningen.
           </div>
           <div onClick={goNetwerk} style={kaartLink}>

@@ -20,7 +20,10 @@ check('hoe het werkt onder subsidie-kompas', publiekPad('/hoe-het-werkt') === '/
 check('collectief-pagina blijft', publiekPad('/actueel') === '/actueel' && publiekPad('/') === '/' && publiekPad('/artikel/12') === '/artikel/12' && publiekPad('/beheer') === '/beheer');
 check('slash achteraan weg', publiekPad('/kompas/deadlines/') === '/subsidie-kompas/deadlines');
 
+check('Collectief-pagina: intern /netwerk, in de adresbalk /collectief', publiekPad('/netwerk') === '/collectief' && publiekeUrl('/netwerk?x=1') === '/collectief?x=1');
+
 // publiek -> intern
+check('/collectief opent de Collectief-pagina, het oude /netwerk blijft werken', internPad('/collectief') === '/netwerk' && internPad('/collectief/') === '/netwerk' && internPad('/netwerk') === '/netwerk');
 check('terug: chat', internPad('/subsidie-kompas') === '/kompas' && internPad('/subsidie-kompas/') === '/kompas');
 check('terug: app-pagina', internPad('/subsidie-kompas/deadlines') === '/kompas/deadlines');
 check('terug: hoe het werkt', internPad('/subsidie-kompas/hoe-het-werkt') === '/hoe-het-werkt');

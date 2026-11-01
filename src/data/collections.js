@@ -209,7 +209,7 @@ export const collections = [
     label: 'Templates',
     singular: 'template',
     newLabel: '+ Nieuwe template',
-    intro: 'Praktijkgidsen en templates die leden kunnen downloaden op de netwerkpagina.',
+    intro: 'Praktijkgidsen en templates die leden kunnen downloaden op de Collectief-pagina.',
     order: { column: 'sort_order', ascending: true },
     // Publiek: eerst op volgorde, daarna alfabetisch op titel.
     publicOrder: [
@@ -259,7 +259,7 @@ export const collections = [
     label: 'Agenda',
     singular: 'bijeenkomst',
     newLabel: '+ Nieuwe bijeenkomst',
-    intro: 'Intervisies en werksessies op de netwerkpagina.',
+    intro: 'Intervisies en werksessies op de Collectief-pagina.',
     order: { column: 'session_date', ascending: true },
     // Publiek: eerstvolgende bijeenkomst eerst; bijeenkomsten uit het verleden
     // (indien nog gepubliceerd) komen daarna, meest recente eerst.
@@ -305,7 +305,7 @@ export const collections = [
     label: 'Blog',
     singular: 'blog',
     newLabel: '+ Nieuwe blog',
-    intro: 'Kennisdeling en praktijkverhalen op de netwerkpagina.',
+    intro: 'Kennisdeling en praktijkverhalen op de Collectief-pagina.',
     order: { column: 'created_at', ascending: false },
     // Publiek: nieuwste publicatie eerst.
     publicOrder: [{ column: 'published_at', ascending: false }],

@@ -9,6 +9,8 @@
 //   intern '#/actueel'            ->  fondsenwerverscollectief.nl/actueel
 //
 // Alles van Subsidie Kompas staat onder /subsidie-kompas; de pagina's van het Collectief niet.
+// De Collectief-pagina heet intern '/netwerk' (routetabel en code), maar in de adresbalk '/collectief'. Het oude adres /netwerk
+// blijft werken en wordt omgezet.
 //
 // Hoe het werkt:
 // - huidigeHash() geeft het interne pad van de huidige pagina (zoals window.location.hash vroeger deed).
@@ -35,6 +37,7 @@ export function publiekPad(intern) {
   if (p.startsWith('/kompas/')) return SK + p.slice('/kompas'.length);
   if (p.startsWith(`${SK}/`)) return p;
   if (p === '/hoe-het-werkt' || p.startsWith('/hoe-het-werkt/')) return SK + p;
+  if (p === '/netwerk') return '/collectief';
 
   return p || '/';
 }
@@ -52,6 +55,7 @@ export function internPad(publiek) {
   if (p === SK) return '/kompas';
   if (p === `${SK}/hoe-het-werkt` || p.startsWith(`${SK}/hoe-het-werkt/`)) return p.slice(SK.length);
   if (p.startsWith(`${SK}/`)) return `/kompas${p.slice(SK.length)}`;
+  if (p === '/collectief') return '/netwerk';
 
   return p || '/';
 }
@@ -167,7 +171,7 @@ export function startAdres(win = venster()) {
   if (!zetOudAdresOm(win)) {
     const pad = win.location.pathname;
 
-    if (pad === '/kompas' || pad.startsWith('/kompas/') || pad === '/hoe-het-werkt') {
+    if (pad === '/kompas' || pad.startsWith('/kompas/') || pad === '/hoe-het-werkt' || pad === '/netwerk') {
       win.history.replaceState(win.history.state, '', publiekeUrl(`${pad}${win.location.search}`) + win.location.hash);
     }
   }

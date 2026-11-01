@@ -33,7 +33,7 @@ const radio = css('accent-color: #4E9A6C; width: 16px; height: 16px;');
 
 const HERO_PUNTEN = [
   'Vakkennis en verdieping voor en door fondsenwervers',
-  'Netwerk & intervisie: deel kennis en ervaring, leer van elkaars aanvragen, afwijzingen en toekenningen',
+  'Intervisie: deel kennis en ervaring, leer van elkaars aanvragen, afwijzingen en toekenningen',
   'Praktijkgidsen en kant-en-klare templates om te downloaden',
   'Slimme tools, met Subsidie Kompas als vaste hulp in uw dagelijkse praktijk',
   'Relevante vacatures uit de sector',
