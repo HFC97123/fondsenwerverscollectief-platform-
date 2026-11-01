@@ -24,7 +24,8 @@ check('foto alleen van zichtbare leden', /mag_profielfoto_zien/.test(mig) && /p\
 // frontend
 check('profiel laadt de nieuwe velden', /website, profiel_zichtbaar, email_zichtbaar/.test(velden));
 check('ledenlijst alleen voor ingelogde goedgekeurde leden', /isLoggedIn && isApproved && \(\s*<LedenLijst/.test(netwerk));
-check('schakelaar en gegevens in het eigen profiel', netwerk.includes('<ZichtbaarheidSchakelaar') && netwerk.includes('<LedenGegevens'));
+const account = lees('src/features/website/AccountKaart.jsx');
+check('schakelaar en gegevens in het eigen profiel (uitklapbare kaart)', account.includes('<ZichtbaarheidSchakelaar') && account.includes('<LedenGegevens') && /<AccountKaart/.test(netwerk));
 check('schakelaar is role=switch', /role="switch"/.test(profiel) && /aria-checked/.test(profiel));
 check('website-link veilig (alleen http/https, noopener)', /veiligeWebsite/.test(lijst) && /rel="noopener noreferrer"/.test(lijst) && /\^https\?:\\\/\\\//.test(dienst));
 check('RPC-namen', dienst.includes("rpc('ledenlijst')") && dienst.includes("rpc('zet_mijn_ledengegevens'"));

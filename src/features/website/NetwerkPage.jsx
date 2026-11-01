@@ -9,9 +9,9 @@
 import React from 'react';
 import { css } from '../../shared/lib/css.js';
 import { useApp } from './WebsiteProvider.jsx';
-import { LedenGegevens, LedenProfielBio, LedenProfielFoto, ZichtbaarheidSchakelaar } from './LedenProfiel.jsx';
 import LedenLijst from './LedenLijst.jsx';
 import EigenaarKaart from './EigenaarKaart.jsx';
+import AccountKaart from './AccountKaart.jsx';
 
 const sectie = css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 72px;');
 const sectieKop = css("font-family: 'Newsreader', serif; font-size: clamp(23px, 3.2vw, 28px); font-weight: 600; color: #2C4A5E;");
@@ -227,58 +227,7 @@ export default function NetwerkPage() {
       {/* LOGIN / ACCOUNT / PROFIEL */}
       <div id="account" style={css('max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 56px;')}>
         {isLoggedIn && (
-          <div
-            style={css(
-              'background: #FFFFFF; border-radius: 24px; padding: clamp(22px, 3.5vw, 40px); display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 40px; align-items: start;',
-            )}
-          >
-            <div style={css('grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-bottom: -24px;')}>
-              <ZichtbaarheidSchakelaar profile={profile} magBewerken={Boolean(isApproved && profile)} onGewijzigd={vernieuwProfiel} />
-            </div>
-            <div style={css('text-align: center;')}>
-              <LedenProfielFoto
-                userId={profile && profile.id}
-                fotoPad={profile && profile.avatar_path}
-                initialen={profileInitials}
-                naam={profileFullName}
-                magBewerken={Boolean(isApproved && profile)}
-                onGewijzigd={vernieuwProfiel}
-              />
-              <div style={css("font-family: 'Newsreader', serif; font-size: 22px; font-weight: 600; color: #2C4A5E;")}>{profileFullName}</div>
-              <div style={css('font-size: 14px; color: #4B5C58; margin-top: 4px;')}>{profile && profile.role === 'admin' ? 'Eigenaar van het Collectief' : 'Lid van het Collectief'}</div>
-              <div
-                onClick={logout}
-                style={css(
-                  'cursor: pointer; margin-top: 18px; display: inline-block; padding: 9px 22px; border: 1.5px solid #E1EAE4; border-radius: 999px; font-weight: 700; color: #4E9A6C; font-size: 13.5px;',
-                )}
-              >
-                Uitloggen
-              </div>
-            </div>
-
-            <div>
-              <div
-                style={css(
-                  'font-size: 12.5px; font-weight: 700; color: #4E9A6C; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;',
-                )}
-              >
-                Over mij
-              </div>
-              <LedenProfielBio bio={profile && profile.bio} magBewerken={Boolean(isApproved && profile)} onGewijzigd={vernieuwProfiel} />
-              <LedenGegevens profile={profile} magBewerken={Boolean(isApproved && profile)} onGewijzigd={vernieuwProfiel} />
-
-              <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(256px, 1fr)); gap: 20px;')}>
-                <div style={css('background: #F7F9F8; border-radius: 16px; padding: 22px;')}>
-                  <div style={css('font-weight: 700; color: #2C4A5E; font-size: 15px; margin-bottom: 14px;')}>Mijn opgeslagen artikelen</div>
-                  <div style={css('font-size: 14px; color: #7B8985; line-height: 1.5;')}>Er is momenteel nog geen content beschikbaar.</div>
-                </div>
-                <div style={css('background: #F7F9F8; border-radius: 16px; padding: 22px;')}>
-                  <div style={css('font-weight: 700; color: #2C4A5E; font-size: 15px; margin-bottom: 14px;')}>Mijn activiteiten</div>
-                  <div style={css('font-size: 14px; color: #7B8985; line-height: 1.5;')}>Er is momenteel nog geen activiteit.</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <AccountKaart profile={profile} profileFullName={profileFullName} profileInitials={profileInitials} isApproved={isApproved} vernieuwProfiel={vernieuwProfiel} logout={logout} />
         )}
 
       </div>
